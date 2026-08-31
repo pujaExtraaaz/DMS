@@ -1,0 +1,8 @@
+@extends('layouts.dms')
+@section('title', 'Load Sheets')
+@section('content')
+<x-ui.page-header title="Dispatch / Load Sheets"><x-slot name="actions"><x-ui.button variant="primary" :href="route('logistics.load-sheets.create')">Create Load Sheet</x-ui.button></x-slot></x-ui.page-header>
+<x-ui.card><x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Load Sheet</th><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Date</th><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Route</th><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Vehicle</th><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Status</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</th></tr></x-slot>
+@forelse($loadSheets as $ls)<tr><td class="px-6 py-4 text-sm">{{ $ls->load_sheet_no }}</td><td class="px-6 py-4 text-sm">{{ $ls->load_date->format('d M Y') }}</td><td class="px-6 py-4 text-sm">{{ $ls->route?->name ?? '—' }}</td><td class="px-6 py-4 text-sm">{{ $ls->vehicle?->registration_no ?? '—' }}</td><td class="px-6 py-4 text-sm"><x-ui.badge>{{ ucfirst($ls->status) }}</x-ui.badge></td><td class="px-6 py-4 text-right"><x-ui.button variant="ghost" size="sm" :href="route('logistics.load-sheets.show', $ls)">View</x-ui.button></td></tr>@empty<tr><td colspan="6" class="px-6 py-8"><x-ui.empty-state title="No load sheets" /></td></tr>@endforelse</x-ui.table>
+<div class="mt-4">{{ $loadSheets->links() }}</div></x-ui.card>
+@endsection

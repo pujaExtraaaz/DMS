@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --dms-sidebar-bg: #0f172a;
+        --dms-sidebar-text: #ffffff;
+        --dms-active: #4f46e5;
+        --dms-content-bg: #f9fafb;
+        --dms-surface: #ffffff;
+        --dms-border: #e5e7eb;
+        --dms-muted: #6b7280;
+    }
+
+    html {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+        @apply bg-gray-50 text-gray-900;
+    }
+
+    [x-cloak] {
+        display: none !important;
+    }
+}
+
+@layer components {
+    .dms-sidebar {
+        background-color: var(--dms-sidebar-bg);
+        color: var(--dms-sidebar-text);
+    }
+
+    .dms-content {
+        background-color: var(--dms-content-bg);
+    }
+
+    .dms-surface {
+        @apply bg-white border border-gray-200 rounded-xl shadow-sm;
+    }
+
+    .dms-focus-ring {
+        @apply focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2;
+    }
+
+    .dms-content {
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 transparent;
+    }
+
+    .dms-content::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .dms-content::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1;
+        border-radius: 9999px;
+    }
+
+    .dms-sidebar nav {
+        scrollbar-width: thin;
+        scrollbar-color: #334155 transparent;
+    }
+
+    .dms-sidebar nav::-webkit-scrollbar {
+        width: 4px;
+    }
+
+    .dms-sidebar nav::-webkit-scrollbar-thumb {
+        background-color: #334155;
+        border-radius: 9999px;
+    }
+}
