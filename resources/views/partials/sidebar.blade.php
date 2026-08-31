@@ -146,6 +146,15 @@
                 <span x-show="!sidebarCollapsed" x-cloak>Analytics</span>
             </a>
         @endhasanyrole
+
+        @hasrole('super-admin')
+            <p x-show="!sidebarCollapsed" x-cloak class="{{ $sectionClass }}">Administration</p>
+
+            <a href="{{ route('users.index') }}" class="{{ $itemClass }}">
+
+                <span x-show="!sidebarCollapsed" x-cloak>Users Management</span>
+            </a>
+        @endhasrole
     </nav>
 
     {{-- User footer pinned in sidebar --}}
