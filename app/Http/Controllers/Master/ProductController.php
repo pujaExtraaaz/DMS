@@ -74,15 +74,18 @@ class ProductController extends Controller
         $rules = [
             'name' => 'required|string|max:255',
             'sku' => 'required|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
+            'hsn_code' => 'nullable|string|max:20',
             'description' => 'nullable|string',
             'base_uom_id' => 'required|exists:uoms,id',
             'tax_rate' => 'nullable|numeric|min:0|max:100',
+            'selling_price' => 'nullable|numeric|min:0',
             'is_active' => 'boolean',
         ];
 
         $data = $request->validate($rules);
         $data['is_active'] = $request->boolean('is_active');
         $data['tax_rate'] = $data['tax_rate'] ?? 0;
+        $data['selling_price'] = $data['selling_price'] ?? 0;
 
         return $data;
     }

@@ -8,12 +8,12 @@
 <x-ui.input name="invoice_date" label="Invoice Date" type="date" :value="now()->toDateString()" required />
 <x-ui.input name="discount_amount" label="Discount" type="number" step="0.01" value="0" /></div>
 <div class="overflow-x-auto border rounded-lg">
-    <table class="min-w-full text-sm"><thead class="bg-gray-50"><tr><th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">UOM</th><th class="px-3 py-2 text-left">Qty</th><th class="px-3 py-2 text-left">Price</th><th></th></tr></thead>
+    <table class="min-w-full text-sm"><thead class="bg-gray-50"><tr><th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">UOM</th><th class="px-3 py-2 text-left">Qty</th><th class="px-3 py-2 text-left">Each Unit Price</th><th class="px-3 py-2 text-right">Line Total</th><th></th></tr></thead>
     <tbody id="line-items"><tr>
         <td class="px-3 py-2"><select name="items[0][product_id]" class="product-select block w-full rounded-lg border-gray-300 text-sm" required><option value="">Product</option>@foreach($products as $p)<option value="{{ $p->id }}">{{ $p->name }}</option>@endforeach</select></td>
         <td class="px-3 py-2"><select name="items[0][uom_id]" class="uom-select block w-full rounded-lg border-gray-300 text-sm" required><option value="">UOM</option>@foreach($uoms as $u)<option value="{{ $u->id }}">{{ $u->code }}</option>@endforeach</select></td>
         <td class="px-3 py-2"><input type="number" step="0.0001" name="items[0][quantity]" class="qty-input block w-full rounded-lg border-gray-300 text-sm" value="1" required></td>
-        <td class="px-3 py-2"><input type="number" step="0.01" name="items[0][unit_price]" class="price-input block w-full rounded-lg border-gray-300 text-sm" required></td><td></td>
+        <td class="px-3 py-2"><input type="number" step="0.01" name="items[0][unit_price]" class="price-input block w-full rounded-lg border-gray-300 bg-gray-50 text-sm" readonly required></td><td class="px-3 py-2 text-right"><output class="line-total text-sm font-medium text-gray-900">₹0.00</output></td><td></td>
     </tr></tbody></table></div>
 <x-ui.button type="button" variant="secondary" onclick="addRow()">Add Line</x-ui.button>
 <x-ui.button type="submit" variant="primary">Create Invoice</x-ui.button></form></x-ui.card>

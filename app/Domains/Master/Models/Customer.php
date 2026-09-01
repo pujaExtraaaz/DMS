@@ -23,6 +23,13 @@ class Customer extends Model
         'phone',
         'email',
         'address',
+        'state',
+        'pincode',
+        'shipping_name',
+        'shipping_address',
+        'shipping_state',
+        'shipping_pincode',
+        'shipping_gstin',
         'gstin',
         'is_active',
     ];

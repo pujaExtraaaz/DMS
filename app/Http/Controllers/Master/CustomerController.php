@@ -83,7 +83,14 @@ class CustomerController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
             'address' => 'nullable|string',
+            'state' => 'nullable|string|max:100',
+            'pincode' => 'nullable|string|max:12',
             'gstin' => 'nullable|string|max:20',
+            'shipping_name' => 'nullable|string|max:255',
+            'shipping_address' => 'nullable|string',
+            'shipping_state' => 'nullable|string|max:100',
+            'shipping_pincode' => 'nullable|string|max:12',
+            'shipping_gstin' => 'nullable|string|max:20',
             'is_active' => 'boolean',
         ]);
 

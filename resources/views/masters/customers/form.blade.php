@@ -13,8 +13,17 @@
 <x-ui.input name="phone" label="Phone" :value="old('phone', $item->phone)" />
 <x-ui.input name="email" label="Email" type="email" :value="old('email', $item->email)" />
 <x-ui.input name="gstin" label="GSTIN" :value="old('gstin', $item->gstin)" />
+<x-ui.input name="state" label="State" :value="old('state', $item->state)" />
+<x-ui.input name="pincode" label="Pincode" :value="old('pincode', $item->pincode)" />
 </div>
 <div><label class="block text-sm font-medium text-gray-700 mb-1">Address</label><textarea name="address" rows="3" class="block w-full rounded-lg border-gray-300 text-sm">{{ old('address', $item->address) }}</textarea></div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+<x-ui.input name="shipping_name" label="Shipping Name (if different)" :value="old('shipping_name', $item->shipping_name)" />
+<x-ui.input name="shipping_gstin" label="Shipping GSTIN" :value="old('shipping_gstin', $item->shipping_gstin)" />
+<x-ui.input name="shipping_state" label="Shipping State" :value="old('shipping_state', $item->shipping_state)" />
+<x-ui.input name="shipping_pincode" label="Shipping Pincode" :value="old('shipping_pincode', $item->shipping_pincode)" />
+</div>
+<div><label class="block text-sm font-medium text-gray-700 mb-1">Shipping Address (if different)</label><textarea name="shipping_address" rows="3" class="block w-full rounded-lg border-gray-300 text-sm">{{ old('shipping_address', $item->shipping_address) }}</textarea></div>
 <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600"> Active</label>
 <x-ui.button type="submit" variant="primary">Save</x-ui.button></form></x-ui.card>
 @endsection

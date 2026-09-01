@@ -12,9 +12,11 @@ class Product extends Model
     protected $fillable = [
         'name',
         'sku',
+        'hsn_code',
         'description',
         'base_uom_id',
         'tax_rate',
+        'selling_price',
         'is_active',
     ];
 
@@ -22,6 +24,7 @@ class Product extends Model
     {
         return [
             'tax_rate' => 'decimal:2',
+            'selling_price' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }

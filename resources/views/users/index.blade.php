@@ -54,7 +54,15 @@
             .then(r => r.json())
             .then(data => {
                 this.saving = false
-                this.message = data.message || 'Permissions updated successfully.'
+                if (data.success) {
+                    this.message = data.message || 'Permissions updated successfully.'
+                    if (data.permissions && this.permissionUser) {
+                        this.permissionUser.permissions = data.permissions
+                        this.selectedPermissions = [...data.permissions]
+                    }
+                } else {
+                    this.message = data.message || 'Unable to update permissions.'
+                }
             })
             .catch(() => {
                 this.saving = false
@@ -108,7 +116,7 @@
                                 id: {{ $user->id }},
                                 name: @js($user->name),
                                 role: @js($user->roles->first()?->name ?? 'No Role'),
-                                permissions: @js($user->permissions ?? [])
+                                permissions: @js($user->getAllPermissions()->pluck('name')->toArray())
                             })"
                             class="text-sm font-medium text-indigo-600 hover:text-indigo-800"
                         >

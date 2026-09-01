@@ -23,7 +23,7 @@ class PurchaseController extends Controller
     public function index(Request $request): View
     {
         $purchases = Purchase::query()
-            ->with('creator')
+            ->with(['creator', 'items.product', 'items.uom'])
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('purchase_date', '>=', $request->date_from))
             ->when($request->filled('date_to'), fn ($q) => $q->whereDate('purchase_date', '<=', $request->date_to))
             ->latest('purchase_date')
@@ -51,6 +51,7 @@ class PurchaseController extends Controller
             'items.*.uom_id' => 'required|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
+            'items.*.selling_price' => 'nullable|numeric|min:0',
         ]);
 
         $purchase = DB::transaction(function () use ($validated) {
@@ -68,6 +69,16 @@ class PurchaseController extends Controller
             foreach ($validated['items'] as $item) {
                 $product = Product::findOrFail($item['product_id']);
                 $uom = Uom::findOrFail($item['uom_id']);
+
+                if (isset($item['selling_price']) && (float) $item['selling_price'] > 0) {
+                    $newSellingPrice = (float) $item['selling_price'];
+                    $product->update(['selling_price' => $newSellingPrice]);
+
+                    // Also update/create price master entries if applicable
+                    \App\Domains\Master\Models\PriceMaster::where('product_id', $product->id)
+                        ->where('uom_id', $uom->id)
+                        ->update(['rate' => $newSellingPrice]);
+                }
 
                 PurchaseItem::create([
                     'purchase_id' => $purchase->id,

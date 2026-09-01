@@ -12,9 +12,13 @@ class PaymentLink extends Model
         'invoice_id',
         'token',
         'url',
+        'provider',
+        'provider_reference',
         'amount',
         'status',
         'expires_at',
+        'paid_at',
+        'webhook_payload',
     ];
 
     protected function casts(): array
@@ -22,6 +26,8 @@ class PaymentLink extends Model
         return [
             'amount' => 'decimal:2',
             'expires_at' => 'datetime',
+            'paid_at' => 'datetime',
+            'webhook_payload' => 'array',
         ];
     }
 

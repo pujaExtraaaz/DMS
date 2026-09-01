@@ -6,7 +6,7 @@ use App\Http\Controllers\Payment\PaymentLinkController;
 use App\Http\Controllers\Payment\ReconciliationController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('role:owner|super-admin|finance|sales-manager')->group(function () {
+Route::middleware('role_or_permission:super-admin|payments.view|payments.create|payments.edit|payments.manage|payments.reconcile')->group(function () {
     Route::prefix('payments')->name('payments.')->group(function () {
         Route::get('/', [PaymentController::class, 'index'])->name('index');
         Route::get('/create', [PaymentController::class, 'create'])->name('create');
@@ -19,5 +19,5 @@ Route::middleware('role:owner|super-admin|finance|sales-manager')->group(functio
 });
 
 Route::post('/invoices/{invoice}/payment-link', [PaymentLinkController::class, 'create'])
-    ->middleware('role:owner|super-admin|finance|sales-manager')
+    ->middleware('role_or_permission:super-admin|payments.create|payments.edit|payments.manage')
     ->name('payment-links.create');

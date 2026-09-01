@@ -7,6 +7,7 @@ use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Master\Services\PriceMasterService;
+use App\Domains\Master\Services\SalePricingService;
 use App\Domains\Order\Models\Order;
 use App\Domains\Order\Models\OrderItem;
 use App\Domains\Order\Services\OrderConversionService;
@@ -23,11 +24,15 @@ class OrderController extends Controller
 {
     public function __construct(
         protected PriceMasterService $priceMasterService,
+        protected SalePricingService $salePricingService,
         protected OrderConversionService $orderConversionService,
     ) {}
 
     public function index(Request $request): View
     {
+        $sorts = ['order_no', 'order_date', 'status', 'grand_total', 'created_at'];
+        $sort = in_array($request->input('sort'), $sorts, true) ? $request->input('sort') : 'order_date';
+        $direction = $request->input('direction') === 'asc' ? 'asc' : 'desc';
         $orders = Order::query()
             ->with(['customer.area', 'customer.route', 'salesperson'])
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
@@ -36,7 +41,8 @@ class OrderController extends Controller
             ->when($request->filled('area_id'), fn ($q) => $q->whereHas('customer', fn ($c) => $c->where('area_id', $request->area_id)))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('order_date', '>=', $request->date_from))
             ->when($request->filled('date_to'), fn ($q) => $q->whereDate('order_date', '<=', $request->date_to))
-            ->latest('order_date')
+            ->orderBy($sort, $direction)
+            ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString();
 
@@ -69,22 +75,12 @@ class OrderController extends Controller
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.uom_id' => 'required|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
-            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.unit_price' => 'nullable|numeric|min:0',
         ]);
 
         $order = DB::transaction(function () use ($validated, $request) {
-            $subtotal = 0;
-            $taxAmount = 0;
-
-            foreach ($validated['items'] as $item) {
-                $lineTotal = $item['quantity'] * $item['unit_price'];
-                $subtotal += $lineTotal;
-                $product = Product::find($item['product_id']);
-                $taxAmount += $lineTotal * ((float) $product->tax_rate / 100);
-            }
-
-            $discount = (float) ($validated['discount_amount'] ?? 0);
-            $grandTotal = $subtotal - $discount + $taxAmount;
+            $customer = Customer::findOrFail($validated['customer_id']);
+            $pricing = $this->salePricingService->price($customer, $validated['items'], (float) ($validated['discount_amount'] ?? 0));
 
             $order = Order::create([
                 'order_no' => $this->generateOrderNo(),
@@ -92,21 +88,21 @@ class OrderController extends Controller
                 'salesperson_id' => auth()->id(),
                 'order_date' => $validated['order_date'],
                 'status' => 'pending',
-                'subtotal' => $subtotal,
-                'discount_amount' => $discount,
-                'tax_amount' => $taxAmount,
-                'grand_total' => $grandTotal,
+                'subtotal' => $pricing['subtotal'],
+                'discount_amount' => $pricing['discount'],
+                'tax_amount' => $pricing['tax'],
+                'grand_total' => $pricing['total'],
                 'notes' => $validated['notes'] ?? null,
             ]);
 
-            foreach ($validated['items'] as $item) {
+            foreach ($pricing['lines'] as $line) {
                 OrderItem::create([
                     'order_id' => $order->id,
-                    'product_id' => $item['product_id'],
-                    'uom_id' => $item['uom_id'],
-                    'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
-                    'line_total' => $item['quantity'] * $item['unit_price'],
+                    'product_id' => $line['product']->id,
+                    'uom_id' => $line['uom']->id,
+                    'quantity' => $line['quantity'],
+                    'unit_price' => $line['unitPrice'],
+                    'line_total' => $line['lineTotal'],
                 ]);
             }
 

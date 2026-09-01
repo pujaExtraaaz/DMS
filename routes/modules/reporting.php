@@ -8,7 +8,7 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
 
-Route::prefix('reports')->name('reports.')->middleware('role:owner|super-admin|sales-manager|finance')->group(function () {
+Route::prefix('reports')->name('reports.')->middleware('role_or_permission:super-admin|reports.view|reports.create|reports.edit|reports.manage')->group(function () {
     Route::get('/sales', [ReportController::class, 'sales'])->name('sales');
     Route::get('/stock', [ReportController::class, 'stock'])->name('stock');
     Route::get('/payments', [ReportController::class, 'payments'])->name('payments');

@@ -15,9 +15,15 @@ class RolePermissionSeeder extends Seeder
     protected array $modules = [
         'dashboard',
         'masters',
+        'products',
+        'customers',
+        'price-master',
         'orders',
         'inventory',
+        'stock',
+        'purchases',
         'sales',
+        'invoices',
         'payments',
         'communications',
         'logistics',
@@ -54,9 +60,14 @@ class RolePermissionSeeder extends Seeder
             'sales-manager' => [
                 'dashboard.view',
                 'masters.view',
+                'products.view',
+                'customers.view',
+                'price-master.view',
                 'orders.view',
                 'orders.approve',
                 'orders.manage',
+                'sales.view',
+                'invoices.view',
                 'reports.view',
                 'reports.manage',
             ],
@@ -67,19 +78,35 @@ class RolePermissionSeeder extends Seeder
                 'orders.book',
                 'orders.manage',
                 'create orders',
+                'sales.view',
+                'invoices.view',
             ],
             'warehouse' => [
                 'dashboard.view',
                 'inventory.view',
                 'inventory.manage',
+                'stock.view',
+                'purchases.view',
             ],
             'finance' => [
                 'dashboard.view',
                 'sales.view',
+                'sales.create',
+                'sales.edit',
                 'sales.manage',
+                'invoices.view',
+                'invoices.create',
+                'invoices.edit',
+                'invoices.manage',
                 'payments.view',
+                'payments.create',
+                'payments.edit',
                 'payments.manage',
                 'payments.reconcile',
+                'settlement.view',
+                'settlement.create',
+                'settlement.edit',
+                'settlement.manage',
                 'reports.view',
                 'manage settlements',
             ],
@@ -117,7 +144,7 @@ class RolePermissionSeeder extends Seeder
         $permissions = [];
 
         foreach ($this->modules as $module) {
-            foreach (['view', 'manage'] as $action) {
+            foreach (['view', 'create', 'edit', 'manage'] as $action) {
                 $permissions[] = "{$module}.{$action}";
             }
         }

@@ -4,8 +4,7 @@
 <x-ui.page-header :title="$invoice->invoice_no" :description="$invoice->customer->name">
 <x-slot name="actions">
 <x-ui.button variant="secondary" :href="route('invoices.index')">Back</x-ui.button>
-<x-ui.button variant="ghost" :href="route('invoices.pdf', $invoice)" target="_blank">Download PDF</x-ui.button>
-<form method="POST" action="{{ route('invoices.e-invoice', $invoice) }}" class="inline">@csrf<x-ui.button type="submit" variant="secondary">E-Invoice</x-ui.button></form>
+<x-ui.button variant="secondary" :href="route('invoices.e-invoice.document', $invoice)">E-Invoice</x-ui.button>
 <form method="POST" action="{{ route('invoices.eway', $invoice) }}" class="inline">@csrf<x-ui.button type="submit" variant="secondary">E-Way Bill</x-ui.button></form>
 <form method="POST" action="{{ route('payment-links.create', $invoice) }}" class="inline">@csrf<x-ui.button type="submit" variant="secondary">Payment Link</x-ui.button></form>
 <x-ui.button variant="primary" :href="route('payments.create', ['invoice_id' => $invoice->id])">Record Payment</x-ui.button>
