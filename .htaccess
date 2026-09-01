@@ -1,0 +1,12 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Don't rewrite if already pointing to public/
+    RewriteRule ^public(/.*)?$ - [L]
+
+    # Redirect root to public/
+    RewriteRule ^$ public/ [L]
+
+    # Forward everything else to public/
+    RewriteRule ^(.+)$ public/$1 [L]
+</IfModule>
