@@ -5,6 +5,7 @@ namespace App\Domains\Order\Services;
 use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Order\Models\Order;
 use App\Domains\Payment\Services\OutstandingLedgerService;
+use App\Domains\Payment\Services\PaymentLinkService;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sales\Models\InvoiceItem;
 use App\Domains\Sales\Services\InvoiceNumberGenerator;
@@ -17,6 +18,7 @@ class OrderConversionService
         protected InvoiceNumberGenerator $invoiceNumberGenerator,
         protected StockMovementService $stockMovementService,
         protected OutstandingLedgerService $outstandingLedgerService,
+        protected PaymentLinkService $paymentLinkService,
     ) {}
 
     public function convertToInvoice(Order $order): Invoice
@@ -72,6 +74,7 @@ class OrderConversionService
             $order->update(['status' => 'converted']);
 
             $this->outstandingLedgerService->recordInvoice($invoice);
+            $this->paymentLinkService->createForInvoice($invoice);
 
             return $invoice->load('items');
         });

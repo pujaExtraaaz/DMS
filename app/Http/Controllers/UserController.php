@@ -8,7 +8,7 @@ class UserController extends Controller
 {
     public function index()
     {
-        $users = User::with('roles')
+        $users = User::with(['roles', 'permissions'])
         ->get()
         ->sortBy(function ($user) {
             return [

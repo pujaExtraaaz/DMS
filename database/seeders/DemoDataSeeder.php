@@ -176,6 +176,8 @@ class DemoDataSeeder extends Seeder
             ['name' => 'Case', 'code' => 'CASE'],
             ['name' => 'Kg', 'code' => 'KG'],
             ['name' => 'Litre', 'code' => 'LTR'],
+            ['name' => 'Quintal', 'code' => 'QTL'],
+            ['name' => 'Gram', 'code' => 'GM'],
         ];
 
         foreach ($uoms as $uom) {

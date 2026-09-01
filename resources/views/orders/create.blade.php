@@ -30,7 +30,8 @@
                             <th class="px-3 py-2 text-left">Product</th>
                             <th class="px-3 py-2 text-left">UOM</th>
                             <th class="px-3 py-2 text-left">Qty</th>
-                            <th class="px-3 py-2 text-left">Price</th>
+                            <th class="px-3 py-2 text-left">Each Unit Price</th>
+                            <th class="px-3 py-2 text-right">Line Total</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -53,7 +54,8 @@
                                 </select>
                             </td>
                             <td class="px-3 py-2"><input type="number" step="0.0001" name="items[0][quantity]" class="qty-input block w-full rounded-lg border-gray-300 text-sm" value="1" required></td>
-                            <td class="px-3 py-2"><input type="number" step="0.01" name="items[0][unit_price]" class="price-input block w-full rounded-lg border-gray-300 text-sm" required></td>
+                            <td class="px-3 py-2"><input type="number" step="0.01" name="items[0][unit_price]" class="price-input block w-full rounded-lg border-gray-300 bg-gray-50 text-sm" readonly required></td>
+                            <td class="px-3 py-2 text-right"><output class="line-total text-sm font-medium text-gray-900">₹0.00</output></td>
                             <td></td>
                         </tr>
                     </tbody>

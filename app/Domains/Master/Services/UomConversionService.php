@@ -49,12 +49,29 @@ class UomConversionService
             ->where('uom_id', $uom->id)
             ->first();
 
-        if (! $productUom) {
-            throw new InvalidArgumentException(
-                "No conversion factor defined for product [{$product->id}] and UOM [{$uom->id}]."
-            );
+        if ($productUom) {
+            return (float) $productUom->conversion_factor;
         }
 
-        return (float) $productUom->conversion_factor;
+        // Standard metric fallback conversions
+        $baseUomCode = strtoupper($product->baseUom?->code ?? '');
+        $targetUomCode = strtoupper($uom->code);
+
+        if ($baseUomCode === 'KG' && $targetUomCode === 'QTL') {
+            return 100.0;
+        }
+        if ($baseUomCode === 'KG' && $targetUomCode === 'GM') {
+            return 0.001;
+        }
+        if ($baseUomCode === 'PCS' && $targetUomCode === 'BOX') {
+            return 10.0;
+        }
+        if ($baseUomCode === 'PCS' && $targetUomCode === 'CASE') {
+            return 100.0;
+        }
+
+        throw new InvalidArgumentException(
+            "No conversion factor defined for product [{$product->id}] and UOM [{$uom->id}]."
+        );
     }
 }

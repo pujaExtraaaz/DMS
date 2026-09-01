@@ -20,23 +20,41 @@ class ReportController extends Controller
         $dateTo = $request->input('date_to', now()->toDateString());
 
         $invoices = Invoice::query()
-            ->with('customer')
+            ->with(['customer', 'items.product', 'items.uom'])
             ->whereBetween('invoice_date', [$dateFrom, $dateTo])
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
-            ->orderBy('invoice_date')
+            ->orderByDesc('invoice_date')
             ->get();
+
+        $totalSubtotal = $invoices->sum('subtotal');
+        $totalTax = $invoices->sum('tax_amount');
+        $totalGross = $invoices->sum('grand_total');
+        $totalCollected = $invoices->sum('paid_amount');
+        $totalOutstanding = $totalGross - $totalCollected;
 
         $summary = [
             'count' => $invoices->count(),
-            'subtotal' => $invoices->sum('subtotal'),
-            'tax' => $invoices->sum('tax_amount'),
-            'total' => $invoices->sum('grand_total'),
-            'collected' => $invoices->sum('paid_amount'),
+            'subtotal' => $totalSubtotal,
+            'tax' => $totalTax,
+            'total' => $totalGross,
+            'collected' => $totalCollected,
+            'outstanding' => $totalOutstanding,
+            'percentage_collected' => $totalGross > 0 ? round(($totalCollected / $totalGross) * 100, 2) : 0,
         ];
+
+        $byStatus = $invoices->groupBy('status')->map->count();
+        $byCustomer = $invoices->groupBy('customer_id')->map(fn ($group) => [
+            'customer' => $group->first()->customer->name,
+            'count' => $group->count(),
+            'total' => $group->sum('grand_total'),
+            'collected' => $group->sum('paid_amount'),
+        ]);
 
         return view('reporting.sales', [
             'invoices' => $invoices,
             'summary' => $summary,
+            'byStatus' => $byStatus,
+            'byCustomer' => $byCustomer,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),

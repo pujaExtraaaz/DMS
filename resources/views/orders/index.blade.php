@@ -9,45 +9,29 @@
         </x-slot>
     </x-ui.page-header>
 
+    <div class="flex flex-wrap gap-2 mb-4">
+        <a href="{{ route('orders.index') }}" class="px-3 py-1.5 rounded-lg text-xs font-semibold {{ !request('status') ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">All Orders</a>
+        <a href="{{ route('orders.index', array_merge(request()->query(), ['status' => 'pending'])) }}" class="px-3 py-1.5 rounded-lg text-xs font-semibold {{ request('status') === 'pending' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">Pending Orders</a>
+        <a href="{{ route('orders.index', array_merge(request()->query(), ['status' => 'approved'])) }}" class="px-3 py-1.5 rounded-lg text-xs font-semibold {{ request('status') === 'approved' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">Approved Orders</a>
+        <a href="{{ route('orders.index', array_merge(request()->query(), ['status' => 'converted'])) }}" class="px-3 py-1.5 rounded-lg text-xs font-semibold {{ request('status') === 'converted' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200' }}">Converted Invoices</a>
+    </div>
+
     <x-ui.card>
-        <form method="GET" class="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
-            <x-ui.select name="customer_id" label="Customer" placeholder="All">
-                <option value=""></option>
-                @foreach($customers as $c)
-                    <option value="{{ $c->id }}" @selected(request('customer_id') == $c->id)>{{ $c->name }}</option>
-                @endforeach
-            </x-ui.select>
-            <x-ui.select name="salesperson_id" label="Salesperson" placeholder="All">
-                <option value=""></option>
-                @foreach($salespersons as $s)
-                    <option value="{{ $s->id }}" @selected(request('salesperson_id') == $s->id)>{{ $s->name }}</option>
-                @endforeach
-            </x-ui.select>
-            <x-ui.select name="area_id" label="Area" placeholder="All">
-                <option value=""></option>
-                @foreach($areas as $a)
-                    <option value="{{ $a->id }}" @selected(request('area_id') == $a->id)>{{ $a->name }}</option>
-                @endforeach
-            </x-ui.select>
-            <x-ui.select name="status" label="Status" placeholder="All">
-                <option value=""></option>
-                @foreach($statuses as $st)
-                    <option value="{{ $st }}" @selected(request('status') == $st)>{{ ucfirst($st) }}</option>
-                @endforeach
-            </x-ui.select>
-            <x-ui.input name="date_from" label="From" type="date" :value="request('date_from')" />
-            <x-ui.input name="date_to" label="To" type="date" :value="request('date_to')" />
-            <div class="md:col-span-6"><x-ui.button type="submit" variant="secondary">Filter</x-ui.button></div>
-        </form>
+        @php
+            $sortLink = function (string $column) {
+                $next = request('sort') === $column && request('direction') !== 'asc' ? 'asc' : 'desc';
+                return route('orders.index', array_merge(request()->query(), ['sort' => $column, 'direction' => $next]));
+            };
+        @endphp
 
         <x-ui.table>
             <x-slot name="head">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Order</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500"><a href="{{ $sortLink('order_no') }}">Order</a></th>
                     <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Customer</th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Date</th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Status</th>
-                    <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Total</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500"><a href="{{ $sortLink('order_date') }}">Date</a></th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500"><a href="{{ $sortLink('status') }}">Status</a></th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500"><a href="{{ $sortLink('grand_total') }}">Total</a></th>
                     <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</th>
                 </tr>
             </x-slot>

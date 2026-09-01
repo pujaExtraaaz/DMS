@@ -13,14 +13,18 @@
         <p class="text-sm text-gray-500 mt-1">{{ $paymentLink->invoice->invoice_no }}</p>
         <p class="text-sm text-gray-600 mt-4">{{ $paymentLink->invoice->customer->name }}</p>
         <p class="text-3xl font-bold text-gray-900 mt-2">₹{{ number_format($paymentLink->amount, 2) }}</p>
-        <p class="text-xs text-gray-500 break-all mt-4">UPI: {{ $paymentLink->url }}</p>
+        <p class="text-xs text-gray-500 mt-4">A secure payment session has been created for this invoice.</p>
         @if (session('status'))
             <p class="mt-4 text-sm text-emerald-600">{{ session('status') }}</p>
         @endif
+        @if (app()->environment(['local', 'testing']) && config('services.payment.provider') === 'internal')
         <form method="POST" action="{{ route('payment-links.complete', $paymentLink->token) }}" class="mt-6">
             @csrf
-            <button type="submit" class="w-full inline-flex justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Mark as Paid (Stub)</button>
+            <button type="submit" class="w-full inline-flex justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Complete test payment</button>
         </form>
+        @else
+            <p class="mt-6 text-sm text-gray-600">Continue through your payment provider to complete this payment.</p>
+        @endif
     </div>
 </div>
 </body>

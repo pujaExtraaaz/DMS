@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'payment' => [
+        'provider' => env('PAYMENT_PROVIDER', 'internal'),
+        'webhook_secret' => env('PAYMENT_WEBHOOK_SECRET'),
+    ],
+
 ];

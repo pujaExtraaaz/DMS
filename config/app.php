@@ -15,6 +15,14 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    'company_name' => env('DMS_COMPANY_NAME', env('APP_NAME', 'Distribution Management System')),
+    'company_gstin' => env('DMS_COMPANY_GSTIN'),
+    'company_address' => env('DMS_COMPANY_ADDRESS'),
+    'company_state' => env('DMS_COMPANY_STATE'),
+    'company_pincode' => env('DMS_COMPANY_PINCODE'),
+    'company_bank_account' => env('DMS_COMPANY_BANK_ACCOUNT'),
+    'company_bank_details' => env('DMS_COMPANY_BANK_DETAILS'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

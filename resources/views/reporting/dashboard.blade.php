@@ -83,24 +83,24 @@
     </div>
 
     {{-- Charts row --}}
-    <div class="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div class="xl:col-span-2 rounded-2xl bg-white border border-slate-200/80 p-6 shadow-sm">
-            <div class="flex items-center justify-between mb-6">
+    <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div class="dashboard-panel xl:col-span-2 rounded-[24px] p-6">
+            <div class="mb-6 flex items-center justify-between">
                 <div>
-                    <h3 class="text-base font-semibold text-slate-900">Sales & Orders Trend</h3>
-                    <p class="text-sm text-slate-500 mt-0.5">Last 7 days performance</p>
+                    <h3 class="text-lg font-semibold text-slate-900">Sales & Orders Trend</h3>
+                    <p class="mt-1 text-sm text-slate-500">Last 7 days performance</p>
                 </div>
-                <span class="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700">Live</span>
+                <span class="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">Live</span>
             </div>
             <div class="h-72">
                 <canvas id="salesTrendChart"></canvas>
             </div>
         </div>
 
-        <div class="rounded-2xl bg-white border border-slate-200/80 p-6 shadow-sm">
+        <div class="dashboard-panel rounded-[24px] p-6">
             <div class="mb-4">
-                <h3 class="text-base font-semibold text-slate-900">Order Pipeline</h3>
-                <p class="text-sm text-slate-500 mt-0.5">Status breakdown</p>
+                <h3 class="text-lg font-semibold text-slate-900">Order Pipeline</h3>
+                <p class="mt-1 text-sm text-slate-500">Status breakdown</p>
             </div>
             <div class="h-64 flex items-center justify-center">
                 <canvas id="orderStatusChart"></canvas>
@@ -109,21 +109,21 @@
     </div>
 
     {{-- Second analytics row --}}
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div class="rounded-2xl bg-white border border-slate-200/80 p-6 shadow-sm">
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div class="dashboard-panel rounded-[24px] p-6">
             <div class="mb-6">
-                <h3 class="text-base font-semibold text-slate-900">Payment Methods</h3>
-                <p class="text-sm text-slate-500 mt-0.5">Collections this month by method</p>
+                <h3 class="text-lg font-semibold text-slate-900">Payment Methods</h3>
+                <p class="mt-1 text-sm text-slate-500">Collections this month by method</p>
             </div>
             <div class="h-56">
                 <canvas id="paymentMethodsChart"></canvas>
             </div>
         </div>
 
-        <div class="rounded-2xl bg-white border border-slate-200/80 p-6 shadow-sm">
+        <div class="dashboard-panel rounded-[24px] p-6">
             <div class="mb-4">
-                <h3 class="text-base font-semibold text-slate-900">Top Customers</h3>
-                <p class="text-sm text-slate-500 mt-0.5">By revenue this month</p>
+                <h3 class="text-lg font-semibold text-slate-900">Top Customers</h3>
+                <p class="mt-1 text-sm text-slate-500">By revenue this month</p>
             </div>
             <div class="space-y-4">
                 @forelse($topCustomers as $index => $row)
@@ -151,11 +151,11 @@
     </div>
 
     {{-- Activity tables --}}
-    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div class="rounded-2xl bg-white border border-slate-200/80 shadow-sm overflow-hidden">
+    <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div class="dashboard-panel overflow-hidden rounded-[24px]">
             <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                    <h3 class="text-base font-semibold text-slate-900">Recent Orders</h3>
+                    <h3 class="text-lg font-semibold text-slate-900">Recent Orders</h3>
                     <p class="text-xs text-slate-500 mt-0.5">Latest order activity</p>
                 </div>
                 <a href="{{ route('orders.index') }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-700">View all →</a>
@@ -200,10 +200,10 @@
             </div>
         </div>
 
-        <div class="rounded-2xl bg-white border border-slate-200/80 shadow-sm overflow-hidden">
+        <div class="dashboard-panel overflow-hidden rounded-[24px]">
             <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                    <h3 class="text-base font-semibold text-slate-900">Recent Invoices</h3>
+                    <h3 class="text-lg font-semibold text-slate-900">Recent Invoices</h3>
                     <p class="text-xs text-slate-500 mt-0.5">Latest billing activity</p>
                 </div>
                 <a href="{{ route('invoices.index') }}" class="text-sm font-medium text-indigo-600 hover:text-indigo-700">View all →</a>

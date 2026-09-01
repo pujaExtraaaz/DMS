@@ -32,6 +32,7 @@ Chart.register(
 const chartDefaults = {
     responsive: true,
     maintainAspectRatio: false,
+    animation: { duration: 800, easing: 'easeOutQuart' },
     plugins: {
         legend: { display: false },
         tooltip: {
@@ -39,8 +40,9 @@ const chartDefaults = {
             titleFont: { family: 'Inter', size: 13, weight: '600' },
             bodyFont: { family: 'Inter', size: 12 },
             padding: 12,
-            cornerRadius: 8,
+            cornerRadius: 10,
             displayColors: false,
+            borderWidth: 0,
         },
     },
 };
@@ -57,10 +59,10 @@ function initSalesChart(canvas, data) {
                     label: 'Sales (₹)',
                     data: data.map(d => d.sales),
                     borderColor: '#4f46e5',
-                    backgroundColor: 'rgba(79, 70, 229, 0.08)',
-                    borderWidth: 2.5,
+                    backgroundColor: 'rgba(79, 70, 229, 0.10)',
+                    borderWidth: 3,
                     fill: true,
-                    tension: 0.4,
+                    tension: 0.38,
                     pointRadius: 4,
                     pointHoverRadius: 6,
                     pointBackgroundColor: '#4f46e5',
@@ -70,10 +72,10 @@ function initSalesChart(canvas, data) {
                 {
                     label: 'Orders',
                     data: data.map(d => d.orders),
-                    borderColor: '#10b981',
+                    borderColor: '#14b8a6',
                     backgroundColor: 'transparent',
-                    borderWidth: 2,
-                    tension: 0.4,
+                    borderWidth: 2.5,
+                    tension: 0.38,
                     pointRadius: 3,
                     yAxisID: 'y1',
                 },
@@ -82,6 +84,26 @@ function initSalesChart(canvas, data) {
         options: {
             ...chartDefaults,
             interaction: { mode: 'index', intersect: false },
+            plugins: {
+                ...chartDefaults.plugins,
+                tooltip: {
+                    ...chartDefaults.plugins.tooltip,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.dataset.yAxisID === 'y1' || context.dataset.label === 'Orders') {
+                                label += context.parsed.y + ' orders';
+                            } else {
+                                label += '₹' + Number(context.parsed.y).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
             scales: {
                 x: {
                     grid: { display: false },
@@ -118,7 +140,7 @@ function initOrderStatusChart(canvas, data) {
 
     const labels = Object.keys(data).map(s => s.charAt(0).toUpperCase() + s.slice(1));
     const values = Object.values(data);
-    const colors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#64748b'];
+    const colors = ['#4f46e5', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#64748b'];
 
     new Chart(canvas, {
         type: 'doughnut',
@@ -128,12 +150,12 @@ function initOrderStatusChart(canvas, data) {
                 data: values,
                 backgroundColor: colors.slice(0, values.length),
                 borderWidth: 0,
-                hoverOffset: 6,
+                hoverOffset: 8,
             }],
         },
         options: {
             ...chartDefaults,
-            cutout: '72%',
+            cutout: '68%',
             plugins: {
                 ...chartDefaults.plugins,
                 legend: {
@@ -142,7 +164,7 @@ function initOrderStatusChart(canvas, data) {
                     labels: {
                         font: { family: 'Inter', size: 11 },
                         color: '#64748b',
-                        padding: 16,
+                        padding: 18,
                         usePointStyle: true,
                         pointStyle: 'circle',
                     },
@@ -165,9 +187,9 @@ function initPaymentChart(canvas, data) {
             datasets: [{
                 data: values,
                 backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#64748b'],
-                borderRadius: 8,
+                borderRadius: 10,
                 borderSkipped: false,
-                maxBarThickness: 48,
+                maxBarThickness: 46,
             }],
         },
         options: {

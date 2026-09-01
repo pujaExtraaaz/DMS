@@ -7,6 +7,8 @@ use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Master\Services\PriceMasterService;
+use App\Domains\Master\Services\SalePricingService;
+use App\Domains\Payment\Services\PaymentLinkService;
 use App\Domains\Payment\Services\OutstandingLedgerService;
 use App\Domains\Sales\Models\EInvoice;
 use App\Domains\Sales\Models\EWayBill;
@@ -14,6 +16,7 @@ use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sales\Models\InvoiceItem;
 use App\Domains\Sales\Services\InvoiceNumberGenerator;
 use App\Http\Controllers\Controller;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,8 +28,10 @@ class InvoiceController extends Controller
     public function __construct(
         protected InvoiceNumberGenerator $invoiceNumberGenerator,
         protected PriceMasterService $priceMasterService,
+        protected SalePricingService $salePricingService,
         protected StockMovementService $stockMovementService,
         protected OutstandingLedgerService $outstandingLedgerService,
+        protected PaymentLinkService $paymentLinkService,
     ) {}
 
     public function index(Request $request): View
@@ -67,23 +72,13 @@ class InvoiceController extends Controller
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.uom_id' => 'required|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
-            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.unit_price' => 'nullable|numeric|min:0',
         ]);
 
         try {
             $invoice = DB::transaction(function () use ($validated) {
-                $subtotal = 0;
-                $taxAmount = 0;
-
-                foreach ($validated['items'] as $item) {
-                    $lineTotal = $item['quantity'] * $item['unit_price'];
-                    $subtotal += $lineTotal;
-                    $product = Product::find($item['product_id']);
-                    $taxAmount += $lineTotal * ((float) $product->tax_rate / 100);
-                }
-
-                $discount = (float) ($validated['discount_amount'] ?? 0);
-                $grandTotal = $subtotal - $discount + $taxAmount;
+                $customer = Customer::findOrFail($validated['customer_id']);
+                $pricing = $this->salePricingService->price($customer, $validated['items'], (float) ($validated['discount_amount'] ?? 0));
 
                 $invoice = Invoice::create([
                     'invoice_no' => $this->invoiceNumberGenerator->generate(),
@@ -91,35 +86,33 @@ class InvoiceController extends Controller
                     'salesperson_id' => auth()->id(),
                     'invoice_date' => $validated['invoice_date'],
                     'status' => 'issued',
-                    'subtotal' => $subtotal,
-                    'discount_amount' => $discount,
-                    'tax_amount' => $taxAmount,
-                    'grand_total' => $grandTotal,
+                    'subtotal' => $pricing['subtotal'],
+                    'discount_amount' => $pricing['discount'],
+                    'tax_amount' => $pricing['tax'],
+                    'grand_total' => $pricing['total'],
                     'paid_amount' => 0,
                     'notes' => $validated['notes'] ?? null,
                 ]);
 
-                foreach ($validated['items'] as $item) {
-                    $product = Product::findOrFail($item['product_id']);
-                    $uom = Uom::findOrFail($item['uom_id']);
-                    $lineTotal = $item['quantity'] * $item['unit_price'];
-                    $lineTax = $lineTotal * ((float) $product->tax_rate / 100);
+                foreach ($pricing['lines'] as $line) {
+                    $product = $line['product'];
+                    $uom = $line['uom'];
 
                     InvoiceItem::create([
                         'invoice_id' => $invoice->id,
-                        'product_id' => $item['product_id'],
-                        'uom_id' => $item['uom_id'],
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'discount_amount' => 0,
-                        'tax_amount' => $lineTax,
-                        'line_total' => $lineTotal,
+                        'product_id' => $product->id,
+                        'uom_id' => $uom->id,
+                        'quantity' => $line['quantity'],
+                        'unit_price' => $line['unitPrice'],
+                        'discount_amount' => $line['discount'],
+                        'tax_amount' => $line['tax'],
+                        'line_total' => $line['lineTotal'],
                     ]);
 
                     $this->stockMovementService->recordOut(
                         product: $product,
                         uom: $uom,
-                        quantity: (float) $item['quantity'],
+                        quantity: (float) $line['quantity'],
                         type: 'sale',
                         reference: $invoice,
                         notes: "Direct invoice {$invoice->invoice_no}",
@@ -128,6 +121,7 @@ class InvoiceController extends Controller
                 }
 
                 $this->outstandingLedgerService->recordInvoice($invoice);
+                $this->paymentLinkService->createForInvoice($invoice);
 
                 return $invoice;
             });
@@ -145,16 +139,48 @@ class InvoiceController extends Controller
         return view('sales.invoices.show', compact('invoice'));
     }
 
-    public function pdf(Invoice $invoice): Response
+    public function pdf(Request $request, Invoice $invoice): Response
     {
-        $invoice->load(['customer', 'items.product', 'items.uom']);
+        $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice']);
 
-        $html = view('sales.invoices.pdf', compact('invoice'))->render();
+        $pdf = Pdf::loadView('sales.invoices.pdf', compact('invoice'))->setPaper('a4');
 
-        return response($html, 200, [
-            'Content-Type' => 'text/html',
-            'Content-Disposition' => 'inline; filename="'.$invoice->invoice_no.'.html"',
+        return $request->boolean('download')
+            ? $pdf->download($invoice->invoice_no.'.pdf')
+            : $pdf->stream($invoice->invoice_no.'.pdf');
+    }
+
+    public function eInvoiceDocument(Invoice $invoice): View
+    {
+        $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice']);
+        $eInvoice = $invoice->eInvoice ?? EInvoice::create([
+            'invoice_id' => $invoice->id,
+            'status' => 'manual',
+            'irn' => 'MANUAL-'.strtoupper(substr(hash('sha256', $invoice->invoice_no), 0, 16)),
+            'payload' => ['generated_at' => now()->toIso8601String()],
         ]);
+
+        return view('sales.invoices.e-invoice', compact('invoice', 'eInvoice'));
+    }
+
+    public function eInvoicePreview(Invoice $invoice): View
+    {
+        $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice']);
+
+        return view('sales.invoices.pdf', compact('invoice'));
+    }
+
+    public function eWayBillDocument(Invoice $invoice): View
+    {
+        $invoice->load(['customer', 'items.product', 'items.uom', 'eWayBill']);
+        $eWayBill = $invoice->eWayBill ?? EWayBill::create([
+            'invoice_id' => $invoice->id,
+            'status' => 'manual',
+            'eway_bill_no' => 'MANUAL-'.strtoupper(substr(hash('sha256', $invoice->invoice_no.'eway'), 0, 12)),
+            'payload' => ['generated_at' => now()->toIso8601String()],
+        ]);
+
+        return view('sales.invoices.e-way-bill', compact('invoice', 'eWayBill'));
     }
 
     public function generateEInvoice(Invoice $invoice): RedirectResponse
@@ -168,7 +194,8 @@ class InvoiceController extends Controller
             ]
         );
 
-        return $this->flashSuccess('E-Invoice stub generated.');
+        return redirect()->route('invoices.e-invoice.document', $invoice)
+            ->with('status', 'E-Invoice generated successfully.');
     }
 
     public function generateEway(Invoice $invoice): RedirectResponse
@@ -182,6 +209,7 @@ class InvoiceController extends Controller
             ]
         );
 
-        return $this->flashSuccess('E-Way bill stub generated.');
+        return redirect()->route('invoices.eway.document', $invoice)
+            ->with('status', 'E-Way Bill generated successfully.');
     }
 }
