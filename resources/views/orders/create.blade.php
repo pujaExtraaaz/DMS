@@ -8,6 +8,7 @@
     x-data="orderBuilder()"
     x-init="init()"
     @keydown.window="handleShortcut($event)"
+    @click.window="closeProductDropdowns($event)"
     class="space-y-6"
 >
 
@@ -113,14 +114,175 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
 
                 {{-- Discount --}}
-                <x-ui.input
-                    name="discount_amount"
-                    label="Discount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    :value="old('discount_amount', 0)"
-                />
+                <div class="w-full md:max-w-lg">
+
+                    <div class="mb-2 flex items-center justify-between">
+                        <label class="block text-sm font-semibold text-gray-800">
+                            Discount
+                        </label>
+
+                        <span
+                            class="text-xs font-medium text-gray-400"
+                            x-text="discountType === 'flat'
+                                ? 'Fixed amount'
+                                : 'Percentage'"
+                        ></span>
+                    </div>
+
+                    <div class="rounded-xl border border-gray-200 bg-white p-1.5 shadow-sm">
+
+                        {{-- Discount Type --}}
+                        <div class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1">
+
+                            {{-- Flat --}}
+                            <button
+                                type="button"
+                                @click="
+                                    discountType = 'flat';
+                                    discountValue = 0;
+                                    discountChanged();
+                                "
+                                :class="
+                                    discountType === 'flat'
+                                        ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-gray-200'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                "
+                                class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition"
+                            >
+                                <span
+                                    class="text-sm font-bold"
+                                >
+                                    ₹
+                                </span>
+
+                                <span>Flat</span>
+                            </button>
+
+                            {{-- Percent --}}
+                            <button
+                                type="button"
+                                @click="
+                                    discountType = 'percent';
+                                    discountValue = 0;
+                                    discountChanged();
+                                "
+                                :class="
+                                    discountType === 'percent'
+                                        ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-gray-200'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                "
+                                class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition"
+                            >
+                                <span
+                                    class="text-sm font-bold"
+                                >
+                                    %
+                                </span>
+
+                                <span>Percent</span>
+                            </button>
+
+                        </div>
+
+                        {{-- Discount Value --}}
+                        <div class="mt-2">
+
+                            <div
+                                class="relative flex items-center overflow-hidden rounded-lg border border-gray-300 bg-white transition focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100"
+                            >
+
+                                {{-- Rupee Prefix --}}
+                                <span
+                                    x-show="discountType === 'flat'"
+                                    x-cloak
+                                    class="flex h-12 w-12 shrink-0 items-center justify-center border-r border-gray-200 bg-gray-50 text-base font-semibold text-gray-600"
+                                >
+                                    ₹
+                                </span>
+
+                                {{-- Input --}}
+                                <input
+                                    type="number"
+                                    name="discount_value"
+                                    x-model="discountValue"
+                                    min="0"
+                                    :max="discountType === 'percent' ? 100 : null"
+                                    step="0.01"
+                                    class="discount-value-input h-12 w-full border-0 bg-transparent px-4 text-base font-semibold text-gray-900 outline-none focus:ring-0"
+                                    :class="discountType === 'percent' ? 'pl-12 pr-12' : ''"
+                                    :placeholder="discountType === 'flat' ? 'Enter discount amount' : 'Enter discount percentage'"
+                                    @input="discountChanged()"
+                                >
+
+                                {{-- Percent Suffix --}}
+                                <span
+                                    x-show="discountType === 'percent'"
+                                    x-cloak
+                                    class="flex h-12 w-12 shrink-0 items-center justify-center border-l border-gray-200 bg-gray-50 text-base font-semibold text-gray-600"
+                                >
+                                    %
+                                </span>
+
+                            </div>
+
+</div>
+
+                        {{-- Help Text --}}
+                        <div class="mt-2 flex items-center gap-2 px-1">
+
+                            <svg
+                                class="h-3.5 w-3.5 shrink-0 text-gray-400"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z"
+                                />
+                            </svg>
+
+                            <p class="text-xs text-gray-500">
+                                <template x-if="discountType === 'flat'">
+                                    <span>Enter a fixed rupee amount.</span>
+                                </template>
+
+                                <template x-if="discountType === 'percent'">
+                                    <span>Enter a percentage between 0% and 100%.</span>
+                                </template>
+                            </p>
+
+                        </div>
+
+                        {{-- Applied Discount --}}
+                        <div
+                            x-show="discountAmount > 0"
+                            x-cloak
+                            class="mt-3 flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-2.5"
+                        >
+
+                            <span class="text-xs font-medium text-indigo-700">
+                                Applied discount
+                            </span>
+
+                            <span class="text-sm font-bold text-indigo-700">
+                                ₹<span x-text="formatMoney(discountAmount)"></span>
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                    {{-- Actual rupee amount sent to Laravel --}}
+                    <input
+                        type="hidden"
+                        name="discount_amount"
+                        x-model="discountAmount"
+                    >
+
+                </div>
 
             </div>
 
@@ -152,7 +314,7 @@
                             </th>
 
                             <th class="px-3 py-3 text-left">
-                                UOM
+                                Unit
                             </th>
 
                             <th class="px-3 py-3 text-right">
@@ -180,39 +342,87 @@
                             :key="row.key"
                         >
 
-                            <tr class="border-b">
+                            <tr
+                                class="border-b"
+                                :class="row.productResultsOpen ? 'relative z-[100]' : 'relative z-0'"
+                            >
 
                                 {{-- PRODUCT --}}
                                 <td class="px-3 py-3 min-w-[300px]">
 
                                     <div class="relative">
 
-                                        <input
-                                            type="text"
-                                            autocomplete="off"
-                                            class="product-search block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                            x-model="row.productLabel"
-                                            @input.debounce.250ms="searchProducts(row, $event.target.value)"
-                                            @focus="row.productResultsOpen = row.productResults.length > 0"
-                                            placeholder="Search product by name or SKU..."
-                                        >
+                                        {{-- Search / Selected Product --}}
+                                        <div class="relative">
 
+                                            <input
+                                                type="text"
+                                                autocomplete="off"
+                                                class="product-search block w-full rounded-lg border-gray-300 pr-10 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                x-model="row.productLabel"
+                                                @focus="openProductDropdown(row, $event.target)"
+                                                @input="
+                                                    searchProducts(row, $event.target.value);
+                                                    positionProductDropdown(row, $event.target)
+                                                "
+                                                placeholder="Select or search product..."
+                                            >
 
+                                            {{-- Dropdown arrow --}}
+                                            <button
+                                                type="button"
+                                                @mousedown.prevent="toggleProductDropdown(row)"
+                                                class="product-dropdown-arrow absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-400 hover:text-gray-600"
+                                                tabindex="-1"
+                                            >
+                                                <svg
+                                                    class="h-4 w-4 transition-transform"
+                                                    :class="row.productResultsOpen ? 'rotate-180' : ''"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    viewBox="0 0 24 24"
+                                                >
+                                                    <path
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M19 9l-7 7-7-7"
+                                                    />
+                                                </svg>
+                                            </button>
+
+                                        </div>
+
+                                        {{-- Actual product ID --}}
                                         <input
                                             type="hidden"
                                             :name="`items[${index}][product_id]`"
                                             x-model="row.productId"
                                         >
 
-
-                                        {{-- Product Search Results --}}
-                                        <div
-                                            x-cloak
+                                        {{-- Product Dropdown --}}
+                                        <div 
+                                            x-cloak 
                                             x-show="row.productResultsOpen"
-                                            @click.outside="row.productResultsOpen = false"
-                                            class="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl"
+                                            :style="`
+                                                position: fixed;
+                                                top: ${row.productDropdownTop}px;
+                                                left: ${row.productDropdownLeft}px;
+                                                width: ${row.productDropdownWidth}px;
+                                                z-index: 999999;
+                                            `"
+                                            class="product-dropdown max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl ring-1 ring-black/5"
                                         >
 
+                                            {{-- No results --}}
+                                            <div
+                                                x-show="row.productResults.length === 0"
+                                                class="px-4 py-3 text-sm text-gray-500"
+                                            >
+                                                No products found.
+                                            </div>
+
+                                            {{-- Products --}}
                                             <template
                                                 x-for="product in row.productResults"
                                                 :key="product.id"
@@ -220,19 +430,34 @@
 
                                                 <button
                                                     type="button"
-                                                    @click="selectProduct(row, product)"
-                                                    class="block w-full px-4 py-3 text-left text-sm hover:bg-indigo-50"
+                                                    @mousedown.prevent="selectProduct(row, product)"
+                                                    class="block w-full border-b border-gray-100 px-4 py-2.5 text-left transition last:border-b-0 hover:bg-indigo-50"
                                                 >
 
-                                                    <div
-                                                        class="font-medium text-gray-900"
-                                                        x-text="product.name"
-                                                    ></div>
+                                                    <div class="flex items-center justify-between gap-3">
 
-                                                    <div
-                                                        class="text-xs text-gray-500"
-                                                        x-text="product.sku ? 'SKU: ' + product.sku : 'No SKU'"
-                                                    ></div>
+                                                        <div class="min-w-0">
+
+                                                            <div
+                                                                class="truncate font-medium text-gray-900"
+                                                                x-text="product.name"
+                                                            ></div>
+
+                                                            <div
+                                                                class="mt-0.5 text-xs text-gray-500"
+                                                                x-text="product.sku
+                                                                    ? 'SKU: ' + product.sku
+                                                                    : 'No SKU'"
+                                                            ></div>
+
+                                                        </div>
+
+                                                        <span
+                                                            class="shrink-0 rounded bg-gray-100 px-2 py-1 text-xs text-gray-500"
+                                                            x-text="product.base_uom_name || ''"
+                                                        ></span>
+
+                                                    </div>
 
                                                 </button>
 
@@ -257,7 +482,7 @@
                                     >
 
                                         <option value="">
-                                            Select UOM
+                                            Select Unit
                                         </option>
 
                                         <template
@@ -447,15 +672,37 @@
 
 document.addEventListener('alpine:init', () => {
 
-    Alpine.data('orderBuilder', () => ({
+        Alpine.data('orderBuilder', () => ({
 
-        customerId: @json(old('customer_id', request('customer_id'))),
+            customerId: @json(old('customer_id', request('customer_id'))),
 
-        rows: [],
+            products: {{ Illuminate\Support\Js::from(
+                $products->map(fn ($product) => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'base_uom_name' => $product->baseUom?->name,
+                ])->values()
+            ) }},
 
-        submitting: false,
+            discountType: @json(old('discount_type', 'flat')),
 
-        nextKey: 1,
+            discountValue: @json(
+                old(
+                    'discount_value',
+                    old('discount_amount', 0)
+                )
+            ),
+
+            discountAmount: @json(
+                old('discount_amount', 0)
+            ),
+
+            rows: [],
+
+            submitting: false,
+
+            nextKey: 1,
 
 
         init() {
@@ -494,6 +741,54 @@ document.addEventListener('alpine:init', () => {
 
             }
 
+                window.addEventListener('scroll', () => {
+
+                this.rows.forEach(row => {
+
+                    if (!row.productResultsOpen) {
+                        return;
+                    }
+
+                    const input =
+                        document.querySelector(
+                            `.product-search`
+                        );
+
+                    if (input) {
+                        this.positionProductDropdown(
+                            row,
+                            input
+                        );
+                    }
+
+                });
+
+            }, true);
+
+            window.addEventListener('resize', () => {
+
+                this.rows.forEach(row => {
+
+                    if (!row.productResultsOpen) {
+                        return;
+                    }
+
+                    const input =
+                        document.querySelector(
+                            `.product-search`
+                        );
+
+                    if (input) {
+                        this.positionProductDropdown(
+                            row,
+                            input
+                        );
+                    }
+
+                });
+
+            });
+
         },
 
 
@@ -507,12 +802,14 @@ document.addEventListener('alpine:init', () => {
 
                 productLabel: '',
 
+                selectedProductLabel: '',
+
                 productResults: [],
-
                 productResultsOpen: false,
-
+                productDropdownTop: 0,
+                productDropdownLeft: 0,
+                productDropdownWidth: 0,
                 uomId: '',
-
                 uoms: [],
 
                 quantity: 1,
@@ -578,75 +875,119 @@ document.addEventListener('alpine:init', () => {
 
         },
 
+        openProductDropdown(row, input = null) {
 
-        async searchProducts(row, term) {
+            row.productResults = [
+                ...this.products
+            ];
 
-            row.productId = '';
+            row.productResultsOpen = true;
 
-            row.uomId = '';
+            this.$nextTick(() => {
+                this.positionProductDropdown(row, input);
+            });
+        },
 
-            row.uoms = [];
+        positionProductDropdown(row, input = null) {
 
-            row.unitPrice = '';
+            if (!input) {
+                input = this.$root.querySelector(
+                    '.product-search:focus'
+                );
+            }
 
-            row.lineTotal = 0;
+            if (!input) {
+                return;
+            }
 
+            const rect = input.getBoundingClientRect();
 
-            term = String(term || '').trim();
+            row.productDropdownTop =
+                rect.bottom + 4;
 
+            row.productDropdownLeft =
+                rect.left;
 
-            if (term.length < 2) {
+            row.productDropdownWidth =
+                rect.width;
+        },
 
-                row.productResults = [];
+        toggleProductDropdown(row, event) {
+
+            if (row.productResultsOpen) {
 
                 row.productResultsOpen = false;
 
                 return;
-
             }
 
-
-            try {
-
-                const url =
-                    @json(route('orders.search.products')) +
-                    '?q=' +
-                    encodeURIComponent(term);
-
-
-                const response = await fetch(url, {
-
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    }
-
-                });
-
-
-                if (!response.ok) {
-                    throw new Error('Product search failed.');
-                }
-
-
-                row.productResults =
-                    await response.json();
-
-                row.productResultsOpen =
-                    row.productResults.length > 0;
-
-            } catch (error) {
-
-                console.error(error);
-
-                row.productResults = [];
-
-                row.productResultsOpen = false;
-
-            }
-
+            this.openProductDropdown(
+                row,
+                event?.currentTarget?.closest('td')
+                    ?.querySelector('.product-search')
+            );
         },
 
+        closeProductDropdowns(event) {
+            const clickedProductInput = event.target.closest('.product-search');
+            const clickedProductDropdown = event.target.closest('.product-dropdown');
+            const clickedProductArrow = event.target.closest('.product-dropdown-arrow');
+
+            if (
+                clickedProductInput ||
+                clickedProductDropdown ||
+                clickedProductArrow
+            ) {
+                return;
+            }
+
+            this.rows.forEach(row => {
+                row.productResultsOpen = false;
+            });
+        },
+
+
+        async searchProducts(row, term) {
+            term = String(term || '')
+                .trim()
+                .toLowerCase();
+
+            /*
+            * If the user changes the selected product text,
+            * clear the previous product selection.
+            */
+            if (
+                row.productId &&
+                row.productLabel !== row.selectedProductLabel
+            ) {
+                row.productId = '';
+                row.uomId = '';
+                row.uoms = [];
+                row.unitPrice = '';
+                row.lineTotal = 0;
+            }
+
+            if (term === '') {
+                row.productResults = [
+                    ...this.products
+                ];
+            } else {
+                row.productResults = this.products.filter(product => {
+                    const name = String(product.name || '')
+                        .toLowerCase();
+
+                    const sku = String(product.sku || '')
+                        .toLowerCase();
+
+                    return (
+                        name.includes(term) ||
+                        sku.includes(term)
+                    );
+                });
+            }
+
+            row.productResultsOpen = true;
+        },
 
         async selectProduct(row, product) {
 
@@ -654,6 +995,8 @@ document.addEventListener('alpine:init', () => {
 
             row.productLabel = product.label ||
                 `${product.name}${product.sku ? ' (' + product.sku + ')' : ''}`;
+
+            row.selectedProductLabel = row.productLabel;
 
             row.productResultsOpen = false;
 
@@ -666,7 +1009,6 @@ document.addEventListener('alpine:init', () => {
             row.lineTotal = 0;
 
             row.uoms = [];
-
 
             await this.loadUoms(row);
 
@@ -840,6 +1182,38 @@ document.addEventListener('alpine:init', () => {
 
         },
 
+        discountChanged() {
+
+            let value = Number(this.discountValue || 0);
+
+            if (!Number.isFinite(value) || value < 0) {
+                value = 0;
+            }
+
+            if (this.discountType === 'percent') {
+
+                if (value > 100) {
+                    value = 100;
+                    this.discountValue = 100;
+                }
+
+                const subtotal = this.rows.reduce(
+                    (total, row) =>
+                        total + Number(row.lineTotal || 0),
+                    0
+                );
+
+                this.discountAmount = Math.round(
+                    subtotal * value / 100 * 100
+                ) / 100;
+
+                return;
+            }
+
+            this.discountAmount =
+                Math.round(value * 100) / 100;
+        },
+
 
         updateTotal(row) {
 
@@ -849,12 +1223,13 @@ document.addEventListener('alpine:init', () => {
             const unitPrice =
                 Number(row.unitPrice || 0);
 
-
             row.lineTotal =
                 Number.isFinite(quantity) &&
                 Number.isFinite(unitPrice)
                     ? quantity * unitPrice
                     : 0;
+
+            this.discountChanged();
 
         },
 
@@ -929,6 +1304,9 @@ document.addEventListener('alpine:init', () => {
 
 
         beforeSubmit(event) {
+
+            this.discountChanged();
+
 
             if (this.submitting) {
 

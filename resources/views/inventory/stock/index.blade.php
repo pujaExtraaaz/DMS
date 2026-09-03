@@ -9,7 +9,7 @@
         </div>
         <x-ui.button type="submit" variant="secondary" class="whitespace-nowrap">Filter</x-ui.button>
     </form>
-<x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Product</th><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">UOM</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Quantity</th></tr></x-slot>
+<x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Product</th><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Unit</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Quantity</th></tr></x-slot>
 @forelse($stockLevels as $level)<tr><td class="px-6 py-4 text-sm">{{ $level->product->name }}</td><td class="px-6 py-4 text-sm">{{ $level->uom->code }}</td><td class="px-6 py-4 text-sm text-right"><x-ui.badge :variant="$level->quantity < 10 ? 'danger' : 'success'">{{ $level->quantity }}</x-ui.badge></td></tr>@empty<tr><td colspan="3" class="px-6 py-8"><x-ui.empty-state title="No stock records" /></td></tr>@endforelse</x-ui.table>
 <div class="mt-4">{{ $stockLevels->links() }}</div></x-ui.card>
 <x-ui.card class="mt-6" title="Recent Movements"><x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Product</th><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Type</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Qty</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Balance</th></tr></x-slot>

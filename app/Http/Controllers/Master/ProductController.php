@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Master;
 
 use App\Domains\Master\Models\Product;
+use App\Domains\Master\Models\ProductUom;
 use App\Domains\Master\Models\Uom;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class ProductController extends Controller
@@ -37,7 +39,25 @@ class ProductController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
-        Product::create($data);
+
+        DB::transaction(function () use ($data) {
+            $product = Product::create($data);
+
+            // Every product must have a ProductUom mapping for its own
+            // base_uom_id, otherwise the Order UOM selector has nothing
+            // to display. This mirrors the manual repair previously done
+            // for Product #6 and makes it permanent/automatic.
+            ProductUom::updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'uom_id' => $product->base_uom_id,
+                ],
+                [
+                    'conversion_factor' => 1,
+                    'is_base' => true,
+                ],
+            );
+        });
 
         return $this->flashSuccess('Product created successfully.', 'masters.products.index');
     }
@@ -57,7 +77,22 @@ class ProductController extends Controller
 
     public function update(Request $request, Product $product): RedirectResponse
     {
-        $product->update($this->validated($request, $product));
+        $data = $this->validated($request, $product);
+
+        DB::transaction(function () use ($data, $product) {
+            $product->update($data);
+
+            ProductUom::updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'uom_id' => $product->base_uom_id,
+                ],
+                [
+                    'conversion_factor' => 1,
+                    'is_base' => true,
+                ],
+            );
+        });
 
         return $this->flashSuccess('Product updated successfully.', 'masters.products.index');
     }

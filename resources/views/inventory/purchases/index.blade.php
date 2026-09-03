@@ -28,7 +28,7 @@
                 <tr>
                     <th class="px-4 py-3 text-left font-semibold text-slate-600">Name</th>
                     <th class="px-4 py-3 text-left font-semibold text-slate-600">SKU</th>
-                    <th class="px-4 py-3 text-left font-semibold text-slate-600">UOM</th>
+                    <th class="px-4 py-3 text-left font-semibold text-slate-600">Unit</th>
                     <th class="px-4 py-3 text-right font-semibold text-slate-600">Quantity</th>
                     <th class="px-4 py-3 text-right font-semibold text-slate-600">Unit Cost</th>
                     <th class="px-4 py-3 text-right font-semibold text-slate-600">Amount</th>
