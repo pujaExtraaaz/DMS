@@ -586,23 +586,40 @@ class OrderController extends Controller
             );
     }
 
-    public function convert(Request $request, Order $order)
-    {
-        $validated = $request->validate([
-            'converted_by_name' => ['nullable', 'string', 'max:255'],
-        ]);
+    public function convert(
+        Request $request,
+        Order $order
+    ): RedirectResponse {
+        try {
+            $validated = $request->validate([
+                'converted_by_name' => [
+                    'nullable',
+                    'string',
+                    'max:255',
+                ],
+            ]);
 
-        $invoice = $this->orderConversionService->convertToInvoice(
-            $order,
-            $validated['converted_by_name'] ?? null
-        );
+            $invoice = $this->orderConversionService
+                ->convertToInvoice(
+                    $order,
+                    $validated['converted_by_name'] ?? null
+                );
 
-        return redirect()
-            ->route('orders.show', $order)
-            ->with(
-                'success',
-                "Order {$order->order_no} converted to invoice {$invoice->invoice_no}."
-            );
+            return redirect()
+                ->route('orders.show', $order)
+                ->with(
+                    'success',
+                    "Order {$order->order_no} converted to invoice {$invoice->invoice_no}."
+                );
+        } catch (InvalidArgumentException $e) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with(
+                    'error',
+                    $e->getMessage()
+                );
+        }
     }
 
     public function resolvePrice(

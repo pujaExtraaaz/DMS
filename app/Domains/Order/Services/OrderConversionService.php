@@ -3,6 +3,7 @@
 namespace App\Domains\Order\Services;
 
 use App\Domains\Inventory\Services\StockMovementService;
+use App\Domains\Master\Services\UomConversionService;
 use App\Domains\Order\Models\Order;
 use App\Domains\Payment\Services\OutstandingLedgerService;
 use App\Domains\Payment\Services\PaymentLinkService;
@@ -23,6 +24,7 @@ class OrderConversionService
         protected OutstandingLedgerService $outstandingLedgerService,
         protected PaymentLinkService $paymentLinkService,
         protected AuditLogService $auditLogService,
+        protected UomConversionService $uomConversionService,
     ) {}
 
     public function convertToInvoice(
@@ -56,10 +58,6 @@ class OrderConversionService
                 ->first();
 
             if ($existingInvoice) {
-                /*
-                 * If the invoice exists but the order status was not
-                 * updated for some reason, repair the order state.
-                 */
                 if ($lockedOrder->status !== 'converted') {
                     $lockedOrder->update([
                         'status' => 'converted',
@@ -75,12 +73,13 @@ class OrderConversionService
              */
             if ($lockedOrder->status !== 'approved') {
                 throw new InvalidArgumentException(
-                    'Order status [{$lockedOrder->status}] cannot be converted. Only approved orders can be converted to an invoice.'
+                    "Order status [{$lockedOrder->status}] cannot be converted. "
+                    . 'Only approved orders can be converted to an invoice.'
                 );
             }
 
             $lockedOrder->load([
-                'items.product',
+                'items.product.baseUom',
                 'items.uom',
                 'customer',
                 'salesperson',
@@ -115,8 +114,6 @@ class OrderConversionService
 
             $runningDiscount = 0.0;
             $runningTax = 0.0;
-
-            $items = $lockedOrder->items->values();
 
             foreach ($items as $index => $item) {
                 $lineSubtotal = (float) $item->line_total;
@@ -155,6 +152,11 @@ class OrderConversionService
                     $lineTax = 0.0;
                 }
 
+                /*
+                 * IMPORTANT:
+                 *
+                 * Invoice keeps the customer's selected UOM and quantity.
+                 */
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
                     'product_id' => $item->product_id,
@@ -166,14 +168,82 @@ class OrderConversionService
                     'line_total' => $item->line_total,
                 ]);
 
+                /*
+                 * IMPORTANT:
+                 *
+                 * Inventory is always deducted in the product's
+                 * base UOM.
+                 *
+                 * Example:
+                 *
+                 * 1 Case
+                 * Case conversion factor = 10
+                 * Base UOM = Box
+                 *
+                 * Stock deduction = 10 Box
+                 */
+                $baseUom = $item->product->baseUom;
+
+                if (! $baseUom) {
+                    throw new InvalidArgumentException(
+                        "Product [{$item->product->name}] does not have a base UOM configured."
+                    );
+                }
+
+                $baseQuantity = $this->uomConversionService
+                    ->toBaseQuantity(
+                        product: $item->product,
+                        quantity: (float) $item->quantity,
+                        fromUom: $item->uom,
+                    );
+
+                $baseQuantity = round($baseQuantity, 4);
+
+                if ($baseQuantity <= 0) {
+                    throw new InvalidArgumentException(
+                        "Invalid stock quantity for {$item->product->name}."
+                    );
+                }
+
                 $this->stockMovementService->recordOut(
                     product: $item->product,
-                    uom: $item->uom,
-                    quantity: (float) $item->quantity,
+                    uom: $baseUom,
+                    quantity: $baseQuantity,
                     type: 'sale',
                     reference: $invoice,
-                    notes: "Sale from order {$lockedOrder->order_no}",
-                    user: $actor instanceof User ? $actor : null,
+                    notes: sprintf(
+                        'Sale from order %s: %s %s = %s %s',
+                        $lockedOrder->order_no,
+                        rtrim(
+                            rtrim(
+                                number_format(
+                                    (float) $item->quantity,
+                                    4,
+                                    '.',
+                                    ''
+                                ),
+                                '0'
+                            ),
+                            '.'
+                        ),
+                        $item->uom->name,
+                        rtrim(
+                            rtrim(
+                                number_format(
+                                    $baseQuantity,
+                                    4,
+                                    '.',
+                                    ''
+                                ),
+                                '0'
+                            ),
+                            '.'
+                        ),
+                        $baseUom->name
+                    ),
+                    user: $actor instanceof User
+                        ? $actor
+                        : null,
                 );
             }
 
@@ -190,8 +260,8 @@ class OrderConversionService
                 ->createForInvoice($invoice);
 
             /*
-             * Only mark the order converted after all downstream
-             * operations have succeeded.
+             * Only mark the order converted after every downstream
+             * operation has succeeded.
              */
             $lockedOrder->update([
                 'status' => 'converted',
