@@ -684,33 +684,58 @@ class OrderController extends Controller
         );
     }
 
-    public function cancel(Request $request, Order $order)
-    {
-        $validated = $request->validate([
-            'cancelled_by_name' => ['nullable', 'string', 'max:255'],
+    public function cancel(
+        Request $request,
+        Order $order
+    ): RedirectResponse {
+        $request->validate([
+            'cancelled_by_name' => [
+                'nullable',
+                'string',
+                'max:255',
+            ],
         ]);
+
+        $actor = $request->user();
+
+        abort_unless($actor instanceof User, 401);
 
         $cancelledOrder = $this->orderService->cancel(
             $order,
-            $validated['cancelled_by_name'] ?? null
+            $actor
         );
 
         return redirect()
             ->route('orders.show', $cancelledOrder)
-            ->with('success', "Order {$cancelledOrder->order_no} cancelled successfully.");
+            ->with(
+                'success',
+                "Order {$cancelledOrder->order_no} cancelled successfully."
+            );
     }
     
-    public function bulkApprove(Request $request)
+    public function bulkApprove(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'order_ids' => ['required', 'array', 'min:1'],
-            'order_ids.*' => ['required', 'integer', 'exists:orders,id'],
-            'approved_by_name' => ['nullable', 'string', 'max:255'],
+            'order_ids' => [
+                'required',
+                'array',
+                'min:1',
+            ],
+            'order_ids.*' => [
+                'required',
+                'integer',
+                'distinct',
+                'exists:orders,id',
+            ],
         ]);
+
+        $actor = $request->user();
+
+        abort_unless($actor instanceof User, 401);
 
         $count = $this->orderService->bulkApprove(
             $validated['order_ids'],
-            $validated['approved_by_name'] ?? null
+            $actor
         );
 
         return redirect()
