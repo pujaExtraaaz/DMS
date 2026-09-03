@@ -9,9 +9,6 @@ use Spatie\Permission\PermissionRegistrar;
 
 class RolePermissionSeeder extends Seeder
 {
-    /**
-     * @var list<string>
-     */
     protected array $modules = [
         'dashboard',
         'masters',
@@ -32,9 +29,6 @@ class RolePermissionSeeder extends Seeder
         'reports',
     ];
 
-    /**
-     * @var list<string>
-     */
     protected array $extraPermissions = [
         'orders.approve',
         'orders.book',
@@ -47,7 +41,8 @@ class RolePermissionSeeder extends Seeder
 
     public function run(): void
     {
-        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+        app()[PermissionRegistrar::class]
+            ->forgetCachedPermissions();
 
         $permissions = $this->seedPermissions();
 
@@ -56,31 +51,51 @@ class RolePermissionSeeder extends Seeder
                 'dashboard.view',
                 'reports.view',
             ],
+
             'super-admin' => $permissions,
+
             'sales-manager' => [
                 'dashboard.view',
+
                 'masters.view',
                 'products.view',
                 'customers.view',
                 'price-master.view',
+
                 'orders.view',
+                'orders.create',
+                'orders.edit',
+                'orders.book',
                 'orders.approve',
+                'orders.convert',
                 'orders.manage',
+
                 'sales.view',
                 'invoices.view',
+
                 'reports.view',
                 'reports.manage',
             ],
+
             'salesperson' => [
                 'dashboard.view',
+
                 'masters.view',
+                'products.view',
+                'customers.view',
+                'price-master.view',
+
                 'orders.view',
+                'orders.create',
+                'orders.edit',
                 'orders.book',
-                'orders.manage',
+
                 'create orders',
+
                 'sales.view',
                 'invoices.view',
             ],
+
             'warehouse' => [
                 'dashboard.view',
                 'inventory.view',
@@ -88,28 +103,35 @@ class RolePermissionSeeder extends Seeder
                 'stock.view',
                 'purchases.view',
             ],
+
             'finance' => [
                 'dashboard.view',
+
                 'sales.view',
                 'sales.create',
                 'sales.edit',
                 'sales.manage',
+
                 'invoices.view',
                 'invoices.create',
                 'invoices.edit',
                 'invoices.manage',
+
                 'payments.view',
                 'payments.create',
                 'payments.edit',
                 'payments.manage',
                 'payments.reconcile',
+
                 'settlement.view',
                 'settlement.create',
                 'settlement.edit',
                 'settlement.manage',
+
                 'reports.view',
                 'manage settlements',
             ],
+
             'driver' => [
                 'dashboard.view',
                 'logistics.view',
@@ -118,6 +140,7 @@ class RolePermissionSeeder extends Seeder
                 'delivery.manage',
                 'settlement.entry',
             ],
+
             'delivery-person' => [
                 'dashboard.view',
                 'logistics.view',
@@ -128,34 +151,42 @@ class RolePermissionSeeder extends Seeder
         ];
 
         foreach ($roles as $roleName => $rolePermissions) {
-            $role = Role::query()->firstOrCreate(
-                ['name' => $roleName, 'guard_name' => 'web'],
-            );
+            $role = Role::query()->firstOrCreate([
+                'name' => $roleName,
+                'guard_name' => 'web',
+            ]);
 
             $role->syncPermissions($rolePermissions);
         }
     }
 
-    /**
-     * @return list<string>
-     */
     protected function seedPermissions(): array
     {
         $permissions = [];
 
         foreach ($this->modules as $module) {
-            foreach (['view', 'create', 'edit', 'manage'] as $action) {
+            foreach (
+                ['view', 'create', 'edit', 'manage']
+                as $action
+            ) {
                 $permissions[] = "{$module}.{$action}";
             }
         }
 
-        $permissions = array_merge($permissions, $this->extraPermissions);
-        $permissions = array_values(array_unique($permissions));
+        $permissions = array_merge(
+            $permissions,
+            $this->extraPermissions
+        );
+
+        $permissions = array_values(
+            array_unique($permissions)
+        );
 
         foreach ($permissions as $permission) {
-            Permission::query()->firstOrCreate(
-                ['name' => $permission, 'guard_name' => 'web'],
-            );
+            Permission::query()->firstOrCreate([
+                'name' => $permission,
+                'guard_name' => 'web',
+            ]);
         }
 
         return $permissions;

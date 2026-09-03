@@ -2,9 +2,9 @@
 
 namespace App\Domains\Master\Models;
 
-use App\Domains\Inventory\Models\StockLevel;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
@@ -37,6 +37,17 @@ class Product extends Model
     public function productUoms(): HasMany
     {
         return $this->hasMany(ProductUom::class);
+    }
+
+    public function uoms(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Uom::class,
+            'product_uoms'
+        )->withPivot([
+            'conversion_factor',
+            'is_base',
+        ]);
     }
 
     public function priceMasters(): HasMany

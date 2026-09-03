@@ -35,11 +35,20 @@ class DashboardController extends Controller
         $todayCollections = (float) Payment::whereDate('paid_at', $today)->where('status', 'completed')->sum('amount');
         $lowStock = StockLevel::where('quantity', '<', 10)->count();
 
-        $outstanding = OutstandingLedger::query()
-            ->selectRaw('customer_id, MAX(id) as latest_id')
-            ->groupBy('customer_id')
-            ->get()
-            ->sum(fn ($row) => max(0, (float) OutstandingLedger::find($row->latest_id)?->balance));
+        $outstanding = (float) OutstandingLedger::query()
+            ->from('outstanding_ledger as ol')
+            ->joinSub(
+                OutstandingLedger::query()
+                    ->select('customer_id')
+                    ->selectRaw('MAX(id) as latest_id')
+                    ->groupBy('customer_id'),
+                'latest',
+                function ($join) {
+                    $join->on('ol.id', '=', 'latest.latest_id');
+                }
+            )
+            ->where('ol.balance', '>', 0)
+            ->sum('ol.balance');
 
         $stats = [
             'today_sales' => $todaySales,

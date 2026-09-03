@@ -9,6 +9,9 @@ use App\Domains\Payment\Services\PaymentLinkService;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sales\Models\InvoiceItem;
 use App\Domains\Sales\Services\InvoiceNumberGenerator;
+use App\Models\User;
+use App\Support\AuditLogService;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -19,45 +22,147 @@ class OrderConversionService
         protected StockMovementService $stockMovementService,
         protected OutstandingLedgerService $outstandingLedgerService,
         protected PaymentLinkService $paymentLinkService,
+        protected AuditLogService $auditLogService,
     ) {}
 
-    public function convertToInvoice(Order $order): Invoice
-    {
-        if ($order->status === 'converted') {
-            throw new InvalidArgumentException('Order has already been converted to an invoice.');
-        }
+    public function convertToInvoice(
+        Order $order,
+        ?string $actorName = null
+    ): Invoice {
+        $actor = auth()->user();
 
-        if (! in_array($order->status, ['approved', 'pending'], true)) {
-            throw new InvalidArgumentException("Order status [{$order->status}] cannot be converted.");
-        }
+        $actorName = $this->auditLogService->actorName(
+            $actorName
+        );
 
-        return DB::transaction(function () use ($order) {
-            $order->load('items.product', 'items.uom', 'customer');
+        return DB::transaction(function () use (
+            $order,
+            $actor,
+            $actorName
+        ) {
+            $lockedOrder = Order::query()
+                ->whereKey($order->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            /*
+             * Idempotency:
+             *
+             * If conversion already happened, return the existing
+             * invoice instead of creating another one.
+             */
+            $existingInvoice = Invoice::query()
+                ->where('order_id', $lockedOrder->id)
+                ->first();
+
+            if ($existingInvoice) {
+                /*
+                 * If the invoice exists but the order status was not
+                 * updated for some reason, repair the order state.
+                 */
+                if ($lockedOrder->status !== 'converted') {
+                    $lockedOrder->update([
+                        'status' => 'converted',
+                        'converted_by_name' => $actorName,
+                    ]);
+                }
+
+                return $existingInvoice->load('items');
+            }
+
+            /*
+             * Approval is mandatory before invoice conversion.
+             */
+            if ($lockedOrder->status !== 'approved') {
+                throw new InvalidArgumentException(
+                    'Order status [{$lockedOrder->status}] cannot be converted. Only approved orders can be converted to an invoice.'
+                );
+            }
+
+            $lockedOrder->load([
+                'items.product',
+                'items.uom',
+                'customer',
+                'salesperson',
+            ]);
+
+            if ($lockedOrder->items->isEmpty()) {
+                throw new InvalidArgumentException(
+                    'Cannot convert an order without line items.'
+                );
+            }
 
             $invoice = Invoice::create([
                 'invoice_no' => $this->invoiceNumberGenerator->generate(),
-                'customer_id' => $order->customer_id,
-                'order_id' => $order->id,
-                'salesperson_id' => $order->salesperson_id,
+                'customer_id' => $lockedOrder->customer_id,
+                'order_id' => $lockedOrder->id,
+                'salesperson_id' => $lockedOrder->salesperson_id,
                 'invoice_date' => now()->toDateString(),
                 'status' => 'issued',
-                'subtotal' => $order->subtotal,
-                'discount_amount' => $order->discount_amount,
-                'tax_amount' => $order->tax_amount,
-                'grand_total' => $order->grand_total,
+                'subtotal' => $lockedOrder->subtotal,
+                'discount_amount' => $lockedOrder->discount_amount,
+                'tax_amount' => $lockedOrder->tax_amount,
+                'grand_total' => $lockedOrder->grand_total,
                 'paid_amount' => 0,
-                'notes' => $order->notes,
+                'notes' => $lockedOrder->notes,
             ]);
 
-            foreach ($order->items as $item) {
+            $items = $lockedOrder->items->values();
+
+            $subtotal = (float) $lockedOrder->subtotal;
+            $orderDiscount = (float) $lockedOrder->discount_amount;
+            $orderTax = (float) $lockedOrder->tax_amount;
+
+            $runningDiscount = 0.0;
+            $runningTax = 0.0;
+
+            $items = $lockedOrder->items->values();
+
+            foreach ($items as $index => $item) {
+                $lineSubtotal = (float) $item->line_total;
+
+                $isLastItem = $index === $items->count() - 1;
+
+                if ($subtotal > 0) {
+                    if ($isLastItem) {
+                        $lineDiscount = round(
+                            $orderDiscount - $runningDiscount,
+                            2
+                        );
+
+                        $lineTax = round(
+                            $orderTax - $runningTax,
+                            2
+                        );
+                    } else {
+                        $ratio = $lineSubtotal / $subtotal;
+
+                        $lineDiscount = round(
+                            $orderDiscount * $ratio,
+                            2
+                        );
+
+                        $lineTax = round(
+                            $orderTax * $ratio,
+                            2
+                        );
+
+                        $runningDiscount += $lineDiscount;
+                        $runningTax += $lineTax;
+                    }
+                } else {
+                    $lineDiscount = 0.0;
+                    $lineTax = 0.0;
+                }
+
                 InvoiceItem::create([
                     'invoice_id' => $invoice->id,
                     'product_id' => $item->product_id,
                     'uom_id' => $item->uom_id,
                     'quantity' => $item->quantity,
                     'unit_price' => $item->unit_price,
-                    'discount_amount' => 0,
-                    'tax_amount' => 0,
+                    'discount_amount' => $lineDiscount,
+                    'tax_amount' => $lineTax,
                     'line_total' => $item->line_total,
                 ]);
 
@@ -67,16 +172,83 @@ class OrderConversionService
                     quantity: (float) $item->quantity,
                     type: 'sale',
                     reference: $invoice,
-                    notes: "Sale from order {$order->order_no}",
+                    notes: "Sale from order {$lockedOrder->order_no}",
+                    user: $actor instanceof User ? $actor : null,
                 );
             }
 
-            $order->update(['status' => 'converted']);
+            /*
+             * Create customer outstanding entry.
+             */
+            $this->outstandingLedgerService
+                ->recordInvoice($invoice);
 
-            $this->outstandingLedgerService->recordInvoice($invoice);
-            $this->paymentLinkService->createForInvoice($invoice);
+            /*
+             * Create payment link only once.
+             */
+            $this->paymentLinkService
+                ->createForInvoice($invoice);
+
+            /*
+             * Only mark the order converted after all downstream
+             * operations have succeeded.
+             */
+            $lockedOrder->update([
+                'status' => 'converted',
+                'converted_by_name' => $actorName,
+            ]);
+
+            $this->auditLogService->record(
+                $lockedOrder,
+                'converted',
+                $actorName
+            );
 
             return $invoice->load('items');
         });
+    }
+
+    /**
+     * @param array<int, int> $orderIds
+     * @return Collection<int, Invoice>
+     */
+    public function convertMany(
+        array $orderIds,
+        ?string $actorName = null
+    ): Collection {
+        $orderIds = array_values(
+            array_unique(
+                array_map('intval', $orderIds)
+            )
+        );
+
+        if ($orderIds === []) {
+            throw new InvalidArgumentException(
+                'No orders were selected for conversion.'
+            );
+        }
+
+        $invoices = collect();
+
+        foreach ($orderIds as $orderId) {
+            $order = Order::query()
+                ->whereKey($orderId)
+                ->first();
+
+            if (! $order) {
+                throw new InvalidArgumentException(
+                    "Order [{$orderId}] no longer exists."
+                );
+            }
+
+            $invoices->push(
+                $this->convertToInvoice(
+                    $order,
+                    $actorName
+                )
+            );
+        }
+
+        return $invoices;
     }
 }

@@ -2,27 +2,20 @@
 
 namespace App\Domains\Sales\Services;
 
-use App\Domains\Sales\Models\Invoice;
-use Illuminate\Support\Str;
+use App\Support\DocumentNumberService;
 
 class InvoiceNumberGenerator
 {
+    public function __construct(
+        protected DocumentNumberService $documentNumberService
+    ) {}
+
     public function generate(?string $prefix = 'INV'): string
     {
-        $date = now()->format('Ymd');
-        $pattern = "{$prefix}-{$date}-%";
-
-        $lastSequence = Invoice::query()
-            ->where('invoice_no', 'like', $pattern)
-            ->orderByDesc('invoice_no')
-            ->value('invoice_no');
-
-        $sequence = 1;
-
-        if ($lastSequence) {
-            $sequence = (int) Str::afterLast($lastSequence, '-') + 1;
-        }
-
-        return sprintf('%s-%s-%04d', $prefix, $date, $sequence);
+        return $this->documentNumberService->next(
+            prefix: $prefix ?? 'INV',
+            date: now(),
+            padding: 4,
+        );
     }
 }
