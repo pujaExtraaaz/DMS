@@ -401,6 +401,7 @@ class OrderService
             $seen[$duplicateKey] = true;
 
             $product = $products[$productId];
+            $uom = $uoms[$uomId];
 
             $allowedUom =
                 $product->base_uom_id === $uomId
@@ -412,21 +413,78 @@ class OrderService
             if (! $allowedUom) {
                 throw ValidationException::withMessages([
                     "items.{$index}.uom_id" =>
-                        "UOM [{$uoms[$uomId]->code}] is not configured for {$product->name}.",
+                        "The selected UOM ({$uom->name}) is not configured for {$product->name}.",
+                ]);
+            }
+
+            /*
+            * Quantity validation
+            *
+            * Piece, Box and Case are count-based UOMs,
+            * therefore they must use whole numbers.
+            *
+            * Weight/volume UOMs can use decimal quantities,
+            * but only up to 4 decimal places.
+            */
+            $quantity = (string) ($item['quantity'] ?? '');
+
+            if ($quantity === '' || ! is_numeric($quantity)) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.quantity" =>
+                        "Please enter a valid quantity for {$product->name}.",
+                ]);
+            }
+
+            $quantity = trim($quantity);
+
+            if ((float) $quantity <= 0) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.quantity" =>
+                        "Quantity for {$product->name} ({$uom->name}) must be greater than zero.",
+                ]);
+            }
+
+            $isWholeUnit = in_array(
+                strtoupper((string) $uom->code),
+                ['PCS', 'BOX', 'CASE'],
+                true
+            );
+
+            if ($isWholeUnit && floor((float) $quantity) !== (float) $quantity) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.quantity" =>
+                        "{$product->name} uses {$uom->name}, so the quantity must be a whole number.",
+                ]);
+            }
+
+            /*
+            * Database quantities are stored to 4 decimal places.
+            * Prevent values with more than 4 decimal places.
+            */
+            if (
+                str_contains($quantity, '.')
+                && strlen(rtrim(substr(strrchr($quantity, '.'), 1), '0')) > 4
+            ) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.quantity" =>
+                        "Quantity for {$product->name} can have a maximum of 4 decimal places.",
                 ]);
             }
         }
 
         return array_map(
-            static fn (array $item): array => [
-                'product_id' => (int) $item['product_id'],
-                'uom_id' => (int) $item['uom_id'],
-                'quantity' => (float) $item['quantity'],
-                'unit_price' => isset($item['unit_price'])
-                    ? (float) $item['unit_price']
-                    : null,
-            ],
+            static function (array $item): array {
+                $quantity = round((float) $item['quantity'], 4);
+
+                return [
+                    'product_id' => (int) $item['product_id'],
+                    'uom_id' => (int) $item['uom_id'],
+                    'quantity' => $quantity,
+                    'unit_price' => isset($item['unit_price'])
+                        ? (float) $item['unit_price']
+                        : null,
+                ];
+            },
             $items
         );
-    }
-}
+    }}

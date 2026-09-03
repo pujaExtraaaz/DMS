@@ -64,8 +64,13 @@ class StockMovementService
             $newBalance = (float) $stockLevel->quantity + $quantity;
 
             if ($newBalance < 0) {
+                $available = (float) $stockLevel->quantity;
+                $required = abs($quantity);
+
                 throw new InvalidArgumentException(
-                    "Insufficient stock for product [{$product->id}] in UOM [{$uom->id}]."
+                    "Insufficient stock: {$product->name} ({$uom->name}). "
+                    . "Available: {$available}, required: {$required}. "
+                    . "Please reduce the order quantity or add stock before converting."
                 );
             }
 
