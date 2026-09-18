@@ -86,3 +86,23 @@ input[type="number"] {
     -moz-appearance: textfield;
     appearance: textfield;
 }
+
+/* Keep mobile helpers in source CSS too (used after vite build) */
+@layer components {
+    .dms-bottom-nav {
+        @apply fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 gap-0.5 border-t border-slate-700 bg-slate-900/95 px-1 pt-1.5 backdrop-blur lg:hidden;
+        padding-bottom: calc(0.4rem + env(safe-area-inset-bottom));
+    }
+
+    .dms-bottom-nav__item {
+        @apply flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl border-0 bg-transparent text-[10px] font-semibold text-slate-400;
+    }
+
+    .dms-bottom-nav__item svg {
+        @apply h-5 w-5;
+    }
+
+    .dms-bottom-nav__item.is-active {
+        @apply bg-indigo-600/40 text-white;
+    }
+}

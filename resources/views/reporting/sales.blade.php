@@ -1,37 +1,66 @@
 @extends('layouts.dms')
 @section('title', 'Sales Report')
 @section('content')
-<x-ui.page-header title="Sales Report" description="Comprehensive sales analysis and invoicing details" />
+<x-ui.page-header title="Sales Report" description="Comprehensive sales analysis and invoicing details">
+    <x-slot name="actions">
+        <a href="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">⬇ CSV</a>
+        <a href="{{ request()->fullUrlWithQuery(['export' => 'pdf']) }}" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">⬇ PDF</a>
+    </x-slot>
+</x-ui.page-header>
 
 {{-- Filters --}}
 <x-ui.card class="mb-6">
-    <form method="GET" class="flex flex-row items-end gap-4">
-        <div class="flex-1">
-            <x-ui.input name="date_from" type="date" label="From" :value="$dateFrom" />
-        </div>
-        <div class="flex-1">
-            <x-ui.input name="date_to" type="date" label="To" :value="$dateTo" />
-        </div>
-        <div class="flex-1">
-            <x-ui.select name="customer_id" label="Customer" placeholder="All customers">
-                <option value=""></option>
-                @foreach($customers as $c)
-                    <option value="{{ $c->id }}" @selected(request('customer_id')==$c->id)>{{ $c->name }}</option>
-                @endforeach
-            </x-ui.select>
-        </div>
+    <form method="GET" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end">
+        <x-ui.input name="date_from" type="date" label="From" :value="$dateFrom" />
+        <x-ui.input name="date_to" type="date" label="To" :value="$dateTo" />
+        <x-ui.select name="customer_id" label="Party" placeholder="All parties">
+            <option value=""></option>
+            @foreach($customers as $c)
+                <option value="{{ $c->id }}" @selected(request('customer_id')==$c->id)>{{ $c->name }}</option>
+            @endforeach
+        </x-ui.select>
+        <x-ui.select name="salesperson_id" label="Salesperson" placeholder="All">
+            <option value=""></option>
+            @foreach($salespeople as $u)
+                <option value="{{ $u->id }}" @selected(request('salesperson_id')==$u->id)>{{ $u->name }}</option>
+            @endforeach
+        </x-ui.select>
+        <x-ui.select name="branch_id" label="Branch" placeholder="All branches">
+            <option value=""></option>
+            @foreach($branches as $b)
+                <option value="{{ $b->id }}" @selected(request('branch_id')==$b->id)>{{ $b->name }}</option>
+            @endforeach
+        </x-ui.select>
+        <x-ui.select name="brand_id" label="Brand" placeholder="All brands">
+            <option value=""></option>
+            @foreach($brands as $b)
+                <option value="{{ $b->id }}" @selected(request('brand_id')==$b->id)>{{ $b->name }}</option>
+            @endforeach
+        </x-ui.select>
+        <x-ui.select name="category_id" label="Category" placeholder="All categories">
+            <option value=""></option>
+            @foreach($categories as $c)
+                <option value="{{ $c->id }}" @selected(request('category_id')==$c->id)>{{ $c->name }}</option>
+            @endforeach
+        </x-ui.select>
+        <x-ui.select name="product_id" label="Item" placeholder="All items">
+            <option value=""></option>
+            @foreach($products as $p)
+                <option value="{{ $p->id }}" @selected(request('product_id')==$p->id)>{{ $p->name }}</option>
+            @endforeach
+        </x-ui.select>
         <x-ui.button type="submit" variant="secondary" class="whitespace-nowrap">Run Report</x-ui.button>
     </form>
 </x-ui.card>
 
 {{-- Summary KPIs --}}
 <div class="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3 lg:grid-cols-6">
-    <x-ui.stat-card label="Total Invoices" :value="$summary['count']" accent="indigo" />
-    <x-ui.stat-card label="Subtotal" :value="'₹'.number_format($summary['subtotal'], 2)" accent="blue" />
-    <x-ui.stat-card label="Tax" :value="'₹'.number_format($summary['tax'], 2)" accent="purple" />
-    <x-ui.stat-card label="Gross Total" :value="'₹'.number_format($summary['total'], 2)" accent="violet" />
-    <x-ui.stat-card label="Collected" :value="'₹'.number_format($summary['collected'], 2)" accent="emerald" :change="$summary['percentage_collected'].'% collected'" change-type="positive" />
-    <x-ui.stat-card label="Outstanding" :value="'₹'.number_format($summary['outstanding'], 2)" accent="rose" />
+    <x-ui.stat-card label="Total Invoices" value="{{ $summary['count'] }}" accent="indigo" />
+    <x-ui.stat-card label="Subtotal" value="₹{{ number_format($summary['subtotal'], 2) }}" accent="blue" />
+    <x-ui.stat-card label="Tax" value="₹{{ number_format($summary['tax'], 2) }}" accent="purple" />
+    <x-ui.stat-card label="Gross Total" value="₹{{ number_format($summary['total'], 2) }}" accent="violet" />
+    <x-ui.stat-card label="Collected" value="₹{{ number_format($summary['collected'], 2) }}" change="{{ ($summary['percentage_collected'] ?? 0).'% collected' }}" change-type="positive" accent="emerald" />
+    <x-ui.stat-card label="Outstanding" value="₹{{ number_format($summary['outstanding'], 2) }}" accent="rose" />
 </div>
 
 {{-- Status & Customer Breakdowns --}}

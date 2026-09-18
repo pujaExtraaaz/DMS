@@ -23,3 +23,17 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+<IfModule mod_mime.c>
+    AddType application/manifest+json .webmanifest
+    AddType application/javascript .js
+</IfModule>
+
+# Service worker should not be long-cached incorrectly by intermediaries for HTML navigations
+<IfModule mod_headers.c>
+    <FilesMatch "sw\.js$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Service-Worker-Allowed "/"
+    </FilesMatch>
+</IfModule>
+

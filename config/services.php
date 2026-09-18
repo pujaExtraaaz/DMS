@@ -40,4 +40,37 @@ return [
         'webhook_secret' => env('PAYMENT_WEBHOOK_SECRET'),
     ],
 
+    'meta' => [
+        'app_secret' => env('META_APP_SECRET'),
+        'verify_token' => env('META_VERIFY_TOKEN'),
+        'access_token' => env('META_ACCESS_TOKEN'),
+    ],
+
+    'whatsapp' => [
+        'token' => env('WHATSAPP_TOKEN', env('META_ACCESS_TOKEN')),
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+    ],
+
+    'tally' => [
+        'endpoint' => env('TALLY_ENDPOINT'),
+        'company' => env('TALLY_COMPANY'),
+        'use_connector' => filter_var(env('TALLY_USE_CONNECTOR', false), FILTER_VALIDATE_BOOLEAN),
+        'connector_token' => env('TALLY_CONNECTOR_TOKEN'),
+    ],
+
+    // Masters India GSP — powers real IRN + E-way generation.
+    // Sandbox: https://sandb-api.mastersindia.co, Production: https://commonapi.mastersindia.co
+    'mastersindia' => [
+        'base_url' => env('MASTERSINDIA_BASE_URL', 'https://sandb-api.mastersindia.co'),
+        'client_id' => env('MASTERSINDIA_CLIENT_ID'),
+        'client_secret' => env('MASTERSINDIA_CLIENT_SECRET'),
+        'username' => env('MASTERSINDIA_USERNAME'),
+        'password' => env('MASTERSINDIA_PASSWORD'),
+        'gstin' => env('MASTERSINDIA_GSTIN'),
+        'timeout' => (int) env('MASTERSINDIA_TIMEOUT', 30),
+        // When true and credentials are missing, service falls back to deterministic dummy IRN/EWB
+        // so the flow keeps working in developer environments.
+        'fallback_to_stub' => filter_var(env('MASTERSINDIA_FALLBACK_TO_STUB', true), FILTER_VALIDATE_BOOLEAN),
+    ],
+
 ];

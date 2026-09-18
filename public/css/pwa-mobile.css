@@ -1,0 +1,109 @@
+/* PWA + mobile layout for Extraaaz DMS */
+:root {
+  --dms-bottom-nav-h: 64px;
+}
+
+html, body.dms-pwa {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dms-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.96);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(51, 65, 85, 0.9);
+  box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.25);
+}
+
+.dms-bottom-nav__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  border-radius: 12px;
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 600;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.dms-bottom-nav__item svg {
+  width: 20px;
+  height: 20px;
+}
+
+.dms-bottom-nav__item.is-active,
+.dms-bottom-nav__item:active {
+  color: #fff;
+  background: rgba(79, 70, 229, 0.35);
+}
+
+@media (min-width: 1024px) {
+  .dms-bottom-nav { display: none !important; }
+}
+
+/* Mobile content rhythm */
+@media (max-width: 1023px) {
+  .dms-content {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .overflow-x-auto,
+  .dms-table-wrap {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .overflow-x-auto table {
+    font-size: 0.8125rem;
+  }
+
+  /* Touch-friendly fields only — do NOT target generic .rounded-lg */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="search"],
+  select,
+  textarea {
+    min-height: 44px;
+    font-size: 16px !important; /* prevent iOS zoom */
+    max-width: 100%;
+  }
+
+  .grid.lg\:grid-cols-6,
+  .grid.md\:grid-cols-3,
+  .grid.lg\:grid-cols-4,
+  .grid.lg\:grid-cols-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .grid.lg\:grid-cols-6,
+  .grid.md\:grid-cols-3,
+  .grid.lg\:grid-cols-4 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media all and (display-mode: standalone) {
+  body.dms-pwa {
+    background: #0f172a;
+  }
+}

@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DMS Product Guide — How to Use Features</title>
+<style>
+  :root {
+    --ink: #152033;
+    --muted: #5b6b7c;
+    --line: #d7e0ea;
+    --bg: #f3f6fa;
+    --card: #fff;
+    --brand: #0f4c81;
+    --accent: #0f766e;
+    --soft: #e8f1fb;
+    --ok: #047857;
+    --chip: #ecfeff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(900px 380px at 0% -5%, #dbeafe 0%, transparent 55%),
+      radial-gradient(700px 320px at 100% 0%, #ccfbf1 0%, transparent 50%),
+      var(--bg);
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 56px; }
+  .hero {
+    background: linear-gradient(135deg, #0f4c81 0%, #0f766e 100%);
+    color: #fff;
+    border-radius: 18px;
+    padding: 28px 26px;
+    margin-bottom: 18px;
+  }
+  .hero h1 { margin: 0 0 8px; font-size: clamp(1.4rem, 3vw, 1.9rem); letter-spacing: -.02em; }
+  .hero p { margin: 0; max-width: 70ch; opacity: .95; }
+  .hero-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .hero-links a {
+    color: #fff; text-decoration: none; font-size: .86rem;
+    border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.12);
+    border-radius: 999px; padding: 7px 12px;
+  }
+  .layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; }
+  nav.toc {
+    position: sticky; top: 12px; align-self: start;
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px; max-height: calc(100vh - 24px); overflow: auto;
+  }
+  nav.toc h2 { margin: 0 0 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--brand); }
+  nav.toc a { display: block; color: var(--ink); text-decoration: none; font-size: .86rem; padding: 5px 0; }
+  nav.toc a:hover { color: var(--brand); }
+  .flow {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .flow h2 { margin: 0 0 10px; color: var(--brand); font-size: 1.1rem; }
+  .steps-inline {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  .steps-inline span {
+    background: var(--soft); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 10px; font-size: .82rem; font-weight: 600;
+  }
+  .steps-inline .arrow { background: transparent; border: 0; color: var(--muted); font-weight: 700; padding: 0 2px; }
+  .feature {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 18px; margin-bottom: 12px;
+  }
+  .feature h3 { margin: 0 0 6px; font-size: 1.05rem; color: var(--brand); }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px;
+  }
+  .chip {
+    font-size: .75rem; font-weight: 600; border-radius: 999px;
+    padding: 4px 9px; background: var(--chip); color: #155e75; border: 1px solid #a5f3fc;
+  }
+  .chip.menu { background: #eef2ff; color: #3730a3; border-color: #c7d2fe; }
+  .chip.role { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .box {
+    background: #f8fafc; border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+  }
+  .box h4 { margin: 0 0 6px; font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .box p, .box li { font-size: .92rem; margin: 0; }
+  .box ul { margin: 0; padding-left: 18px; }
+  .box li { margin: 4px 0; }
+  .howto ol { margin: 0; padding-left: 18px; }
+  .howto li { margin: 5px 0; font-size: .93rem; }
+  .tip {
+    margin-top: 10px; padding: 10px 12px; border-left: 3px solid var(--accent);
+    background: #f0fdfa; border-radius: 0 8px 8px 0; font-size: .88rem; color: var(--muted);
+  }
+  .quick {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px;
+  }
+  .quick a {
+    display: block; text-decoration: none; color: inherit;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+  }
+  .quick a strong { display: block; color: var(--brand); margin-bottom: 4px; }
+  .quick a span { font-size: .85rem; color: var(--muted); }
+  .accept {
+    background: linear-gradient(180deg, #f0fdfa, #fff);
+    border: 1px solid #99f6e4; border-radius: 14px; padding: 16px 18px; margin-bottom: 14px;
+  }
+  .accept h2 { margin: 0 0 8px; color: var(--accent); font-size: 1.1rem; }
+  .accept ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 24px; }
+  .accept li { margin: 4px 0; font-size: .88rem; break-inside: avoid; }
+  footer { margin-top: 18px; text-align: center; color: var(--muted); font-size: .84rem; }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: relative; top: 0; max-height: none; }
+    .grid2, .quick, .accept ol { grid-template-columns: 1fr; columns: 1; }
+  }
+  @media print {
+    nav.toc { display: none; }
+    .layout { grid-template-columns: 1fr; }
+    .feature, .flow { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <h1>DMS Product Guide</h1>
+    <p>Optimized client guide: what each feature is for, where to open it, and how to use it day-to-day — not a raw SRS dump.</p>
+    <div class="hero-links">
+      <a href="https://dms.extraaaz.com/login">Open DMS Login</a>
+      <a href="./CLIENT_CREDENTIALS.html">Login Credentials</a>
+      <a href="#start">Start here</a>
+      <a href="#acceptance">Acceptance checklist</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="toc">
+      <h2>Jump to</h2>
+      <a href="#start">1. Start &amp; login</a>
+      <a href="#daily">2. Daily operating flow</a>
+      <a href="#setup">3. One-time setup</a>
+      <a href="#purchase">4. Purchase &amp; stock-in</a>
+      <a href="#inventory">5. Inventory control</a>
+      <a href="#sales">6. Sales (van + warehouse)</a>
+      <a href="#collections">7. Collections &amp; risk</a>
+      <a href="#performance">8. Targets, schemes, interest</a>
+      <a href="#hrms-crm">9. HRMS &amp; CRM</a>
+      <a href="#reports">10. Reports &amp; Tally</a>
+      <a href="#tally-connector">11. Tally Connector ZIP</a>
+      <a href="#acceptance">12. Acceptance checklist</a>
+    </nav>
+
+    <main>
+      <section id="start" class="flow">
+        <h2>1. Start here</h2>
+        <div class="quick">
+          <a href="https://dms.extraaaz.com/login"><strong>Login</strong><span>Use the client account below</span></a>
+          <a href="./CLIENT_CREDENTIALS.html"><strong>Credentials</strong><span>client@extraaaz.com / Client@2026</span></a>
+          <a href="#daily"><strong>Daily path</strong><span>Purchase → Stock → Sale → Collect</span></a>
+        </div>
+        <p style="margin:0;color:var(--muted);font-size:.92rem">Start with the <strong>Client Admin</strong> login. Follow the daily flow below for day-to-day operations.</p>
+      </section>
+
+      <section id="daily" class="flow">
+        <h2>2. Daily operating flow</h2>
+        <div class="steps-inline">
+          <span>Setup masters</span><span class="arrow">→</span>
+          <span>Purchase / Inward</span><span class="arrow">→</span>
+          <span>Landed cost</span><span class="arrow">→</span>
+          <span>Sales order</span><span class="arrow">→</span>
+          <span>Reserve / Deliver</span><span class="arrow">→</span>
+          <span>Invoice</span><span class="arrow">→</span>
+          <span>Collect payment</span>
+        </div>
+        <p class="tip">Hybrid sales: <strong>Warehouse mode</strong> = Order → Approve → Reserve → Deliver → Invoice. <strong>Van mode</strong> = Order/Invoice → Load sheet → Delivery → Settlement.</p>
+      </section>
+
+      <!-- SETUP -->
+      <section id="setup">
+        <article class="feature">
+          <h3>Organization setup</h3>
+          <div class="meta">
+            <span class="chip menu">Menu → Organization</span>
+            <span class="chip role">Client Admin</span>
+            <span class="chip">Company / Branch / Warehouse / FY / Sister Concerns</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Separate legal companies, godowns, and financial years without mixing ledgers.</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li>Create <strong>Business Group</strong> (Sister Concerns) if needed.</li>
+                <li>Create <strong>Company</strong> → set GST/bank and <strong>Due Date Basis</strong> (Invoice or Inward date).</li>
+                <li>Add <strong>Branches</strong> and <strong>Warehouses</strong>.</li>
+                <li>Open <strong>Financial Years</strong> and mark current year.</li>
+              </ol>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature">
+          <h3>Catalog &amp; products</h3>
+          <div class="meta">
+            <span class="chip menu">Menu → Masters</span>
+            <span class="chip">Brand → Category → Sub Category → Products</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Item master with MRP, warranty, image, catalog link, and serial/batch tracking.</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li>Create Brand → Category → Sub Category.</li>
+                <li>Create Product: SKU, prices, tax, specification, warranty, image.</li>
+                <li>Set Tracking Type: None / Serial / Batch.</li>
+                <li>Optional: Price Master for party-type pricing.</li>
+              </ol>
+            </div>
+          </div>
+          <p class="tip">Upload product image on the product form (JPG/PNG). Image appears on product master / quotations.</p>
+        </article>
+
+        <article class="feature">
+          <h3>Parties (customers / suppliers)</h3>
+          <div class="meta">
+            <span class="chip menu">Menu → Masters → Parties</span>
+            <span class="chip">Credit limit · Credit days · Party type</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Credit control starts here: limit, days, interest rate, dealer type, supplier/customer.</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li>Create Party with type Dealer / Customer / Supplier / Both.</li>
+                <li>Enter credit limit, credit days, interest rate.</li>
+                <li>Add addresses/contacts for billing, site, transit.</li>
+                <li>Use this party on PO (supplier) or Sales Order (customer).</li>
+              </ol>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- PURCHASE -->
+      <section id="purchase">
+        <article class="feature">
+          <h3>Purchase cycle (PO → GRN → Invoice → Landed cost)</h3>
+          <div class="meta">
+            <span class="chip menu">Menu → Purchasing</span>
+            <span class="chip">PO · Inward/GRN · Purchase Invoice · Freight · Landed Cost</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Stock comes in with serial/batch, vendor price check, and freight allocated into landed cost.</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li><strong>Purchase Orders</strong> → Create → Approve.</li>
+                <li><strong>Inward / GRN</strong> → Receive against PO → assign serials/batches.</li>
+                <li><strong>Purchase Invoices</strong> → Book supplier bill (vendor price comparison shown).</li>
+                <li><strong>Freight Bills</strong> → Enter freight bill no. &amp; amount.</li>
+                <li><strong>Landed Cost</strong> → Allocate freight/charges to items.</li>
+              </ol>
+            </div>
+          </div>
+          <p class="tip">Duplicate serials are blocked with existing location/status. Resolve before posting.</p>
+        </article>
+      </section>
+
+      <!-- INVENTORY -->
+      <section id="inventory">
+        <article class="feature">
+          <h3>Stock, transfers, serial lifecycle, FIFO/LIFO</h3>
+          <div class="meta">
+            <span class="chip menu">Menu → Inventory</span>
+            <span class="chip">Stock · Transfers · Adjustments · Serial Lifecycle · FIFO/LIFO</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Immutable stock ledger, warehouse moves, serial reserve→deliver→return, FIFO/LIFO costing.</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li><strong>Stock</strong> — view on-hand by product/warehouse.</li>
+                <li><strong>Transfers</strong> — create → dispatch → receive.</li>
+                <li><strong>Adjustments</strong> — increase/decrease with reason.</li>
+                <li><strong>Serial Lifecycle</strong> — lookup → Reserve → Deliver → Return.</li>
+                <li><strong>FIFO / LIFO</strong> — set company method; value updates from cost layers.</li>
+              </ol>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- SALES -->
+      <section id="sales">
+        <article class="feature">
+          <h3>Quotations, orders, invoices</h3>
+          <div class="meta">
+            <span class="chip menu">Menu → Sales / Orders</span>
+            <span class="chip">Quotation · Sales Order · Invoice · Region Policies</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Credit check before approval, region-brand rules, back-order for short stock, due-date based reservation.</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li>Optional: create <strong>Quotation</strong> (admin can see estimated profit).</li>
+                <li><strong>Create Order</strong> — choose party, items, warehouse or van mode.</li>
+                <li>System checks credit limit / frozen party.</li>
+                <li>Approve → stock reserved (warehouse) or proceed to van billing.</li>
+                <li>Convert / create <strong>Invoice</strong>; due date follows company basis + party credit days.</li>
+              </ol>
+            </div>
+          </div>
+          <p class="tip">Region Policies: restrict brands by region; overrides need reason + audit.</p>
+        </article>
+
+        <article class="feature">
+          <h3>Van path: load sheet → delivery → settlement</h3>
+          <div class="meta">
+            <span class="chip menu">Logistics · Delivery · Settlement</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Field sales / van fulfilment with dispatch and cash settlement.</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li><strong>Dispatch (Load Sheets)</strong> — load invoices/stock on van.</li>
+                <li><strong>Deliveries</strong> — mark delivered / short / return.</li>
+                <li><strong>Cash Settlement</strong> — settle collections vs load.</li>
+              </ol>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature">
+          <h3>Deals &amp; multi-layer expenses</h3>
+          <div class="meta">
+            <span class="chip menu">Menu → Deals &amp; Margin</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Net margin after architect fee, site commission, installation, outward freight.</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li>Create Expense Types first.</li>
+                <li>Open Deal → attach to invoice/project.</li>
+                <li>Add expenses → approve → review in Margin Register.</li>
+              </ol>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- COLLECTIONS -->
+      <section id="collections">
+        <article class="feature">
+          <h3>Collections, cheques, credit notes</h3>
+          <div class="meta">
+            <span class="chip menu">Menu → Payments</span>
+            <span class="chip">Collections · Cheques/PDC · Credit Notes · Outstanding</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Allocate receipts, track PDC/security cheques, auto-freeze after bounce threshold (&gt;3).</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li><strong>Collections</strong> — record cash/UPI/bank/cheque against invoice(s).</li>
+                <li><strong>Cheques / PDC</strong> — register security or PDC (vendor or client).</li>
+                <li>Mark bounce → bounce count increases; after threshold party freezes.</li>
+                <li><strong>Credit Notes</strong> — return / rate / scheme adjustment.</li>
+                <li>Check <strong>Outstanding</strong> and Party Statement.</li>
+              </ol>
+            </div>
+          </div>
+          <p class="tip">On invoice screen, send WhatsApp / Email / Notification — status is logged separately from accounting status.</p>
+        </article>
+      </section>
+
+      <!-- PERFORMANCE -->
+      <section id="performance">
+        <article class="feature">
+          <h3>Targets, schemes, interest</h3>
+          <div class="meta">
+            <span class="chip menu">Menu → Performance</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Why</h4>
+              <p>Salesman targets, brand schemes/slabs, overdue interest on outstanding balance.</p>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li><strong>Targets</strong> — set period + salesman/party/brand target; achievement from posted sales.</li>
+                <li><strong>Schemes</strong> — define brand/slabs/benefit; close period for settlement.</li>
+                <li><strong>Interest</strong> — preview overdue interest → post ledger/debit note.</li>
+              </ol>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <!-- HRMS CRM -->
+      <section id="hrms-crm">
+        <article class="feature">
+          <h3>HRMS</h3>
+          <div class="meta"><span class="chip menu">Menu → HRMS</span></div>
+          <div class="grid2">
+            <div class="box"><h4>Why</h4><p>Employees linked to sales users for attendance, leave, claims, incentives.</p></div>
+            <div class="box howto"><h4>How to use</h4>
+              <ol>
+                <li>Create Employee → map branch/department/user.</li>
+                <li>Mark Attendance; apply/approve Leave.</li>
+                <li>Submit Expense Claims for approval/settlement.</li>
+              </ol>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature">
+          <h3>CRM / Meta leads</h3>
+          <div class="meta"><span class="chip menu">Menu → CRM → Leads</span></div>
+          <div class="grid2">
+            <div class="box"><h4>Why</h4><p>Capture Meta/Facebook/Instagram leads, assign, follow up, convert to party.</p></div>
+            <div class="box howto"><h4>How to use</h4>
+              <ol>
+                <li>Open Leads → create manually or receive via Meta webhook.</li>
+                <li>Assign salesperson → log follow-ups.</li>
+                <li>Qualify → convert to Party → create Quotation/Order.</li>
+              </ol>
+            </div>
+          </div>
+          <p class="tip">Live Meta Graph fetch needs <code>META_ACCESS_TOKEN</code> in server env.</p>
+        </article>
+      </section>
+
+      <!-- REPORTS -->
+      <section id="reports">
+        <article class="feature">
+          <h3>Dashboard, MIS reports, Tally</h3>
+          <div class="meta">
+            <span class="chip menu">Dashboard · Reports · Integrations → Tally Queue</span>
+          </div>
+          <div class="grid2">
+            <div class="box">
+              <h4>Key reports</h4>
+              <ul>
+                <li>Sales, Stock, Payments, Outstanding</li>
+                <li>Pending Orders (ordered/reserved/delivered/pending)</li>
+                <li>Salesman Outstanding, Aging, Margin</li>
+                <li>Purchase Register, Stock Ledger, Party Statement</li>
+              </ul>
+            </div>
+            <div class="box howto">
+              <h4>How to use</h4>
+              <ol>
+                <li>Dashboard → pick date range (Today / Week / Month / Custom).</li>
+                <li>Open any report → filter by date, branch, party, brand, category, item, salesperson.</li>
+                <li>Tally Queue → view posted XML sync; retry failed items.</li>
+              </ol>
+            </div>
+          </div>
+          <p class="tip">For live sync from hosted DMS → office Tally, use the <a href="#tally-connector">Tally Connector ZIP</a> (recommended). Direct <code>TALLY_ENDPOINT</code> only works if Tally is reachable from the cloud server.</p>
+        </article>
+      </section>
+
+      <section id="tally-connector" class="flow">
+        <h2>11. How to use the Tally Connector ZIP</h2>
+        <p style="color:var(--muted);font-size:.95rem;margin-top:0">
+          DMS runs on the internet. Tally runs on your office PC. The connector is a small bridge you download and run on the Tally PC so vouchers sync automatically.
+        </p>
+
+        <div class="quick" style="margin-bottom:14px">
+          <a href="https://dms.extraaaz.com/downloads/tally-connector.zip"><strong>Download ZIP</strong><span>tally-connector.zip</span></a>
+          <a href="https://dms.extraaaz.com/tally/queue"><strong>Open Queue</strong><span>See Pending / Sent status</span></a>
+          <a href="https://nodejs.org/"><strong>Node.js 18+</strong><span>Required on the Tally PC</span></a>
+        </div>
+
+        <article>
+          <h3>Step-by-step (Windows office PC)</h3>
+          <div class="grid2">
+            <div class="box howto">
+              <h4>A. Prepare Tally</h4>
+              <ol>
+                <li>Open TallyPrime / Tally ERP 9.</li>
+                <li>Load the company you sync with DMS.</li>
+                <li>Enable Tally as HTTP/XML server (port usually <code>9000</code>).</li>
+                <li>Leave Tally open while the connector runs.</li>
+              </ol>
+            </div>
+            <div class="box howto">
+              <h4>B. Install the connector</h4>
+              <ol>
+                <li>Download <code>tally-connector.zip</code> from DMS → Tally Queue → <strong>Download Connector</strong>.</li>
+                <li>Unzip to a folder, e.g. <code>C:\DMS-Tally-Connector</code>.</li>
+                <li>Install <a href="https://nodejs.org/" target="_blank" rel="noopener">Node.js 18+ LTS</a> if not already installed.</li>
+                <li>Double-click <code>start.bat</code>.</li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="box howto" style="margin-top:12px">
+            <h4>C. Fill config.json (first run opens Notepad)</h4>
+            <ol>
+              <li><code>dms_url</code> → <code>https://dms.extraaaz.com</code></li>
+              <li><code>connector_token</code> → token from your DMS admin (<code>TALLY_CONNECTOR_TOKEN</code> in server <code>.env</code>)</li>
+              <li><code>tally_url</code> → <code>http://127.0.0.1:9000</code> (change port if your Tally uses another)</li>
+              <li><code>company</code> → exact company name as shown in Tally (optional but recommended)</li>
+              <li><code>poll_seconds</code> → how often to check DMS (default <code>15</code>)</li>
+            </ol>
+            <p class="tip" style="margin-bottom:0">Save the file, then run <code>start.bat</code> again. Keep the black window open.</p>
+          </div>
+
+          <div class="grid2" style="margin-top:12px">
+            <div class="box">
+              <h4>D. Verify it works</h4>
+              <ol>
+                <li>In DMS, post/issue an invoice (or payment).</li>
+                <li>Open <strong>Tally Queue</strong> — item should be <strong>Pending</strong>.</li>
+                <li>Connector log should show: <code>#12 invoice ... SENT</code></li>
+                <li>Queue status becomes <strong>Sent</strong>.</li>
+                <li>Check the voucher inside Tally.</li>
+              </ol>
+            </div>
+            <div class="box">
+              <h4>E. Auto-start at Windows logon (optional)</h4>
+              <ol>
+                <li>Right-click PowerShell → Run as Administrator.</li>
+                <li><code>cd C:\DMS-Tally-Connector</code></li>
+                <li><code>Set-ExecutionPolicy Bypass -Scope Process -Force</code></li>
+                <li><code>.\install-windows-task.ps1</code></li>
+              </ol>
+              <p style="margin:8px 0 0;color:var(--muted);font-size:.88rem">Creates scheduled task <code>DMS-Tally-Connector</code>.</p>
+            </div>
+          </div>
+
+          <div class="box" style="margin-top:12px">
+            <h4>Troubleshooting</h4>
+            <ul>
+              <li><strong>Unauthorized</strong> — wrong <code>connector_token</code>.</li>
+              <li><strong>Cannot reach DMS</strong> — check internet / <code>dms_url</code>.</li>
+              <li><strong>Tally FAILED</strong> — Tally not open, wrong port, or ledger/stock names don’t match Tally masters.</li>
+              <li><strong>Items stay Skipped</strong> — ask admin to set <code>TALLY_USE_CONNECTOR=true</code>, then Retry on the queue row.</li>
+              <li><strong>Node not found</strong> — install Node.js LTS and reopen <code>start.bat</code>.</li>
+            </ul>
+          </div>
+        </article>
+      </section>
+
+      <section id="acceptance" class="accept">
+        <h2>12. Acceptance checklist (what client asked for)</h2>
+        <ol>
+          <li>Due date from Invoice or Inward date (company setting)</li>
+          <li>Product: spec, MRP, discount, warranty, price, image, catalog</li>
+          <li>Vendor price comparison on purchase invoice</li>
+          <li>Sister concerns without merged ledgers</li>
+          <li>Pending order ordered/reserved/delivered/pending</li>
+          <li>Freight bill → item landed cost</li>
+          <li>Security cheques for vendors &amp; clients</li>
+          <li>Invoice WhatsApp / Email / Notification tracking</li>
+          <li>Dashboard date filter</li>
+          <li>FIFO &amp; LIFO valuation</li>
+          <li>Salesman targets + salesman outstanding</li>
+          <li>Region-wise brand restriction + override</li>
+          <li>Authorized back-order for unavailable stock</li>
+          <li>Stock movement linked to source document</li>
+          <li>Invoice traceable to party/item/price/expenses</li>
+          <li>Credit limit block before credit-sale approval</li>
+          <li>Serial/batch unique through lifecycle</li>
+          <li>Outstanding = invoices − payments − credit notes</li>
+          <li>Bounce threshold freezes party</li>
+          <li>Interest from stored days/rate/overdue balance</li>
+          <li>Targets &amp; schemes from posted sales</li>
+          <li>Critical actions auditable</li>
+          <li>Reports filter date/branch/party/supplier/brand/category/item/salesperson</li>
+        </ol>
+      </section>
+
+      <footer>
+        Extraaaz DMS · Product Guide · Optimized for training &amp; UAT<br />
+        Login help: <a href="./CLIENT_CREDENTIALS.html">CLIENT_CREDENTIALS.html</a>
+      </footer>
+    </main>
+  </div>
+</div>
+</body>
+</html>

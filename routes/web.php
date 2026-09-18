@@ -11,6 +11,8 @@ Route::get('/', function () {
 });
 
 require __DIR__.'/modules/payment-public.php';
+require __DIR__.'/modules/crm-public.php';
+require __DIR__.'/modules/tally-connector-public.php';
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -18,17 +20,19 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     foreach (glob(__DIR__.'/modules/*.php') as $moduleRoutes) {
-        if (str_ends_with($moduleRoutes, 'payment-public.php')) {
+        if (str_ends_with($moduleRoutes, 'payment-public.php')
+            || str_ends_with($moduleRoutes, 'crm-public.php')
+            || str_ends_with($moduleRoutes, 'tally-connector-public.php')) {
             continue;
         }
         require $moduleRoutes;
     }
 });
 
-Route::middleware(['auth', 'verified', 'role:super-admin'])->group(function () {
+Route::middleware(['auth', 'verified', 'role:super-admin|client-admin'])->group(function () {
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::post('/users/{user}/permissions', [\App\Http\Controllers\UserPermissionController::class, 'update'])
-        ->middleware('role:super-admin')
+        ->middleware('role:super-admin|client-admin')
         ->name('users.permissions.update');
 });
 require __DIR__.'/auth.php';

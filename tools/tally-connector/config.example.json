@@ -1,0 +1,8 @@
+{
+  "dms_url": "https://dms.extraaaz.com",
+  "connector_token": "PASTE_TOKEN_FROM_SERVER_ADMIN",
+  "tally_url": "http://127.0.0.1:9000",
+  "poll_seconds": 15,
+  "batch_size": 10,
+  "company": ""
+}

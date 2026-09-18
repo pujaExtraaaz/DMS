@@ -4,6 +4,7 @@ namespace App\Domains\Inventory\Models;
 
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Organization\Models\Warehouse;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class StockMovement extends Model
 {
     protected $fillable = [
+        'warehouse_id',
         'product_id',
         'uom_id',
         'type',
@@ -29,6 +31,11 @@ class StockMovement extends Model
             'quantity' => 'decimal:4',
             'balance_after' => 'decimal:4',
         ];
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     public function product(): BelongsTo

@@ -3,6 +3,7 @@
 namespace App\Domains\Sales\Models;
 
 use App\Domains\Communication\Models\CommunicationLog;
+use App\Domains\Deal\Models\Deal;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Order\Models\Order;
 use App\Domains\Payment\Models\Payment;
@@ -21,21 +22,38 @@ class Invoice extends Model
         'order_id',
         'salesperson_id',
         'invoice_date',
+        'due_date',
+        'due_date_basis',
+        'due_date_source_date',
+        'payment_terms',
+        'credit_days',
         'status',
         'subtotal',
         'discount_amount',
+        'universal_discount_type',
+        'universal_discount_value',
+        'item_discount_total',
         'tax_amount',
         'grand_total',
         'paid_amount',
         'notes',
+        'terms_and_conditions',
+        'vehicle_no',
+        'transport_mode',
+        'reference_no',
+        'delivery_state',
     ];
 
     protected function casts(): array
     {
         return [
             'invoice_date' => 'date',
+            'due_date' => 'date',
+            'due_date_source_date' => 'date',
             'subtotal' => 'decimal:2',
             'discount_amount' => 'decimal:2',
+            'universal_discount_value' => 'decimal:2',
+            'item_discount_total' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'grand_total' => 'decimal:2',
             'paid_amount' => 'decimal:2',
@@ -85,5 +103,10 @@ class Invoice extends Model
     public function communicationLogs(): HasMany
     {
         return $this->hasMany(CommunicationLog::class);
+    }
+
+    public function deal(): HasOne
+    {
+        return $this->hasOne(Deal::class);
     }
 }

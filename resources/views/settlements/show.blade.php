@@ -4,9 +4,9 @@
 <x-ui.page-header :title="$settlement->settlement_no" :description="'Settled on ' . $settlement->settled_at?->format('d M Y H:i')"><x-slot name="actions"><x-ui.button variant="secondary" :href="route('settlements.index')">Back</x-ui.button></x-slot></x-ui.page-header>
 
 <div class="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3">
-    <x-ui.stat-card label="Cash Collected" :value="'₹' . number_format($settlement->cash_collected, 2)" accent="emerald" />
-    <x-ui.stat-card label="UPI/Online" :value="'₹' . number_format($settlement->upi_collected, 2)" accent="blue" />
-    <x-ui.stat-card label="Outstanding" :value="'₹' . number_format($settlement->outstanding_amount, 2)" accent="rose" />
+    <x-ui.stat-card label="Cash Collected" value="₹{{ number_format($settlement->cash_collected, 2) }}" accent="emerald" />
+    <x-ui.stat-card label="UPI/Online" value="₹{{ number_format($settlement->upi_collected, 2) }}" accent="blue" />
+    <x-ui.stat-card label="Outstanding" value="₹{{ number_format($settlement->outstanding_amount, 2) }}" accent="rose" />
 </div>
 
 <x-ui.card title="Settlement Details">

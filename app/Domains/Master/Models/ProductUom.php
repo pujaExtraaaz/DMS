@@ -12,6 +12,13 @@ class ProductUom extends Model
         'uom_id',
         'conversion_factor',
         'is_base',
+        'label',
+        'selling_price',
+        'trade_price',
+        'purchase_price',
+        'mrp',
+        'is_default_sales',
+        'is_active',
     ];
 
     protected function casts(): array
@@ -19,6 +26,12 @@ class ProductUom extends Model
         return [
             'conversion_factor' => 'decimal:4',
             'is_base' => 'boolean',
+            'is_default_sales' => 'boolean',
+            'is_active' => 'boolean',
+            'selling_price' => 'decimal:2',
+            'trade_price' => 'decimal:2',
+            'purchase_price' => 'decimal:2',
+            'mrp' => 'decimal:2',
         ];
     }
 

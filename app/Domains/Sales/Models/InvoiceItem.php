@@ -16,6 +16,10 @@ class InvoiceItem extends Model
         'quantity',
         'unit_price',
         'discount_amount',
+        'discount_type',
+        'discount_value',
+        'hsn_code',
+        'batch_no',
         'tax_amount',
         'line_total',
     ];
@@ -26,6 +30,7 @@ class InvoiceItem extends Model
             'quantity' => 'decimal:4',
             'unit_price' => 'decimal:2',
             'discount_amount' => 'decimal:2',
+            'discount_value' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'line_total' => 'decimal:2',
         ];

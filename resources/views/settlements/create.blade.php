@@ -4,10 +4,10 @@
 <x-ui.page-header title="Load Sheet Settlement" :description="$loadSheet->load_sheet_no" />
 
 <div class="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
-    <x-ui.stat-card label="Route" :value="$loadSheet->route?->name ?? '—'" accent="indigo" />
-    <x-ui.stat-card label="Vehicle" :value="$loadSheet->vehicle?->registration_no ?? '—'" accent="violet" />
-    <x-ui.stat-card label="Load Date" :value="$loadSheet->load_date->format('d M Y')" accent="sky" />
-    <x-ui.stat-card label="Status" :value="ucfirst($loadSheet->status)" accent="emerald" />
+    <x-ui.stat-card label="Route" value="{{ $loadSheet->route?->name ?? '—' }}" accent="indigo" />
+    <x-ui.stat-card label="Vehicle" value="{{ $loadSheet->vehicle?->registration_no ?? '—' }}" accent="violet" />
+    <x-ui.stat-card label="Load Date" value="{{ $loadSheet->load_date->format('d M Y') }}" accent="sky" />
+    <x-ui.stat-card label="Status" value="{{ ucfirst($loadSheet->status) }}" accent="emerald" />
 </div>
 
 <x-ui.card>

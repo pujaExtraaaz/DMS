@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Inventory;
 use App\Domains\Inventory\Models\Purchase;
 use App\Domains\Inventory\Models\PurchaseItem;
 use App\Domains\Inventory\Services\StockMovementService;
+use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Organization\Models\Warehouse;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,6 +40,12 @@ class PurchaseController extends Controller
         return view('inventory.purchases.create', [
             'products' => Product::where('is_active', true)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
+            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
+            'suppliers' => Customer::query()
+                ->where('is_active', true)
+                ->whereIn('party_type', ['supplier', 'both'])
+                ->orderBy('name')
+                ->get(),
         ]);
     }
 
@@ -46,6 +54,8 @@ class PurchaseController extends Controller
         $validated = $request->validate([
             'purchase_date' => 'required|date',
             'supplier_name' => 'required|string|max:255',
+            'supplier_party_id' => 'nullable|exists:customers,id',
+            'warehouse_id' => 'nullable|exists:warehouses,id',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.uom_id' => 'required|exists:uoms,id',
@@ -61,6 +71,8 @@ class PurchaseController extends Controller
                 'purchase_no' => $this->generatePurchaseNo(),
                 'purchase_date' => $validated['purchase_date'],
                 'supplier_name' => $validated['supplier_name'],
+                'supplier_party_id' => $validated['supplier_party_id'] ?? null,
+                'warehouse_id' => $validated['warehouse_id'] ?? null,
                 'status' => 'posted',
                 'grand_total' => $grandTotal,
                 'created_by' => auth()->id(),
@@ -97,6 +109,7 @@ class PurchaseController extends Controller
                     reference: $purchase,
                     notes: "Purchase {$purchase->purchase_no}",
                     user: auth()->user(),
+                    warehouseId: $validated['warehouse_id'] ?? null,
                 );
             }
 

@@ -4,12 +4,20 @@ namespace App\Providers;
 
 use App\Domains\Communication\Services\CommunicationService;
 use App\Domains\Inventory\Services\StockMovementService;
+use App\Domains\Master\Models\Product;
+use App\Domains\Master\Observers\ProductPriceObserver;
 use App\Domains\Master\Services\PriceMasterService;
+use App\Domains\Master\Services\ProductDiscountService;
 use App\Domains\Order\Models\Order;
 use App\Domains\Order\Services\OrderConversionService;
+use App\Domains\Payment\Models\CreditNote;
+use App\Domains\Payment\Models\Payment;
 use App\Domains\Payment\Services\OutstandingLedgerService;
 use App\Domains\Payment\Services\PaymentLinkService;
+use App\Domains\Purchasing\Models\PurchaseInvoice;
+use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sales\Services\InvoiceNumberGenerator;
+use App\Domains\Tally\Observers\TallyAutoEnqueueObserver;
 use App\Policies\OrderPolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -25,10 +33,20 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(PaymentLinkService::class);
         $this->app->singleton(OrderConversionService::class);
         $this->app->singleton(CommunicationService::class);
+        $this->app->singleton(ProductDiscountService::class);
     }
 
     public function boot(): void
     {
         Gate::policy(Order::class, OrderPolicy::class);
+
+        // Automatically snapshot master pricing whenever it changes.
+        Product::observe(ProductPriceObserver::class);
+
+        // Auto-enqueue supported documents to the Tally sync queue on post.
+        Invoice::observe(TallyAutoEnqueueObserver::class);
+        Payment::observe(TallyAutoEnqueueObserver::class);
+        CreditNote::observe(TallyAutoEnqueueObserver::class);
+        PurchaseInvoice::observe(TallyAutoEnqueueObserver::class);
     }
 }

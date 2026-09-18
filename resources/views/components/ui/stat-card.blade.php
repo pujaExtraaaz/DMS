@@ -23,25 +23,55 @@
         'violet' => 'from-violet-500 to-violet-600 shadow-violet-500/25',
         'sky' => 'from-sky-500 to-sky-600 shadow-sky-500/25',
     ];
+
+    $iconHtml = $icon;
+
+    if (isset($icon) && is_object($icon) && method_exists($icon, 'toHtml')) {
+        $iconHtml = $icon->toHtml();
+    } elseif (isset($icon) && $icon instanceof \Illuminate\View\ComponentSlot) {
+        $iconHtml = $icon->toHtml();
+    }
 @endphp
 
-<div {{ $attributes->merge(['class' => 'relative overflow-hidden rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200']) }}>
+<div {{ $attributes->merge([
+    'class' => 'relative w-full min-w-0 h-[170px] rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200'
+]) }}>
+
+    {{-- Header --}}
     <div class="flex items-start justify-between gap-4">
-        <div class="min-w-0 flex-1">
-            <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">{{ $label }}</p>
-            <p class="mt-2 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{{ $value }}</p>
 
-            @if ($change)
-                <span class="inline-flex items-center mt-2.5 rounded-full px-2 py-0.5 text-xs font-medium {{ $changeColors[$changeType] ?? $changeColors['neutral'] }}">
-                    {{ $change }}
-                </span>
-            @endif
-        </div>
+        <p class="min-w-0 pr-2 text-sm font-semibold uppercase tracking-wider text-slate-400">
+            {{ $label }}
+        </p>
 
-        @if ($icon)
+        @if ($iconHtml || isset($icon))
             <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br {{ $accentStyles[$accent] ?? $accentStyles['indigo'] }} text-white shadow-lg">
-                {!! $icon !!}
+                @if(isset($icon) && $icon instanceof \Illuminate\View\ComponentSlot)
+                    {{ $icon }}
+                @elseif(filled($iconHtml))
+                    {!! $iconHtml !!}
+                @endif
             </div>
         @endif
+
     </div>
+
+    {{-- Main KPI value --}}
+    <div class="mt-3 min-w-0">
+        <p class="min-w-0 truncate text-3xl font-bold leading-none tracking-tight text-slate-900 sm:text-4xl">
+            {{ $value }}
+        </p>
+    </div>
+
+    {{-- Supporting information --}}
+    @if ($change)
+        <div class="mt-3 min-h-[24px]">
+            <span class="inline-flex max-w-full items-center rounded-full px-3 py-1 text-xs font-medium {{ $changeColors[$changeType] ?? $changeColors['neutral'] }}">
+                {{ $change }}
+            </span>
+        </div>
+    @else
+        <div class="mt-3 min-h-[24px]"></div>
+    @endif
+
 </div>

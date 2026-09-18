@@ -3,16 +3,20 @@
     'description' => null,
 ])
 
-<div {{ $attributes->merge(['class' => 'mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between']) }}>
-    <div class="min-w-0">
-        <h1 class="text-2xl font-semibold tracking-tight text-gray-900">{{ $title }}</h1>
-        @if ($description)
-            <p class="mt-1 text-sm text-gray-500">{{ $description }}</p>
-        @endif
-    </div>
+{{--
+  App top-bar already shows the page title via @yield('title').
+  Keep an accessible heading, then put actions on their own clear row
+  so search/buttons never collide with a shrinking h1.
+--}}
+<div {{ $attributes->merge(['class' => 'mb-4 sm:mb-6']) }}>
+    <h1 class="sr-only">{{ $title }}</h1>
+
+    @if ($description)
+        <p class="mb-3 text-sm text-gray-500">{{ $description }}</p>
+    @endif
 
     @isset($actions)
-        <div class="flex shrink-0 flex-wrap items-center gap-2">
+        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             {{ $actions }}
         </div>
     @endisset

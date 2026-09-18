@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Payment;
 
 use App\Domains\Master\Models\Customer;
+use App\Domains\Organization\Services\FinancialYearService;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Payment\Services\OutstandingLedgerService;
 use App\Domains\Sales\Models\Invoice;
@@ -17,6 +18,7 @@ class PaymentController extends Controller
 {
     public function __construct(
         protected OutstandingLedgerService $outstandingLedgerService,
+        protected FinancialYearService $financialYearService,
     ) {}
 
     public function index(Request $request): View
@@ -57,10 +59,13 @@ class PaymentController extends Controller
         $validated = $request->validate([
             'invoice_id' => 'required|exists:invoices,id',
             'amount' => 'required|numeric|min:0.01',
-            'method' => 'required|in:cash,upi,bank,other',
+            'method' => 'required|in:cash,upi,bank,cheque,other',
             'paid_at' => 'nullable|date',
             'notes' => 'nullable|string',
         ]);
+
+        // FY lock — block payments dated inside a closed period.
+        $this->financialYearService->assertOpen($validated['paid_at'] ?? now());
 
         $invoice = Invoice::findOrFail($validated['invoice_id']);
         $outstanding = (float) $invoice->grand_total - (float) $invoice->paid_amount;
@@ -80,6 +85,12 @@ class PaymentController extends Controller
                 'paid_at' => $validated['paid_at'] ?? now(),
                 'recorded_by' => auth()->id(),
                 'notes' => $validated['notes'] ?? null,
+            ]);
+
+            \App\Domains\Payment\Models\PaymentAllocation::create([
+                'payment_id' => $payment->id,
+                'invoice_id' => $invoice->id,
+                'amount' => $validated['amount'],
             ]);
 
             $newPaid = (float) $invoice->paid_amount + (float) $validated['amount'];

@@ -15,6 +15,7 @@ use App\Domains\Master\Services\SalePricingService;
 use App\Domains\Order\Models\Order;
 use App\Domains\Order\Models\OrderItem;
 use App\Domains\Order\Services\OrderConversionService;
+use App\Domains\Organization\Services\FinancialYearService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\AuditLogService;
@@ -372,6 +373,21 @@ class OrderController extends Controller
                 'date',
             ],
 
+            'due_date' => [
+                'nullable',
+                'date',
+            ],
+
+            'fulfilment_mode' => [
+                'nullable',
+                'in:warehouse,van',
+            ],
+
+            'warehouse_id' => [
+                'nullable',
+                'exists:warehouses,id',
+            ],
+
             'created_by_name' => [
                 'nullable',
                 'string',
@@ -417,6 +433,8 @@ class OrderController extends Controller
                 'min:0',
             ],
         ]);
+
+        FinancialYearService::assertOpen($validated['order_date']);
 
         $order = $this->orderService->create(
             $validated,
@@ -485,6 +503,21 @@ class OrderController extends Controller
                 'date',
             ],
 
+            'due_date' => [
+                'nullable',
+                'date',
+            ],
+
+            'fulfilment_mode' => [
+                'nullable',
+                'in:warehouse,van',
+            ],
+
+            'warehouse_id' => [
+                'nullable',
+                'exists:warehouses,id',
+            ],
+
             'updated_by_name' => [
                 'nullable',
                 'string',
@@ -531,6 +564,8 @@ class OrderController extends Controller
             ],
         ]);
 
+        FinancialYearService::assertOpen($validated['order_date']);
+
         $order = $this->orderService->update(
             $order,
             $validated,
@@ -567,16 +602,32 @@ class OrderController extends Controller
     ): RedirectResponse {
         $request->validate([
             'approved_by_name' => ['nullable', 'string', 'max:255'],
+            'credit_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $actor = $request->user();
 
         abort_unless($actor instanceof User, 401);
 
-        $approvedOrder = $this->orderService->approve(
-            $order,
-            $actor
-        );
+        try {
+            $approvedOrder = $this->orderService->approve(
+                $order,
+                $actor,
+                [
+                    'credit_override_reason' => $request->input('credit_override_reason'),
+                ]
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->withErrors($e->errors())
+                ->with('error', collect($e->errors())->flatten()->first());
+        } catch (\InvalidArgumentException $e) {
+            return redirect()
+                ->back()
+                ->with('error', $e->getMessage());
+        }
 
         return redirect()
             ->route('orders.show', $approvedOrder)

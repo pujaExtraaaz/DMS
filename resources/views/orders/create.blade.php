@@ -97,6 +97,17 @@
                     required
                 />
 
+                <x-ui.input
+                    name="due_date"
+                    label="Due Date"
+                    type="date"
+                    :value="old('due_date')"
+                />
+
+                <x-ui.select name="fulfilment_mode" label="Fulfilment Mode" required>
+                    <option value="van" @selected(old('fulfilment_mode', 'van')==='van')">Van / Load Sheet</option>
+                    <option value="warehouse" @selected(old('fulfilment_mode')==='warehouse')">Warehouse Reservation</option>
+                </x-ui.select>
 
                 {{-- Created By --}}
                 <x-ui.input

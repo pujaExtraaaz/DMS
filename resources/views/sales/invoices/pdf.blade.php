@@ -62,11 +62,12 @@
 </head>
 <body>
     @php
-        $companyName = config('app.company_name', config('app.name'));
-        $companyGstin = config('app.company_gstin', 'Not configured');
-        $companyAddress = config('app.company_address', 'Address not configured');
-        $companyState = config('app.company_state', 'Not configured');
-        $companyPincode = config('app.company_pincode', 'Not configured');
+        $company = $company ?? \App\Domains\Organization\Models\Company::query()->first();
+        $companyName = $company?->name ?? config('app.name');
+        $companyGstin = $company?->gstin ?? 'Not configured';
+        $companyAddress = $company?->address ?? 'Address not configured';
+        $companyState = $company?->state ?? 'NA';
+        $companyPincode = $company?->pincode ?? '-';
         $customer = $invoice->customer;
     @endphp
     <div class="invoice-box">
@@ -79,10 +80,10 @@
         <table class="header-table">
             <tr>
                 <td style="width: 20%;">
-                    @php
-                        $qrData = urlencode("IRN:" . ($invoice->eInvoice->irn ?? 'PENDING') . "|GSTIN:" . ($invoice->customer->gstin ?? '27AAAAA0000A1Z5') . "|INV:" . $invoice->invoice_no);
-                    @endphp
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=90x90&data={{ $qrData }}" alt="QR Code" width="85" height="85" style="border:1px solid #ccc;">
+                    @if(! empty($signedQrDataUri))
+                        <img src="{{ $signedQrDataUri }}" alt="Signed IRN QR" width="90" height="90" style="border:1px solid #ccc;">
+                        <div style="font-size:8px; color:#6b7280; text-align:center; margin-top:2px;">Signed IRN QR</div>
+                    @endif
                 </td>
                 <td style="width: 60%; text-align: center;">
                     <div style="font-size: 9px; color: #4b5563;">e-Invoice System</div>
@@ -90,7 +91,10 @@
                     <div style="font-size: 10px; font-weight: bold;">TAX INVOICE</div>
                 </td>
                 <td style="width: 20%; text-align: right; vertical-align: bottom; font-size: 9px;">
-                    Date: {{ $invoice->invoice_date->format('d/m/Y') }}
+                    <div>Date: {{ $invoice->invoice_date->format('d/m/Y') }}</div>
+                    @if($invoice->reference_no)<div>Ref: {{ $invoice->reference_no }}</div>@endif
+                    @if($invoice->vehicle_no)<div>Vehicle: {{ $invoice->vehicle_no }}</div>@endif
+                    @if($invoice->transport_mode)<div>Transport: {{ $invoice->transport_mode }}</div>@endif
                 </td>
             </tr>
         </table>
@@ -191,21 +195,47 @@
                 <td style="width: 55%;">
                     <div class="bold" style="border-bottom: 1px solid #ccc; padding-bottom: 2px; margin-bottom: 4px;">Payee Information</div>
                     <div><span class="bold">Payee name:</span> {{ $companyName }}</div>
-                    <div><span class="bold">Account number:</span> {{ config('app.company_bank_account', '-') }}</div>
-                    <div><span class="bold">Bank Name & IFSC:</span> {{ config('app.company_bank_details', '-') }}</div>
+                    <div><span class="bold">Bank:</span> {{ $company?->bank_name ?: '-' }}</div>
+                    <div><span class="bold">A/c No:</span> {{ $company?->bank_account_no ?: '-' }}</div>
+                    <div><span class="bold">IFSC:</span> {{ $company?->bank_ifsc ?: '-' }}</div>
+                    @if($company?->upi_id)
+                        <div><span class="bold">UPI ID:</span> {{ $company->upi_id }}</div>
+                    @endif
                     <div><span class="bold">Payment mode:</span> UPI / NEFT / RTGS</div>
                 </td>
-                <td style="width: 45%;">
+                <td style="width: 25%; text-align:center;">
+                    @if(! empty($upiQrDataUri))
+                        <img src="{{ $upiQrDataUri }}" alt="Scan &amp; Pay UPI QR" width="120" height="120" style="border:1px solid #ccc;">
+                        <div style="font-size:8px; color:#6b7280; margin-top:2px;">Scan &amp; pay via any UPI app</div>
+                    @endif
+                </td>
+                <td style="width: 20%;">
                     <table style="width: 100%; border: none;">
-                        <tr><td style="border:none;" class="bold">Total Taxable Amount:</td><td style="border:none;" class="text-right">₹{{ number_format($invoice->subtotal, 2) }}</td></tr>
-                        <tr><td style="border:none;" class="bold">Total Tax Amount:</td><td style="border:none;" class="text-right">₹{{ number_format($invoice->tax_amount, 2) }}</td></tr>
-                        <tr style="border-top: 1px solid #000;"><td style="border:none;" class="bold">Final Amount:</td><td style="border:none;" class="text-right bold">₹{{ number_format($invoice->grand_total, 2) }}</td></tr>
-                        <tr><td style="border:none;" class="bold">Amount Paid:</td><td style="border:none;" class="text-right">₹{{ number_format($invoice->paid_amount, 2) }}</td></tr>
-                        <tr><td style="border:none;" class="bold">Amount Outstanding:</td><td style="border:none;" class="text-right bold">₹{{ number_format(max(0, $invoice->grand_total - $invoice->paid_amount), 2) }}</td></tr>
+                        <tr><td style="border:none;" class="bold">Taxable:</td><td style="border:none;" class="text-right">₹{{ number_format($invoice->subtotal, 2) }}</td></tr>
+                        @if((float) $invoice->discount_amount > 0)
+                            <tr><td style="border:none;" class="bold">Discount:</td><td style="border:none;" class="text-right">−₹{{ number_format($invoice->discount_amount, 2) }}</td></tr>
+                        @endif
+                        <tr><td style="border:none;" class="bold">Tax:</td><td style="border:none;" class="text-right">₹{{ number_format($invoice->tax_amount, 2) }}</td></tr>
+                        <tr style="border-top: 1px solid #000;"><td style="border:none;" class="bold">Grand Total:</td><td style="border:none;" class="text-right bold">₹{{ number_format($invoice->grand_total, 2) }}</td></tr>
+                        <tr><td style="border:none;" class="bold">Paid:</td><td style="border:none;" class="text-right">₹{{ number_format($invoice->paid_amount, 2) }}</td></tr>
+                        <tr><td style="border:none;" class="bold">Balance:</td><td style="border:none;" class="text-right bold">₹{{ number_format(max(0, $invoice->grand_total - $invoice->paid_amount), 2) }}</td></tr>
                     </table>
                 </td>
             </tr>
         </table>
+
+        @if($invoice->terms_and_conditions)
+            <div style="margin-top:10px; padding:6px 8px; border:1px solid #d1d5db; font-size:9px;">
+                <div class="bold" style="margin-bottom:2px;">Terms &amp; Conditions</div>
+                <div style="white-space:pre-line;">{{ $invoice->terms_and_conditions }}</div>
+            </div>
+        @endif
+
+        @if($invoice->eInvoice?->ack_no)
+            <div style="margin-top:6px; font-size:8px; color:#4b5563;">
+                Ack No: {{ $invoice->eInvoice->ack_no }} · Ack Dt: {{ optional($invoice->eInvoice->ack_date)->format('d M Y H:i') ?? '—' }}
+            </div>
+        @endif
     </div>
 </body>
 </html>

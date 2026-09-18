@@ -2,46 +2,71 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="theme-color" content="#0f4c81">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="DMS">
+    <meta name="application-name" content="DMS">
+    <meta name="format-detection" content="telephone=no">
 
     <title>@yield('title', config('app.name', 'DMS'))</title>
+
+    <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
+    <link rel="apple-touch-icon" href="{{ asset('icons/apple-touch-icon.png') }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ asset('icons/icon-192.png') }}">
+    <link rel="icon" type="image/png" sizes="512x512" href="{{ asset('icons/icon-512.png') }}">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <link rel="stylesheet" href="{{ asset('css/pwa-mobile.css') }}">
     @livewireStyles
 </head>
-<body class="font-sans antialiased bg-slate-100 text-slate-900 overflow-hidden">
+<body class="font-sans antialiased bg-slate-100 text-slate-900 overflow-hidden dms-pwa">
     <div
         x-data="{
             sidebarOpen: false,
             sidebarCollapsed: localStorage.getItem('dmsSidebarCollapsed') === 'true',
+            installPrompt: null,
+            showInstall: false,
             toggleCollapsed() {
                 this.sidebarCollapsed = !this.sidebarCollapsed;
                 localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed);
+            },
+            init() {
+                window.addEventListener('beforeinstallprompt', (e) => {
+                    e.preventDefault();
+                    this.installPrompt = e;
+                    this.showInstall = true;
+                });
+            },
+            async installApp() {
+                if (!this.installPrompt) return;
+                this.installPrompt.prompt();
+                await this.installPrompt.userChoice;
+                this.installPrompt = null;
+                this.showInstall = false;
             }
         }"
-        class="flex h-screen w-full overflow-hidden"
+        class="flex h-[100dvh] w-full overflow-hidden"
     >
         @include('partials.sidebar')
 
-        {{-- Main content shell: only this area scrolls --}}
-        <div
-            class="flex flex-1 flex-col min-w-0 h-screen overflow-hidden transition-[margin] duration-300"
-            :class="sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-0'"
-        >
-            <header class="shrink-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-sm">
-                <div class="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
-                    <div class="flex items-center gap-3 min-w-0">
+        <div class="relative z-0 flex flex-1 flex-col min-w-0 h-[100dvh] overflow-hidden bg-slate-100">
+            <header class="shrink-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-sm pt-[env(safe-area-inset-top)]">
+                <div class="flex items-center justify-between h-14 sm:h-16 px-3 sm:px-6 lg:px-8">
+                    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
                         <button
                             type="button"
                             @click="sidebarOpen = true"
-                            class="lg:hidden inline-flex items-center justify-center rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition"
+                            class="lg:hidden inline-flex items-center justify-center rounded-lg p-2.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition"
                         >
-                            <span class="sr-only">Open sidebar</span>
+                            <span class="sr-only">Open menu</span>
                             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                             </svg>
@@ -62,17 +87,43 @@
                             </svg>
                         </button>
 
-                        <div class="min-w-0 hidden sm:block">
+                        <div class="min-w-0">
                             @hasSection('breadcrumbs')
                                 @yield('breadcrumbs')
                             @else
-                                <p class="text-xs font-medium uppercase tracking-wider text-slate-400">Overview</p>
-                                <h1 class="truncate text-lg font-semibold text-slate-900">@yield('title', 'Dashboard')</h1>
+                                <p class="hidden sm:block text-xs font-medium uppercase tracking-wider text-slate-400">Overview</p>
+                                <h1 class="truncate text-base sm:text-lg font-semibold text-slate-900">@yield('title', 'Dashboard')</h1>
                             @endif
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-3 sm:gap-4">
+                    <div class="flex items-center gap-2 sm:gap-4">
+                        {{-- Current Financial Year pill (Tally F2 equivalent) --}}
+                        @php
+                            $currentFy = \Illuminate\Support\Facades\Cache::remember('current_fy_pill', 60, function () {
+                                return \App\Domains\Organization\Models\FinancialYear::where('is_current', true)->first();
+                            });
+                        @endphp
+                        @if($currentFy)
+                            <a href="{{ route('organization.financial-years.index') }}"
+                                title="Change / close period"
+                                class="hidden md:inline-flex items-center gap-1.5 rounded-lg border {{ $currentFy->is_closed ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700' }} px-3 py-1.5 text-xs font-semibold">
+                                <span class="opacity-70">Period:</span>
+                                <span>{{ $currentFy->name }}</span>
+                                @if($currentFy->is_closed)<span class="rounded bg-red-600 px-1 text-[10px] text-white">CLOSED</span>@endif
+                            </a>
+                        @endif
+
+                        <button
+                            type="button"
+                            x-show="showInstall"
+                            x-cloak
+                            @click="installApp()"
+                            class="hidden sm:inline-flex items-center rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white"
+                        >
+                            Install App
+                        </button>
+
                         <div class="hidden md:flex items-center gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-1.5">
                             <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -89,9 +140,9 @@
                             $roleName = Auth::user()->roles->first()?->name ?? 'User';
                             $roleLabel = str($roleName)->replace('-', ' ')->title();
                         @endphp
-                        <x-ui.badge variant="primary">{{ $roleLabel }}</x-ui.badge>
+                        <x-ui.badge variant="primary" class="hidden xs:inline-flex sm:inline-flex">{{ $roleLabel }}</x-ui.badge>
 
-                        <form method="POST" action="{{ route('logout') }}">
+                        <form method="POST" action="{{ route('logout') }}" class="hidden sm:block">
                             @csrf
                             <x-ui.button type="submit" variant="ghost" size="sm">Log out</x-ui.button>
                         </form>
@@ -99,9 +150,8 @@
                 </div>
             </header>
 
-            {{-- Scrollable main region --}}
             <main class="flex-1 overflow-y-auto overflow-x-hidden dms-content">
-                <div class="px-4 sm:px-6 lg:px-8 py-6 space-y-6 max-w-[1600px] mx-auto w-full">
+                <div class="px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 max-w-[1600px] mx-auto w-full pb-24 lg:pb-6">
                     @if (session('status'))
                         <x-ui.alert type="success" :message="session('status')" />
                     @endif
@@ -120,9 +170,21 @@
                         </x-ui.alert>
                     @endif
 
+                    <div class="sm:hidden" x-show="showInstall" x-cloak>
+                        <button type="button" @click="installApp()" class="w-full rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white shadow">
+                            Install DMS on this phone
+                        </button>
+                    </div>
+
+                    @unless(request()->routeIs('help.*'))
+                        <x-ui.screen-help />
+                    @endunless
+
                     @yield('content')
                 </div>
             </main>
+
+            @include('partials.mobile-bottom-nav')
         </div>
     </div>
 

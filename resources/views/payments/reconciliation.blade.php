@@ -3,10 +3,10 @@
 @section('content')
 <x-ui.page-header title="Payment Reconciliation" />
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-<x-ui.stat-card label="Cash" :value="'₹'.number_format($summary['cash'], 2)" change-type="neutral" />
-<x-ui.stat-card label="UPI" :value="'₹'.number_format($summary['upi'], 2)" change-type="neutral" />
-<x-ui.stat-card label="Bank" :value="'₹'.number_format($summary['bank'], 2)" change-type="neutral" />
-<x-ui.stat-card label="Total" :value="'₹'.number_format($summary['total'], 2)" change-type="positive" />
+<x-ui.stat-card label="Cash" value="₹{{ number_format($summary['cash'], 2) }}" change-type="neutral" />
+<x-ui.stat-card label="UPI" value="₹{{ number_format($summary['upi'], 2) }}" change-type="neutral" />
+<x-ui.stat-card label="Bank" value="₹{{ number_format($summary['bank'], 2) }}" change-type="neutral" />
+<x-ui.stat-card label="Total" value="₹{{ number_format($summary['total'], 2) }}" change-type="positive" />
 </div>
 <x-ui.card>
     <form method="GET" class="flex flex-col gap-4 md:flex-row md:items-end mb-6">
