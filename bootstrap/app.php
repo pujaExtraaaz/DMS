@@ -21,6 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToGroup('web', [
             \App\Http\Middleware\SetUserBranchScope::class,
         ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'api/tally-connector/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
