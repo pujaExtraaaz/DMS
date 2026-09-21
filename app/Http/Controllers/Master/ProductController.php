@@ -65,10 +65,10 @@ class ProductController extends Controller
         $data = $this->validated($request);
 
         DB::transaction(function () use ($data, $request) {
+            $data['serial_no'] = CodeGenerator::forProductSerial();
+
             $product = Product::create($data);
-            $product->update([
-                'serial_no' => CodeGenerator::forProductSerial(),
-            ]);
+
             $this->syncBaseUom($product);
             $this->syncAlternateUoms($request, $product);
         });

@@ -5,12 +5,21 @@ namespace App\Domains\Purchasing\Models;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Organization\Models\Warehouse;
 use App\Models\User;
+use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PurchaseInvoice extends Model
 {
+    protected static function booted(): void
+    {
+        static::creating(function (PurchaseInvoice $invoice) {
+            if (empty($invoice->qr_token)) {
+                $invoice->qr_token = (string) Str::uuid();
+            }
+        });
+    }
     protected $fillable = [
         'purchase_order_id',
         'purchase_inward_id',
@@ -31,6 +40,7 @@ class PurchaseInvoice extends Model
         'terms_and_conditions',
         'freight_allocation_method',
         'created_by',
+        'qr_token',
     ];
 
     protected function casts(): array

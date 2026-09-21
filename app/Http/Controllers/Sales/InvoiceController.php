@@ -216,10 +216,12 @@ class InvoiceController extends Controller
 
         // Prefer the signed QR from Masters India (base64 → PNG QR). Fall back to
         // a deterministic invoice QR so the PDF always shows something scannable.
-        $signedPayload = optional($invoice->eInvoice)->signed_qr_base64;
-        $qrPayload = $signedPayload
-            ?: ('IRN:'.($invoice->eInvoice->irn ?? 'PENDING').'|GSTIN:'.($invoice->customer->gstin ?? '').'|INV:'.$invoice->invoice_no);
-        $signedQrDataUri = QrCodeRenderer::dataUri($qrPayload, 180);
+       $invoiceUrl = route('invoice.qr', [
+            'type' => 'sales',
+            'token' => $invoice->qr_token,
+        ]);
+
+        $invoiceQrDataUri = QrCodeRenderer::dataUri($invoiceUrl, 180);
 
         $upiQrDataUri = null;
         if ($company && filled($company->upi_id)) {
@@ -230,7 +232,7 @@ class InvoiceController extends Controller
         $pdf = Pdf::loadView('sales.invoices.pdf', [
             'invoice' => $invoice,
             'company' => $company,
-            'signedQrDataUri' => $signedQrDataUri,
+            'invoiceQrDataUri' => $invoiceQrDataUri,
             'upiQrDataUri' => $upiQrDataUri,
         ])->setPaper('a4');
 
@@ -256,7 +258,35 @@ class InvoiceController extends Controller
     {
         $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice']);
 
-        return view('sales.invoices.pdf', compact('invoice'));
+        $company = \App\Domains\Organization\Models\Company::query()->first();
+
+        $invoiceUrl = route('invoice.qr', [
+            'type' => 'sales',
+            'token' => $invoice->qr_token,
+        ]);
+
+        $invoiceQrDataUri = QrCodeRenderer::dataUri($invoiceUrl, 180);
+
+        $upiQrDataUri = null;
+
+        if ($company && filled($company->upi_id)) {
+            $upiUri = QrCodeRenderer::upiIntent(
+                $company->upi_id,
+                $company->name,
+                (float) $invoice->grand_total,
+                'Inv '.$invoice->invoice_no,
+                $invoice->invoice_no
+            );
+
+            $upiQrDataUri = QrCodeRenderer::dataUri($upiUri, 160);
+        }
+
+        return view('sales.invoices.pdf', [
+            'invoice' => $invoice,
+            'company' => $company,
+            'invoiceQrDataUri' => $invoiceQrDataUri,
+            'upiQrDataUri' => $upiQrDataUri,
+        ]);
     }
 
     public function eWayBillDocument(Invoice $invoice): View

@@ -80,9 +80,17 @@
         <table class="header-table">
             <tr>
                 <td style="width: 20%;">
-                    @if(! empty($signedQrDataUri))
-                        <img src="{{ $signedQrDataUri }}" alt="Signed IRN QR" width="90" height="90" style="border:1px solid #ccc;">
-                        <div style="font-size:8px; color:#6b7280; text-align:center; margin-top:2px;">Signed IRN QR</div>
+                   @if(! empty($invoiceQrDataUri))
+                        <img
+                            src="{{ $invoiceQrDataUri }}"
+                            alt="Scan to view invoice"
+                            width="90"
+                            height="90"
+                            style="border:1px solid #ccc;"
+                        >
+                        <div style="font-size:8px; color:#6b7280; text-align:center; margin-top:2px;width:90px;">
+                            Scan to view invoice
+                        </div>
                     @endif
                 </td>
                 <td style="width: 60%; text-align: center;">

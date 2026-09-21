@@ -4,9 +4,18 @@ namespace App\Domains\Sales\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 class EWayBill extends Model
 {
+    protected static function booted(): void
+    {
+        static::creating(function (EWayBill $eWayBill) {
+            if (empty($eWayBill->qr_token)) {
+                $eWayBill->qr_token = (string) Str::uuid();
+            }
+        });
+    }
     protected $fillable = [
         'invoice_id',
         'status',
@@ -21,6 +30,7 @@ class EWayBill extends Model
         'transport_mode',
         'last_error',
         'payload',
+        'qr_token',
     ];
 
     protected function casts(): array

@@ -232,6 +232,20 @@
 
     <div class="header">
         <div class="header-left">
+            @if(! empty($invoiceQrDataUri))
+                <div style="margin-bottom: 8px;">
+                    <img
+                        src="{{ $invoiceQrDataUri }}"
+                        alt="Scan to view invoice"
+                        width="90"
+                        height="90"
+                        style="border:1px solid #ccc;"
+                    >
+                    <div style="font-size:8px; color:#6b7280; margin-top:2px;">
+                        Scan to view invoice
+                    </div>
+                </div>
+            @endif
             <div class="company-name">{{ $companyName }}</div>
 
             @if($company?->gstin)

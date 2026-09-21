@@ -14,6 +14,16 @@ require __DIR__.'/modules/payment-public.php';
 require __DIR__.'/modules/crm-public.php';
 require __DIR__.'/modules/tally-connector-public.php';
 
+Route::get('/invoice/qr/{type}/{token}', [
+    \App\Http\Controllers\InvoiceQrController::class,
+    'show',
+])->name('invoice.qr');
+
+Route::get('/eway-bill/qr/{token}', [
+    \App\Http\Controllers\InvoiceQrController::class,
+    'ewayBill',
+])->name('eway-bill.qr');
+
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

@@ -9,6 +9,8 @@ use App\Domains\Order\Models\Order;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Payment\Models\PaymentLink;
 use App\Models\User;
+
+use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -16,6 +18,15 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Invoice extends Model
 {
+
+    protected static function booted(): void
+    {
+        static::creating(function (Invoice $invoice) {
+            if (empty($invoice->qr_token)) {
+                $invoice->qr_token = (string) Str::uuid();
+            }
+        });
+    }
     protected $fillable = [
         'invoice_no',
         'customer_id',
@@ -42,6 +53,7 @@ class Invoice extends Model
         'transport_mode',
         'reference_no',
         'delivery_state',
+        'qr_token',
     ];
 
     protected function casts(): array

@@ -9,6 +9,7 @@ use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
+use App\Support\QrCodeRenderer;
 use App\Domains\Purchasing\Models\VendorPriceHistory;
 use App\Domains\Purchasing\Services\PurchaseOrderService;
 use App\Domains\Organization\Services\FinancialYearService;
@@ -132,13 +133,21 @@ class PurchaseInvoiceController extends Controller
             'creator',
         ]);
 
-        $company = Company::query()->find(
+       $company = Company::query()->find(
             auth()->user()?->company_id
         ) ?? Company::query()->first();
+
+        $url = route('invoice.qr', [
+            'type' => 'purchase',
+            'token' => $invoice->qr_token,
+        ]);
+
+        $invoiceQrDataUri = QrCodeRenderer::dataUri($url, 180);
 
         return view('purchasing.invoices.preview', [
             'invoice' => $invoice,
             'company' => $company,
+            'invoiceQrDataUri' => $invoiceQrDataUri,
         ]);
     }
 

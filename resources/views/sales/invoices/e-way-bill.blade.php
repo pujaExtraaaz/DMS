@@ -10,8 +10,38 @@
 <x-ui.card>
     <div id="eway-document" class="mx-auto max-w-4xl border border-slate-300 bg-white p-8 text-sm text-slate-900">
         <div class="flex items-start justify-between border-b-2 border-slate-900 pb-4">
-            <div><p class="text-lg font-bold">E-Way Bill</p><p class="mt-1 text-slate-600">Generated against Tax Invoice {{ $invoice->invoice_no }}</p></div>
-            <div class="text-right"><p class="font-semibold">E-Way Bill No.</p><p>{{ $eWayBill->eway_bill_no }}</p><p class="mt-1 text-xs text-slate-500">{{ optional($eWayBill->created_at)->format('d M Y, h:i A') }}</p></div>
+            <div>
+                @if(!empty($eWayBill->qr_token))
+                    <div class="mb-2">
+                        <img
+                            src="{{ \App\Support\QrCodeRenderer::dataUri(
+                                route('eway-bill.qr', ['token' => $eWayBill->qr_token]),
+                                180
+                            ) }}"
+                            alt="Scan to view E-Way Bill"
+                            width="90"
+                            height="90"
+                            style="border:1px solid #ccc;"
+                        >
+                        <div style="font-size:8px; color:#6b7280; text-align:center; width:90px; margin-top:2px;">
+                            Scan to view E-Way Bill
+                        </div>
+                    </div>
+                @endif
+
+                <p class="text-lg font-bold">E-Way Bill</p>
+                <p class="mt-1 text-slate-600">
+                    Generated against Tax Invoice {{ $invoice->invoice_no }}
+                </p>
+            </div>
+
+            <div class="text-right">
+                <p class="font-semibold">E-Way Bill No.</p>
+                <p>{{ $eWayBill->eway_bill_no }}</p>
+                <p class="mt-1 text-xs text-slate-500">
+                    {{ optional($eWayBill->created_at)->format('d M Y, h:i A') }}
+                </p>
+            </div>
         </div>
         <div class="grid grid-cols-1 gap-6 py-5 md:grid-cols-2">
             <div><p class="mb-2 font-semibold">From</p><p>{{ config('app.company_name') }}</p><p>{{ config('app.company_address') }}</p><p>GSTIN: {{ config('app.company_gstin') ?: '-' }}</p></div>
