@@ -6,6 +6,7 @@ use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Sales\Models\Invoice;
+use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Tally\Services\TallyExportService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
@@ -16,26 +17,42 @@ use Illuminate\Support\Facades\Log;
  */
 class TallyAutoEnqueueObserver
 {
-    public function __construct(protected TallyExportService $tallyService) {}
-
+    public function __construct(
+        protected TallyExportService $tallyService
+    ) {
+    }
     public function created(Model $model): void
     {
-        $this->maybeEnqueue($model);
-    }
-
-    public function updated(Model $model): void
-    {
-        // Only re-enqueue if `status` transitioned to a posted-like state.
-        if (! $model->wasChanged('status')) {
+        // Purchase Orders should sync to Tally only after approval.
+        if ($model instanceof PurchaseOrder) {
             return;
         }
 
         $this->maybeEnqueue($model);
     }
 
+    public function updated(Model $model): void
+    {
+        if (! $model->wasChanged('status')) {
+            return;
+        }
+
+        // Purchase Orders sync only when they become approved.
+        if ($model instanceof PurchaseOrder && $model->status !== 'approved') {
+            return;
+        }
+
+        $this->maybeEnqueue($model);
+    }
     protected function maybeEnqueue(Model $model): void
     {
-        if (! ($model instanceof Invoice || $model instanceof Payment || $model instanceof CreditNote || $model instanceof PurchaseInvoice)) {
+        if (! (
+            $model instanceof Invoice ||
+            $model instanceof Payment ||
+            $model instanceof CreditNote ||
+            $model instanceof PurchaseInvoice ||
+            $model instanceof PurchaseOrder
+        )) {
             return;
         }
 

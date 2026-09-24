@@ -14,6 +14,21 @@ require __DIR__.'/modules/payment-public.php';
 require __DIR__.'/modules/crm-public.php';
 require __DIR__.'/modules/tally-connector-public.php';
 
+Route::post(
+    '/api/tally-connector/import/uoms',
+    [\App\Http\Controllers\Tally\TallyImportController::class, 'uoms']
+);
+
+Route::post(
+    '/api/tally-connector/import/products',
+    [\App\Http\Controllers\Tally\TallyImportController::class, 'products']
+);
+
+Route::post('/api/tally-connector/import/godowns', [
+    \App\Http\Controllers\Tally\TallyImportController::class,
+    'godowns',
+]);
+
 Route::get('/invoice/qr/{type}/{token}', [
     \App\Http\Controllers\InvoiceQrController::class,
     'show',

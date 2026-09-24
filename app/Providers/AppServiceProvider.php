@@ -11,6 +11,7 @@ use App\Domains\Master\Services\ProductDiscountService;
 use App\Domains\Order\Models\Order;
 use App\Domains\Order\Services\OrderConversionService;
 use App\Domains\Payment\Models\CreditNote;
+use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Payment\Services\OutstandingLedgerService;
 use App\Domains\Payment\Services\PaymentLinkService;
@@ -48,5 +49,6 @@ class AppServiceProvider extends ServiceProvider
         Payment::observe(TallyAutoEnqueueObserver::class);
         CreditNote::observe(TallyAutoEnqueueObserver::class);
         PurchaseInvoice::observe(TallyAutoEnqueueObserver::class);
+        PurchaseOrder::observe(TallyAutoEnqueueObserver::class);
     }
 }

@@ -6,6 +6,7 @@ use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Sales\Models\Invoice;
+use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Tally\Models\TallySyncQueue;
 use App\Jobs\ProcessTallySyncJob;
 use Illuminate\Database\Eloquent\Model;
@@ -20,6 +21,11 @@ class TallyExportService
             'payment' => $this->buildPaymentXml($document instanceof Payment ? $document : throw new InvalidArgumentException('Expected Payment')),
             'credit_note' => $this->buildCreditNoteXml($document instanceof CreditNote ? $document : throw new InvalidArgumentException('Expected CreditNote')),
             'purchase_invoice' => $this->buildPurchaseInvoiceXml($document instanceof PurchaseInvoice ? $document : throw new InvalidArgumentException('Expected PurchaseInvoice')),
+            'purchase_order' => $this->buildPurchaseOrderXml(
+                $document instanceof PurchaseOrder
+                    ? $document
+                    : throw new InvalidArgumentException('Expected PurchaseOrder')
+            ),
             default => throw new InvalidArgumentException("Unsupported Tally document type [{$documentType}]"),
         };
 
@@ -45,6 +51,7 @@ class TallyExportService
             Payment::class => 'payment',
             CreditNote::class => 'credit_note',
             PurchaseInvoice::class => 'purchase_invoice',
+            PurchaseOrder::class => 'purchase_order',
         ];
 
         $type = $map[$document::class] ?? null;
@@ -144,13 +151,96 @@ XML);
         $date = optional($invoice->invoice_date)->format('Ymd') ?? now()->format('Ymd');
 
         return $this->wrap('PURCHASE_INVOICE', <<<XML
-<VOUCHER VCHTYPE="Purchase" ACTION="Create">
- <DATE>{$date}</DATE>
- <VOUCHERNUMBER>{$voucher}</VOUCHERNUMBER>
- <PARTYLEDGERNAME>{$party}</PARTYLEDGERNAME>
- <AMOUNT>{$invoice->grand_total}</AMOUNT>
-</VOUCHER>
-XML);
+        <VOUCHER VCHTYPE="Purchase" ACTION="Create">
+        <DATE>{$date}</DATE>
+        <VOUCHERNUMBER>{$voucher}</VOUCHERNUMBER>
+        <PARTYLEDGERNAME>{$party}</PARTYLEDGERNAME>
+        <AMOUNT>{$invoice->grand_total}</AMOUNT>
+        </VOUCHER>
+        XML);
+    }
+
+    public function buildPurchaseOrderXml(PurchaseOrder $purchaseOrder): string
+    {
+        $purchaseOrder->loadMissing([
+            'supplier',
+            'warehouse',
+            'items.product',
+            'items.uom',
+        ]);
+
+        $party = htmlspecialchars(
+            $purchaseOrder->supplier?->name ?? 'Supplier',
+            ENT_XML1
+        );
+
+        $reference = htmlspecialchars(
+            $purchaseOrder->po_no ?? ('PO-'.$purchaseOrder->id),
+            ENT_XML1
+        );
+
+        $date = $purchaseOrder->po_date?->format('Ymd')
+            ?? now()->format('Ymd');
+
+        $orderDueDate = $purchaseOrder->expected_date?->format('Ymd')
+            ?? $date;
+
+        $warehouse = htmlspecialchars(
+            $purchaseOrder->warehouse?->name ?? 'Main Location',
+            ENT_XML1
+        );
+
+        $lines = '';
+
+        foreach ($purchaseOrder->items as $item) {
+            $stockItem = htmlspecialchars(
+                $item->product?->name ?? 'Item',
+                ENT_XML1
+            );
+
+            $uom = htmlspecialchars(
+                $item->uom?->name ?? 'Nos',
+                ENT_XML1
+            );
+
+            $quantity = (float) $item->quantity;
+            $rate = (float) $item->unit_cost;
+            $amount = $quantity * $rate;
+
+            $amount = number_format($amount, 2, '.', '');
+
+            $lines .= <<<XML
+    <ALLINVENTORYENTRIES.LIST>
+    <STOCKITEMNAME>{$stockItem}</STOCKITEMNAME>
+    <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+    <ACTUALQTY>{$quantity} {$uom}</ACTUALQTY>
+    <BILLEDQTY>{$quantity} {$uom}</BILLEDQTY>
+    <RATE>{$rate}</RATE>
+    <AMOUNT>-{$amount}</AMOUNT>
+    <BATCHALLOCATIONS.LIST>
+    <GODOWNNAME>{$warehouse}</GODOWNNAME>
+    <BATCHNAME>Primary Batch</BATCHNAME>
+    <ORDERNO>{$reference}</ORDERNO>
+    <ORDERDUEDATE>{$orderDueDate}</ORDERDUEDATE>
+    <AMOUNT>-{$amount}</AMOUNT>
+    <ACTUALQTY>{$quantity} {$uom}</ACTUALQTY>
+    <BILLEDQTY>{$quantity} {$uom}</BILLEDQTY>
+    </BATCHALLOCATIONS.LIST>
+    </ALLINVENTORYENTRIES.LIST>
+    XML;
+        }
+
+        return $this->wrap('PURCHASE_ORDER', <<<XML
+    <VOUCHER VCHTYPE="Purchase Order" ACTION="Create">
+    <DATE>{$date}</DATE>
+    <VOUCHERNUMBER></VOUCHERNUMBER>
+    <VOUCHERTYPENAME>Purchase Order</VOUCHERTYPENAME>
+    <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>
+    <REFERENCE>{$reference}</REFERENCE>
+    <PARTYLEDGERNAME>{$party}</PARTYLEDGERNAME>
+    {$lines}
+    </VOUCHER>
+    XML);
     }
 
     protected function wrap(string $type, string $inner): string
