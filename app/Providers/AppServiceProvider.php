@@ -4,7 +4,9 @@ namespace App\Providers;
 
 use App\Domains\Communication\Services\CommunicationService;
 use App\Domains\Inventory\Services\StockMovementService;
+use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
+use App\Domains\Master\Models\Uom;
 use App\Domains\Master\Observers\ProductPriceObserver;
 use App\Domains\Master\Services\PriceMasterService;
 use App\Domains\Master\Services\ProductDiscountService;
@@ -44,7 +46,13 @@ class AppServiceProvider extends ServiceProvider
         // Automatically snapshot master pricing whenever it changes.
         Product::observe(ProductPriceObserver::class);
 
-        // Auto-enqueue supported documents to the Tally sync queue on post.
+        // ── Tally sync ──────────────────────────────────────────────────
+        // Masters (Product, Customer, UOM) — sync on every save/update.
+        Product::observe(TallyAutoEnqueueObserver::class);
+        Customer::observe(TallyAutoEnqueueObserver::class);
+        Uom::observe(TallyAutoEnqueueObserver::class);
+
+        // Vouchers — sync only when they reach a posted status.
         Invoice::observe(TallyAutoEnqueueObserver::class);
         Payment::observe(TallyAutoEnqueueObserver::class);
         CreditNote::observe(TallyAutoEnqueueObserver::class);
@@ -52,3 +60,4 @@ class AppServiceProvider extends ServiceProvider
         PurchaseOrder::observe(TallyAutoEnqueueObserver::class);
     }
 }
+

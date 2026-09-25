@@ -16,7 +16,7 @@ class TallyConnectorController extends Controller
             'service' => 'dms-tally-connector',
             'use_connector' => (bool) config('services.tally.use_connector'),
             'company' => config('services.tally.company'),
-            'pending' => TallySyncQueue::query()->whereIn('status', ['pending', 'failed'])->count(),
+            'pending' => TallySyncQueue::query()->where('status', 'pending')->count(),
         ]);
     }
 
@@ -25,7 +25,7 @@ class TallyConnectorController extends Controller
         $limit = min(50, max(1, (int) $request->integer('limit', 10)));
 
         $items = TallySyncQueue::query()
-            ->whereIn('status', ['pending', 'failed'])
+            ->where('status', 'pending')
             ->whereNotNull('payload')
             ->where('payload', '!=', '')
             ->orderBy('id')
@@ -52,17 +52,47 @@ class TallyConnectorController extends Controller
                 'status' => 'sent',
                 'sent_at' => now(),
                 'last_error' => null,
+                'last_response' => $data['response'] ?? null,
                 'attempts' => $tally_sync_queue->attempts + 1,
             ]);
-        } else {
-            $error = $data['error'] ?? 'Connector reported failure';
-            if (! empty($data['response'])) {
-                $error .= ' | Tally: '.mb_substr($data['response'], 0, 500);
-            }
 
+            if (!empty($data['response'])) {
+                try {
+                    $xml = simplexml_load_string($data['response']);
+                    $lastVchId = (string) ($xml->BODY->DATA->IMPORTRESULT->LASTVCHID ?? '');
+                    if ($lastVchId !== '') {
+                        $documentClass = null;
+                        switch ($tally_sync_queue->document_type) {
+                            case 'invoice': $documentClass = \App\Domains\Sales\Models\Invoice::class; break;
+                            case 'payment': $documentClass = \App\Domains\Payment\Models\Payment::class; break;
+                            case 'credit_note': $documentClass = \App\Domains\Payment\Models\CreditNote::class; break;
+                            case 'purchase_invoice': $documentClass = \App\Domains\Purchasing\Models\PurchaseInvoice::class; break;
+                            case 'purchase_order': $documentClass = \App\Domains\Purchasing\Models\PurchaseOrder::class; break;
+                        }
+                        
+                        if ($documentClass) {
+                            $doc = $documentClass::find($tally_sync_queue->document_id);
+                            if ($doc) {
+                                app(\App\Domains\Tally\Services\TallySyncMappingService::class)->createOrUpdate(
+                                    $doc,
+                                    $documentClass,
+                                    'voucher',
+                                    $lastVchId,
+                                    $tally_sync_queue->document_type . '_' . $tally_sync_queue->document_id,
+                                    'synced'
+                                );
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // Ignore XML parse errors
+                }
+            }
+        } else {
             $tally_sync_queue->update([
                 'status' => 'failed',
-                'last_error' => $error,
+                'last_error' => $data['error'] ?? 'Connector reported failure',
+                'last_response' => $data['response'] ?? null,
                 'attempts' => $tally_sync_queue->attempts + 1,
             ]);
         }
