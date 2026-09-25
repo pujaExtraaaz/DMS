@@ -117,156 +117,164 @@ class TallyImportService
     }
 
     public function syncProducts(array $items, int $companyId): array
-{
-    $created = 0;
-    $updated = 0;
-    $skipped = 0;
+    {
+        $created = 0;
+        $updated = 0;
+        $skipped = 0;
 
-    DB::transaction(function () use (
-        $items,
-        $companyId,
-        &$created,
-        &$updated,
-        &$skipped
-    ) {
-        foreach ($items as $item) {
-            $name = trim((string) ($item['name'] ?? ''));
-            $tallyGuid = trim((string) ($item['guid'] ?? ''));
-            $baseUnits = trim((string) ($item['base_units'] ?? ''));
-
-            /*
-             * Tally GUID is the authoritative identity.
-             */
-            if ($name === '' || $tallyGuid === '') {
-                $skipped++;
-                continue;
-            }
-
-            /*
-             * Resolve the Tally UOM to an existing DMS UOM.
-             *
-             * UOMs have already been synchronized from Tally,
-             * so we should not silently create a new UOM here.
-             */
-            $uom = null;
-
-            if ($baseUnits !== '') {
-                $uom = Uom::query()
-                    ->whereRaw(
-                        'LOWER(name) = ?',
-                        [mb_strtolower($baseUnits)]
-                    )
-                    ->orWhereRaw(
-                        'LOWER(code) = ?',
-                        [mb_strtolower($baseUnits)]
-                    )
-                    ->first();
-            }
-
-            /*
-             * A Product without its Tally UOM cannot be imported
-             * correctly when Tally supplied a BaseUnits value.
-             */
-            if ($baseUnits !== '' && ! $uom) {
-                $skipped++;
-                continue;
-            }
-
-            /*
-             * First look for an existing Tally mapping.
-             *
-             * This is what makes the import idempotent:
-             * importing the same Tally product again must update
-             * the same DMS product instead of creating another one.
-             */
-            $mapping = $this->mappingService->findForTally(
-                'stock_item',
-                $tallyGuid
-            );
-
-            $product = null;
-
-            if ($mapping) {
-                $product = Product::query()->find($mapping->entity_id);
+        DB::transaction(function () use (
+            $items,
+            $companyId,
+            &$created,
+            &$updated,
+            &$skipped
+        ) {
+            foreach ($items as $item) {
+                $name = trim((string) ($item['name'] ?? ''));
+                $tallyGuid = trim((string) ($item['guid'] ?? ''));
+                $baseUnits = trim((string) ($item['base_units'] ?? ''));
 
                 /*
-                 * If the mapping points to a deleted/non-existing
-                 * DMS product, we'll recreate the product below.
-                 */
-                if (! $product) {
-                    $mapping = null;
+                * Tally GUID is the authoritative identity.
+                */
+                if ($name === '' || $tallyGuid === '') {
+                    $skipped++;
+                    continue;
                 }
-            }
 
-            if ($product) {
-                $product->update([
-                    'company_id' => $companyId,
-                    'name' => $name,
-                    'base_uom_id' => $uom?->id,
-                    'tracking_type' => $product->tracking_type ?: 'none',
-                    'is_active' => true,
-                ]);
+                /*
+                * Resolve the Tally UOM to an existing DMS UOM.
+                *
+                * UOMs have already been synchronized from Tally,
+                * so we should not silently create a new UOM here.
+                */
+                $uom = null;
 
-                $updated++;
-            } else {
-                $product = Product::create([
-                    'company_id' => $companyId,
-                    'name' => $name,
-                    'sku' => CodeGenerator::forProduct($companyId),
-                    'serial_no' => CodeGenerator::forProductSerial(),
-                    'base_uom_id' => $uom?->id,
-                    'tracking_type' => 'none',
-                    'is_active' => true,
-                ]);
+                if ($baseUnits !== '') {
+                    $uom = Uom::query()
+                        ->whereRaw(
+                            'LOWER(name) = ?',
+                            [mb_strtolower($baseUnits)]
+                        )
+                        ->orWhereRaw(
+                            'LOWER(code) = ?',
+                            [mb_strtolower($baseUnits)]
+                        )
+                        ->first();
+                }
 
-                $created++;
-            }
+                /*
+                * A Product without its Tally UOM cannot be imported
+                * correctly when Tally supplied a BaseUnits value.
+                */
+                if ($baseUnits !== '' && ! $uom) {
+                    $skipped++;
+                    continue;
+                }
 
-            /*
-             * Keep ProductUom synchronized with the Product's
-             * Tally BaseUnits.
-             */
-            if ($uom) {
-                ProductUom::query()->updateOrCreate(
-                    [
-                        'product_id' => $product->id,
-                        'uom_id' => $uom->id,
-                    ],
-                    [
-                        'conversion_factor' => 1,
-                        'is_base' => true,
-                        'label' => 'Base',
-                        'selling_price' => $product->selling_price ?? 0,
-                        'trade_price' => $product->trade_price ?? 0,
-                        'purchase_price' => $product->purchase_price ?? 0,
-                        'mrp' => $product->calculation_mrp ?? 0,
-                        'is_default_sales' => true,
+                /*
+                * First look for an existing Tally mapping.
+                *
+                * This is what makes the import idempotent:
+                * importing the same Tally product again must update
+                * the same DMS product instead of creating another one.
+                */
+                $mapping = $this->mappingService->findForTally(
+                    'stock_item',
+                    $tallyGuid
+                );
+
+                $product = null;
+
+                if ($mapping) {
+                    $product = Product::query()->find($mapping->entity_id);
+
+                    /*
+                    * If the mapping points to a deleted/non-existing
+                    * DMS product, we'll recreate the product below.
+                    */
+                    if (! $product) {
+                        $mapping = null;
+                    }
+                }
+
+                // Fallback: Check if a product with the exact same name exists
+                if (! $product) {
+                    $product = Product::query()
+                        ->where('company_id', $companyId)
+                        ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+                        ->first();
+                }
+
+                if ($product) {
+                    $product->update([
+                        'company_id' => $companyId,
+                        'name' => $name,
+                        'base_uom_id' => $uom?->id,
+                        'tracking_type' => $product->tracking_type ?: 'none',
                         'is_active' => true,
-                    ]
+                    ]);
+
+                    $updated++;
+                } else {
+                    $product = Product::create([
+                        'company_id' => $companyId,
+                        'name' => $name,
+                        'sku' => CodeGenerator::forProduct($companyId),
+                        'serial_no' => CodeGenerator::forProductSerial(),
+                        'base_uom_id' => $uom?->id,
+                        'tracking_type' => 'none',
+                        'is_active' => true,
+                    ]);
+
+                    $created++;
+                }
+
+                /*
+                * Keep ProductUom synchronized with the Product's
+                * Tally BaseUnits.
+                */
+                if ($uom) {
+                    ProductUom::query()->updateOrCreate(
+                        [
+                            'product_id' => $product->id,
+                            'uom_id' => $uom->id,
+                        ],
+                        [
+                            'conversion_factor' => 1,
+                            'is_base' => true,
+                            'label' => 'Base',
+                            'selling_price' => $product->selling_price ?? 0,
+                            'trade_price' => $product->trade_price ?? 0,
+                            'purchase_price' => $product->purchase_price ?? 0,
+                            'mrp' => $product->calculation_mrp ?? 0,
+                            'is_default_sales' => true,
+                            'is_active' => true,
+                        ]
+                    );
+                }
+
+                /*
+                * Store the permanent Tally → DMS relationship.
+                */
+                $this->mappingService->createOrUpdate(
+                    $product,
+                    Product::class,
+                    'stock_item',
+                    $tallyGuid,
+                    $name,
+                    'synced'
                 );
             }
+        });
 
-            /*
-             * Store the permanent Tally → DMS relationship.
-             */
-            $this->mappingService->createOrUpdate(
-                $product,
-                Product::class,
-                'stock_item',
-                $tallyGuid,
-                $name,
-                'synced'
-            );
-        }
-    });
-
-    return [
-        'created' => $created,
-        'updated' => $updated,
-        'skipped' => $skipped,
-        'total' => count($items),
-    ];
-}
+        return [
+            'created' => $created,
+            'updated' => $updated,
+            'skipped' => $skipped,
+            'total' => count($items),
+        ];
+    }
     public function syncGodowns(
     array $items,
     int $companyId,
