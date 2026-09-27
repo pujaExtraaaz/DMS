@@ -42,11 +42,66 @@
                     @endforeach
                 </x-ui.select>
                 <x-ui.input name="color_variant" label="Color / Variant" :value="old('color_variant', $item->color_variant)" placeholder="e.g. Red, 128GB, Silver" />
-                <x-ui.select name="tracking_type" label="Tracking Type">
-                    @foreach(['none'=>'Non-tracked','serial'=>'Serial-wise','batch'=>'Batch-wise'] as $val=>$label)
-                        <option value="{{ $val }}" @selected(old('tracking_type', $item->tracking_type ?? 'none')==$val)>{{ $label }}</option>
-                    @endforeach
-                </x-ui.select>
+                
+                @php
+                    $rawTracking = old('tracking_type', $item->tracking_type ?? 'none');
+                    if (is_array($rawTracking)) {
+                        $selectedTracking = $rawTracking;
+                    } elseif (is_string($rawTracking) && filled($rawTracking) && $rawTracking !== 'none') {
+                        if (str_starts_with($rawTracking, '[') && str_ends_with($rawTracking, ']')) {
+                            $selectedTracking = json_decode($rawTracking, true) ?: [];
+                        } else {
+                            $selectedTracking = array_map('trim', explode(',', $rawTracking));
+                        }
+                    } else {
+                        $selectedTracking = [];
+                    }
+                    $selectedTracking = array_values(array_filter($selectedTracking, fn($t) => $t !== 'none'));
+                @endphp
+                <div x-data="{
+                    options: ['serial', 'batch'],
+                    selected: @json($selectedTracking),
+                    get allSelected() {
+                        return this.options.length > 0 && this.options.every(opt => this.selected.includes(opt));
+                    },
+                    get isIndeterminate() {
+                        return this.selected.length > 0 && !this.allSelected;
+                    },
+                    toggleAll(e) {
+                        if (e.target.checked) {
+                            this.selected = [...this.options];
+                        } else {
+                            this.selected = [];
+                        }
+                    }
+                }" class="space-y-1">
+                    <label class="block text-sm font-medium text-slate-700">Tracking Type</label>
+                    <div class="rounded-lg border border-slate-300 p-3 bg-white space-y-2.5">
+                        <label class="flex items-center gap-2 text-sm font-semibold text-slate-800 cursor-pointer">
+                            <input type="checkbox"
+                                   :checked="allSelected"
+                                   :indeterminate.prop="isIndeterminate"
+                                   @change="toggleAll($event)"
+                                   class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            Select All
+                        </label>
+                        <div class="flex flex-wrap gap-4 pt-2 border-t border-slate-100">
+                            @foreach(['serial' => 'Serial-wise', 'batch' => 'Batch-wise'] as $val => $label)
+                                <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                    <input type="checkbox"
+                                           name="tracking_type[]"
+                                           value="{{ $val }}"
+                                           x-model="selected"
+                                           class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                    {{ $label }}
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                    @error('tracking_type')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
             </div>
         </div>
 
@@ -58,51 +113,6 @@
                 <x-ui.input name="purchase_price" label="Purchase Price" type="number" step="0.01" :value="old('purchase_price', $item->purchase_price ?? 0)" />
                 <x-ui.input name="trade_price" label="Trade Price" type="number" step="0.01" :value="old('trade_price', $item->trade_price ?? 0)" />
                 <x-ui.input name="selling_price" label="Selling Price" type="number" step="0.01" :value="old('selling_price', $item->selling_price ?? 0)" />
-            </div>
-        </div>
-
-        <div>
-            <h3 class="text-sm font-semibold text-slate-700 mb-3">Discount rules</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <x-ui.select name="discount_type" label="Product Discount Type">
-                    <option value="percent" @selected(old('discount_type', $item->discount_type ?? 'percent')==='percent')>Percentage (%)</option>
-                    <option value="flat" @selected(old('discount_type', $item->discount_type ?? 'percent')==='flat')>Flat Amount (₹)</option>
-                </x-ui.select>
-                <x-ui.input name="discount_value" label="Product Discount Value" type="number" step="0.01" :value="old('discount_value', $item->discount_value ?? 0)" />
-                <div class="flex items-end">
-                    <label class="flex items-center gap-2 text-sm">
-                        <input type="checkbox" name="apply_discount_on_payable" value="1"
-                               @checked(old('apply_discount_on_payable', $item->apply_discount_on_payable ?? false))
-                               class="rounded border-gray-300 text-indigo-600">
-                        Apply discount at billing (auto-applied on payable)
-                    </label>
-                </div>
-
-                <x-ui.select name="selling_discount_type" label="Selling-time Discount Type">
-                    <option value="percent" @selected(old('selling_discount_type', $item->selling_discount_type ?? 'percent')==='percent')>Percentage (%)</option>
-                    <option value="flat" @selected(old('selling_discount_type', $item->selling_discount_type ?? 'percent')==='flat')>Flat Amount (₹)</option>
-                </x-ui.select>
-                <x-ui.input name="selling_discount_value" label="Selling-time Discount Value" type="number" step="0.01" :value="old('selling_discount_value', $item->selling_discount_value ?? 0)" />
-                <div></div>
-            </div>
-            <p class="mt-2 text-xs text-slate-500">Product Discount is stored on master; Selling-time Discount is the default offered at billing but can still be overridden per invoice line.</p>
-        </div>
-
-        <div>
-            <h3 class="text-sm font-semibold text-slate-700 mb-3">Warranty (split by party)</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <x-ui.input name="sender_warranty_months" label="Sender / Supplier Warranty (months)" type="number" min="0"
-                            :value="old('sender_warranty_months', $item->sender_warranty_months)" />
-                <x-ui.input name="customer_warranty_months" label="Customer Warranty (months)" type="number" min="0"
-                            :value="old('customer_warranty_months', $item->customer_warranty_months)" />
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Sender Warranty Terms</label>
-                    <textarea name="sender_warranty_terms" rows="3" class="block w-full rounded-lg border-gray-300 text-sm">{{ old('sender_warranty_terms', $item->sender_warranty_terms) }}</textarea>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Customer Warranty Terms</label>
-                    <textarea name="customer_warranty_terms" rows="3" class="block w-full rounded-lg border-gray-300 text-sm">{{ old('customer_warranty_terms', $item->customer_warranty_terms) }}</textarea>
-                </div>
             </div>
         </div>
 
@@ -217,6 +227,10 @@
         {{-- Legacy hidden fields — kept for backward compatibility, no longer surfaced in the form --}}
         <input type="hidden" name="warranty_months" value="{{ old('warranty_months', $item->warranty_months ?? '') }}">
         <input type="hidden" name="warranty_terms" value="{{ old('warranty_terms', $item->warranty_terms ?? '') }}">
+        <input type="hidden" name="sender_warranty_months" value="{{ old('sender_warranty_months', $item->sender_warranty_months ?? '') }}">
+        <input type="hidden" name="sender_warranty_terms" value="{{ old('sender_warranty_terms', $item->sender_warranty_terms ?? '') }}">
+        <input type="hidden" name="customer_warranty_months" value="{{ old('customer_warranty_months', $item->customer_warranty_months ?? '') }}">
+        <input type="hidden" name="customer_warranty_terms" value="{{ old('customer_warranty_terms', $item->customer_warranty_terms ?? '') }}">
         <input type="hidden" name="discount_percent" value="{{ old('discount_percent', $item->discount_percent ?? 0) }}">
         <input type="hidden" name="aging_threshold_days" value="{{ old('aging_threshold_days', $item->aging_threshold_days ?? '') }}">
         <input type="hidden" name="credit_period_days" value="{{ old('credit_period_days', $item->credit_period_days ?? '') }}">

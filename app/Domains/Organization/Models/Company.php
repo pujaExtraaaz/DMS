@@ -69,4 +69,32 @@ class Company extends Model
     {
         return $this->financialYears()->where('is_current', true)->first();
     }
+
+    public function getContactsAttribute(): array
+    {
+        $primary = [
+            'phone' => $this->phone,
+            'email' => $this->email,
+            'website' => $this->website,
+            'state' => $this->state,
+            'pincode' => $this->pincode,
+            'address' => $this->address,
+        ];
+        $additional = $this->additional_details['contacts'] ?? [];
+
+        return array_merge([$primary], $additional);
+    }
+
+    public function getBankAccountsAttribute(): array
+    {
+        $primary = [
+            'bank_name' => $this->bank_name,
+            'bank_account_no' => $this->bank_account_no,
+            'bank_ifsc' => $this->bank_ifsc,
+            'upi_id' => $this->upi_id,
+        ];
+        $additional = $this->additional_details['bank_accounts'] ?? [];
+
+        return array_merge([$primary], $additional);
+    }
 }

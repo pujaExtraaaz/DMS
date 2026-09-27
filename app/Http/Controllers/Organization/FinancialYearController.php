@@ -7,6 +7,7 @@ use App\Domains\Organization\Models\FinancialYear;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
@@ -104,7 +105,7 @@ class FinancialYearController extends Controller
     {
         $data = $request->validate([
             'company_id' => 'required|exists:companies,id',
-            'name' => 'required|string|max:50',
+            'name' => 'nullable|string|max:50',
             'starts_on' => 'required|date',
             'ends_on' => 'required|date|after:starts_on',
             'is_closed' => 'boolean',
@@ -112,6 +113,13 @@ class FinancialYearController extends Controller
         ]);
         $data['is_closed'] = $request->boolean('is_closed');
         $data['is_current'] = $request->boolean('is_current');
+
+        if (blank($data['name'] ?? null)) {
+            $startYear = Carbon::parse($data['starts_on'])->format('Y');
+            $endYear = Carbon::parse($data['ends_on'])->format('y');
+            $data['name'] = $fy?->name ?: "{$startYear}-{$endYear}";
+        }
+
         return $data;
     }
 }

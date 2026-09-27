@@ -6,8 +6,10 @@ use App\Domains\Catalog\Models\Brand;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
 use App\Support\CodeGenerator;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class BrandController extends Controller
@@ -18,7 +20,10 @@ class BrandController extends Controller
             ->when($request->filled('search'), fn ($q) => $q->where(function ($q) use ($request) {
                 $q->where('name', 'like', '%'.$request->search.'%')->orWhere('code', 'like', '%'.$request->search.'%');
             }))
-            ->latest()->paginate(15)->withQueryString();
+            ->orderBy('name', 'asc')
+            ->paginate(15)
+            ->withQueryString();
+
         return view('masters.brands.index', ['items' => $items, 'search' => $request->string('search')]);
     }
 
@@ -32,7 +37,15 @@ class BrandController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        Brand::create($this->validated($request));
+        try {
+            Brand::create($this->validated($request));
+        } catch (QueryException $e) {
+            if (isset($e->errorInfo[1]) && $e->errorInfo[1] === 1062) {
+                return back()->withInput()->withErrors(['name' => 'Brand name already exists.']);
+            }
+            throw $e;
+        }
+
         return $this->flashSuccess('Brand created successfully.', 'masters.brands.index');
     }
 
@@ -46,7 +59,15 @@ class BrandController extends Controller
 
     public function update(Request $request, Brand $brand): RedirectResponse
     {
-        $brand->update($this->validated($request, $brand));
+        try {
+            $brand->update($this->validated($request, $brand));
+        } catch (QueryException $e) {
+            if (isset($e->errorInfo[1]) && $e->errorInfo[1] === 1062) {
+                return back()->withInput()->withErrors(['name' => 'Brand name already exists.']);
+            }
+            throw $e;
+        }
+
         return $this->flashSuccess('Brand updated successfully.', 'masters.brands.index');
     }
 
@@ -58,12 +79,23 @@ class BrandController extends Controller
 
     protected function validated(Request $request, ?Brand $brand = null): array
     {
+        if ($request->has('name')) {
+            $request->merge(['name' => trim((string) $request->input('name'))]);
+        }
+
         $data = $request->validate([
             'company_id' => 'nullable|exists:companies,id',
-            'name' => 'required|string|max:255',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('brands', 'name')->ignore($brand?->id),
+            ],
             'code' => 'nullable|string|max:30|unique:brands,code'.($brand ? ','.$brand->id : ''),
             'detail' => 'nullable|string|max:2000',
             'is_active' => 'boolean',
+        ], [
+            'name.unique' => 'Brand name already exists.',
         ]);
         $data['is_active'] = $request->boolean('is_active');
         $data['company_id'] = $data['company_id'] ?? auth()->user()?->company_id;

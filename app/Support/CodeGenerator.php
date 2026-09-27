@@ -7,6 +7,7 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
+use App\Domains\Organization\Models\Company;
 use Illuminate\Support\Str;
 
 /**
@@ -18,6 +19,11 @@ use Illuminate\Support\Str;
  */
 class CodeGenerator
 {
+    public static function forCompany(): string
+    {
+        return self::next(Company::class, 'CMP', null, 'code');
+    }
+
     public static function forBrand(?int $companyId = null): string
     {
         return self::next(Brand::class, 'BR', $companyId, 'code');

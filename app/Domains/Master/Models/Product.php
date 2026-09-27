@@ -134,11 +134,39 @@ class Product extends Model
 
     public function isSerialTracked(): bool
     {
-        return $this->tracking_type === 'serial';
+        if (is_array($this->tracking_type)) {
+            return in_array('serial', $this->tracking_type, true);
+        }
+
+        return in_array('serial', explode(',', (string) $this->tracking_type), true)
+            || $this->tracking_type === 'serial';
     }
 
     public function isBatchTracked(): bool
     {
-        return $this->tracking_type === 'batch';
+        if (is_array($this->tracking_type)) {
+            return in_array('batch', $this->tracking_type, true);
+        }
+
+        return in_array('batch', explode(',', (string) $this->tracking_type), true)
+            || $this->tracking_type === 'batch';
+    }
+
+    public function getTrackingTypesAttribute(): array
+    {
+        $val = $this->tracking_type;
+        if (is_array($val)) {
+            return array_values(array_filter($val));
+        }
+        if (empty($val) || $val === 'none') {
+            return [];
+        }
+        if (str_starts_with((string) $val, '[') && str_ends_with((string) $val, ']')) {
+            $decoded = json_decode($val, true);
+            if (is_array($decoded)) {
+                return array_values(array_filter($decoded));
+            }
+        }
+        return array_values(array_filter(array_map('trim', explode(',', (string) $val))));
     }
 }

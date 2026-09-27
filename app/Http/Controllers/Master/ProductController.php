@@ -155,7 +155,8 @@ class ProductController extends Controller
             'catalog_link' => 'nullable|string|max:255',
             'image' => 'nullable|image|max:4096',
             'remove_image' => 'nullable|boolean',
-            'tracking_type' => 'nullable|in:none,serial,batch',
+            'tracking_type' => 'nullable',
+            'tracking_type.*' => 'nullable|string|in:none,serial,batch',
             'min_stock' => 'nullable|numeric|min:0',
             'reorder_level' => 'nullable|numeric|min:0',
             'aging_threshold_days' => 'nullable|integer|min:0',
@@ -175,18 +176,37 @@ class ProductController extends Controller
         ]);
 
         $data['is_active'] = $request->boolean('is_active');
-        $data['apply_discount_on_payable'] = $request->boolean('apply_discount_on_payable');
+        $data['apply_discount_on_payable'] = $request->has('apply_discount_on_payable')
+            ? $request->boolean('apply_discount_on_payable')
+            : ($product?->apply_discount_on_payable ?? false);
         $data['tax_rate'] = $data['tax_rate'] ?? 0;
         $data['selling_price'] = $data['selling_price'] ?? 0;
         $data['trade_price'] = $data['trade_price'] ?? 0;
         $data['purchase_price'] = $data['purchase_price'] ?? 0;
         $data['calculation_mrp'] = $data['calculation_mrp'] ?? 0;
-        $data['discount_percent'] = $data['discount_percent'] ?? 0;
-        $data['discount_type'] = $data['discount_type'] ?? 'percent';
-        $data['discount_value'] = $data['discount_value'] ?? 0;
-        $data['selling_discount_type'] = $data['selling_discount_type'] ?? 'percent';
-        $data['selling_discount_value'] = $data['selling_discount_value'] ?? 0;
-        $data['tracking_type'] = $data['tracking_type'] ?? 'none';
+        $data['discount_percent'] = $data['discount_percent'] ?? ($product?->discount_percent ?? 0);
+        $data['discount_type'] = $data['discount_type'] ?? ($product?->discount_type ?? 'percent');
+        $data['discount_value'] = $data['discount_value'] ?? ($product?->discount_value ?? 0);
+        $data['selling_discount_type'] = $data['selling_discount_type'] ?? ($product?->selling_discount_type ?? 'percent');
+        $data['selling_discount_value'] = $data['selling_discount_value'] ?? ($product?->selling_discount_value ?? 0);
+
+        $data['warranty_months'] = $data['warranty_months'] ?? ($product?->warranty_months ?? null);
+        $data['warranty_terms'] = $data['warranty_terms'] ?? ($product?->warranty_terms ?? null);
+        $data['sender_warranty_months'] = $data['sender_warranty_months'] ?? ($product?->sender_warranty_months ?? null);
+        $data['sender_warranty_terms'] = $data['sender_warranty_terms'] ?? ($product?->sender_warranty_terms ?? null);
+        $data['customer_warranty_months'] = $data['customer_warranty_months'] ?? ($product?->customer_warranty_months ?? null);
+        $data['customer_warranty_terms'] = $data['customer_warranty_terms'] ?? ($product?->customer_warranty_terms ?? null);
+
+        $trackingType = $request->input('tracking_type');
+        if (is_array($trackingType)) {
+            $cleaned = array_values(array_filter($trackingType, fn ($t) => filled($t) && $t !== 'none'));
+            $data['tracking_type'] = empty($cleaned) ? 'none' : implode(',', $cleaned);
+        } elseif (is_string($trackingType) && filled($trackingType)) {
+            $data['tracking_type'] = $trackingType;
+        } else {
+            $data['tracking_type'] = 'none';
+        }
+
         $data['min_stock'] = $data['min_stock'] ?? 0;
         $data['reorder_level'] = $data['reorder_level'] ?? 0;
         $data['company_id'] = auth()->user()?->company_id ?? Company::query()->value('id');

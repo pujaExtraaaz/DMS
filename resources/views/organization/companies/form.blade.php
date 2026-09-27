@@ -12,14 +12,7 @@
             <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <x-ui.input name="name" label="Trade Name" :value="old('name', $item->name)" required />
-                <x-ui.input name="code" label="Short Code" :value="old('code', $item->code)" required />
                 <x-ui.input name="legal_name" label="Legal Name" :value="old('legal_name', $item->legal_name)" />
-                <x-ui.select name="business_group_id" label="Business Group" placeholder="Select">
-                    <option value=""></option>
-                    @foreach($businessGroups as $g)
-                        <option value="{{ $g->id }}" @selected(old('business_group_id', $item->business_group_id)==$g->id)>{{ $g->name }}</option>
-                    @endforeach
-                </x-ui.select>
             </div>
         </div>
 
@@ -36,42 +29,163 @@
                         <option value="{{ $val }}" @selected(old('msme_category', $item->msme_category ?? 'none')===$val)>{{ $label }}</option>
                     @endforeach
                 </x-ui.select>
-                <x-ui.input name="msme_registration_no" label="MSME Registration No" :value="old('msme_registration_no', $item->msme_registration_no)" />
             </div>
         </div>
 
-        <div>
-            <h3 class="text-sm font-semibold text-slate-700 mb-3">Contact</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <x-ui.input name="phone" label="Phone" :value="old('phone', $item->phone)" />
-                <x-ui.input name="email" label="Email" type="email" :value="old('email', $item->email)" />
-                <x-ui.input name="website" label="Website" :value="old('website', $item->website)" />
-                <x-ui.input name="state" label="State" :value="old('state', $item->state)" />
-                <x-ui.input name="pincode" label="Pincode" :value="old('pincode', $item->pincode)" />
+        @php
+            $contacts = old('contacts');
+            if (empty($contacts)) {
+                if ($item->exists) {
+                    $primary = [
+                        'phone' => $item->phone ?? '',
+                        'email' => $item->email ?? '',
+                        'website' => $item->website ?? '',
+                        'state' => $item->state ?? '',
+                        'pincode' => $item->pincode ?? '',
+                        'address' => $item->address ?? '',
+                    ];
+                    $additional = $item->additional_details['contacts'] ?? [];
+                    $contacts = array_merge([$primary], $additional);
+                } else {
+                    $contacts = [[
+                        'phone' => '',
+                        'email' => '',
+                        'website' => '',
+                        'state' => '',
+                        'pincode' => '',
+                        'address' => '',
+                    ]];
+                }
+            }
+        @endphp
+
+        <div x-data='{ contacts: @json($contacts) }' class="space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-slate-700">Contact</h3>
+                <button type="button"
+                        @click='contacts.push({ phone: "", email: "", website: "", state: "", pincode: "", address: "" })'
+                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
+                    + ADD
+                </button>
             </div>
-            <div class="mt-3">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                <textarea name="address" rows="3" class="block w-full rounded-lg border-gray-300 text-sm">{{ old('address', $item->address) }}</textarea>
+
+            <div class="space-y-4">
+                <template x-for="(contact, index) in contacts" :key="index">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Contact #${index + 1}`"></span>
+                            <button type="button"
+                                    x-show="contacts.length > 1"
+                                    @click="contacts.splice(index, 1)"
+                                    class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
+                                Remove
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Phone</label>
+                                <input type="text" :name="`contacts[${index}][phone]`" x-model="contact.phone" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Email</label>
+                                <input type="email" :name="`contacts[${index}][email]`" x-model="contact.email" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Website</label>
+                                <input type="text" :name="`contacts[${index}][website]`" x-model="contact.website" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">State</label>
+                                <input type="text" :name="`contacts[${index}][state]`" x-model="contact.state" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Pincode</label>
+                                <input type="text" :name="`contacts[${index}][pincode]`" x-model="contact.pincode" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Address</label>
+                            <textarea :name="`contacts[${index}][address]`" x-model="contact.address" rows="3" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
 
-        <div>
-            <h3 class="text-sm font-semibold text-slate-700 mb-3">Banking &amp; Payments</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <x-ui.input name="bank_name" label="Bank Name" :value="old('bank_name', $item->bank_name)" />
-                <x-ui.input name="bank_account_no" label="Bank Account No" :value="old('bank_account_no', $item->bank_account_no)" />
-                <x-ui.input name="bank_ifsc" label="IFSC" :value="old('bank_ifsc', $item->bank_ifsc)" />
-                <x-ui.input name="upi_id" label="UPI ID (for invoice QR)" :value="old('upi_id', $item->upi_id)" placeholder="business@bank" />
+        @php
+            $bankAccounts = old('bank_accounts');
+            if (empty($bankAccounts)) {
+                if ($item->exists) {
+                    $primaryBank = [
+                        'bank_name' => $item->bank_name ?? '',
+                        'bank_account_no' => $item->bank_account_no ?? '',
+                        'bank_ifsc' => $item->bank_ifsc ?? '',
+                        'upi_id' => $item->upi_id ?? '',
+                    ];
+                    $additionalBanks = $item->additional_details['bank_accounts'] ?? [];
+                    $bankAccounts = array_merge([$primaryBank], $additionalBanks);
+                } else {
+                    $bankAccounts = [[
+                        'bank_name' => '',
+                        'bank_account_no' => '',
+                        'bank_ifsc' => '',
+                        'upi_id' => '',
+                    ]];
+                }
+            }
+        @endphp
+
+        <div x-data='{ bankAccounts: @json($bankAccounts) }' class="space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-slate-700">Banking &amp; Payments</h3>
+                <button type="button"
+                        @click='bankAccounts.push({ bank_name: "", bank_account_no: "", bank_ifsc: "", upi_id: "" })'
+                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
+                    + ADD
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <template x-for="(account, index) in bankAccounts" :key="index">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Bank Account #${index + 1}`"></span>
+                            <button type="button"
+                                    x-show="bankAccounts.length > 1"
+                                    @click="bankAccounts.splice(index, 1)"
+                                    class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
+                                Remove
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Bank Name</label>
+                                <input type="text" :name="`bank_accounts[${index}][bank_name]`" x-model="account.bank_name" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Bank Account No</label>
+                                <input type="text" :name="`bank_accounts[${index}][bank_account_no]`" x-model="account.bank_account_no" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">IFSC</label>
+                                <input type="text" :name="`bank_accounts[${index}][bank_ifsc]`" x-model="account.bank_ifsc" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">UPI ID (for invoice QR)</label>
+                                <input type="text" :name="`bank_accounts[${index}][upi_id]`" x-model="account.upi_id" placeholder="business@bank" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
 
         <div>
             <h3 class="text-sm font-semibold text-slate-700 mb-3">Preferences</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <x-ui.select name="due_date_basis" label="Due Date Basis" required>
-                    <option value="invoice_date" @selected(old('due_date_basis', $item->due_date_basis ?? 'invoice_date')==='invoice_date')>Invoice Date</option>
-                    <option value="inward_date" @selected(old('due_date_basis', $item->due_date_basis ?? 'invoice_date')==='inward_date')>Receive / Inward Date</option>
-                </x-ui.select>
             </div>
         </div>
 
