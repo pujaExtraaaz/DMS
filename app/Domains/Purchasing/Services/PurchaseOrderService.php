@@ -6,17 +6,18 @@ use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Payment\Models\SupplierPayable;
 use App\Domains\Purchasing\Models\PurchaseInward;
 use App\Domains\Purchasing\Models\PurchaseInwardItem;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseInvoiceItem;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Purchasing\Models\PurchaseOrderItem;
-use App\Domains\Purchasing\Models\SupplierPayable;
 use App\Domains\Purchasing\Models\VendorPriceHistory;
 use App\Models\User;
 use App\Support\DocumentNumberService;
 use App\Support\DueDateService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -28,109 +29,93 @@ class PurchaseOrderService
         protected StockMovementService $stockMovementService,
         protected SerialBatchService $serialBatchService,
         protected DueDateService $dueDateService,
-    ) {}
+        protected ?LandedCostService $landedCostService = null,
+    ) {
+        $this->landedCostService ??= app(LandedCostService::class);
+    }
 
+    /**
+     * Create a new draft PO with line items.
+     *
+     * @param  array{company_id?:int,branch_id?:int,supplier_id:int,warehouse_id?:int,order_date:string,expected_date?:string,notes?:string,items:array}  $data
+     */
     public function create(array $data, User $actor): PurchaseOrder
     {
         return DB::transaction(function () use ($data, $actor) {
-            $supplier = Customer::query()->findOrFail($data['supplier_id']);
             $items = $this->normalizeItems($data['items'] ?? []);
-
-            $subtotal = 0;
-            $taxAmount = 0;
-
-            foreach ($items as &$item) {
-                $line = $item['quantity'] * $item['unit_cost'];
-
-                $taxPercent = (float) ($item['tax_percent'] ?? 0);
-
-                // Automatically split total tax 50/50 unless
-                // the user has supplied an editable CGST/SGST split.
-                $cgstPercent = array_key_exists('cgst_percent', $item)
-                    ? (float) $item['cgst_percent']
-                    : ($taxPercent / 2);
-
-                $sgstPercent = array_key_exists('sgst_percent', $item)
-                    ? (float) $item['sgst_percent']
-                    : ($taxPercent / 2);
-
-                if (abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
-                    throw ValidationException::withMessages([
-                        'items' => 'CGST % and SGST % must add up to the total Tax % for every item.',
-                    ]);
-                }
-
-                $cgstAmount = $line * ($cgstPercent / 100);
-                $sgstAmount = $line * ($sgstPercent / 100);
-                $tax = $cgstAmount + $sgstAmount;
-
-                $item['cgst_percent'] = $cgstPercent;
-                $item['sgst_percent'] = $sgstPercent;
-                $item['cgst_amount'] = $cgstAmount;
-                $item['sgst_amount'] = $sgstAmount;
-
-                $subtotal += $line;
-                $taxAmount += $tax;
+            if (empty($items)) {
+                throw ValidationException::withMessages(['items' => 'At least one line item is required.']);
             }
 
-            unset($item);
-
-            $po = PurchaseOrder::create([
+            $order = PurchaseOrder::create([
                 'company_id' => $data['company_id'] ?? $actor->company_id,
                 'branch_id' => $data['branch_id'] ?? $actor->branch_id,
-                'warehouse_id' => $data['warehouse_id'] ?? null,
-                'supplier_id' => $supplier->id,
                 'po_no' => $this->documentNumberService->next('PO'),
-                'po_date' => $data['po_date'],
+                'supplier_id' => $data['supplier_id'],
+                'warehouse_id' => $data['warehouse_id'] ?? null,
+                'order_date' => $data['order_date'],
                 'expected_date' => $data['expected_date'] ?? null,
-                'status' => ! empty($data['submit_for_approval']) ? 'pending_approval' : 'draft',
-                'subtotal' => $subtotal,
-                'tax_amount' => $taxAmount,
-                'grand_total' => $subtotal + $taxAmount,
+                'status' => 'draft',
+                'subtotal' => 0,
+                'tax_amount' => 0,
+                'grand_total' => 0,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actor->id,
             ]);
 
+            $subtotal = 0;
+            $taxAmount = 0;
+
             foreach ($items as $item) {
                 $line = $item['quantity'] * $item['unit_cost'];
-                $tax = $line * ($item['tax_percent'] / 100);
+                $tax = $line * (($item['tax_percent'] ?? 0) / 100);
+                $subtotal += $line;
+                $taxAmount += $tax;
 
                 PurchaseOrderItem::create([
-                    'purchase_order_id' => $po->id,
+                    'purchase_order_id' => $order->id,
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
-                    'received_qty' => 0,
                     'unit_cost' => $item['unit_cost'],
-                    'tax_percent' => $item['tax_percent'],
-                    'cgst_percent' => $item['cgst_percent'],
-                    'sgst_percent' => $item['sgst_percent'],
-                    'cgst_amount' => $item['cgst_amount'],
-                    'sgst_amount' => $item['sgst_amount'],
+                    'tax_percent' => $item['tax_percent'] ?? 0,
                     'line_total' => $line + $tax,
-                    'weight' => $item['weight'] ?? null,
+                    'received_qty' => 0,
+                    'batch_name' => $item['batch_name'] ?? null,
                 ]);
             }
 
-            return $po->load(['items.product', 'items.uom', 'supplier']);
+            $order->update([
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'grand_total' => $subtotal + $taxAmount,
+            ]);
+
+            return $order->fresh(['items.product', 'items.uom', 'supplier']);
         });
     }
 
-    public function submitForApproval(PurchaseOrder $order): PurchaseOrder
+    /**
+     * Submit PO for approval.
+     */
+    public function submit(PurchaseOrder $order): PurchaseOrder
     {
         if ($order->status !== 'draft') {
-            throw new InvalidArgumentException('Only draft purchase orders can be submitted.');
+            throw new InvalidArgumentException('Only draft POs can be submitted.');
         }
 
-        $order->update(['status' => 'pending_approval']);
+        $order->update(['status' => 'submitted']);
 
-        return $order->fresh(['items.product', 'items.uom', 'supplier']);
+        return $order->fresh();
     }
 
+    /**
+     * Approve PO: locks pricing, allows receiving.
+     */
     public function approve(PurchaseOrder $order, User $actor): PurchaseOrder
     {
-        if (! in_array($order->status, ['draft', 'pending_approval'], true)) {
-            throw new InvalidArgumentException('Purchase order cannot be approved in its current status.');
+        if (! in_array($order->status, ['draft', 'submitted'], true)) {
+            throw new InvalidArgumentException('PO is not in an approvable state.');
         }
 
         $order->update([
@@ -139,13 +124,16 @@ class PurchaseOrderService
             'approved_at' => now(),
         ]);
 
-        return $order->fresh(['items.product', 'items.uom', 'supplier', 'approver']);
+        return $order->fresh();
     }
 
+    /**
+     * Cancel a PO (only if no receipts exist).
+     */
     public function cancel(PurchaseOrder $order): PurchaseOrder
     {
-        if (in_array($order->status, ['closed', 'cancelled'], true)) {
-            throw new InvalidArgumentException('Purchase order is already closed or cancelled.');
+        if ($order->status === 'closed') {
+            throw new InvalidArgumentException('Cannot cancel a closed purchase order.');
         }
 
         if ((float) $order->items()->sum('received_qty') > 0) {
@@ -218,7 +206,7 @@ class PurchaseOrderService
                     'accepted_qty' => $accepted,
                     'rejected_qty' => $rejected,
                     'unit_cost' => $poItem->unit_cost,
-                    'batch_no' => $row['batch_no'] ?? null,
+                    'batch_no' => $row['batch_no'] ?? $poItem->batch_name ?? null,
                     'expiry_date' => $row['expiry_date'] ?? null,
                     'batch_selling_price' => isset($row['batch_selling_price']) && $row['batch_selling_price'] !== '' ? (float) $row['batch_selling_price'] : null,
                     'batch_mrp' => isset($row['batch_mrp']) && $row['batch_mrp'] !== '' ? (float) $row['batch_mrp'] : null,
@@ -249,32 +237,28 @@ class PurchaseOrderService
                         $row['serials'],
                         $warehouseId,
                         $inwardItem,
-                        $actor,
-                    );
-                }
-
-                if (! empty($row['batch_no'])) {
-                    $this->serialBatchService->upsertBatch(
-                        $product,
-                        $uom,
-                        (string) $row['batch_no'],
-                        $accepted,
-                        (float) $poItem->unit_cost,
-                        $warehouseId,
-                        $row['expiry_date'] ?? null,
-                        $inwardItem,
-                        isset($row['batch_selling_price']) && $row['batch_selling_price'] !== '' ? (float) $row['batch_selling_price'] : null,
-                        isset($row['batch_mrp']) && $row['batch_mrp'] !== '' ? (float) $row['batch_mrp'] : null,
+                        $actor
                     );
                 }
             }
 
-            $this->refreshOrderStatus($order);
+            $order = $order->fresh('items');
+            $allReceived = $order->items->every(fn (PurchaseOrderItem $i) => (float) $i->received_qty >= (float) $i->quantity);
+            $anyReceived = $order->items->some(fn (PurchaseOrderItem $i) => (float) $i->received_qty > 0);
 
-            return $inward->load(['items.product', 'items.uom', 'purchaseOrder', 'supplier']);
+            $order->update([
+                'status' => $allReceived ? 'closed' : ($anyReceived ? 'partially_received' : $order->status),
+            ]);
+
+            return $inward->fresh(['items.product', 'items.uom', 'supplier']);
         });
     }
 
+    /**
+     * Direct Purchase Invoice (with or without PO/GRN).
+     *
+     * @param  array{supplier_id:int,invoice_date:string,due_date?:string,credit_days?:int,warehouse_id?:int,purchase_order_id?:int,purchase_inward_id?:int,supplier_invoice_no?:string,rate_override_reason?:string,notes?:string,terms_and_conditions?:string,freight_amount?:float,freight_allocation_method?:string,items:array}  $data
+     */
     public function createInvoice(array $data, User $actor): PurchaseInvoice
     {
         return DB::transaction(function () use ($data, $actor) {
@@ -282,13 +266,37 @@ class PurchaseOrderService
             $items = $this->normalizeItems($data['items'] ?? []);
             $overrideReason = $data['rate_override_reason'] ?? null;
             $needsOverride = false;
+            $warehouseId = ! empty($data['warehouse_id']) ? (int) $data['warehouse_id'] : null;
 
             $subtotal = 0;
             $taxAmount = 0;
             $prepared = [];
+            $allInvoiceSerials = [];
 
             foreach ($items as $item) {
                 $invoiceDate = $data['invoice_date'];
+                $product = Product::findOrFail($item['product_id']);
+
+                // Validate Serial Numbers for Serial-Tracked Products
+                if ($product->isSerialTracked()) {
+                    $requiredQty = (int) round($item['quantity']);
+                    $providedSerials = $item['serials'] ?? [];
+
+                    if (count($providedSerials) !== $requiredQty) {
+                        throw ValidationException::withMessages([
+                            'items' => "Product '{$product->name}' is serial-tracked and requires exactly {$requiredQty} serial number(s). You provided " . count($providedSerials) . ".",
+                        ]);
+                    }
+
+                    foreach ($providedSerials as $sn) {
+                        if (in_array($sn, $allInvoiceSerials, true)) {
+                            throw ValidationException::withMessages([
+                                'items' => "Duplicate serial number '{$sn}' entered multiple times in this invoice.",
+                            ]);
+                        }
+                        $allInvoiceSerials[] = $sn;
+                    }
+                }
 
                 $otherRate = VendorPriceHistory::query()
                     ->where('product_id', $item['product_id'])
@@ -298,91 +306,116 @@ class PurchaseOrderService
                     ->latest('effective_from')
                     ->value('unit_cost');
 
-                if ($otherRate !== null && (float) $item['unit_cost'] > (float) $otherRate) {
+                if ($otherRate !== null && (float) $otherRate > 0 && (float) $item['unit_cost'] > (float) $otherRate * 1.05) {
                     $needsOverride = true;
                 }
 
                 $line = $item['quantity'] * $item['unit_cost'];
-
                 $taxPercent = (float) ($item['tax_percent'] ?? 0);
-
                 $cgstPercent = array_key_exists('cgst_percent', $item)
                     ? (float) $item['cgst_percent']
                     : ($taxPercent / 2);
-
                 $sgstPercent = array_key_exists('sgst_percent', $item)
                     ? (float) $item['sgst_percent']
                     : ($taxPercent / 2);
 
                 if (abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
                     throw ValidationException::withMessages([
-                        'items' => 'CGST % and SGST % must add up to the Total Tax % for every item.',
+                        'items' => 'CGST % and SGST % must add up to the total Tax % for every item.',
                     ]);
                 }
 
                 $cgstAmount = $line * ($cgstPercent / 100);
                 $sgstAmount = $line * ($sgstPercent / 100);
-
                 $tax = $cgstAmount + $sgstAmount;
 
                 $subtotal += $line;
                 $taxAmount += $tax;
 
                 $prepared[] = [
-                    ...$item,
+                    'product_id' => $item['product_id'],
+                    'uom_id' => $item['uom_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_cost' => $item['unit_cost'],
                     'tax_percent' => $taxPercent,
                     'cgst_percent' => $cgstPercent,
                     'sgst_percent' => $sgstPercent,
                     'cgst_amount' => $cgstAmount,
                     'sgst_amount' => $sgstAmount,
                     'line_total' => $line + $tax,
-                    'other_vendor_rate' => $otherRate,
+                    'batch_no' => $item['batch_no'] ?? null,
+                    'batch_selling_price' => $item['batch_selling_price'] ?? null,
+                    'batch_mrp' => $item['batch_mrp'] ?? null,
+                    'expiry_date' => $item['expiry_date'] ?? null,
+                    'serials' => $item['serials'] ?? [],
                 ];
             }
 
-            if ($needsOverride && blank($overrideReason)) {
+            if ($needsOverride && empty($overrideReason)) {
                 throw ValidationException::withMessages([
-                    'rate_override_reason' => 'Unit cost is higher than another vendor rate. Provide an override reason.',
+                    'rate_override_reason' => 'Rate is 5% higher than vendor price history. Override reason is mandatory.',
                 ]);
             }
 
             $supplier = Customer::query()->findOrFail($supplierId);
-            $inwardDate = null;
-            if (! empty($data['purchase_inward_id'])) {
-                $inwardDate = PurchaseInward::query()->whereKey($data['purchase_inward_id'])->value('inward_date');
+            $creditDays = array_key_exists('credit_days', $data) && $data['credit_days'] !== null && $data['credit_days'] !== ''
+                ? (int) $data['credit_days']
+                : (int) ($supplier->credit_days ?? 0);
+
+            $dueDate = ! empty($data['due_date'])
+                ? $data['due_date']
+                : (method_exists($this->dueDateService, 'forPurchaseInvoice')
+                    ? $this->dueDateService->forPurchaseInvoice($supplier, $data['invoice_date'], null, $creditDays)['due_date']
+                    : Carbon::parse($data['invoice_date'])->addDays($creditDays)->toDateString());
+
+            // Compute freight & landed cost allocations across line items
+            $freightAmount = (float) ($data['freight_amount'] ?? 0);
+            $freightMethod = $data['freight_allocation_method'] ?? 'value';
+            $landedAllocations = [];
+
+            if ($freightAmount > 0) {
+                $linesForLanded = array_map(fn ($item, $idx) => [
+                    'invoice_item_id' => $idx,
+                    'product_id' => $item['product_id'],
+                    'uom_id' => $item['uom_id'],
+                    'quantity' => (float) $item['quantity'],
+                    'base_value' => (float) $item['quantity'] * (float) $item['unit_cost'],
+                    'unit_cost' => (float) $item['unit_cost'],
+                ], $prepared, array_keys($prepared));
+
+                $landedAllocations = $this->landedCostService->computeAllocations($linesForLanded, $freightMethod, $freightAmount);
             }
-            $due = $this->dueDateService->forPurchaseInvoice(
-                $supplier,
-                $data['invoice_date'],
-                $data['due_date_basis'] ?? null,
-                isset($data['credit_days']) ? (int) $data['credit_days'] : null,
-                $inwardDate,
-            );
 
             $invoice = PurchaseInvoice::create([
+                'company_id' => $data['company_id'] ?? $actor->company_id,
+                'branch_id' => $data['branch_id'] ?? $actor->branch_id,
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
                 'purchase_inward_id' => $data['purchase_inward_id'] ?? null,
                 'supplier_id' => $supplierId,
-                'warehouse_id' => $data['warehouse_id'] ?? null,
-                'invoice_no' => $this->documentNumberService->next('PI'),
-                'supplier_invoice_no' => $data['supplier_invoice_no'] ?? null,
+                'warehouse_id' => $warehouseId,
+                'invoice_no' => $this->documentNumberService->next('PINV'),
+                'supplier_invoice_no' => $data['supplier_invoice_no'] ?? ($data['vendor_invoice_no'] ?? null),
                 'invoice_date' => $data['invoice_date'],
-                'due_date' => $data['due_date'] ?? $due['due_date'],
-                'due_date_basis' => $due['due_date_basis'],
-                'due_date_source_date' => $due['due_date_source_date'],
-                'status' => 'posted',
+                'credit_days' => $creditDays,
+                'due_date' => $dueDate,
+                'due_date_basis' => $data['due_date_basis'] ?? ($supplier->credit_period_basis ?? 'invoice_date'),
+                'due_date_source_date' => $data['invoice_date'],
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'grand_total' => $subtotal + $taxAmount,
+                'round_off' => (float) ($data['round_off'] ?? 0),
+                'grand_total' => $subtotal + $taxAmount + (float) ($data['round_off'] ?? 0),
+                'status' => 'posted',
+                'payment_status' => 'unpaid',
                 'rate_override_reason' => $overrideReason,
+                'rate_overridden_by' => $needsOverride ? $actor->id : null,
                 'notes' => $data['notes'] ?? null,
                 'terms_and_conditions' => $data['terms_and_conditions'] ?? null,
-                'freight_allocation_method' => $data['freight_allocation_method'] ?? null,
+                'freight_allocation_method' => $freightMethod,
                 'created_by' => $actor->id,
             ]);
 
-            foreach ($prepared as $item) {
-                PurchaseInvoiceItem::create([
+            foreach ($prepared as $idx => $item) {
+                $piItem = PurchaseInvoiceItem::create([
                     'purchase_invoice_id' => $invoice->id,
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
@@ -394,12 +427,64 @@ class PurchaseOrderService
                     'cgst_amount' => $item['cgst_amount'],
                     'sgst_amount' => $item['sgst_amount'],
                     'line_total' => $item['line_total'],
-                    'other_vendor_rate' => $item['other_vendor_rate'],
                     'batch_no' => $item['batch_no'] ?? null,
-                    'batch_selling_price' => $item['batch_selling_price'] ?? null,
-                    'batch_mrp' => $item['batch_mrp'] ?? null,
+                    'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
+                    'batch_mrp' => isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
                     'expiry_date' => $item['expiry_date'] ?? null,
                 ]);
+
+                $product = Product::findOrFail($item['product_id']);
+                $uom = Uom::findOrFail($item['uom_id']);
+
+                // Calculate landed unit cost for inventory valuation
+                $landedUnitCost = isset($landedAllocations[$idx]['landed_unit_cost'])
+                    ? (float) $landedAllocations[$idx]['landed_unit_cost']
+                    : (float) $item['unit_cost'];
+
+                // Assign serials if tracked or provided
+                if (! empty($item['serials']) && is_array($item['serials'])) {
+                    $this->serialBatchService->assignSerials(
+                        $product,
+                        $item['serials'],
+                        $warehouseId,
+                        $piItem,
+                        $actor
+                    );
+                }
+
+                // Upsert batch if batch tracked (batch_selling_price and batch_mrp flow strictly into ProductBatch)
+                if (! empty($item['batch_no'])) {
+                    $this->serialBatchService->upsertBatch(
+                        $product,
+                        $uom,
+                        $item['batch_no'],
+                        (float) $item['quantity'],
+                        (float) $item['unit_cost'],
+                        $warehouseId,
+                        $item['expiry_date'] ?? null,
+                        $piItem,
+                        isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
+                        isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
+                    );
+                }
+
+                // Record stock movement on direct invoice (when no previous inward)
+                // Valuation layer receives pure Unit Cost and effective Landed Unit Cost
+                if (empty($data['purchase_inward_id'])) {
+                    $this->stockMovementService->recordIn(
+                        product: $product,
+                        uom: $uom,
+                        quantity: (float) $item['quantity'],
+                        type: 'purchase_invoice',
+                        reference: $invoice,
+                        notes: "PI {$invoice->invoice_no}",
+                        user: $actor,
+                        warehouseId: $warehouseId,
+                        unitCost: (float) $item['unit_cost'],
+                        landedUnitCost: (float) $landedUnitCost,
+                        batchNo: $item['batch_no'] ?? null,
+                    );
+                }
 
                 VendorPriceHistory::create([
                     'supplier_id' => $supplierId,
@@ -429,62 +514,45 @@ class PurchaseOrderService
                 'notes' => "Purchase invoice {$invoice->invoice_no}",
             ]);
 
-            return $invoice->load(['items.product', 'items.uom', 'supplier']);
+            return $invoice->load(['items.product', 'items.uom', 'items.serials', 'supplier']);
         });
     }
 
-    protected function refreshOrderStatus(PurchaseOrder $order): void
+    /**
+     * Normalize items array keys/types.
+     */
+    protected function normalizeItems(array $raw): array
     {
-        $order->refresh()->load('items');
-        $totalOrdered = (float) $order->items->sum('quantity');
-        $totalReceived = (float) $order->items->sum('received_qty');
-
-        if ($totalReceived <= 0) {
-            $status = 'approved';
-        } elseif ($totalReceived + 0.0001 >= $totalOrdered) {
-            $status = 'closed';
-        } else {
-            $status = 'partially_received';
-        }
-
-        $order->update(['status' => $status]);
-    }
-
-    protected function normalizeItems(array $items): array
-    {
-        if ($items === []) {
-            throw ValidationException::withMessages(['items' => 'At least one line item is required.']);
-        }
-
         $normalized = [];
-        foreach ($items as $item) {
-            $qty = (float) ($item['quantity'] ?? 0);
-            if ($qty <= 0) {
+        foreach ($raw as $row) {
+            if (empty($row['product_id']) || empty($row['quantity'])) {
                 continue;
             }
 
-            $normalized[] = [
-                'product_id' => (int) $item['product_id'],
-                'uom_id' => (int) $item['uom_id'],
-                'quantity' => $qty,
-                'unit_cost' => (float) ($item['unit_cost'] ?? 0),
-                'tax_percent' => (float) ($item['tax_percent'] ?? 0),
-                'cgst_percent' => isset($item['cgst_percent'])
-                    ? (float) $item['cgst_percent']
-                    : ((float) ($item['tax_percent'] ?? 0) / 2),
-                'sgst_percent' => isset($item['sgst_percent'])
-                    ? (float) $item['sgst_percent']
-                    : ((float) ($item['tax_percent'] ?? 0) / 2),
-                'weight' => isset($item['weight']) ? (float) $item['weight'] : null,
-                'batch_no' => $item['batch_no'] ?? null,
-                'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
-                'batch_mrp' => isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
-                'expiry_date' => $item['expiry_date'] ?? null,
-            ];
-        }
+            $serials = [];
+            if (! empty($row['serials'])) {
+                if (is_array($row['serials'])) {
+                    $serials = array_values(array_filter(array_map('trim', $row['serials'])));
+                } elseif (is_string($row['serials'])) {
+                    $serials = array_values(array_filter(array_map('trim', preg_split('/[\r\n,;]+/', $row['serials']))));
+                }
+            }
 
-        if ($normalized === []) {
-            throw ValidationException::withMessages(['items' => 'At least one line item with quantity is required.']);
+            $normalized[] = [
+                'product_id' => (int) $row['product_id'],
+                'uom_id' => (int) ($row['uom_id'] ?? 1),
+                'quantity' => (float) $row['quantity'],
+                'unit_cost' => (float) ($row['unit_cost'] ?? 0),
+                'tax_percent' => (float) ($row['tax_percent'] ?? 0),
+                'cgst_percent' => isset($row['cgst_percent']) ? (float) $row['cgst_percent'] : null,
+                'sgst_percent' => isset($row['sgst_percent']) ? (float) $row['sgst_percent'] : null,
+                'batch_name' => $row['batch_name'] ?? ($row['batch_no'] ?? null),
+                'batch_no' => $row['batch_no'] ?? ($row['batch_name'] ?? null),
+                'expiry_date' => $row['expiry_date'] ?? null,
+                'batch_selling_price' => isset($row['batch_selling_price']) && $row['batch_selling_price'] !== '' ? (float) $row['batch_selling_price'] : null,
+                'batch_mrp' => isset($row['batch_mrp']) && $row['batch_mrp'] !== '' ? (float) $row['batch_mrp'] : null,
+                'serials' => $serials,
+            ];
         }
 
         return $normalized;

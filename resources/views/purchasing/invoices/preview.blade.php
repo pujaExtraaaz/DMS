@@ -101,92 +101,113 @@
         }
 
         .title {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: bold;
-            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         .muted {
             color: #6b7280;
-        }
-
-        .info-table,
-        .items-table,
-        .summary-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .info-table {
-            margin-bottom: 14px;
-        }
-
-        .info-table td,
-        .items-table th,
-        .items-table td,
-        .summary-table td {
-            border: 1px solid #111827;
-            padding: 7px 8px;
-            vertical-align: top;
-        }
-
-        .section-title {
-            background: #f3f4f6;
-            font-weight: bold;
-        }
-
-        .items-table {
-            margin-top: 12px;
-        }
-
-        .items-table th {
-            background: #f3f4f6;
             font-size: 11px;
-            text-align: left;
-        }
-
-        .right {
-            text-align: right;
-        }
-
-        .center {
-            text-align: center;
         }
 
         .bold {
             font-weight: bold;
         }
 
-        .bottom-grid {
+        .two-col {
             display: table;
             width: 100%;
-            margin-top: 14px;
+            margin-bottom: 16px;
         }
 
-        .bottom-left,
-        .bottom-right {
+        .col {
             display: table-cell;
+            width: 50%;
             vertical-align: top;
         }
 
-        .bottom-left {
-            width: 58%;
-            padding-right: 12px;
-        }
-
-        .bottom-right {
-            width: 42%;
-        }
-
-        .terms {
-            margin-top: 14px;
+        .box {
             border: 1px solid #d1d5db;
-            padding: 9px;
+            padding: 10px;
+            margin-right: 8px;
+            min-height: 80px;
         }
 
-        .terms-title {
+        .box-title {
+            font-size: 11px;
             font-weight: bold;
-            margin-bottom: 5px;
+            color: #4f46e5;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        table.items {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            margin-bottom: 16px;
+        }
+
+        table.items th,
+        table.items td {
+            border: 1px solid #d1d5db;
+            padding: 6px 8px;
+            font-size: 11px;
+        }
+
+        table.items th {
+            background: #f9fafb;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        .text-right {
+            text-align: right;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .totals {
+            width: 40%;
+            margin-left: auto;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+        }
+
+        .totals td {
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+
+        .totals tr.grand-total td {
+            border-top: 2px solid #111827;
+            border-bottom: 2px solid #111827;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .footer {
+            margin-top: 24px;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 12px;
+            font-size: 10px;
+            color: #6b7280;
+            display: table;
+            width: 100%;
+        }
+
+        .footer-left {
+            display: table-cell;
+            width: 70%;
+        }
+
+        .footer-right {
+            display: table-cell;
+            width: 30%;
+            text-align: right;
         }
 
         @media print {
@@ -289,6 +310,13 @@
                 {{ $invoice->invoice_date?->format('d/m/Y') }}
             </div>
 
+            @if($invoice->credit_days !== null)
+                <div>
+                    <span class="bold">Credit Days:</span>
+                    {{ $invoice->credit_days }} Days
+                </div>
+            @endif
+
             @if($invoice->due_date)
                 <div>
                     <span class="bold">Due Date:</span>
@@ -298,224 +326,118 @@
         </div>
     </div>
 
-    <table class="info-table">
-        <tr>
-            <td width="50%">
-                <div class="section-title">Supplier Details</div>
-
-                <div><strong>Name:</strong> {{ $supplier?->name ?? '—' }}</div>
-
-                <div>
-                    <strong>Address:</strong>
-                    {{ $supplier?->address ?? '—' }}
-                </div>
-
-                <div>
-                    <strong>State:</strong>
-                    {{ $supplier?->state ?? '—' }}
-                </div>
-
-                <div>
-                    <strong>Pincode:</strong>
-                    {{ $supplier?->pincode ?? '—' }}
-                </div>
-
-                <div>
-                    <strong>GSTIN:</strong>
-                    {{ $supplier?->gstin ?? '—' }}
-                </div>
-
+    <div class="two-col">
+        <div class="col">
+            <div class="box">
+                <div class="box-title">Supplier (Vendor)</div>
+                <div class="bold">{{ $supplier?->name ?? '—' }}</div>
+                @if($supplier?->address)
+                    <div>{{ $supplier->address }}</div>
+                @endif
+                @if($supplier?->city || $supplier?->state)
+                    <div>{{ implode(', ', array_filter([$supplier?->city, $supplier?->state, $supplier?->pincode])) }}</div>
+                @endif
+                @if($supplier?->gstin)
+                    <div>GSTIN: {{ $supplier->gstin }}</div>
+                @endif
                 @if($supplier?->phone)
-                    <div>
-                        <strong>Phone:</strong>
-                        {{ $supplier->phone }}
+                    <div>Phone: {{ $supplier->phone }}</div>
+                @endif
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="box" style="margin-right: 0; margin-left: 8px;">
+                <div class="box-title">Ship To / Warehouse</div>
+                <div class="bold">{{ $invoice->warehouse?->name ?? 'Primary Warehouse' }}</div>
+                @if($invoice->warehouse?->address)
+                    <div>{{ $invoice->warehouse->address }}</div>
+                @endif
+                @if($invoice->purchaseOrder)
+                    <div style="margin-top: 6px;">
+                        <span class="bold">Ref PO:</span>
+                        {{ $invoice->purchaseOrder->po_no }}
                     </div>
                 @endif
+            </div>
+        </div>
+    </div>
 
-                @if($supplier?->email)
-                    <div>
-                        <strong>Email:</strong>
-                        {{ $supplier->email }}
-                    </div>
-                @endif
-            </td>
-
-            <td width="50%">
-                <div class="section-title">Purchase Details</div>
-
-                <div>
-                    <strong>Warehouse:</strong>
-                    {{ $invoice->warehouse?->name ?? '—' }}
-                </div>
-
-                <div>
-                    <strong>Purchase Order:</strong>
-                    {{ $invoice->purchaseOrder?->po_no ?? '—' }}
-                </div>
-
-                <div>
-                    <strong>Status:</strong>
-                    {{ ucfirst($invoice->status ?? 'issued') }}
-                </div>
-
-                @if($invoice->freight_allocation_method)
-                    <div>
-                        <strong>Freight:</strong>
-                        {{ ucfirst($invoice->freight_allocation_method) }}
-                    </div>
-                @endif
-
-                @if($invoice->rate_override_reason)
-                    <div>
-                        <strong>Rate Override:</strong>
-                        {{ $invoice->rate_override_reason }}
-                    </div>
-                @endif
-            </td>
-        </tr>
-    </table>
-
-    <table class="items-table">
+    <table class="items">
         <thead>
             <tr>
-                <th width="5%" class="center">S.No</th>
-                <th width="30%">Product</th>
-                <th width="10%" class="center">HSN</th>
-                <th width="10%" class="right">Qty</th>
-                <th width="13%" class="right">Unit Cost</th>
-                <th width="12%" class="right">Tax</th>
-                <th width="20%" class="right">Line Total</th>
+                <th style="width: 5%;">#</th>
+                <th style="width: 35%;">Product</th>
+                <th style="width: 10%;">HSN</th>
+                <th style="width: 8%;" class="text-right">Qty</th>
+                <th style="width: 7%;">UOM</th>
+                <th style="width: 10%;" class="text-right">Rate</th>
+                <th style="width: 8%;" class="text-right">Tax %</th>
+                <th style="width: 17%;" class="text-right">Amount</th>
             </tr>
         </thead>
-
         <tbody>
-            @foreach($invoice->items as $index => $item)
+            @foreach($invoice->items as $idx => $item)
                 <tr>
-                    <td class="center">
-                        {{ $index + 1 }}
-                    </td>
-
+                    <td class="text-center">{{ $idx + 1 }}</td>
                     <td>
-                        {{ $item->product?->name ?? '—' }}
-
+                        <div class="bold">{{ $item->product?->name }}</div>
                         @if($item->batch_no)
-                            <div class="muted">
-                                Batch: {{ $item->batch_no }}
-                            </div>
+                            <div class="muted">Batch: {{ $item->batch_no }} @if($item->expiry_date) | Exp: {{ \Carbon\Carbon::parse($item->expiry_date)->format('m/Y') }} @endif</div>
                         @endif
-
-                        @if($item->expiry_date)
-                            <div class="muted">
-                                Expiry: {{ $item->expiry_date->format('d/m/Y') }}
+                        @if($item->serials->isNotEmpty())
+                            <div class="muted" style="margin-top: 2px;">
+                                <span class="bold">S/N:</span> {{ $item->serials->pluck('serial_number')->implode(', ') }}
                             </div>
                         @endif
                     </td>
-
-                    <td class="center">
-                        {{ $item->product?->hsn_code ?? '—' }}
-                    </td>
-
-                    <td class="right">
-                        {{ number_format($item->quantity, 2) }}
-                        {{ $item->uom?->code ?? '' }}
-                    </td>
-
-                    <td class="right">
-                        ₹{{ number_format($item->unit_cost, 2) }}
-                    </td>
-
-                    <td class="right">
-                        {{ number_format($item->tax_percent ?? 0, 2) }}%
-                    </td>
-
-                    <td class="right bold">
-                        ₹{{ number_format($item->line_total, 2) }}
-                    </td>
+                    <td>{{ $item->product?->hsn_code ?? '—' }}</td>
+                    <td class="text-right">{{ number_format($item->quantity, 2) }}</td>
+                    <td>{{ $item->uom?->code ?? $item->uom?->name }}</td>
+                    <td class="text-right">₹{{ number_format($item->unit_cost, 2) }}</td>
+                    <td class="text-right">{{ number_format($item->tax_percent, 2) }}%</td>
+                    <td class="text-right">₹{{ number_format($item->line_total, 2) }}</td>
                 </tr>
             @endforeach
         </tbody>
     </table>
 
-    <div class="bottom-grid">
+    <table class="totals">
+        <tr>
+            <td class="bold">Subtotal:</td>
+            <td class="text-right">₹{{ number_format($invoice->subtotal, 2) }}</td>
+        </tr>
+        <tr>
+            <td class="bold">Tax Amount:</td>
+            <td class="text-right">₹{{ number_format($invoice->tax_amount, 2) }}</td>
+        </tr>
+        <tr class="grand-total">
+            <td>Grand Total:</td>
+            <td class="text-right">₹{{ number_format($invoice->grand_total, 2) }}</td>
+        </tr>
+    </table>
 
-        <div class="bottom-left">
-
-            @if($company?->bank_name || $company?->bank_account_no || $company?->bank_ifsc)
-                <table class="info-table">
-                    <tr>
-                        <td>
-                            <div class="section-title">Bank Details</div>
-
-                            @if($company?->bank_name)
-                                <div>
-                                    <strong>Bank:</strong>
-                                    {{ $company->bank_name }}
-                                </div>
-                            @endif
-
-                            @if($company?->bank_account_no)
-                                <div>
-                                    <strong>A/c No:</strong>
-                                    {{ $company->bank_account_no }}
-                                </div>
-                            @endif
-
-                            @if($company?->bank_ifsc)
-                                <div>
-                                    <strong>IFSC:</strong>
-                                    {{ $company->bank_ifsc }}
-                                </div>
-                            @endif
-                        </td>
-                    </tr>
-                </table>
-            @endif
-
-            @if($invoice->notes)
-                <div class="terms">
-                    <div class="terms-title">Notes</div>
-                    <div style="white-space: pre-line;">
-                        {{ $invoice->notes }}
-                    </div>
-                </div>
-            @endif
-
-            @if($invoice->terms_and_conditions)
-                <div class="terms">
-                    <div class="terms-title">Terms &amp; Conditions</div>
-                    <div style="white-space: pre-line;">
-                        {{ $invoice->terms_and_conditions }}
-                    </div>
-                </div>
-            @endif
-
+    @if($invoice->notes)
+        <div style="margin-top: 10px;">
+            <span class="bold">Notes:</span>
+            {{ $invoice->notes }}
         </div>
+    @endif
 
-        <div class="bottom-right">
-            <table class="summary-table">
-                <tr>
-                    <td class="bold">Subtotal</td>
-                    <td class="right">
-                        ₹{{ number_format($invoice->subtotal, 2) }}
-                    </td>
-                </tr>
-
-                <tr>
-                    <td class="bold">Tax</td>
-                    <td class="right">
-                        ₹{{ number_format($invoice->tax_amount, 2) }}
-                    </td>
-                </tr>
-
-                <tr>
-                    <td class="bold">Grand Total</td>
-                    <td class="right bold">
-                        ₹{{ number_format($invoice->grand_total, 2) }}
-                    </td>
-                </tr>
-            </table>
+    @if($invoice->terms_and_conditions)
+        <div style="margin-top: 10px; font-size: 10px; color: #4b5563;">
+            <div class="bold" style="color: #111827;">Terms &amp; Conditions:</div>
+            {!! nl2br(e($invoice->terms_and_conditions)) !!}
         </div>
+    @endif
 
+    <div class="footer">
+        <div class="footer-left">
+            This is a computer-generated Purchase Invoice.
+        </div>
+        <div class="footer-right">
+            Generated on {{ now()->format('d/m/Y H:i') }}
+        </div>
     </div>
 
 </div>

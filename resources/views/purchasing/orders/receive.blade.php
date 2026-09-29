@@ -67,15 +67,23 @@
                             <td class="px-3 py-2">
                                 <input type="text" name="items[{{ $i }}][rejection_reason]" class="block w-40 rounded-lg border-gray-300 text-sm" placeholder="If any">
                             </td>
-                            <td class="px-3 py-2"><input type="text" name="items[{{ $i }}][batch_no]" class="block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional"></td>
+                            <td class="px-3 py-2">
+                                <input
+                                    type="text"
+                                    name="items[{{ $i }}][batch_no]"
+                                    value="{{ old('items.'.$i.'.batch_no', $item->batch_name ?? '') }}"
+                                    class="block w-28 rounded-lg border-gray-300 text-sm font-mono"
+                                    placeholder="Optional"
+                                >
+                            </td>
                             <td class="px-3 py-2"><input type="date" name="items[{{ $i }}][expiry_date]" class="block w-36 rounded-lg border-gray-300 text-sm"></td>
                             <td class="px-3 py-2">
                                 <input type="number" step="0.01" name="items[{{ $i }}][batch_selling_price]" class="block w-28 rounded-lg border-gray-300 text-sm"
-                                       placeholder="{{ number_format((float) $item->product?->selling_price ?? 0, 2) }}">
+                                       placeholder="{{ number_format((float) ($item->product?->selling_price ?? 0), 2) }}">
                             </td>
                             <td class="px-3 py-2">
                                 <input type="number" step="0.01" name="items[{{ $i }}][batch_mrp]" class="block w-28 rounded-lg border-gray-300 text-sm"
-                                       placeholder="{{ number_format((float) $item->product?->calculation_mrp ?? 0, 2) }}">
+                                       placeholder="{{ number_format((float) ($item->product?->calculation_mrp ?? 0), 2) }}">
                             </td>
                             <td class="px-3 py-2"><input type="text" name="items[{{ $i }}][serials]" class="block w-52 rounded-lg border-gray-300 text-sm" placeholder="SN1, SN2"></td>
                         </tr>

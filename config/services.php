@@ -58,7 +58,7 @@ return [
         'connector_token' => env('TALLY_CONNECTOR_TOKEN'),
     ],
 
-    // Masters India GSP — powers real IRN + E-way generation.
+    // Masters India GSP — powers real IRN + E-way generation & GST Taxpayer Search.
     // Sandbox: https://sandb-api.mastersindia.co, Production: https://commonapi.mastersindia.co
     'mastersindia' => [
         'base_url' => env('MASTERSINDIA_BASE_URL', 'https://sandb-api.mastersindia.co'),
@@ -67,10 +67,18 @@ return [
         'username' => env('MASTERSINDIA_USERNAME'),
         'password' => env('MASTERSINDIA_PASSWORD'),
         'gstin' => env('MASTERSINDIA_GSTIN'),
-        'timeout' => (int) env('MASTERSINDIA_TIMEOUT', 30),
-        // When true and credentials are missing, service falls back to deterministic dummy IRN/EWB
+        'timeout' => (int) env('MASTERSINDIA_TIMEOUT', 15),
+        // When true and credentials are missing, service falls back to deterministic dummy data
         // so the flow keeps working in developer environments.
         'fallback_to_stub' => filter_var(env('MASTERSINDIA_FALLBACK_TO_STUB', true), FILTER_VALIDATE_BOOLEAN),
+    ],
+
+    // Optional Generic GST Search API configuration
+    'gst_search' => [
+        'provider' => env('GST_SEARCH_PROVIDER', 'mastersindia'),
+        'api_url' => env('GST_SEARCH_API_URL'),
+        'api_key' => env('GST_SEARCH_API_KEY'),
+        'timeout' => (int) env('GST_SEARCH_TIMEOUT', 15),
     ],
 
 ];

@@ -20,6 +20,7 @@ class PurchaseInvoice extends Model
             }
         });
     }
+
     protected $fillable = [
         'purchase_order_id',
         'purchase_inward_id',
@@ -28,6 +29,7 @@ class PurchaseInvoice extends Model
         'invoice_no',
         'supplier_invoice_no',
         'invoice_date',
+        'credit_days',
         'due_date',
         'due_date_basis',
         'due_date_source_date',
@@ -49,6 +51,7 @@ class PurchaseInvoice extends Model
             'invoice_date' => 'date',
             'due_date' => 'date',
             'due_date_source_date' => 'date',
+            'credit_days' => 'integer',
             'subtotal' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'grand_total' => 'decimal:2',

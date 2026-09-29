@@ -28,13 +28,20 @@
 <x-ui.card>
 <div class="overflow-x-auto"><table class="min-w-full text-sm">
 <thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">UOM</th><th class="px-3 py-2 text-right">Ordered</th><th class="px-3 py-2 text-right">Received</th><th class="px-3 py-2 text-right">Unit Cost</th><th class="px-3 py-2 text-right">Line Total</th>
+<th class="px-3 py-2 text-left">Product</th>
+<th class="px-3 py-2 text-left">UOM</th>
+<th class="px-3 py-2 text-left">Batch Name</th>
+<th class="px-3 py-2 text-right">Ordered</th>
+<th class="px-3 py-2 text-right">Received</th>
+<th class="px-3 py-2 text-right">Unit Cost</th>
+<th class="px-3 py-2 text-right">Line Total</th>
 </tr></thead>
 <tbody class="divide-y">
 @foreach($order->items as $item)
 <tr>
 <td class="px-3 py-2">{{ $item->product?->name }}</td>
 <td class="px-3 py-2">{{ $item->uom?->code }}</td>
+<td class="px-3 py-2 text-slate-700 font-mono text-xs">{{ $item->batch_name ?? '—' }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->quantity, 2) }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->received_qty, 2) }}</td>
 <td class="px-3 py-2 text-right">₹{{ number_format($item->unit_cost, 2) }}</td>
