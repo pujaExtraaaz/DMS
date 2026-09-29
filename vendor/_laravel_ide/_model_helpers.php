@@ -14,7 +14,7 @@ namespace App\Domains\Master\Models {
      * @property mixed $aging_threshold_days
      * @property float $reorder_level
      * @property float $min_stock
-     * @property mixed $tracking_type
+     * @property string $tracking_type
      * @property string|null $image_path
      * @property string|null $catalog_link
      * @property string|null $warranty_terms
@@ -48,6 +48,7 @@ namespace App\Domains\Master\Models {
      * @property mixed $brand_id
      * @property mixed $company_id
      * @property int $id
+     * @property-read mixed $tracking_types
      * @property-read \App\Domains\Organization\Models\Company $company
      * @property-read \App\Domains\Catalog\Models\Brand $brand
      * @property-read \App\Domains\Catalog\Models\Category $category
