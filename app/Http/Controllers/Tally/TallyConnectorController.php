@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Tally;
 
 use App\Domains\Tally\Models\TallySyncQueue;
+use App\Domains\Tally\Services\TallyExportService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 
 class TallyConnectorController extends Controller
 {
@@ -18,6 +21,41 @@ class TallyConnectorController extends Controller
             'company' => config('services.tally.company'),
             'pending' => TallySyncQueue::query()->where('status', 'pending')->count(),
         ]);
+    }
+
+    /**
+     * Builds the Tally XML for a DMS record without queueing it, so the payload
+     * can be inspected or posted to Tally by hand. Without an id it lists recent records.
+     */
+    public function preview(TallyExportService $service, string $type, ?int $id = null): Response|JsonResponse
+    {
+        $class = TallyExportService::DOCUMENT_CLASSES[$type] ?? null;
+        if (! $class) {
+            return response()->json([
+                'ok' => false,
+                'message' => "Unknown type [{$type}]",
+                'types' => array_keys(TallyExportService::DOCUMENT_CLASSES),
+            ], 404);
+        }
+
+        if ($id === null) {
+            return response()->json([
+                'ok' => true,
+                'type' => $type,
+                'items' => $class::query()->latest('id')->limit(20)->get()->map(fn ($m) => [
+                    'id' => $m->getKey(),
+                    'label' => $m->invoice_no ?? $m->po_no ?? $m->payment_no ?? $m->credit_note_no ?? $m->name ?? null,
+                    'status' => $m->status ?? null,
+                ]),
+            ]);
+        }
+
+        $document = $class::query()->find($id);
+        if (! $document) {
+            return response()->json(['ok' => false, 'message' => "{$type} #{$id} not found"], 404);
+        }
+
+        return response($service->buildPayload($type, $document), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
     }
 
     public function pending(Request $request): JsonResponse
@@ -44,7 +82,7 @@ class TallyConnectorController extends Controller
         $data = $request->validate([
             'status' => 'required|in:sent,failed',
             'error' => 'nullable|string|max:2000',
-            'response' => 'nullable|string|max:5000',
+            'response' => 'nullable|string|max:20000',
         ]);
 
         if ($data['status'] === 'sent') {
@@ -56,37 +94,10 @@ class TallyConnectorController extends Controller
                 'attempts' => $tally_sync_queue->attempts + 1,
             ]);
 
-            if (!empty($data['response'])) {
-                try {
-                    $xml = simplexml_load_string($data['response']);
-                    $lastVchId = (string) ($xml->BODY->DATA->IMPORTRESULT->LASTVCHID ?? '');
-                    if ($lastVchId !== '') {
-                        $documentClass = null;
-                        switch ($tally_sync_queue->document_type) {
-                            case 'invoice': $documentClass = \App\Domains\Sales\Models\Invoice::class; break;
-                            case 'payment': $documentClass = \App\Domains\Payment\Models\Payment::class; break;
-                            case 'credit_note': $documentClass = \App\Domains\Payment\Models\CreditNote::class; break;
-                            case 'purchase_invoice': $documentClass = \App\Domains\Purchasing\Models\PurchaseInvoice::class; break;
-                            case 'purchase_order': $documentClass = \App\Domains\Purchasing\Models\PurchaseOrder::class; break;
-                        }
-                        
-                        if ($documentClass) {
-                            $doc = $documentClass::find($tally_sync_queue->document_id);
-                            if ($doc) {
-                                app(\App\Domains\Tally\Services\TallySyncMappingService::class)->createOrUpdate(
-                                    $doc,
-                                    $documentClass,
-                                    'voucher',
-                                    $lastVchId,
-                                    $tally_sync_queue->document_type . '_' . $tally_sync_queue->document_id,
-                                    'synced'
-                                );
-                            }
-                        }
-                    }
-                } catch (\Exception $e) {
-                    // Ignore XML parse errors
-                }
+            try {
+                app(TallyExportService::class)->recordSuccess($tally_sync_queue, $data['response'] ?? null);
+            } catch (\Throwable $e) {
+                Log::warning('Tally mapping update failed', ['id' => $tally_sync_queue->id, 'error' => $e->getMessage()]);
             }
         } else {
             $tally_sync_queue->update([

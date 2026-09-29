@@ -23,13 +23,35 @@ use Illuminate\Support\Facades\Log;
  */
 class TallyAutoEnqueueObserver
 {
+    protected static bool $muted = false;
+
     public function __construct(
         protected TallyExportService $tallyService
     ) {
     }
 
+    /**
+     * Run a callback without queueing anything back to Tally
+     * (used when the data being saved came from Tally in the first place).
+     */
+    public static function withoutSync(callable $callback): mixed
+    {
+        $previous = static::$muted;
+        static::$muted = true;
+
+        try {
+            return $callback();
+        } finally {
+            static::$muted = $previous;
+        }
+    }
+
     public function created(Model $model): void
     {
+        if (static::$muted) {
+            return;
+        }
+
         // Master records sync immediately on creation.
         if ($model instanceof Product || $model instanceof Customer || $model instanceof Uom) {
             $this->maybeEnqueueMaster($model);
@@ -46,6 +68,10 @@ class TallyAutoEnqueueObserver
 
     public function updated(Model $model): void
     {
+        if (static::$muted) {
+            return;
+        }
+
         // Masters sync on any field change (name, HSN, GST rate, address etc.)
         if ($model instanceof Product || $model instanceof Customer || $model instanceof Uom) {
             $this->maybeEnqueueMaster($model);

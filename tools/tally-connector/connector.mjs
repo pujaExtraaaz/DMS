@@ -51,23 +51,77 @@ async function api(cfg, method, route, body) {
   return json;
 }
 
-async function postToTally(cfg, xml) {
-  const headers = { 'Content-Type': 'application/xml' };
-  if (cfg.company) headers['X-Tally-Company'] = cfg.company;
+function withCompany(cfg, xml) {
+  if (!cfg.company) return xml;
+  const company = String(cfg.company)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return xml
+    .replace(/<SVCURRENTCOMPANY\s*\/>/i, `<SVCURRENTCOMPANY>${company}</SVCURRENTCOMPANY>`)
+    .replace(/<SVCURRENTCOMPANY>\s*<\/SVCURRENTCOMPANY>/i, `<SVCURRENTCOMPANY>${company}</SVCURRENTCOMPANY>`);
+}
 
+async function postToTally(cfg, xml) {
   const res = await fetch(cfg.tally_url, {
     method: 'POST',
-    headers,
-    body: xml,
+    headers: { 'Content-Type': 'text/xml; charset=utf-8' },
+    body: withCompany(cfg, xml),
   });
   const text = await res.text();
   return { ok: res.ok, status: res.status, body: text };
 }
 
-function looksLikeTallyError(body) {
-  if (!body) return false;
-  const lower = body.toLowerCase();
-  return lower.includes('<lineerror>') || lower.includes('unknown error') || lower.includes('does not exist');
+function decodeXml(s) {
+  return s
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function tallyCount(body, tag) {
+  const m = body.match(new RegExp(`<${tag}>\\s*(-?\\d+)\\s*</${tag}>`, 'i'));
+  return m ? Number(m[1]) : 0;
+}
+
+const MASTER_TYPES = new Set(['product', 'customer', 'uom', 'godown']);
+
+/**
+ * Tally answers HTTP 200 even when it rejects the data, so success has to be
+ * read from the CREATED/ALTERED/ERRORS/EXCEPTIONS counters in the body.
+ * Returns null on success, or a human readable reason on failure.
+ */
+function tallyFailureReason(item, tally) {
+  if (!tally.ok) return `Tally HTTP ${tally.status}`;
+  const body = tally.body || '';
+  const lineErrors = [...body.matchAll(/<LINEERROR>([\s\S]*?)<\/LINEERROR>/gi)].map((m) => decodeXml(m[1].trim()));
+
+  // Re-sending a master that already exists in Tally is fine — it is already there.
+  if (MASTER_TYPES.has(item.document_type) && lineErrors.length && lineErrors.every((e) => /already exists/i.test(e))) {
+    return null;
+  }
+  if (lineErrors.length) return lineErrors.join(' | ');
+
+  const created = tallyCount(body, 'CREATED');
+  const altered = tallyCount(body, 'ALTERED');
+  const combined = tallyCount(body, 'COMBINED');
+  const errors = tallyCount(body, 'ERRORS');
+  const exceptions = tallyCount(body, 'EXCEPTIONS');
+
+  if (errors > 0 || exceptions > 0) {
+    return 'Tally rejected the voucher without a line error (EXCEPTIONS/ERRORS). '
+      + 'Usually: voucher does not balance, a ledger/stock item/unit/godown is missing, '
+      + 'the date is outside the company financial year, or the company is not open.';
+  }
+  if (created + altered + combined === 0 && /<RESPONSE>|<IMPORTRESULT>/i.test(body)) {
+    return 'Tally imported nothing (CREATED=0, ALTERED=0).';
+  }
+  if (/unknown request|could not find company|no company/i.test(body)) {
+    return decodeXml(body.slice(0, 500));
+  }
+  return null;
 }
 
 async function syncOnce(cfg) {
@@ -82,15 +136,16 @@ async function syncOnce(cfg) {
     process.stdout.write(`#${item.id} ${item.document_type} ... `);
     try {
       const tally = await postToTally(cfg, item.payload || '');
-      if (!tally.ok || looksLikeTallyError(tally.body)) {
+      const reason = tallyFailureReason(item, tally);
+      if (reason) {
         await api(cfg, 'POST', `${item.id}/result`, {
           status: 'failed',
-          error: `Tally HTTP ${tally.status}`,
-          response: tally.body,
+          error: reason.slice(0, 2000),
+          response: (tally.body || '').slice(0, 20000),
         });
-        console.log('FAILED');
+        console.log(`FAILED — ${reason}`);
       } else {
-        await api(cfg, 'POST', `${item.id}/result`, { status: 'sent', response: tally.body });
+        await api(cfg, 'POST', `${item.id}/result`, { status: 'sent', response: (tally.body || '').slice(0, 20000) });
         console.log('SENT');
         done += 1;
       }

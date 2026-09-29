@@ -56,6 +56,22 @@ return [
         'company' => env('TALLY_COMPANY'),
         'use_connector' => filter_var(env('TALLY_USE_CONNECTOR', false), FILTER_VALIDATE_BOOLEAN),
         'connector_token' => env('TALLY_CONNECTOR_TOKEN'),
+
+        // Ledger / godown names must match the Tally company exactly (case-insensitive).
+        'purchase_ledger' => env('TALLY_PURCHASE_LEDGER', 'Purchase'),
+        'purchase_ledger_interstate' => env('TALLY_PURCHASE_LEDGER_INTERSTATE'),
+        'sales_ledger' => env('TALLY_SALES_LEDGER', 'Sales'),
+        'input_cgst_ledger' => env('TALLY_INPUT_CGST_LEDGER', 'CGST'),
+        'input_sgst_ledger' => env('TALLY_INPUT_SGST_LEDGER', 'SGST'),
+        'input_igst_ledger' => env('TALLY_INPUT_IGST_LEDGER', 'IGST'),
+        'output_cgst_ledger' => env('TALLY_OUTPUT_CGST_LEDGER', 'CGST'),
+        'output_sgst_ledger' => env('TALLY_OUTPUT_SGST_LEDGER', 'SGST'),
+        'output_igst_ledger' => env('TALLY_OUTPUT_IGST_LEDGER', 'IGST'),
+        'round_off_ledger' => env('TALLY_ROUND_OFF_LEDGER', 'Round Off'),
+        'cash_ledger' => env('TALLY_CASH_LEDGER', 'Cash'),
+        'bank_ledger' => env('TALLY_BANK_LEDGER', 'Bank'),
+        'default_godown' => env('TALLY_DEFAULT_GODOWN', 'Main Location'),
+        'use_batches' => filter_var(env('TALLY_USE_BATCHES', false), FILTER_VALIDATE_BOOLEAN),
     ],
 
     // Masters India GSP — powers real IRN + E-way generation.

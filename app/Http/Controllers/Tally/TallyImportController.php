@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tally;
 
+use App\Domains\Tally\Observers\TallyAutoEnqueueObserver;
 use App\Domains\Tally\Services\TallyImportService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -23,9 +24,9 @@ class TallyImportController extends Controller
             'items.*.decimal_places' => ['nullable', 'integer', 'min:0', 'max:6'],
         ]);
 
-        $result = $this->tallyImportService->syncUoms(
+        $result = TallyAutoEnqueueObserver::withoutSync(fn () => $this->tallyImportService->syncUoms(
             $data['items']
-        );
+        ));
 
         return response()->json([
             'ok' => true,
@@ -60,10 +61,10 @@ class TallyImportController extends Controller
             ],
         ]);
 
-        $result = $this->tallyImportService->syncProducts(
+        $result = TallyAutoEnqueueObserver::withoutSync(fn () => $this->tallyImportService->syncProducts(
             $data['items'],
             (int) $data['company_id']
-        );
+        ));
 
         return response()->json([
             'ok' => true,
@@ -90,11 +91,11 @@ class TallyImportController extends Controller
             ],
         ]);
 
-        $result = $this->tallyImportService->syncGodowns(
+        $result = TallyAutoEnqueueObserver::withoutSync(fn () => $this->tallyImportService->syncGodowns(
             $data['items'],
             (int) $data['company_id'],
             (int) $data['branch_id']
-        );
+        ));
 
         return response()->json([
             'ok' => true,
