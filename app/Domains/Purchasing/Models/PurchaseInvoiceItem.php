@@ -2,10 +2,12 @@
 
 namespace App\Domains\Purchasing\Models;
 
+use App\Domains\Inventory\Models\ProductSerial;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class PurchaseInvoiceItem extends Model
 {
@@ -59,5 +61,10 @@ class PurchaseInvoiceItem extends Model
     public function uom(): BelongsTo
     {
         return $this->belongsTo(Uom::class);
+    }
+
+    public function serials(): MorphMany
+    {
+        return $this->morphMany(ProductSerial::class, 'source');
     }
 }

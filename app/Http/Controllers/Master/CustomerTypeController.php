@@ -4,9 +4,14 @@ namespace App\Http\Controllers\Master;
 
 use App\Domains\Master\Models\CustomerType;
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Throwable;
 
 class CustomerTypeController extends Controller
 {
@@ -25,12 +30,45 @@ class CustomerTypeController extends Controller
         return view('masters.customer-types.form', array_merge(['item' => new CustomerType], $this->formData()));
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
-        $data = $this->validated($request);
-        CustomerType::create($data);
+        try {
+            $data = $this->validated($request);
+            $customerType = CustomerType::create($data);
 
-        return $this->flashSuccess('Customer Type created successfully.', 'masters.customer-types.index');
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok' => true,
+                    'customer_type' => [
+                        'id' => $customerType->id,
+                        'name' => $customerType->name,
+                        'code' => $customerType->code,
+                    ],
+                ]);
+            }
+
+            return $this->flashSuccess('Customer Type created successfully.', 'masters.customer-types.index');
+        } catch (ValidationException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => $e->validator->errors()->first() ?: 'Validation failed.',
+                    'errors' => $e->validator->errors()->toArray(),
+                ], 422);
+            }
+            throw $e;
+        } catch (Throwable $e) {
+            Log::error('Classification create failed: '.$e->getMessage());
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Failed to create classification. Please try again.',
+                ], 500);
+            }
+
+            return back()->withInput()->with('error', 'Failed to create classification. Please try again.');
+        }
     }
 
     public function show(CustomerType $customer_type): RedirectResponse
@@ -43,12 +81,45 @@ class CustomerTypeController extends Controller
         return view('masters.customer-types.form', array_merge(['item' => $customer_type], $this->formData()));
     }
 
-    public function update(Request $request, CustomerType $customer_type): RedirectResponse
+    public function update(Request $request, CustomerType $customer_type): RedirectResponse|JsonResponse
     {
-        $data = $this->validated($request, $customer_type);
-        $customer_type->update($data);
+        try {
+            $data = $this->validated($request, $customer_type);
+            $customer_type->update($data);
 
-        return $this->flashSuccess('Customer Type updated successfully.', 'masters.customer-types.index');
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok' => true,
+                    'customer_type' => [
+                        'id' => $customer_type->id,
+                        'name' => $customer_type->name,
+                        'code' => $customer_type->code,
+                    ],
+                ]);
+            }
+
+            return $this->flashSuccess('Customer Type updated successfully.', 'masters.customer-types.index');
+        } catch (ValidationException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => $e->validator->errors()->first() ?: 'Validation failed.',
+                    'errors' => $e->validator->errors()->toArray(),
+                ], 422);
+            }
+            throw $e;
+        } catch (Throwable $e) {
+            Log::error('Classification update failed: '.$e->getMessage());
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Failed to update classification. Please try again.',
+                ], 500);
+            }
+
+            return back()->withInput()->with('error', 'Failed to update classification. Please try again.');
+        }
     }
 
     public function destroy(CustomerType $customer_type): RedirectResponse
@@ -60,17 +131,58 @@ class CustomerTypeController extends Controller
 
     protected function validated(Request $request, ?CustomerType $customer_type = null): array
     {
-        $rules = ['name' => 'required|string|max:255', 'code' => 'required|string|max:20|unique:customer_types,code', 'description' => 'nullable|string', 'is_active' => 'boolean'];
-        if ($customer_type) {
-            if (isset($rules['code'])) {
-                $rules['code'] = 'required|string|max:20|unique:customer-types,code,'.$customer_type->id;
+        $name = trim((string) $request->input('name', ''));
+        $request->merge(['name' => $name]);
+
+        if (blank($request->input('code')) && filled($name)) {
+            $baseCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $name));
+            $code = substr($baseCode ?: 'CT', 0, 10);
+            $seq = 1;
+            while (CustomerType::query()->where('code', $code)->when($customer_type, fn ($q) => $q->where('id', '!=', $customer_type->id))->exists()) {
+                $code = substr($baseCode ?: 'CT', 0, 7) . $seq;
+                $seq++;
             }
-            if (isset($rules['registration_no'])) {
-                $rules['registration_no'] = 'required|string|max:20|unique:vehicles,registration_no,'.$customer_type->id;
-            }
+            $request->merge(['code' => $code]);
         }
-        $data = $request->validate($rules);
-        $data['is_active'] = $request->boolean('is_active');
+
+        $rules = [
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                function ($attribute, $value, $fail) use ($customer_type) {
+                    $trimmed = trim((string) $value);
+                    if ($trimmed === '') {
+                        $fail('Classification name is required.');
+                        return;
+                    }
+                    $exists = CustomerType::query()
+                        ->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($trimmed)])
+                        ->when($customer_type, fn ($q) => $q->where('id', '!=', $customer_type->id))
+                        ->exists();
+
+                    if ($exists) {
+                        $fail('Classification already exists.');
+                    }
+                },
+            ],
+            'code' => [
+                'required',
+                'string',
+                'max:20',
+                Rule::unique('customer_types', 'code')->ignore($customer_type?->id),
+            ],
+            'description' => 'nullable|string',
+            'is_active' => 'boolean',
+        ];
+
+        $messages = [
+            'name.required' => 'Classification name is required.',
+            'code.unique' => 'Classification code already exists.',
+        ];
+
+        $data = $request->validate($rules, $messages);
+        $data['is_active'] = $request->has('is_active') ? $request->boolean('is_active') : true;
 
         return $data;
     }

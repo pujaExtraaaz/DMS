@@ -7,13 +7,13 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\Warehouse;
+use App\Domains\Organization\Services\FinancialYearService;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
-use App\Support\QrCodeRenderer;
 use App\Domains\Purchasing\Models\VendorPriceHistory;
 use App\Domains\Purchasing\Services\PurchaseOrderService;
-use App\Domains\Organization\Services\FinancialYearService;
 use App\Http\Controllers\Controller;
+use App\Support\QrCodeRenderer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -42,7 +42,6 @@ class PurchaseInvoiceController extends Controller
 
     public function create(Request $request): View
     {
-
         $company = Company::query()->find(
             auth()->user()?->company_id
         ) ?? Company::query()->first();
@@ -67,8 +66,6 @@ class PurchaseInvoiceController extends Controller
             'vendorRates' => $vendorRates,
             'selectedOrderId' => $request->integer('purchase_order_id') ?: null,
             'company' => $company,
-
-
             'purchaseTermsAndConditions' => $company?->purchase_terms_and_conditions,
         ]);
     }
@@ -82,10 +79,12 @@ class PurchaseInvoiceController extends Controller
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'supplier_invoice_no' => 'nullable|string|max:60',
             'invoice_date' => 'required|date',
+            'credit_days' => 'nullable|integer|min:0',
             'due_date' => 'nullable|date',
             'rate_override_reason' => 'nullable|string',
             'notes' => 'nullable|string',
             'terms_and_conditions' => 'nullable|string',
+            'freight_amount' => 'nullable|numeric|min:0',
             'freight_allocation_method' => 'nullable|in:qty,value,weight,volume,equal,manual',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
@@ -99,6 +98,8 @@ class PurchaseInvoiceController extends Controller
             'items.*.expiry_date' => 'nullable|date',
             'items.*.batch_selling_price' => 'nullable|numeric|min:0',
             'items.*.batch_mrp' => 'nullable|numeric|min:0',
+            'items.*.serials' => 'nullable|array',
+            'items.*.serials.*' => 'nullable|string|max:100',
         ]);
 
         $this->financialYearService->assertOpen($validated['invoice_date']);
@@ -113,6 +114,7 @@ class PurchaseInvoiceController extends Controller
         $invoice->load([
             'items.product',
             'items.uom',
+            'items.serials',
             'supplier',
             'warehouse',
             'purchaseOrder',
@@ -127,13 +129,14 @@ class PurchaseInvoiceController extends Controller
         $invoice->load([
             'items.product',
             'items.uom',
+            'items.serials',
             'supplier',
             'warehouse',
             'purchaseOrder',
             'creator',
         ]);
 
-       $company = Company::query()->find(
+        $company = Company::query()->find(
             auth()->user()?->company_id
         ) ?? Company::query()->first();
 
@@ -163,6 +166,7 @@ class PurchaseInvoiceController extends Controller
             'id' => $order->id,
             'po_no' => $order->po_no,
             'supplier_id' => $order->supplier_id,
+            'supplier_credit_days' => $order->supplier?->credit_days ?? 0,
             'warehouse_id' => $order->warehouse_id,
             'items' => $order->items->map(function ($item) {
                 return [
@@ -175,6 +179,7 @@ class PurchaseInvoiceController extends Controller
                     'sgst_percent' => $item->sgst_percent,
                     'cgst_amount' => $item->cgst_amount,
                     'sgst_amount' => $item->sgst_amount,
+                    'batch_name' => $item->batch_name ?? '',
                 ];
             })->values(),
         ]);
