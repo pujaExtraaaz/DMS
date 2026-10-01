@@ -80,10 +80,18 @@ class StockController extends Controller
             ->orderBy('color_variant')
             ->pluck('color_variant');
 
+        $products = Product::query()
+            ->where('is_active', true)
+            ->when($request->filled('product_id'), function ($q) use ($request) {
+                $q->orWhere('id', $request->input('product_id'));
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'sku']);
+
         return view('inventory.stock.index', [
             'stockLevels' => $stockLevels,
             'movements' => $movements,
-            'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'products' => $products,
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
             'categories' => Category::where('is_active', true)->orderBy('name')->get(),
             'warehouses' => Warehouse::orderBy('name')->get(),
