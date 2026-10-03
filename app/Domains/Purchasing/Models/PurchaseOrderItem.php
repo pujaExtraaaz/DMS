@@ -13,7 +13,6 @@ class PurchaseOrderItem extends Model
         'purchase_order_id',
         'product_id',
         'uom_id',
-        'batch_name',
         'quantity',
         'received_qty',
         'unit_cost',
