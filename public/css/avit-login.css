@@ -1,0 +1,846 @@
+/* =========================================================
+   AVIT DIGITAL - Login Page
+   UI ONLY
+   Does not affect authenticated application screens.
+   ========================================================= */
+
+   :root {
+    --avit-navy: #101b3a;
+    --avit-navy-soft: #17264b;
+    --avit-blue: #2457d6;
+    --avit-blue-dark: #1946b5;
+    --avit-blue-light: #eaf1ff;
+    --avit-purple: #5b4ee8;
+    --avit-text: #172033;
+    --avit-muted: #6b7280;
+    --avit-border: #e5eaf2;
+    --avit-surface: #ffffff;
+    --avit-page: #f7f9fc;
+}
+
+/* ---------------------------------------------------------
+   Page
+   --------------------------------------------------------- */
+
+.avit-login-page {
+    min-height: 100dvh;
+    margin: 0;
+    background:
+        radial-gradient(
+            circle at 10% 10%,
+            rgba(36, 87, 214, 0.055),
+            transparent 28%
+        ),
+        radial-gradient(
+            circle at 90% 90%,
+            rgba(91, 78, 232, 0.045),
+            transparent 30%
+        ),
+        var(--avit-page);
+    color: var(--avit-text);
+    font-family: "Inter", sans-serif;
+}
+
+.avit-login-page *,
+.avit-login-page *::before,
+.avit-login-page *::after {
+    box-sizing: border-box;
+}
+
+.avit-login-shell {
+    min-height: 100dvh;
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(430px, 0.85fr);
+}
+
+/* ---------------------------------------------------------
+   Left showcase
+   --------------------------------------------------------- */
+
+.avit-showcase {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    padding: 42px clamp(38px, 5vw, 82px);
+    background:
+        linear-gradient(
+            180deg,
+            #f8fbff 0%,
+            #f3f7ff 100%
+        );
+    border-right: 1px solid rgba(229, 234, 242, 0.85);
+}
+
+.avit-showcase::before {
+    content: "";
+    position: absolute;
+    width: 480px;
+    height: 480px;
+    left: -220px;
+    bottom: -260px;
+    border-radius: 50%;
+    background: rgba(36, 87, 214, 0.055);
+    pointer-events: none;
+}
+
+.avit-showcase::after {
+    content: "";
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    right: -150px;
+    top: -150px;
+    border-radius: 50%;
+    background: rgba(91, 78, 232, 0.04);
+    pointer-events: none;
+}
+
+/* ---------------------------------------------------------
+   Logo
+   --------------------------------------------------------- */
+
+.avit-brand {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    height: 58px;
+    overflow: hidden;
+}
+
+.avit-brand img {
+    display: block;
+    width: 245px;
+    height: 58px;
+    object-fit: cover;
+    object-position: center;
+}
+
+/* ---------------------------------------------------------
+   Main copy
+   --------------------------------------------------------- */
+
+.avit-showcase-content {
+    position: relative;
+    z-index: 2;
+    max-width: 650px;
+    margin-top: clamp(50px, 8vh, 90px);
+}
+
+.avit-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 18px;
+    color: var(--avit-blue);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.avit-eyebrow::before {
+    content: "";
+    width: 28px;
+    height: 2px;
+    border-radius: 99px;
+    background: var(--avit-blue);
+}
+
+.avit-heading {
+    max-width: 650px;
+    margin: 0;
+    color: var(--avit-navy);
+    font-size: clamp(42px, 5vw, 72px);
+    font-weight: 700;
+    line-height: 0.98;
+    letter-spacing: -0.045em;
+}
+
+.avit-heading span {
+    color: var(--avit-blue);
+}
+
+.avit-description {
+    max-width: 560px;
+    margin: 25px 0 0;
+    color: #667085;
+    font-size: 17px;
+    line-height: 1.75;
+}
+
+/* ---------------------------------------------------------
+   Feature pills
+   --------------------------------------------------------- */
+
+.avit-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 30px;
+}
+
+.avit-feature {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 8px 13px;
+    border: 1px solid #e1e8f3;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.75);
+    color: #526070;
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 3px 14px rgba(25, 56, 110, 0.035);
+}
+
+.avit-feature-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--avit-blue);
+    box-shadow: 0 0 0 4px rgba(36, 87, 214, 0.09);
+}
+
+/* ---------------------------------------------------------
+   Illustration
+   --------------------------------------------------------- */
+
+.avit-illustration {
+    position: relative;
+    z-index: 2;
+    width: min(100%, 670px);
+    margin-top: auto;
+    padding-top: 30px;
+}
+
+.avit-illustration svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 390px;
+}
+
+/* ---------------------------------------------------------
+   Footer
+   --------------------------------------------------------- */
+
+.avit-showcase-footer {
+    position: relative;
+    z-index: 2;
+    margin-top: 18px;
+    color: #98a2b3;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+/* ---------------------------------------------------------
+   Right authentication area
+   --------------------------------------------------------- */
+
+.avit-auth-side {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100dvh;
+    padding: 48px clamp(28px, 5vw, 72px);
+    background: #ffffff;
+}
+
+.avit-auth-wrapper {
+    width: 100%;
+    max-width: 440px;
+}
+
+/* Mobile brand */
+.avit-mobile-brand {
+    display: none;
+}
+
+/* ---------------------------------------------------------
+   Login card
+   --------------------------------------------------------- */
+
+.avit-login-card {
+    width: 100%;
+    padding: 42px;
+    border: 1px solid var(--avit-border);
+    border-radius: 24px;
+    background: #ffffff;
+    box-shadow:
+        0 24px 70px rgba(16, 27, 58, 0.07),
+        0 4px 18px rgba(16, 27, 58, 0.035);
+}
+
+.avit-login-header {
+    margin-bottom: 32px;
+}
+
+.avit-login-title {
+    margin: 0;
+    color: var(--avit-navy);
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.025em;
+}
+
+.avit-login-subtitle {
+    margin: 9px 0 0;
+    color: var(--avit-muted);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* ---------------------------------------------------------
+   Status
+   --------------------------------------------------------- */
+
+.avit-status {
+    margin-bottom: 20px;
+    padding: 11px 13px;
+    border: 1px solid #cce0ff;
+    border-radius: 10px;
+    background: #f2f7ff;
+    color: #2457d6;
+    font-size: 13px;
+}
+
+/* ---------------------------------------------------------
+   Form
+   --------------------------------------------------------- */
+
+.avit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 21px;
+}
+
+.avit-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.avit-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.avit-label {
+    color: #344054;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.avit-input-wrap {
+    position: relative;
+}
+
+.avit-input {
+    display: block;
+    width: 100%;
+    min-height: 50px;
+    padding: 0 15px;
+    border: 1px solid #d9e0ea;
+    border-radius: 11px;
+    outline: none;
+    background: #ffffff;
+    color: #172033;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.5;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        background-color 160ms ease;
+}
+
+.avit-input::placeholder {
+    color: #a3acba;
+}
+
+.avit-input:hover {
+    border-color: #c5cfdd;
+}
+
+.avit-input:focus {
+    border-color: var(--avit-blue);
+    background: #ffffff;
+    box-shadow:
+        0 0 0 4px rgba(36, 87, 214, 0.09);
+}
+
+.avit-password-input {
+    padding-right: 50px;
+}
+
+.avit-password-toggle {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    margin-top: -17px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #98a2b3;
+    cursor: pointer;
+    transition:
+        color 160ms ease,
+        background-color 160ms ease;
+}
+
+.avit-password-toggle:hover {
+    background: #f2f5f9;
+    color: #475467;
+}
+
+.avit-password-toggle svg {
+    width: 19px;
+    height: 19px;
+}
+
+/* ---------------------------------------------------------
+   Remember / forgot
+   --------------------------------------------------------- */
+
+.avit-form-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.avit-remember {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #667085;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.avit-remember input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--avit-blue);
+}
+
+.avit-forgot {
+    color: var(--avit-blue);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.avit-forgot:hover {
+    color: var(--avit-blue-dark);
+    text-decoration: underline;
+}
+
+/* ---------------------------------------------------------
+   Button
+   --------------------------------------------------------- */
+
+.avit-submit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 52px;
+    margin-top: 2px;
+    padding: 0 20px;
+    border: 0;
+    border-radius: 11px;
+    background: var(--avit-blue);
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 10px 22px rgba(36, 87, 214, 0.19);
+    transition:
+        transform 160ms ease,
+        background-color 160ms ease,
+        box-shadow 160ms ease;
+}
+
+.avit-submit:hover {
+    background: var(--avit-blue-dark);
+    box-shadow: 0 13px 28px rgba(36, 87, 214, 0.23);
+    transform: translateY(-1px);
+}
+
+.avit-submit:active {
+    transform: translateY(0);
+}
+
+.avit-submit:focus-visible {
+    outline: none;
+    box-shadow:
+        0 0 0 4px rgba(36, 87, 214, 0.14),
+        0 10px 22px rgba(36, 87, 214, 0.19);
+}
+
+/* ---------------------------------------------------------
+   Demo note
+   --------------------------------------------------------- */
+
+.avit-demo {
+    margin-top: 25px;
+    padding-top: 21px;
+    border-top: 1px solid #eef1f5;
+    text-align: center;
+}
+
+.avit-demo p {
+    margin: 0;
+    color: #a0a9b7;
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+/* ---------------------------------------------------------
+   Validation
+   --------------------------------------------------------- */
+
+.avit-error {
+    margin-top: 7px;
+    color: #d92d20;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.avit-input.avit-input-error {
+    border-color: #fda29b;
+}
+
+.avit-input.avit-input-error:focus {
+    border-color: #d92d20;
+    box-shadow: 0 0 0 4px rgba(217, 45, 32, 0.08);
+}
+
+/* ---------------------------------------------------------
+   Mobile
+   --------------------------------------------------------- */
+
+@media (max-width: 1023px) {
+    .avit-login-shell {
+        display: block;
+        min-height: 100dvh;
+    }
+
+    .avit-showcase {
+        display: none;
+    }
+
+    .avit-auth-side {
+        min-height: 100dvh;
+        padding: 28px 18px;
+        background:
+            radial-gradient(
+                circle at 15% 0%,
+                rgba(36, 87, 214, 0.07),
+                transparent 32%
+            ),
+            #f8fafc;
+    }
+
+    .avit-auth-wrapper {
+        max-width: 460px;
+    }
+
+    .avit-mobile-brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 58px;
+        margin-bottom: 26px;
+        overflow: hidden;
+    }
+
+    .avit-mobile-brand img {
+        display: block;
+        width: 245px;
+        height: 58px;
+        object-fit: cover;
+        object-position: center;
+    }
+
+    .avit-login-card {
+        padding: 32px 26px;
+        border-radius: 20px;
+        box-shadow:
+            0 20px 50px rgba(16, 27, 58, 0.065),
+            0 3px 12px rgba(16, 27, 58, 0.03);
+    }
+}
+
+@media (max-width: 520px) {
+    .avit-auth-side {
+        padding: 20px 14px;
+    }
+
+    .avit-mobile-brand {
+        margin-bottom: 20px;
+    }
+
+    .avit-login-card {
+        padding: 27px 20px;
+        border-radius: 18px;
+    }
+
+    .avit-login-title {
+        font-size: 27px;
+    }
+
+    .avit-form-options {
+        align-items: flex-start;
+    }
+
+    .avit-remember {
+        font-size: 12px;
+    }
+
+    .avit-forgot {
+        font-size: 12px;
+        text-align: right;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .avit-input,
+    .avit-password-toggle,
+    .avit-submit {
+        transition: none;
+    }
+}
+
+/* =========================================================
+   AVIT DIGITAL LOGIN — ONE SCREEN DESKTOP FIX
+   UI ONLY — NO AUTH / BACKEND CHANGES
+   ========================================================= */
+
+   html,
+   body {
+       height: 100%;
+       margin: 0;
+   }
+   
+   body.avit-login-page {
+       overflow: hidden;
+   }
+   
+   /* Main two-column login area */
+   .avit-login-shell {
+       height: 100dvh;
+       min-height: 100dvh;
+       max-height: 100dvh;
+       overflow: hidden;
+   }
+   
+   /* Left showcase */
+   .avit-showcase {
+       height: 100%;
+       min-height: 0;
+       overflow: hidden;
+   }
+   
+   /* Right authentication area */
+   .avit-auth-side {
+       height: 100%;
+       min-height: 0;
+       overflow: hidden;
+   }
+   
+   /* Wrapper containing login card */
+   .avit-auth-wrapper {
+       height: 100%;
+       min-height: 0;
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       overflow: hidden;
+   }
+   
+   /* Login card */
+   .avit-login-card {
+       width: 100%;
+       max-width: 470px;
+       max-height: calc(100dvh - 48px);
+       overflow: hidden;
+   }
+   
+   /* =========================================================
+      NORMAL DESKTOP
+      ========================================================= */
+   
+   @media (min-width: 1024px) {
+   
+       .avit-showcase {
+           padding-top: 32px;
+           padding-bottom: 32px;
+       }
+   
+       .avit-showcase-content {
+           margin-top: 28px;
+       }
+   
+       .avit-heading {
+           margin-top: 20px;
+           font-size: clamp(3.2rem, 4.3vw, 4.8rem);
+           line-height: 0.96;
+       }
+   
+       .avit-description {
+           margin-top: 18px;
+           line-height: 1.5;
+       }
+   
+       .avit-features {
+           margin-top: 22px;
+       }
+   
+       .avit-login-card {
+           padding: 30px;
+           border-radius: 22px;
+       }
+   }
+   
+   /* =========================================================
+      YOUR SCREEN / SHORT DESKTOP
+      Handles 1366x768, 1536x864 etc.
+      ========================================================= */
+   
+   @media (min-width: 1024px) and (max-height: 850px) {
+   
+       .avit-showcase {
+           padding-top: 24px;
+           padding-bottom: 20px;
+       }
+   
+       .avit-showcase-content {
+           margin-top: 20px;
+       }
+   
+       .avit-heading {
+           margin-top: 16px;
+           font-size: clamp(2.9rem, 3.8vw, 4rem);
+           line-height: 0.94;
+       }
+   
+       .avit-description {
+           margin-top: 14px;
+           line-height: 1.45;
+           max-width: 600px;
+       }
+   
+       .avit-features {
+           margin-top: 18px;
+       }
+   
+       .avit-illustration {
+           transform: scale(0.82);
+           transform-origin: bottom left;
+       }
+   
+       .avit-showcase-footer {
+           bottom: 18px;
+       }
+   
+       .avit-login-card {
+           max-width: 450px;
+           padding: 26px 30px;
+       }
+   }
+   
+   /* =========================================================
+      VERY SHORT DESKTOP
+      ========================================================= */
+   
+   @media (min-width: 1024px) and (max-height: 760px) {
+   
+       .avit-showcase {
+           padding-top: 18px;
+           padding-bottom: 16px;
+       }
+   
+       .avit-showcase-content {
+           margin-top: 14px;
+       }
+   
+       .avit-heading {
+           margin-top: 12px;
+           font-size: 3rem;
+           line-height: 0.92;
+       }
+   
+       .avit-description {
+           margin-top: 12px;
+           font-size: 0.95rem;
+           line-height: 1.4;
+       }
+   
+       .avit-features {
+           margin-top: 14px;
+       }
+   
+       .avit-illustration {
+           transform: scale(0.68);
+       }
+   
+       .avit-login-card {
+           max-width: 430px;
+           padding: 22px 26px;
+       }
+   }
+   
+   /* =========================================================
+      MOBILE
+      Do NOT force mobile into a fixed-height box.
+      ========================================================= */
+   
+   @media (max-width: 1023px) {
+   
+       body.avit-login-page {
+           overflow-x: hidden;
+           overflow-y: auto;
+       }
+   
+       .avit-login-shell {
+           height: auto;
+           min-height: 100dvh;
+           max-height: none;
+           overflow: visible;
+       }
+   
+       .avit-showcase,
+       .avit-auth-side {
+           height: auto;
+           min-height: auto;
+           overflow: visible;
+       }
+   
+       .avit-auth-wrapper {
+           height: auto;
+           min-height: 100dvh;
+           overflow: visible;
+       }
+   
+       .avit-login-card {
+           max-height: none;
+           overflow: visible;
+       }
+   }
