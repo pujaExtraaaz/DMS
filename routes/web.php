@@ -1,9 +1,8 @@
 <?php
 
-use App\Http\Controllers\Organization\CompanyProfileController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\UserController;
 
 Route::get('/', function () {
     return auth()->check()
@@ -24,19 +23,6 @@ Route::get('/eway-bill/qr/{token}', [
     \App\Http\Controllers\InvoiceQrController::class,
     'ewayBill',
 ])->name('eway-bill.qr');
-
-// Direct Company Logo Stream Route (accessible across all domains and contexts)
-Route::get('/companies/{company}/logo', [CompanyProfileController::class, 'logo'])->name('organization.companies.logo');
-
-// Public storage fallback route (guarantees images render even if public/storage symlink is missing)
-Route::get('/storage/{path}', function (string $path) {
-    $filePath = storage_path('app/public/'.$path);
-    if (! file_exists($filePath)) {
-        abort(404);
-    }
-
-    return response()->file($filePath);
-})->where('path', '.*')->name('storage.local');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -59,5 +45,6 @@ Route::middleware(['auth', 'verified', 'role:super-admin|client-admin'])->group(
         ->middleware('role:super-admin|client-admin')
         ->name('users.permissions.update');
 });
-
 require __DIR__.'/auth.php';
+
+

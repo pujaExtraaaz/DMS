@@ -5,8 +5,6 @@ namespace App\Domains\Organization\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Storage;
 
 class Company extends Model
 {
@@ -14,7 +12,6 @@ class Company extends Model
         'business_group_id',
         'name',
         'code',
-        'logo_path',
         'legal_name',
         'gstin',
         'pan',
@@ -24,12 +21,9 @@ class Company extends Model
         'msme_category',
         'msme_registration_no',
         'address',
-        'city',
         'state',
         'pincode',
-        'country',
         'phone',
-        'alternate_phone',
         'email',
         'website',
         'bank_name',
@@ -40,7 +34,7 @@ class Company extends Model
         'purchase_terms_and_conditions',
         'selling_terms_and_conditions',
         'due_date_basis',
-        'is_active',
+        'is_active',  
     ];
 
     protected function casts(): array
@@ -76,51 +70,15 @@ class Company extends Model
         return $this->financialYears()->where('is_current', true)->first();
     }
 
-    /**
-     * Get the accessible public URL for the company's uploaded logo.
-     */
-    public function getLogoUrlAttribute(): ?string
-    {
-        if (! $this->logo_path) {
-            return null;
-        }
-
-        // If the path is already a full external URL
-        if (filter_var($this->logo_path, FILTER_VALIDATE_URL)) {
-            return $this->logo_path;
-        }
-
-        // Dedicated streaming endpoint with cache-busting
-        if (Route::has('organization.companies.logo')) {
-            return route('organization.companies.logo', [
-                'company' => $this->id,
-                'v' => optional($this->updated_at)->timestamp ?: time(),
-            ]);
-        }
-
-        $cleanPath = ltrim($this->logo_path, '/');
-        if (str_starts_with($cleanPath, 'public/')) {
-            $cleanPath = substr($cleanPath, 7);
-        }
-        if (str_starts_with($cleanPath, 'storage/')) {
-            $cleanPath = substr($cleanPath, 8);
-        }
-
-        return url('storage/'.$cleanPath);
-    }
-
     public function getContactsAttribute(): array
     {
         $primary = [
             'phone' => $this->phone,
-            'alternate_phone' => $this->alternate_phone,
             'email' => $this->email,
             'website' => $this->website,
-            'address' => $this->address,
-            'city' => $this->city,
             'state' => $this->state,
             'pincode' => $this->pincode,
-            'country' => $this->country,
+            'address' => $this->address,
         ];
         $additional = $this->additional_details['contacts'] ?? [];
 

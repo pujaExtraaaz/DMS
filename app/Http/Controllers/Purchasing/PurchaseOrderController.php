@@ -5,15 +5,13 @@ namespace App\Http\Controllers\Purchasing;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
-use App\Domains\Master\Services\GstLookupService;
 use App\Domains\Organization\Models\Warehouse;
-use App\Domains\Organization\Services\FinancialYearService;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Purchasing\Services\PurchaseOrderService;
+use App\Domains\Organization\Services\FinancialYearService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PurchaseOrderController extends Controller
@@ -53,7 +51,6 @@ class PurchaseOrderController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.uom_id' => 'required|exists:uoms,id',
-            'items.*.batch_name' => 'nullable|string|max:100',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
             'items.*.tax_percent' => 'nullable|numeric|min:0|max:100',
@@ -61,19 +58,6 @@ class PurchaseOrderController extends Controller
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.weight' => 'nullable|numeric|min:0',
         ]);
-
-        // Validate that batch-tracked products have a Batch Name supplied
-        $productIds = collect($validated['items'])->pluck('product_id')->unique()->filter();
-        $productsMap = Product::whereIn('id', $productIds)->get()->keyBy('id');
-
-        foreach ($validated['items'] as $index => $item) {
-            $product = $productsMap->get($item['product_id']);
-            if ($product && $product->isBatchTracked() && empty(trim((string) ($item['batch_name'] ?? '')))) {
-                throw ValidationException::withMessages([
-                    "items.{$index}.batch_name" => "Batch Name is required for batch-tracked product: {$product->name}.",
-                ]);
-            }
-        }
 
         $this->financialYearService->assertOpen($validated['po_date']);
 
@@ -185,7 +169,6 @@ class PurchaseOrderController extends Controller
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
             'products' => Product::where('is_active', true)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
-            'states' => GstLookupService::states(),
         ];
     }
 }

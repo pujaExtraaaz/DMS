@@ -58,7 +58,23 @@
                     }
                     $selectedTracking = array_values(array_filter($selectedTracking, fn($t) => $t !== 'none'));
                 @endphp
-                <div x-data="trackingTypeManager(@js($selectedTracking))" class="space-y-1">
+                <div x-data="{
+                    options: ['serial', 'batch'],
+                    selected: @json($selectedTracking),
+                    get allSelected() {
+                        return this.options.length > 0 && this.options.every(opt => this.selected.includes(opt));
+                    },
+                    get isIndeterminate() {
+                        return this.selected.length > 0 && !this.allSelected;
+                    },
+                    toggleAll(e) {
+                        if (e.target.checked) {
+                            this.selected = [...this.options];
+                        } else {
+                            this.selected = [];
+                        }
+                    }
+                }" class="space-y-1">
                     <label class="block text-sm font-medium text-slate-700">Tracking Type</label>
                     <div class="rounded-lg border border-slate-300 p-3 bg-white space-y-2.5">
                         <label class="flex items-center gap-2 text-sm font-semibold text-slate-800 cursor-pointer">
@@ -261,27 +277,3 @@
     </x-ui.card>
 @endif
 @endsection
-
-@push('scripts')
-<script>
-function trackingTypeManager(initialSelected) {
-    return {
-        options: ['serial', 'batch'],
-        selected: Array.isArray(initialSelected) ? initialSelected : [],
-        get allSelected() {
-            return this.options.length > 0 && this.options.every(opt => this.selected.includes(opt));
-        },
-        get isIndeterminate() {
-            return this.selected.length > 0 && !this.allSelected;
-        },
-        toggleAll(e) {
-            if (e.target.checked) {
-                this.selected = [...this.options];
-            } else {
-                this.selected = [];
-            }
-        }
-    };
-}
-</script>
-@endpush

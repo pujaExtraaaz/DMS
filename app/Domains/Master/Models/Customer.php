@@ -25,7 +25,6 @@ class Customer extends Model
         'area_id',
         'route_id',
         'salesperson_id',
-        'sales_manager_id',
         'phone',
         'email',
         'address',
@@ -88,11 +87,6 @@ class Customer extends Model
         return $this->belongsTo(User::class, 'salesperson_id');
     }
 
-    public function salesManager(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'sales_manager_id');
-    }
-
     public function contacts(): HasMany
     {
         return $this->hasMany(PartyContact::class);
@@ -101,16 +95,6 @@ class Customer extends Model
     public function addresses(): HasMany
     {
         return $this->hasMany(PartyAddress::class);
-    }
-
-    public function bankAccounts(): HasMany
-    {
-        return $this->hasMany(PartyBankAccount::class);
-    }
-
-    public function creditCheques(): HasMany
-    {
-        return $this->hasMany(PartyCreditCheque::class);
     }
 
     public function orders(): HasMany
