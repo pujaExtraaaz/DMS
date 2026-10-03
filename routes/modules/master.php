@@ -26,6 +26,10 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
     Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit')->group(function () {
         Route::resource('products', ProductController::class);
         Route::resource('price-masters', PriceMasterController::class);
+
+        // GST lookup & quick-add endpoints for Party/Customer
+        Route::match(['get', 'post'], 'customers/gst-lookup', [CustomerController::class, 'gstLookup'])->name('customers.gst-lookup');
+        Route::post('customers/quick-add', [CustomerController::class, 'quickAdd'])->name('customers.quick-add');
         Route::resource('customers', CustomerController::class);
 
         // Quick-add product endpoint used by PO / PI / Sales create flows.

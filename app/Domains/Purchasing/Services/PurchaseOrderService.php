@@ -41,11 +41,8 @@ class PurchaseOrderService
 
             foreach ($items as &$item) {
                 $line = $item['quantity'] * $item['unit_cost'];
-
                 $taxPercent = (float) ($item['tax_percent'] ?? 0);
 
-                // Automatically split total tax 50/50 unless
-                // the user has supplied an editable CGST/SGST split.
                 $cgstPercent = array_key_exists('cgst_percent', $item)
                     ? (float) $item['cgst_percent']
                     : ($taxPercent / 2);
@@ -109,6 +106,7 @@ class PurchaseOrderService
                     'sgst_amount' => $item['sgst_amount'],
                     'line_total' => $line + $tax,
                     'weight' => $item['weight'] ?? null,
+                    'batch_no' => $item['batch_no'] ?? null,
                 ]);
             }
 
@@ -157,11 +155,6 @@ class PurchaseOrderService
         return $order->fresh();
     }
 
-    /**
-     * Receive against an approved PO: creates inward, updates stock, optional serials/batches.
-     *
-     * @param  array{inward_date:string,warehouse_id?:int,supplier_challan_no?:string,notes?:string,items:array}  $data
-     */
     public function receive(PurchaseOrder $order, array $data, User $actor): PurchaseInward
     {
         if (! $order->isReceivable()) {
@@ -303,7 +296,6 @@ class PurchaseOrderService
                 }
 
                 $line = $item['quantity'] * $item['unit_cost'];
-
                 $taxPercent = (float) ($item['tax_percent'] ?? 0);
 
                 $cgstPercent = array_key_exists('cgst_percent', $item)
@@ -322,7 +314,6 @@ class PurchaseOrderService
 
                 $cgstAmount = $line * ($cgstPercent / 100);
                 $sgstAmount = $line * ($sgstPercent / 100);
-
                 $tax = $cgstAmount + $sgstAmount;
 
                 $subtotal += $line;
@@ -368,6 +359,7 @@ class PurchaseOrderService
                 'supplier_invoice_no' => $data['supplier_invoice_no'] ?? null,
                 'invoice_date' => $data['invoice_date'],
                 'due_date' => $data['due_date'] ?? $due['due_date'],
+                'credit_days' => $data['credit_days'] ?? null,
                 'due_date_basis' => $due['due_date_basis'],
                 'due_date_source_date' => $due['due_date_source_date'],
                 'status' => 'posted',
@@ -382,7 +374,7 @@ class PurchaseOrderService
             ]);
 
             foreach ($prepared as $item) {
-                PurchaseInvoiceItem::create([
+                $piItem = PurchaseInvoiceItem::create([
                     'purchase_invoice_id' => $invoice->id,
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
@@ -400,6 +392,19 @@ class PurchaseOrderService
                     'batch_mrp' => $item['batch_mrp'] ?? null,
                     'expiry_date' => $item['expiry_date'] ?? null,
                 ]);
+
+                if (! empty($item['serials']) && is_array($item['serials'])) {
+                    $prod = Product::find($item['product_id']);
+                    if ($prod) {
+                        $this->serialBatchService->assignSerials(
+                            $prod,
+                            $item['serials'],
+                            $invoice->warehouse_id,
+                            $piItem,
+                            $actor,
+                        );
+                    }
+                }
 
                 VendorPriceHistory::create([
                     'supplier_id' => $supplierId,
@@ -480,6 +485,9 @@ class PurchaseOrderService
                 'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
                 'batch_mrp' => isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
                 'expiry_date' => $item['expiry_date'] ?? null,
+                'serials' => ! empty($item['serials'])
+                    ? (is_array($item['serials']) ? $item['serials'] : preg_split('/[\s,;]+/', (string) $item['serials'], -1, PREG_SPLIT_NO_EMPTY))
+                    : [],
             ];
         }
 

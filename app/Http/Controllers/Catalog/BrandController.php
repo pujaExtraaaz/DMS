@@ -100,7 +100,6 @@ class BrandController extends Controller
         $data['is_active'] = $request->boolean('is_active');
         $data['company_id'] = $data['company_id'] ?? auth()->user()?->company_id;
 
-        // Auto-generate a globally unique brand code when the user leaves it blank.
         if (blank($data['code'] ?? null)) {
             $data['code'] = CodeGenerator::forBrand($data['company_id'] ?? null);
         }

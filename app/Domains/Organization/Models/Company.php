@@ -34,6 +34,7 @@ class Company extends Model
         'purchase_terms_and_conditions',
         'selling_terms_and_conditions',
         'due_date_basis',
+        'logo_path',
         'is_active',  
     ];
 

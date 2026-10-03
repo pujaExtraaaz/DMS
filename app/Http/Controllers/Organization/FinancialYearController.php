@@ -66,7 +66,6 @@ class FinancialYearController extends Controller
         return $this->flashSuccess('Financial year deleted successfully.', 'organization.financial-years.index');
     }
 
-    /** Make the given FY the current period (Tally F2 equivalent). */
     public function setCurrent(FinancialYear $financial_year): RedirectResponse
     {
         DB::transaction(function () use ($financial_year) {
@@ -81,7 +80,6 @@ class FinancialYearController extends Controller
         return $this->flashSuccess("Current period switched to {$financial_year->name}.", 'organization.financial-years.index');
     }
 
-    /** Lock the FY so no back-dated postings are allowed. */
     public function close(FinancialYear $financial_year): RedirectResponse
     {
         $financial_year->update(['is_closed' => true, 'is_current' => false]);
@@ -91,7 +89,6 @@ class FinancialYearController extends Controller
         return $this->flashSuccess("Financial year {$financial_year->name} closed.", 'organization.financial-years.index');
     }
 
-    /** Re-open a previously closed FY. */
     public function reopen(FinancialYear $financial_year): RedirectResponse
     {
         $financial_year->update(['is_closed' => false]);

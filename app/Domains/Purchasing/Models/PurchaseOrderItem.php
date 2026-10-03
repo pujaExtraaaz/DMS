@@ -19,6 +19,7 @@ class PurchaseOrderItem extends Model
         'tax_percent',
         'line_total',
         'weight',
+        'batch_no',
         'cgst_percent',
         'sgst_percent',
         'cgst_amount',

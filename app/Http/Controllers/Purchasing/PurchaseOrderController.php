@@ -57,6 +57,7 @@ class PurchaseOrderController extends Controller
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.weight' => 'nullable|numeric|min:0',
+            'items.*.batch_no' => 'nullable|string|max:60',
         ]);
 
         $this->financialYearService->assertOpen($validated['po_date']);

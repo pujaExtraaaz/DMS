@@ -1,12 +1,13 @@
 @extends('layouts.dms')
-@section('title', $item->exists ? 'Edit Company' : 'Create Company')
+@section('title', 'Company Profile')
 @section('content')
-<x-ui.page-header :title="$item->exists ? 'Edit Company' : 'Create Company'">
-    <x-slot name="actions"><x-ui.button variant="secondary" :href="route('organization.companies.index')">Back</x-ui.button></x-slot>
+<x-ui.page-header title="Company Profile" description="Manage identity, statutory registrations, bank accounts, and default invoice terms for your active company.">
 </x-ui.page-header>
+
 <x-ui.card>
-    <form method="POST" action="{{ $item->exists ? route('organization.companies.update', $item) : route('organization.companies.store') }}" enctype="multipart/form-data" class="space-y-6 max-w-4xl">
-        @csrf @if($item->exists) @method('PUT') @endif
+    <form method="POST" action="{{ route('organization.company-profile.update') }}" enctype="multipart/form-data" class="space-y-6 max-w-4xl">
+        @csrf
+        @method('PUT')
 
         <div>
             <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity</h3>
@@ -25,7 +26,7 @@
                     <label class="block text-sm font-medium text-slate-700 mb-1">Company Logo</label>
                     <div class="flex items-center gap-4">
                         <template x-if="logoPreview">
-                            <div class="relative w-20 h-20 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center p-1">
+                            <div class="relative w-24 h-24 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center p-1">
                                 <img :src="logoPreview" class="max-w-full max-h-full object-contain">
                             </div>
                         </template>
@@ -207,12 +208,6 @@
         </div>
 
         <div>
-            <h3 class="text-sm font-semibold text-slate-700 mb-3">Preferences</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            </div>
-        </div>
-
-        <div>
             <h3 class="text-sm font-semibold text-slate-700 mb-3">
                 Invoice Terms &amp; Conditions
             </h3>
@@ -223,7 +218,6 @@
             </p>
 
             <div class="grid grid-cols-1 gap-4">
-
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">
                         Purchase Terms &amp; Conditions
@@ -249,15 +243,10 @@
                         placeholder="Enter default terms and conditions for Sales Invoices..."
                     >{{ old('selling_terms_and_conditions', $item->selling_terms_and_conditions) }}</textarea>
                 </div>
-
             </div>
         </div>
 
-        <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600"> Active
-        </label>
-
-        <x-ui.button type="submit" variant="primary">Save</x-ui.button>
+        <x-ui.button type="submit" variant="primary">Save Changes</x-ui.button>
     </form>
 </x-ui.card>
 @endsection
