@@ -564,29 +564,83 @@ class TallyExportService
     // ─────────────────────────────────────────────────────────────
 
     public function buildStockItemXml(Product $product): string
-    {
-        $product->loadMissing('baseUom');
+{
+    $product->loadMissing('baseUom');
 
-        $mapping = $this->mappingService->findForDms(Product::class, $product->id, 'stock_item');
-        $action  = $mapping ? 'Alter' : 'Create';
+    $mapping = $this->mappingService->findForDms(
+        Product::class,
+        $product->id,
+        'stock_item'
+    );
 
-        $name    = $this->xml($product->name);
-        $current = $this->xml($mapping?->tally_name ?: $product->name);
-        $uom     = $this->xml($this->unitName($product->baseUom, null) ?: 'Nos');
-        $hsn     = $this->xml($product->hsn_code ?? '');
-        $gst     = number_format((float) ($product->tax_rate ?? 0), 2, '.', '');
+    $action  = $mapping ? 'Alter' : 'Create';
 
-        return $this->wrapMaster('PRODUCT', <<<XML
+    $name    = $this->xml($product->name);
+    $current = $this->xml($mapping?->tally_name ?: $product->name);
+    $uom     = $this->xml(
+        $this->unitName($product->baseUom, null) ?: 'Nos'
+    );
+
+    $hsn = $this->xml($product->hsn_code ?? '');
+
+    $description = $this->xml($product->description ?? '');
+
+    $gst = (float) ($product->tax_rate ?? 0);
+
+    $cgst = number_format($gst / 2, 2, '.', '');
+    $sgst = number_format($gst / 2, 2, '.', '');
+    $igst = number_format($gst, 2, '.', '');
+
+    return $this->wrapMaster('PRODUCT', <<<XML
 <STOCKITEM NAME="{$current}" ACTION="{$action}">
- <NAME>{$name}</NAME>
- <BASEUNITS>{$uom}</BASEUNITS>
- <HSNDETAILS.LIST>
-  <HSNCODE>{$hsn}</HSNCODE>
-  <GSTRATE>{$gst}</GSTRATE>
- </HSNDETAILS.LIST>
+    <NAME>{$name}</NAME>
+    <BASEUNITS>{$uom}</BASEUNITS>
+
+    <GSTAPPLICABLE>~[~ Applicable</GSTAPPLICABLE>
+    <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
+
+    <DESCRIPTION>{$description}</DESCRIPTION>
+
+    <GSTDETAILS.LIST>
+        <SRCOFGSTDETAILS>Specify Details Here</SRCOFGSTDETAILS>
+        <APPLICABLEFROM>20260401</APPLICABLEFROM>
+        <HSNCODE>{$hsn}</HSNCODE>
+        <TAXABILITY>Taxable</TAXABILITY>
+
+        <STATEWISEDETAILS.LIST>
+            <STATENAME>~[~ Any</STATENAME>
+
+            <RATEDETAILS.LIST>
+                <GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>
+                <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                <GSTRATE>{$cgst}</GSTRATE>
+            </RATEDETAILS.LIST>
+
+            <RATEDETAILS.LIST>
+                <GSTRATEDUTYHEAD>SGST/UTGST</GSTRATEDUTYHEAD>
+                <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                <GSTRATE>{$sgst}</GSTRATE>
+            </RATEDETAILS.LIST>
+
+            <RATEDETAILS.LIST>
+                <GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>
+                <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
+                <GSTRATE>{$igst}</GSTRATE>
+            </RATEDETAILS.LIST>
+
+        </STATEWISEDETAILS.LIST>
+    </GSTDETAILS.LIST>
+
+    <HSNDETAILS.LIST>
+        <APPLICABLEFROM>20260401</APPLICABLEFROM>
+        <HSNCODE>{$hsn}</HSNCODE>
+        <HSN>{$description}</HSN>
+        <SRCOFHSNDETAILS>Specify Details Here</SRCOFHSNDETAILS>
+    </HSNDETAILS.LIST>
+
 </STOCKITEM>
 XML);
-    }
+}
 
     public function buildLedgerXml(Customer $customer): string
     {
