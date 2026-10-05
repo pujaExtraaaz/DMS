@@ -42,7 +42,6 @@ class PurchaseInvoiceController extends Controller
 
     public function create(Request $request): View
     {
-
         $company = Company::query()->find(
             auth()->user()?->company_id
         ) ?? Company::query()->first();
@@ -67,8 +66,6 @@ class PurchaseInvoiceController extends Controller
             'vendorRates' => $vendorRates,
             'selectedOrderId' => $request->integer('purchase_order_id') ?: null,
             'company' => $company,
-
-
             'purchaseTermsAndConditions' => $company?->purchase_terms_and_conditions,
         ]);
     }
@@ -82,6 +79,7 @@ class PurchaseInvoiceController extends Controller
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'supplier_invoice_no' => 'nullable|string|max:60',
             'invoice_date' => 'required|date',
+            'credit_days' => 'nullable|integer|min:0',
             'due_date' => 'nullable|date',
             'rate_override_reason' => 'nullable|string',
             'notes' => 'nullable|string',
@@ -99,6 +97,7 @@ class PurchaseInvoiceController extends Controller
             'items.*.expiry_date' => 'nullable|date',
             'items.*.batch_selling_price' => 'nullable|numeric|min:0',
             'items.*.batch_mrp' => 'nullable|numeric|min:0',
+            'items.*.serials' => 'nullable|string',
         ]);
 
         $this->financialYearService->assertOpen($validated['invoice_date']);
@@ -175,6 +174,7 @@ class PurchaseInvoiceController extends Controller
                     'sgst_percent' => $item->sgst_percent,
                     'cgst_amount' => $item->cgst_amount,
                     'sgst_amount' => $item->sgst_amount,
+                    'batch_no' => $item->batch_no ?? '',
                 ];
             })->values(),
         ]);

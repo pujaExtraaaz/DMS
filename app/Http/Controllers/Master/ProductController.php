@@ -228,9 +228,6 @@ class ProductController extends Controller
         return $data;
     }
 
-    /**
-     * Ensure the product has a `product_uoms` row for its base UOM, mirroring master pricing.
-     */
     protected function syncBaseUom(Product $product): void
     {
         ProductUom::updateOrCreate(
@@ -249,17 +246,12 @@ class ProductController extends Controller
         );
     }
 
-    /**
-     * Replace all non-base product_uoms with what came from the form.
-     * Rows without a uom_id are ignored.
-     */
     protected function syncAlternateUoms(Request $request, Product $product): void
     {
         $rows = collect($request->input('product_uoms', []))
             ->filter(fn ($r) => filled($r['uom_id'] ?? null) && (int) $r['uom_id'] !== (int) $product->base_uom_id)
             ->values();
 
-        // Wipe existing non-base rows, then re-insert. Safe because we always keep the base row via syncBaseUom().
         ProductUom::query()
             ->where('product_id', $product->id)
             ->where('is_base', false)

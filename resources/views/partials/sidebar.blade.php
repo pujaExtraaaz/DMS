@@ -28,6 +28,10 @@
     :class="sidebarOpen ? '!block' : 'hidden'"
 ></div>
 
+@php
+    $activeCompany = \App\Domains\Organization\Models\Company::find(auth()->user()?->company_id) ?? \App\Domains\Organization\Models\Company::first();
+@endphp
+
 <aside
     :class="[
         sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-64',
@@ -37,8 +41,14 @@
 >
     <div class="flex h-16 shrink-0 items-center justify-between border-b border-slate-700/60 px-4">
         <a href="{{ route('dashboard') }}" class="flex min-w-0 items-center gap-3">
-            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-sm font-bold shadow-lg shadow-indigo-900/40">D</span>
-            <span x-show="!$root.sidebarCollapsed" x-cloak class="truncate text-sm font-semibold tracking-tight text-white">DMS</span>
+            @if($activeCompany?->logo_path)
+                <img src="{{ asset('storage/' . $activeCompany->logo_path) }}" alt="{{ $activeCompany->name }}" class="h-10 w-10 shrink-0 rounded-xl object-contain bg-white p-1 shadow-lg shadow-indigo-900/40">
+            @else
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-sm font-bold shadow-lg shadow-indigo-900/40 text-white">
+                    {{ strtoupper(substr($activeCompany?->name ?? 'DMS', 0, 1)) }}
+                </span>
+            @endif
+            <span x-show="!$root.sidebarCollapsed" x-cloak class="truncate text-sm font-semibold tracking-tight text-white">{{ $activeCompany?->name ?? 'DMS' }}</span>
         </a>
         <button type="button" @click="sidebarOpen = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden">
             <span class="sr-only">Close sidebar</span>
@@ -59,6 +69,7 @@
                     <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                 </button>
                 <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
+                    <a href="{{ route('organization.company-profile') }}" class="{{ $itemClass }} {{ $linkClass(['organization.company-profile*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Company Profile</span></a>
                     <a href="{{ route('organization.companies.index') }}" class="{{ $itemClass }} {{ $linkClass(['organization.companies.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Companies</span></a>
                     <a href="{{ route('organization.branches.index') }}" class="{{ $itemClass }} {{ $linkClass(['organization.branches.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Branches</span></a>
                     <a href="{{ route('organization.warehouses.index') }}" class="{{ $itemClass }} {{ $linkClass(['organization.warehouses.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Warehouses</span></a>
@@ -72,7 +83,7 @@
             <div x-data="{ open: {{ $is('masters.*') ? 'true' : 'false' }} }">
                 <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
                     <span>2 · Masters</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5-7.5-7.5-7.5" /></svg>
                 </button>
                 <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
                     @if($can('products.view', 'masters.view'))
