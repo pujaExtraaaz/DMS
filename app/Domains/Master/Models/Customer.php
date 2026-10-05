@@ -24,8 +24,8 @@ class Customer extends Model
         'party_type',
         'phone',
         'email',
+        'address',
         'gstin',
-        'pan',
         'state',
         'pincode',
         'credit_limit',
@@ -35,6 +35,13 @@ class Customer extends Model
         'interest_rate',
         'is_active',
     ];
+
+    protected $appends = ['pan'];
+
+    public function getPanAttribute(): ?string
+    {
+        return ($this->gstin && strlen($this->gstin) >= 12) ? substr($this->gstin, 2, 10) : null;
+    }
 
     protected function casts(): array
     {

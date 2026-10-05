@@ -54,21 +54,36 @@ class CodeGenerator
         return self::next(Customer::class, 'PTY', $companyId, 'code');
     }
 
+    public static function forParty(?int $companyId = null): string
+    {
+        return self::next(Customer::class, 'PTY', $companyId, 'code');
+    }
+
     protected static function next(string $modelClass, string $prefix, ?int $companyId, string $column): string
     {
         $scope = $companyId ? (string) $companyId : 'GLOBAL';
         $needle = "{$prefix}-{$scope}-";
 
-        $latest = $modelClass::query()
+        $existing = $modelClass::query()
             ->where($column, 'like', $needle.'%')
-            ->orderByDesc('id')
-            ->limit(50)
-            ->pluck($column)
-            ->map(fn ($v) => (int) Str::afterLast($v, '-'))
-            ->max();
+            ->pluck($column);
 
-        $next = (int) ($latest ?? 0) + 1;
+        $max = 0;
+        foreach ($existing as $val) {
+            $suffix = Str::afterLast($val, '-');
+            if (is_numeric($suffix)) {
+                $max = max($max, (int) $suffix);
+            }
+        }
 
-        return sprintf('%s-%s-%05d', $prefix, $scope, $next);
+        $next = $max + 1;
+        $candidate = sprintf('%s-%s-%05d', $prefix, $scope, $next);
+
+        while ($modelClass::query()->where($column, $candidate)->exists()) {
+            $next++;
+            $candidate = sprintf('%s-%s-%05d', $prefix, $scope, $next);
+        }
+
+        return $candidate;
     }
 }

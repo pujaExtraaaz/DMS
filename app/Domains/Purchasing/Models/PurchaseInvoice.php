@@ -2,47 +2,39 @@
 
 namespace App\Domains\Purchasing\Models;
 
+use App\Domains\Inventory\Models\InventoryMovement;
 use App\Domains\Master\Models\Customer;
+use App\Domains\Organization\Models\Branch;
+use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\Warehouse;
 use App\Models\User;
-use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class PurchaseInvoice extends Model
 {
-    protected static function booted(): void
-    {
-        static::creating(function (PurchaseInvoice $invoice) {
-            if (empty($invoice->qr_token)) {
-                $invoice->qr_token = (string) Str::uuid();
-            }
-        });
-    }
-
     protected $fillable = [
-        'purchase_order_id',
-        'purchase_inward_id',
-        'supplier_id',
+        'company_id',
+        'branch_id',
         'warehouse_id',
-        'invoice_no',
-        'supplier_invoice_no',
+        'supplier_id',
+        'purchase_order_id',
+        'created_by',
+        'invoice_number',
+        'supplier_invoice_number',
         'invoice_date',
-        'due_date',
-        'credit_days',
-        'due_date_basis',
-        'due_date_source_date',
         'status',
         'subtotal',
         'tax_amount',
-        'grand_total',
-        'rate_override_reason',
+        'freight_charge',
+        'other_charges',
+        'total_amount',
         'notes',
-        'terms_and_conditions',
-        'freight_allocation_method',
-        'created_by',
-        'qr_token',
+        'credit_days',
+        'due_date',
+        'posted_at',
     ];
 
     protected function casts(): array
@@ -50,22 +42,29 @@ class PurchaseInvoice extends Model
         return [
             'invoice_date' => 'date',
             'due_date' => 'date',
-            'due_date_source_date' => 'date',
-            'credit_days' => 'integer',
+            'posted_at' => 'datetime',
             'subtotal' => 'decimal:2',
             'tax_amount' => 'decimal:2',
-            'grand_total' => 'decimal:2',
+            'freight_charge' => 'decimal:2',
+            'other_charges' => 'decimal:2',
+            'total_amount' => 'decimal:2',
+            'credit_days' => 'integer',
         ];
     }
 
-    public function purchaseOrder(): BelongsTo
+    public function company(): BelongsTo
     {
-        return $this->belongsTo(PurchaseOrder::class);
+        return $this->belongsTo(Company::class);
     }
 
-    public function inward(): BelongsTo
+    public function branch(): BelongsTo
     {
-        return $this->belongsTo(PurchaseInward::class, 'purchase_inward_id');
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function warehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class);
     }
 
     public function supplier(): BelongsTo
@@ -73,9 +72,9 @@ class PurchaseInvoice extends Model
         return $this->belongsTo(Customer::class, 'supplier_id');
     }
 
-    public function warehouse(): BelongsTo
+    public function purchaseOrder(): BelongsTo
     {
-        return $this->belongsTo(Warehouse::class);
+        return $this->belongsTo(PurchaseOrder::class);
     }
 
     public function creator(): BelongsTo
@@ -86,5 +85,10 @@ class PurchaseInvoice extends Model
     public function items(): HasMany
     {
         return $this->hasMany(PurchaseInvoiceItem::class);
+    }
+
+    public function inventoryMovements(): MorphMany
+    {
+        return $this->morphMany(InventoryMovement::class, 'reference');
     }
 }

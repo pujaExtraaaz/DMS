@@ -14,6 +14,7 @@ use App\Support\IndianStates;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class CustomerController extends Controller
@@ -50,8 +51,15 @@ class CustomerController extends Controller
 
     public function create(): View
     {
+        $companyId = auth()->user()?->company_id;
+        $code = CodeGenerator::forParty($companyId);
+
         return view('masters.customers.form', [
-            'item' => new Customer,
+            'item' => new Customer([
+                'code' => $code,
+                'party_type' => 'customer',
+                'is_active' => true,
+            ]),
             ...$this->formData(),
         ]);
     }
@@ -60,12 +68,21 @@ class CustomerController extends Controller
     {
         $data = $this->validated($request);
 
-        if (blank($data['code'] ?? null)) {
-            $data['code'] = CodeGenerator::forParty();
-        }
+        $customer = DB::transaction(function () use ($data, $request) {
+            $companyId = $data['company_id'] ?? auth()->user()?->company_id;
 
-        $customer = Customer::create($data);
-        $this->syncChildRows($request, $customer);
+            if (blank($data['code'] ?? null) || Customer::where('code', $data['code'])->exists()) {
+                $data['code'] = CodeGenerator::forParty($companyId);
+                while (Customer::where('code', $data['code'])->exists()) {
+                    $data['code'] = CodeGenerator::forParty($companyId);
+                }
+            }
+
+            $customer = Customer::create($data);
+            $this->syncChildRows($request, $customer);
+
+            return $customer;
+        });
 
         return $this->flashSuccess('Party created successfully.', 'masters.customers.index');
     }
@@ -83,8 +100,14 @@ class CustomerController extends Controller
     public function update(Request $request, Customer $customer): RedirectResponse
     {
         $data = $this->validated($request, $customer);
-        $customer->update($data);
-        $this->syncChildRows($request, $customer);
+
+        // Keep the original party code unchanged on edit
+        $data['code'] = $customer->code;
+
+        DB::transaction(function () use ($data, $request, $customer) {
+            $customer->update($data);
+            $this->syncChildRows($request, $customer);
+        });
 
         return $this->flashSuccess('Party updated successfully.', 'masters.customers.index');
     }
@@ -141,9 +164,15 @@ class CustomerController extends Controller
         ]);
 
         $defaultTypeId = CustomerType::query()->value('id');
+        $companyId = auth()->user()?->company_id;
         $validated['customer_type_id'] = $validated['customer_type_id'] ?? $defaultTypeId;
-        $validated['code'] = $validated['code'] ?: 'P-'.strtoupper(substr(uniqid(), -6));
-        $validated['company_id'] = auth()->user()?->company_id;
+        if (blank($validated['code'] ?? null) || Customer::where('code', $validated['code'])->exists()) {
+            $validated['code'] = CodeGenerator::forParty($companyId);
+            while (Customer::where('code', $validated['code'])->exists()) {
+                $validated['code'] = CodeGenerator::forParty($companyId);
+            }
+        }
+        $validated['company_id'] = $companyId;
         $validated['branch_id'] = auth()->user()?->branch_id;
         $validated['is_active'] = true;
 
@@ -190,6 +219,7 @@ class CustomerController extends Controller
             'email' => 'nullable|email|max:255',
             'gstin' => 'nullable|string|max:20',
             'pan' => 'nullable|string|max:20',
+            'address' => 'nullable|string',
             'state' => 'nullable|string|max:100',
             'pincode' => 'nullable|string|max:12',
             'credit_limit' => 'nullable|numeric|min:0',
@@ -236,6 +266,7 @@ class CustomerController extends Controller
         ]);
 
         $data['is_active'] = $request->boolean('is_active');
+        $data['customer_type_id'] = $data['customer_type_id'] ?? CustomerType::query()->value('id');
         $data['credit_limit'] = $data['credit_limit'] ?? 0;
         $data['credit_days'] = $data['credit_days'] ?? 0;
         $data['interest_rate'] = $data['interest_rate'] ?? 18;
@@ -244,7 +275,7 @@ class CustomerController extends Controller
         $data['company_id'] = $customer?->company_id ?? auth()->user()?->company_id;
         $data['branch_id'] = $customer?->branch_id ?? auth()->user()?->branch_id;
 
-        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['credit_cheques']);
+        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['credit_cheques'], $data['pan']);
 
         return $data;
     }

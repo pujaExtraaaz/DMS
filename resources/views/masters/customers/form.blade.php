@@ -39,6 +39,14 @@
             <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Party Code</label>
+                    <input type="text" name="code" value="{{ old('code', $item->code ?? '') }}" readonly
+                           class="block w-full rounded-lg border-gray-300 bg-gray-100 text-gray-700 text-sm font-mono cursor-not-allowed focus:ring-0 focus:border-gray-300"
+                           placeholder="Auto-generated on save">
+                    <p class="mt-1 text-xs text-gray-500">Auto-generated party code</p>
+                </div>
+
+                <div>
                     <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">GSTIN</label>
                     <div class="flex gap-2">
                         <input type="text" name="gstin" x-model="form.gstin" maxlength="15"
@@ -47,8 +55,26 @@
                         <button type="button" @click="fetchGstDetails()" :disabled="searchingGst"
                                 class="inline-flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-100 transition disabled:opacity-50">
                             <span x-show="!searchingGst">Fetch GST</span>
-                            <span x-show="searchingGst">Searching...</span>
+                            <span x-show="searchingGst" class="flex items-center gap-1">
+                                <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                <span>Searching...</span>
+                            </span>
                         </button>
+                    </div>
+
+                    <div x-show="gstFeedback.message"
+                         x-transition
+                         :class="{
+                             'bg-emerald-50 text-emerald-800 border-emerald-200': gstFeedback.type === 'success',
+                             'bg-amber-50 text-amber-800 border-amber-200': gstFeedback.type === 'warning',
+                             'bg-rose-50 text-rose-800 border-rose-200': gstFeedback.type === 'error'
+                         }"
+                         class="mt-2 p-2.5 rounded-lg border text-xs flex items-start gap-2">
+                        <span class="font-bold shrink-0 mt-0.5" x-text="gstFeedback.type === 'success' ? '✓' : (gstFeedback.type === 'warning' ? 'ℹ' : '⚠')"></span>
+                        <div class="space-y-0.5">
+                            <p x-text="gstFeedback.message" class="font-medium"></p>
+                            <p x-show="gstFeedback.note" x-text="gstFeedback.note" class="text-[11px] opacity-90"></p>
+                        </div>
                     </div>
                 </div>
 
@@ -93,6 +119,12 @@
                     <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Email</label>
                     <input type="email" name="email" x-model="form.email"
                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Registered Address</label>
+                    <textarea name="address" x-model="form.address" rows="2" placeholder="Full street address, building, locality"
+                              class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('address', $item->address ?? '') }}</textarea>
                 </div>
 
                 <div>
@@ -293,6 +325,11 @@
 function partyFormController() {
     return {
         searchingGst: false,
+        gstFeedback: {
+            type: '',
+            message: '',
+            note: ''
+        },
         form: {
             name: {!! json_encode(old('name', $item->name ?? '')) !!},
             gstin: {!! json_encode(old('gstin', $item->gstin ?? '')) !!},
@@ -300,6 +337,7 @@ function partyFormController() {
             pan: {!! json_encode(old('pan', $item->pan ?? '')) !!},
             phone: {!! json_encode(old('phone', $item->phone ?? '')) !!},
             email: {!! json_encode(old('email', $item->email ?? '')) !!},
+            address: {!! json_encode(old('address', $item->address ?? '')) !!},
             state: {!! json_encode(old('state', $item->state ?? '')) !!},
             pincode: {!! json_encode(old('pincode', $item->pincode ?? '')) !!},
         },
@@ -327,25 +365,69 @@ function partyFormController() {
             });
         },
         async fetchGstDetails() {
-            const gstin = (this.form.gstin || '').trim();
+            const gstin = (this.form.gstin || '').trim().toUpperCase();
+            this.form.gstin = gstin;
+
             if (gstin.length !== 15) {
-                alert('Please enter a valid 15-character GSTIN.');
+                this.gstFeedback = {
+                    type: 'error',
+                    message: 'Please enter a valid 15-character GSTIN (e.g. 27AAAAA0000A1Z5).',
+                    note: ''
+                };
                 return;
             }
+
             this.searchingGst = true;
+            this.gstFeedback = { type: '', message: '', note: '' };
+
             try {
                 const response = await fetch(`{{ route('masters.customers.gst-lookup') }}?gstin=${encodeURIComponent(gstin)}`);
                 const data = await response.json();
+
                 if (data.success && data.party) {
-                    this.form.name = data.party.name || this.form.name;
-                    this.form.pan = data.party.pan || this.form.pan;
-                    this.form.state = data.party.state || this.form.state;
-                    this.form.pincode = data.party.pincode || this.form.pincode;
+                    // Safe field mapping - only update if data is provided and non-empty
+                    if (data.party.name && data.party.name.trim() !== '') {
+                        this.form.name = data.party.name;
+                    }
+                    if (data.party.pan && data.party.pan.trim() !== '') {
+                        this.form.pan = data.party.pan;
+                    }
+                    if (data.party.state && data.party.state.trim() !== '') {
+                        this.form.state = data.party.state;
+                    }
+                    if (data.party.pincode && data.party.pincode.trim() !== '') {
+                        this.form.pincode = data.party.pincode;
+                    }
+                    if (data.party.address && data.party.address.trim() !== '') {
+                        this.form.address = data.party.address;
+                    }
+
+                    if (data.is_live) {
+                        this.gstFeedback = {
+                            type: 'success',
+                            message: data.message || 'GSTIN verified successfully from official records.',
+                            note: 'Contact Phone and Email are not published in public GST records and should be entered manually.'
+                        };
+                    } else {
+                        this.gstFeedback = {
+                            type: 'warning',
+                            message: data.message || 'PAN and State deduced from GSTIN format.',
+                            note: 'Party Name, Contact and Address must be entered manually.'
+                        };
+                    }
                 } else {
-                    alert(data.message || 'GSTIN details not found.');
+                    this.gstFeedback = {
+                        type: 'error',
+                        message: data.message || 'GSTIN details not found.',
+                        note: ''
+                    };
                 }
             } catch (err) {
-                alert('An error occurred while fetching GST details.');
+                this.gstFeedback = {
+                    type: 'error',
+                    message: 'An error occurred while connecting to GST lookup service.',
+                    note: 'Please verify the GSTIN and try again.'
+                };
             } finally {
                 this.searchingGst = false;
             }
