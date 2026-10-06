@@ -23,11 +23,15 @@ class LeaveRequestController extends Controller
         $items = LeaveRequest::query()
             ->with(['employee', 'leaveType', 'approver'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('employee_id'), fn ($q) => $q->where('employee_id', $request->employee_id))
             ->latest()
             ->paginate(15)
             ->withQueryString();
 
-        return view('hrms.leave-requests.index', compact('items'));
+        return view('hrms.leave-requests.index', [
+            'items' => $items,
+            'employees' => Employee::where('status', 'active')->orderBy('name')->get(),
+        ]);
     }
 
     public function create(): View
@@ -47,11 +51,46 @@ class LeaveRequestController extends Controller
             'from_date' => 'required|date',
             'to_date' => 'required|date|after_or_equal:from_date',
             'reason' => 'nullable|string',
+            'is_half_day' => 'boolean',
         ]);
 
-        $days = Carbon::parse($data['from_date'])->diffInDays(Carbon::parse($data['to_date'])) + 1;
+        $isHalfDay = $request->boolean('is_half_day');
+        if ($isHalfDay) {
+            $days = 0.5;
+            $data['to_date'] = $data['from_date'];
+        } else {
+            $start = Carbon::parse($data['from_date']);
+            $end = Carbon::parse($data['to_date']);
+            $days = 0;
+            for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+                if (! $date->isSunday()) {
+                    $days++;
+                }
+            }
+            if ($days == 0) {
+                $days = 1;
+            }
+        }
+
+        // Validate available leave balance
+        $year = (int) Carbon::parse($data['from_date'])->format('Y');
+        $balance = LeaveBalance::where('employee_id', $data['employee_id'])
+            ->where('leave_type_id', $data['leave_type_id'])
+            ->where('year', $year)
+            ->first();
+
+        $leaveType = LeaveType::find($data['leave_type_id']);
+        $available = $balance ? (float) $balance->closing_balance : (float) ($leaveType?->default_days ?? 0);
+
+        if ($available < $days) {
+            return back()->withInput()->withErrors([
+                'leave_type_id' => "Insufficient leave balance. Available: {$available} days, Requested: {$days} days.",
+            ]);
+        }
+
         $data['days'] = $days;
         $data['status'] = 'pending';
+        unset($data['is_half_day']);
 
         $leave = LeaveRequest::create($data);
         $this->auditLogService->record($leave, 'created');
@@ -65,34 +104,42 @@ class LeaveRequestController extends Controller
             return $this->flashError('Only pending leave can be approved.');
         }
 
-        DB::transaction(function () use ($request, $leave_request) {
-            $leave_request->update([
-                'status' => 'approved',
-                'approved_by' => auth()->id(),
-                'approved_at' => now(),
-                'approval_notes' => $request->input('approval_notes'),
-            ]);
+        try {
+            DB::transaction(function () use ($request, $leave_request) {
+                $year = (int) $leave_request->from_date->format('Y');
+                $balance = LeaveBalance::query()->firstOrCreate(
+                    [
+                        'employee_id' => $leave_request->employee_id,
+                        'leave_type_id' => $leave_request->leave_type_id,
+                        'year' => $year,
+                    ],
+                    [
+                        'opening_balance' => $leave_request->leaveType?->default_days ?? 0,
+                        'used_balance' => 0,
+                        'closing_balance' => $leave_request->leaveType?->default_days ?? 0,
+                    ]
+                );
 
-            $year = (int) $leave_request->from_date->format('Y');
-            $balance = LeaveBalance::query()->firstOrCreate(
-                [
-                    'employee_id' => $leave_request->employee_id,
-                    'leave_type_id' => $leave_request->leave_type_id,
-                    'year' => $year,
-                ],
-                [
-                    'opening_balance' => $leave_request->leaveType?->default_days ?? 0,
-                    'used_balance' => 0,
-                    'closing_balance' => $leave_request->leaveType?->default_days ?? 0,
-                ]
-            );
+                if ((float) $balance->closing_balance < (float) $leave_request->days) {
+                    throw new \RuntimeException("Insufficient leave balance remaining ({$balance->closing_balance} days available).");
+                }
 
-            $balance->used_balance = (float) $balance->used_balance + (float) $leave_request->days;
-            $balance->closing_balance = (float) $balance->opening_balance - (float) $balance->used_balance;
-            $balance->save();
+                $leave_request->update([
+                    'status' => 'approved',
+                    'approved_by' => auth()->id(),
+                    'approved_at' => now(),
+                    'approval_notes' => $request->input('approval_notes'),
+                ]);
 
-            $this->auditLogService->record($leave_request, 'approved');
-        });
+                $balance->used_balance = (float) $balance->used_balance + (float) $leave_request->days;
+                $balance->closing_balance = (float) $balance->opening_balance - (float) $balance->used_balance;
+                $balance->save();
+
+                $this->auditLogService->record($leave_request, 'approved');
+            });
+        } catch (\RuntimeException $e) {
+            return $this->flashError($e->getMessage());
+        }
 
         return $this->flashSuccess('Leave approved.', 'hrms.leave-requests.index');
     }
@@ -109,8 +156,42 @@ class LeaveRequestController extends Controller
             'approved_at' => now(),
             'approval_notes' => $request->input('approval_notes'),
         ]);
-        $this->auditLogService->record($leave_request, 'updated');
+        $this->auditLogService->record($leave_request, 'rejected');
 
         return $this->flashSuccess('Leave rejected.', 'hrms.leave-requests.index');
+    }
+
+    public function cancel(Request $request, LeaveRequest $leave_request): RedirectResponse
+    {
+        if (! in_array($leave_request->status, ['pending', 'approved'])) {
+            return $this->flashError('Only pending or approved leave requests can be cancelled.');
+        }
+
+        DB::transaction(function () use ($request, $leave_request) {
+            $wasApproved = $leave_request->status === 'approved';
+
+            $leave_request->update([
+                'status' => 'cancelled',
+                'approval_notes' => trim(($leave_request->approval_notes ?? '') . ' [Cancelled]'),
+            ]);
+
+            if ($wasApproved) {
+                $year = (int) $leave_request->from_date->format('Y');
+                $balance = LeaveBalance::where('employee_id', $leave_request->employee_id)
+                    ->where('leave_type_id', $leave_request->leave_type_id)
+                    ->where('year', $year)
+                    ->first();
+
+                if ($balance) {
+                    $balance->used_balance = max(0, (float) $balance->used_balance - (float) $leave_request->days);
+                    $balance->closing_balance = (float) $balance->opening_balance - (float) $balance->used_balance;
+                    $balance->save();
+                }
+            }
+
+            $this->auditLogService->record($leave_request, 'cancelled');
+        });
+
+        return $this->flashSuccess('Leave request cancelled and balance restored.', 'hrms.leave-requests.index');
     }
 }

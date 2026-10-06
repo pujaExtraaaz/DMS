@@ -14,7 +14,7 @@
         <div class="w-48">
             <x-ui.select name="party_type" label="Party Type" placeholder="All">
                 <option value=""></option>
-                @foreach(['customer' => 'Customer', 'supplier' => 'Supplier', 'dealer' => 'Dealer', 'both' => 'Both (Customer & Supplier)'] as $val => $label)
+                @foreach([\App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_DEBTORS => 'Sundry Debtors', \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS => 'Sundry Creditors', \App\Domains\Master\Models\Customer::PARTY_TYPE_BOTH => 'Both'] as $val => $label)
                     <option value="{{ $val }}" @selected(request('party_type')===$val)>{{ $label }}</option>
                 @endforeach
             </x-ui.select>
@@ -63,9 +63,9 @@
                 </td>
                 <td class="px-6 py-4 text-sm font-mono text-slate-600">{{ $item->code }}</td>
                 <td class="px-6 py-4 text-sm">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize
-                        {{ $item->party_type === 'supplier' ? 'bg-amber-100 text-amber-800' : ($item->party_type === 'both' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800') }}">
-                        {{ $item->party_type ?? 'customer' }}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+                        {{ $item->party_type_key === 'sundry_creditors' ? 'bg-amber-100 text-amber-800' : ($item->party_type_key === 'both' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800') }}">
+                        {{ $item->party_type_label }}
                     </span>
                 </td>
                 <td class="px-6 py-4 text-sm text-slate-600">{{ $item->phone ?: '—' }}</td>

@@ -10,9 +10,11 @@ use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\AuditLogService;
+use App\Support\CodeGenerator;
 use App\Support\DocumentNumberService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class EmployeeController extends Controller
@@ -45,8 +47,14 @@ class EmployeeController extends Controller
 
     public function create(): View
     {
+        $companyId = auth()->user()?->company_id;
+
         return view('hrms.employees.form', [
-            'item' => new Employee(['status' => 'active', 'is_salesperson' => false]),
+            'item' => new Employee([
+                'status' => 'active',
+                'is_salesperson' => false,
+                'employee_code' => CodeGenerator::forEmployee($companyId),
+            ]),
             'companies' => Company::orderBy('name')->get(),
             'branches' => Branch::orderBy('name')->get(),
             'departments' => Department::where('is_active', true)->orderBy('name')->get(),
@@ -60,7 +68,7 @@ class EmployeeController extends Controller
     {
         $data = $this->validated($request);
         if (empty($data['employee_code'])) {
-            $data['employee_code'] = $this->documentNumbers->next('EMP');
+            $data['employee_code'] = CodeGenerator::forEmployee($data['company_id'] ?? null);
         }
 
         $employee = Employee::create($data);
@@ -71,7 +79,18 @@ class EmployeeController extends Controller
 
     public function show(Employee $employee): View
     {
-        $employee->load(['department', 'designation', 'branch', 'manager', 'user', 'documents', 'leaveBalances.leaveType']);
+        $employee->load([
+            'department',
+            'designation',
+            'branch',
+            'manager',
+            'directReports',
+            'user',
+            'documents',
+            'leaveBalances.leaveType',
+            'attendances' => fn ($q) => $q->latest('attendance_date')->limit(10),
+            'expenseClaims' => fn ($q) => $q->latest('claim_date')->limit(5),
+        ]);
 
         return view('hrms.employees.show', compact('employee'));
     }
@@ -109,7 +128,7 @@ class EmployeeController extends Controller
         $data = $request->validate([
             'company_id' => 'nullable|exists:companies,id',
             'branch_id' => 'nullable|exists:branches,id',
-            'user_id' => 'nullable|exists:users,id',
+            'user_id' => 'nullable|exists:users,id|unique:employees,user_id,'.($employee?->id ?? 'NULL'),
             'department_id' => 'nullable|exists:departments,id',
             'designation_id' => 'nullable|exists:designations,id',
             'manager_id' => 'nullable|exists:employees,id',
@@ -122,7 +141,32 @@ class EmployeeController extends Controller
             'is_salesperson' => 'boolean',
             'status' => 'required|string|max:30',
             'address' => 'nullable|string',
+        ], [
+            'user_id.unique' => 'This user account is already linked to another employee profile.',
         ]);
+
+        if ($employee && !empty($data['manager_id'])) {
+            $managerId = (int) $data['manager_id'];
+            if ($managerId === (int) $employee->id) {
+                throw ValidationException::withMessages([
+                    'manager_id' => 'An employee cannot be their own reporting manager.',
+                ]);
+            }
+
+            // Check circular reporting
+            $visited = [(int) $employee->id];
+            $current = Employee::find($managerId);
+            while ($current && $current->manager_id) {
+                if (in_array((int) $current->manager_id, $visited, true)) {
+                    throw ValidationException::withMessages([
+                        'manager_id' => 'Circular reporting hierarchy detected. The selected manager is already in this employee\'s direct reporting line.',
+                    ]);
+                }
+                $visited[] = (int) $current->id;
+                $current = Employee::find($current->manager_id);
+            }
+        }
+
         $data['is_salesperson'] = $request->boolean('is_salesperson');
         $data['company_id'] = $data['company_id'] ?? auth()->user()?->company_id;
         $data['branch_id'] = $data['branch_id'] ?? auth()->user()?->branch_id;

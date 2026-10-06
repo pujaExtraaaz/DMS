@@ -65,4 +65,9 @@ class User extends Authenticatable
 
         return array_map('intval', $ids);
     }
+
+    public function employee(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(\App\Domains\Hrms\Models\Employee::class);
+    }
 }

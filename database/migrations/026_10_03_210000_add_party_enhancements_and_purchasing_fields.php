@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('customers')) {
+            return;
+        }
+
         // 1. Party Bank Accounts table (multi-bank accounts per party)
         if (! Schema::hasTable('party_bank_accounts')) {
             Schema::create('party_bank_accounts', function (Blueprint $table) {

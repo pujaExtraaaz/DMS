@@ -25,6 +25,19 @@
     <x-ui.card><p class="text-xs text-slate-500">Warehouse</p><p class="font-medium">{{ $order->warehouse?->name ?? '—' }}</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Grand Total</p><p class="font-medium">₹{{ number_format($order->grand_total, 2) }}</p></x-ui.card>
 </div>
+<x-ui.card class="mb-4">
+    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Addresses</h4>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <span class="text-xs font-semibold uppercase text-slate-500">Billing Address</span>
+            <div class="mt-1 font-medium text-slate-800 whitespace-pre-line">{{ $order->billing_address ?: ($order->supplier?->address ?: '—') }}</div>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <span class="text-xs font-semibold uppercase text-slate-500">Delivery / Dispatch Address</span>
+            <div class="mt-1 font-medium text-slate-800 whitespace-pre-line">{{ $order->shipping_address ?: ($order->billing_address ?: ($order->supplier?->address ?: '—')) }}</div>
+        </div>
+    </div>
+</x-ui.card>
 <x-ui.card>
 <div class="overflow-x-auto"><table class="min-w-full text-sm">
 <thead class="bg-slate-50"><tr>

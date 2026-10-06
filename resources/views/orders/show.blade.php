@@ -194,6 +194,19 @@
                     </tr>
                 @endforeach
             </x-ui.table>
+            <div class="p-4 border-t border-slate-100 bg-slate-50/50">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Addresses</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div class="p-3 bg-white rounded-lg border border-slate-200">
+                        <span class="text-xs font-semibold uppercase text-slate-500">Billing Address</span>
+                        <div class="mt-1 font-medium text-slate-800 whitespace-pre-line">{{ $order->billing_address ?: ($order->customer->address ?: '—') }}</div>
+                    </div>
+                    <div class="p-3 bg-white rounded-lg border border-slate-200">
+                        <span class="text-xs font-semibold uppercase text-slate-500">Delivery Address</span>
+                        <div class="mt-1 font-medium text-slate-800 whitespace-pre-line">{{ $order->shipping_address ?: ($order->billing_address ?: ($order->customer->shipping_address ?: ($order->customer->address ?: '—'))) }}</div>
+                    </div>
+                </div>
+            </div>
         </x-ui.card>
 
         <x-ui.card title="Summary">

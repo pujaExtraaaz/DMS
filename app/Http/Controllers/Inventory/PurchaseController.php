@@ -43,7 +43,7 @@ class PurchaseController extends Controller
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
             'suppliers' => Customer::query()
                 ->where('is_active', true)
-                ->whereIn('party_type', ['supplier', 'both'])
+                ->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])
                 ->orderBy('name')
                 ->get(),
         ]);

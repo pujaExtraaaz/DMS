@@ -368,6 +368,26 @@ class OrderController extends Controller
                 'exists:customers,id',
             ],
 
+            'billing_address_id' => [
+                'nullable',
+                'exists:party_addresses,id',
+            ],
+
+            'shipping_address_id' => [
+                'nullable',
+                'exists:party_addresses,id',
+            ],
+
+            'billing_address' => [
+                'nullable',
+                'string',
+            ],
+
+            'shipping_address' => [
+                'nullable',
+                'string',
+            ],
+
             'order_date' => [
                 'required',
                 'date',

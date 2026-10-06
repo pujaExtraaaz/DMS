@@ -31,6 +31,32 @@
     <x-ui.card><p class="text-xs text-slate-500">Due Date</p><p class="font-medium">{{ $invoice->due_date?->format('d M Y') ?? '—' }} @if($invoice->credit_days) <span class="text-xs text-slate-400">({{ $invoice->credit_days }} days)</span> @endif</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Total</p><p class="font-medium">₹{{ number_format($invoice->grand_total, 2) }}</p></x-ui.card>
 </div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <x-ui.card>
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Billing Address</div>
+        @if($invoice->billing_address)
+            <p class="text-sm text-slate-800 whitespace-pre-line">{{ $invoice->billing_address }}</p>
+        @elseif($invoice->billingAddress)
+            <p class="text-sm font-semibold text-slate-800">{{ $invoice->billingAddress->label }}</p>
+            <p class="text-xs text-slate-600 mt-1 whitespace-pre-line">{{ $invoice->billingAddress->full_address }}</p>
+        @else
+            <p class="text-sm text-slate-500 italic">No billing address specified</p>
+        @endif
+    </x-ui.card>
+
+    <x-ui.card>
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Delivery / Dispatch Address</div>
+        @if($invoice->shipping_address)
+            <p class="text-sm text-slate-800 whitespace-pre-line">{{ $invoice->shipping_address }}</p>
+        @elseif($invoice->shippingAddress)
+            <p class="text-sm font-semibold text-slate-800">{{ $invoice->shippingAddress->label }}</p>
+            <p class="text-xs text-slate-600 mt-1 whitespace-pre-line">{{ $invoice->shippingAddress->full_address }}</p>
+        @else
+            <p class="text-sm text-slate-500 italic">Same as billing / No delivery address specified</p>
+        @endif
+    </x-ui.card>
+</div>
 @if($invoice->rate_override_reason)
     <x-ui.alert type="error" :message="'Rate override: '.$invoice->rate_override_reason" />
 @endif

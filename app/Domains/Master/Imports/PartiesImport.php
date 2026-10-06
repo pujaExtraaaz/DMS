@@ -109,9 +109,11 @@ class PartiesImport implements ToCollection, WithHeadingRow
                 'branch_id' => $branchId,
                 'name' => $name,
                 'code' => $code,
-                'party_type' => in_array(strtolower((string) ($data['party_type'] ?? 'customer')), ['dealer', 'customer', 'supplier', 'both'], true)
-                    ? strtolower((string) $data['party_type'])
-                    : 'customer',
+                'party_type' => match (strtolower(trim(str_replace([' ', '-'], '_', (string) ($data['party_type'] ?? ''))))) {
+                    'sundry_creditors', 'creditors', 'creditor', 'supplier' => Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+                    'both' => Customer::PARTY_TYPE_BOTH,
+                    default => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+                },
                 'customer_type_id' => $type->id,
                 'area_id' => $area?->id,
                 'route_id' => $route?->id,

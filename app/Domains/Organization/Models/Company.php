@@ -5,6 +5,7 @@ namespace App\Domains\Organization\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 
 class Company extends Model
 {
@@ -97,5 +98,23 @@ class Company extends Model
         $additional = $this->additional_details['bank_accounts'] ?? [];
 
         return array_merge([$primary], $additional);
+    }
+
+    public function getLogoUrlAttribute(): ?string
+    {
+        if (blank($this->logo_path)) {
+            return null;
+        }
+
+        if (! Storage::disk('public')->exists($this->logo_path)) {
+            return null;
+        }
+
+        return asset('storage/' . $this->logo_path);
+    }
+
+    public function hasLogo(): bool
+    {
+        return ! blank($this->logo_path) && Storage::disk('public')->exists($this->logo_path);
     }
 }

@@ -1,24 +1,113 @@
 @extends('layouts.dms')
 @section('title', 'Leave Requests')
 @section('content')
-<x-ui.page-header title="Leave Requests"><x-slot name="actions"><x-ui.button variant="primary" :href="route('hrms.leave-requests.create')">New Request</x-ui.button></x-slot></x-ui.page-header>
-<x-ui.card><div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200 text-sm">
-<thead class="bg-slate-50"><tr><th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Employee</th><th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Type</th><th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Dates</th><th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Days</th><th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Status</th><th></th></tr></thead>
-<tbody class="divide-y divide-slate-100">
-@forelse($items as $item)
-<tr>
-<td class="px-3 py-2">{{ $item->employee?->name }}</td>
-<td class="px-3 py-2">{{ $item->leaveType?->name }}</td>
-<td class="px-3 py-2">{{ $item->from_date->format('d M') }} – {{ $item->to_date->format('d M Y') }}</td>
-<td class="px-3 py-2">{{ $item->days }}</td>
-<td class="px-3 py-2"><x-ui.badge>{{ ucfirst($item->status) }}</x-ui.badge></td>
-<td class="px-3 py-2 text-right whitespace-nowrap">
-@if($item->status==='pending')
-<form method="POST" action="{{ route('hrms.leave-requests.approve', $item) }}" class="inline">@csrf<x-ui.button type="submit" size="sm" variant="primary">Approve</x-ui.button></form>
-<form method="POST" action="{{ route('hrms.leave-requests.reject', $item) }}" class="inline">@csrf<x-ui.button type="submit" size="sm" variant="secondary">Reject</x-ui.button></form>
-@endif
-</td>
-</tr>
-@empty<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">No leave requests.</td></tr>@endforelse
-</tbody></table></div><div class="mt-4">{{ $items->links() }}</div></x-ui.card>
+<x-ui.page-header title="Leave Requests">
+<x-slot name="actions">
+    <div class="flex items-center gap-2">
+        <x-ui.button variant="secondary" :href="route('hrms.leave-balances.index')">Leave Balances</x-ui.button>
+        <x-ui.button variant="secondary" :href="route('hrms.leave-types.index')">Leave Types</x-ui.button>
+        <x-ui.button variant="primary" :href="route('hrms.leave-requests.create')">+ New Request</x-ui.button>
+    </div>
+</x-slot>
+</x-ui.page-header>
+
+<x-ui.card class="mb-6">
+    <form method="GET" action="{{ route('hrms.leave-requests.index') }}" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Status</label>
+            <select name="status" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
+                <option value="">All Statuses</option>
+                @foreach(['pending', 'approved', 'rejected', 'cancelled'] as $st)
+                    <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst($st) }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Employee</label>
+            <select name="employee_id" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
+                <option value="">All Employees</option>
+                @foreach($employees as $e)
+                    <option value="{{ $e->id }}" @selected(request('employee_id') == $e->id)>{{ $e->name }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div>
+            <x-ui.button type="submit" variant="secondary" class="w-full">Filter</x-ui.button>
+        </div>
+    </form>
+</x-ui.card>
+
+<x-ui.card>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+            <thead class="bg-slate-50">
+                <tr>
+                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Employee</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Type</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Dates</th>
+                    <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Days</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Reason</th>
+                    <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Status</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                @forelse($items as $item)
+                    <tr>
+                        <td class="px-3 py-2">
+                            <a href="{{ route('hrms.employees.show', $item->employee_id) }}" class="font-medium text-indigo-600 hover:underline">{{ $item->employee?->name }}</a>
+                            <div class="text-xs text-slate-400 font-mono">{{ $item->employee?->employee_code }}</div>
+                        </td>
+                        <td class="px-3 py-2 font-medium text-slate-800">{{ $item->leaveType?->name }}</td>
+                        <td class="px-3 py-2 text-slate-600 text-xs whitespace-nowrap">
+                            {{ $item->from_date->format('d M Y') }}
+                            @if(!$item->from_date->equalTo($item->to_date))
+                                – {{ $item->to_date->format('d M Y') }}
+                            @endif
+                        </td>
+                        <td class="px-3 py-2 text-center font-mono font-semibold text-slate-700">{{ number_format($item->days, 1) }}</td>
+                        <td class="px-3 py-2 text-xs text-slate-500 max-w-xs truncate" title="{{ $item->reason }}">{{ $item->reason ?? '—' }}</td>
+                        <td class="px-3 py-2 text-center">
+                            @php
+                                $badgeCls = match($item->status) {
+                                    'approved' => 'bg-emerald-100 text-emerald-800',
+                                    'pending' => 'bg-amber-100 text-amber-800',
+                                    'rejected' => 'bg-red-100 text-red-800',
+                                    'cancelled' => 'bg-slate-100 text-slate-700',
+                                    default => 'bg-slate-100 text-slate-800',
+                                };
+                            @endphp
+                            <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ $badgeCls }}">
+                                {{ ucfirst($item->status) }}
+                            </span>
+                        </td>
+                        <td class="px-3 py-2 text-right whitespace-nowrap space-x-1">
+                            @if($item->status === 'pending')
+                                <form method="POST" action="{{ route('hrms.leave-requests.approve', $item) }}" class="inline">
+                                    @csrf
+                                    <x-ui.button type="submit" size="sm" variant="primary">Approve</x-ui.button>
+                                </form>
+                                <form method="POST" action="{{ route('hrms.leave-requests.reject', $item) }}" class="inline">
+                                    @csrf
+                                    <x-ui.button type="submit" size="sm" variant="secondary">Reject</x-ui.button>
+                                </form>
+                            @endif
+                            @if(in_array($item->status, ['pending', 'approved']))
+                                <form method="POST" action="{{ route('hrms.leave-requests.cancel', $item) }}" class="inline" onsubmit="return confirm('Cancel this leave request? {{ $item->status === 'approved' ? 'Leave balance will be restored.' : '' }}');">
+                                    @csrf
+                                    <button type="submit" class="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1">Cancel</button>
+                                </form>
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="7" class="px-3 py-6 text-center text-slate-500">No leave requests found.</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+    <div class="mt-4">{{ $items->links() }}</div>
+</x-ui.card>
 @endsection

@@ -24,18 +24,19 @@ return new class extends Migration
             }
         });
 
-        // Backfill: mirror base uom prices into the base ProductUom row for existing products.
-        \DB::statement('
-            UPDATE product_uoms pu
-            JOIN products p ON p.id = pu.product_id
-            SET pu.selling_price = COALESCE(pu.selling_price, p.selling_price),
-                pu.trade_price   = COALESCE(pu.trade_price, p.trade_price),
-                pu.purchase_price = COALESCE(pu.purchase_price, p.purchase_price),
-                pu.mrp = COALESCE(pu.mrp, p.calculation_mrp),
-                pu.label = COALESCE(pu.label, "Base"),
-                pu.is_default_sales = CASE WHEN pu.is_base = 1 THEN 1 ELSE pu.is_default_sales END
-            WHERE pu.is_base = 1
-        ');
+        if (\DB::getDriverName() === 'mysql') {
+            \DB::statement('
+                UPDATE product_uoms pu
+                JOIN products p ON p.id = pu.product_id
+                SET pu.selling_price = COALESCE(pu.selling_price, p.selling_price),
+                    pu.trade_price   = COALESCE(pu.trade_price, p.trade_price),
+                    pu.purchase_price = COALESCE(pu.purchase_price, p.purchase_price),
+                    pu.mrp = COALESCE(pu.mrp, p.calculation_mrp),
+                    pu.label = COALESCE(pu.label, "Base"),
+                    pu.is_default_sales = CASE WHEN pu.is_base = 1 THEN 1 ELSE pu.is_default_sales END
+                WHERE pu.is_base = 1
+            ');
+        }
 
         // Make sure product_price_histories has a reason + author column we can enrich (idempotent).
         Schema::table('product_price_histories', function (Blueprint $table) {

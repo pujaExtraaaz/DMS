@@ -55,6 +55,10 @@ class DepartmentController extends Controller
 
     public function destroy(Department $department): RedirectResponse
     {
+        if ($department->employees()->exists()) {
+            return $this->flashError('Cannot delete department because employees are currently assigned to it.');
+        }
+
         $department->delete();
 
         return $this->flashSuccess('Department deleted.', 'hrms.departments.index');

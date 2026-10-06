@@ -131,21 +131,11 @@
                             <input type="search" placeholder="Search..." class="w-40 lg:w-52 bg-transparent border-0 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-0 p-0" />
                         </div>
 
-                        <div class="hidden sm:block text-right">
-                            <p class="text-sm font-medium text-slate-900">{{ Auth::user()->name }}</p>
-                            <p class="text-xs text-slate-500">{{ Auth::user()->email }}</p>
-                        </div>
-
                         @php
                             $roleName = Auth::user()->roles->first()?->name ?? 'User';
                             $roleLabel = str($roleName)->replace('-', ' ')->title();
                         @endphp
                         <x-ui.badge variant="primary" class="hidden xs:inline-flex sm:inline-flex">{{ $roleLabel }}</x-ui.badge>
-
-                        <form method="POST" action="{{ route('logout') }}" class="hidden sm:block">
-                            @csrf
-                            <x-ui.button type="submit" variant="ghost" size="sm">Log out</x-ui.button>
-                        </form>
                     </div>
                 </div>
             </header>

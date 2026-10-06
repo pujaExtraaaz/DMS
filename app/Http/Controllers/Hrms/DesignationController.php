@@ -55,6 +55,10 @@ class DesignationController extends Controller
 
     public function destroy(Designation $designation): RedirectResponse
     {
+        if ($designation->employees()->exists()) {
+            return $this->flashError('Cannot delete designation because employees are currently assigned to it.');
+        }
+
         $designation->delete();
 
         return $this->flashSuccess('Designation deleted.', 'hrms.designations.index');

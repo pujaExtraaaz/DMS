@@ -104,7 +104,8 @@ class CompanyController extends Controller
             'purchase_terms_and_conditions' => 'nullable|string',
             'selling_terms_and_conditions' => 'nullable|string',
             'due_date_basis' => 'nullable|in:invoice_date,inward_date',
-            'logo' => 'nullable|image|mimes:jpeg,png,jpg,webp,svg|max:2048',
+            'logo' => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,svg', 'max:2048'],
+            'remove_logo' => 'nullable|boolean',
             'is_active' => 'boolean',
         ]);
         $data['is_active'] = $request->boolean('is_active');
@@ -112,12 +113,15 @@ class CompanyController extends Controller
         $data['msme_category'] = $data['msme_category'] ?? 'none';
 
         if ($request->hasFile('logo')) {
-            if ($company?->logo_path) {
+            $path = $request->file('logo')->store('companies/logos', 'public');
+            if ($company?->logo_path && Storage::disk('public')->exists($company->logo_path)) {
                 Storage::disk('public')->delete($company->logo_path);
             }
-            $data['logo_path'] = $request->file('logo')->store('companies/logos', 'public');
-        } elseif ($request->boolean('remove_logo') && $company?->logo_path) {
-            Storage::disk('public')->delete($company->logo_path);
+            $data['logo_path'] = $path;
+        } elseif ($request->boolean('remove_logo')) {
+            if ($company?->logo_path && Storage::disk('public')->exists($company->logo_path)) {
+                Storage::disk('public')->delete($company->logo_path);
+            }
             $data['logo_path'] = null;
         }
 
@@ -159,7 +163,7 @@ class CompanyController extends Controller
 
         $data['additional_details'] = $additionalDetails;
 
-        unset($data['contacts'], $data['bank_accounts'], $data['logo']);
+        unset($data['contacts'], $data['bank_accounts'], $data['logo'], $data['remove_logo']);
 
         return $data;
     }

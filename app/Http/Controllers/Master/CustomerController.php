@@ -10,11 +10,13 @@ use App\Domains\Master\Services\GstLookupService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\CodeGenerator;
+use App\Support\IndianCities;
 use App\Support\IndianStates;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
 class CustomerController extends Controller
@@ -22,6 +24,57 @@ class CustomerController extends Controller
     public function __construct(
         protected GstLookupService $gstLookupService
     ) {}
+
+    /**
+     * Get active addresses for a party/customer.
+     */
+    public function addresses(Customer $customer): JsonResponse
+    {
+        $addresses = $customer->activeAddresses()->get()->map(function ($addr) {
+            return [
+                'id' => $addr->id,
+                'label' => $addr->label ?? 'Address #' . $addr->id,
+                'type' => $addr->type ?? 'both',
+                'contact_person' => $addr->contact_person,
+                'contact_phone' => $addr->contact_phone,
+                'address_line_1' => $addr->address_line_1 ?? $addr->address,
+                'address_line_2' => $addr->address_line_2,
+                'city' => $addr->city,
+                'state' => $addr->state,
+                'pincode' => $addr->pincode,
+                'gstin' => $addr->gstin,
+                'is_default_billing' => (bool) ($addr->is_default_billing || $addr->is_default),
+                'is_default_delivery' => (bool) ($addr->is_default_delivery),
+                'display_text' => $addr->display_text,
+                'full_address' => $addr->full_address,
+                'snapshot' => $addr->formatSnapshot(),
+            ];
+        });
+
+        $defaultBilling = $addresses->firstWhere('is_default_billing', true)
+            ?? $addresses->firstWhere('type', 'billing')
+            ?? $addresses->firstWhere('type', 'both')
+            ?? $addresses->first();
+
+        $defaultDelivery = $addresses->firstWhere('is_default_delivery', true)
+            ?? $addresses->firstWhere('type', 'delivery')
+            ?? $addresses->firstWhere('type', 'both')
+            ?? $defaultBilling;
+
+        return response()->json([
+            'success' => true,
+            'customer' => [
+                'id' => $customer->id,
+                'name' => $customer->name,
+                'code' => $customer->code,
+                'gstin' => $customer->gstin,
+                'state' => $customer->state,
+            ],
+            'addresses' => $addresses,
+            'default_billing_id' => $defaultBilling ? $defaultBilling['id'] : null,
+            'default_delivery_id' => $defaultDelivery ? $defaultDelivery['id'] : null,
+        ]);
+    }
 
     public function index(Request $request): View
     {
@@ -33,7 +86,16 @@ class CustomerController extends Controller
                     ->orWhere('phone', 'like', '%'.$request->search.'%')
                     ->orWhere('gstin', 'like', '%'.$request->search.'%');
             }))
-            ->when($request->filled('party_type'), fn ($q) => $q->where('party_type', $request->party_type))
+            ->when($request->filled('party_type'), function ($q) use ($request) {
+                $type = $request->party_type;
+                if ($type === Customer::PARTY_TYPE_SUNDRY_DEBTORS) {
+                    $q->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_DEBTORS, 'customer', 'dealer']);
+                } elseif ($type === Customer::PARTY_TYPE_SUNDRY_CREDITORS) {
+                    $q->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier']);
+                } else {
+                    $q->where('party_type', $type);
+                }
+            })
             ->when($request->filled('area_id'), fn ($q) => $q->where('area_id', $request->area_id))
             ->when($request->filled('customer_type_id'), fn ($q) => $q->where('customer_type_id', $request->customer_type_id))
             ->latest()
@@ -54,12 +116,32 @@ class CustomerController extends Controller
         $companyId = auth()->user()?->company_id;
         $code = CodeGenerator::forParty($companyId);
 
+        $customer = new Customer([
+            'code' => $code,
+            'party_type' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'is_active' => true,
+        ]);
+
+        $initialAddresses = [
+            [
+                'id' => null,
+                'label' => 'Head Office / Billing',
+                'contact_person' => '',
+                'contact_phone' => '',
+                'address_line_1' => '',
+                'address_line_2' => '',
+                'city' => '',
+                'state' => '',
+                'pincode' => '',
+                'type' => 'both',
+                'is_default_billing' => true,
+                'is_default_delivery' => true,
+            ],
+        ];
+
         return view('masters.customers.form', [
-            'item' => new Customer([
-                'code' => $code,
-                'party_type' => 'customer',
-                'is_active' => true,
-            ]),
+            'item' => $customer,
+            'initialAddresses' => $initialAddresses,
             ...$this->formData(),
         ]);
     }
@@ -91,8 +173,43 @@ class CustomerController extends Controller
     {
         $customer->load(['contacts', 'addresses', 'bankAccounts', 'creditCheques']);
 
+        $addresses = $customer->activeAddresses()->get()->map(function ($a) {
+            return [
+                'id' => $a->id,
+                'label' => $a->label ?? 'Office',
+                'contact_person' => $a->contact_person ?? '',
+                'contact_phone' => $a->contact_phone ?? '',
+                'address_line_1' => $a->address_line_1 ?? $a->address ?? '',
+                'address_line_2' => $a->address_line_2 ?? '',
+                'city' => $a->city ?? '',
+                'state' => $a->state ?? '',
+                'pincode' => $a->pincode ?? '',
+                'type' => $a->type ?? 'both',
+                'is_default_billing' => (bool) ($a->is_default_billing || $a->is_default),
+                'is_default_delivery' => (bool) ($a->is_default_delivery),
+            ];
+        })->values()->all();
+
+        if (empty($addresses)) {
+            $addresses[] = [
+                'id' => null,
+                'label' => 'Head Office / Billing',
+                'contact_person' => '',
+                'contact_phone' => $customer->phone ?? '',
+                'address_line_1' => $customer->address ?? '',
+                'address_line_2' => '',
+                'city' => '',
+                'state' => $customer->state ?? '',
+                'pincode' => $customer->pincode ?? '',
+                'type' => 'both',
+                'is_default_billing' => true,
+                'is_default_delivery' => true,
+            ];
+        }
+
         return view('masters.customers.form', [
             'item' => $customer,
+            'initialAddresses' => $addresses,
             ...$this->formData(),
         ]);
     }
@@ -153,7 +270,7 @@ class CustomerController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'nullable|string|max:30|unique:customers,code',
-            'party_type' => 'required|in:dealer,customer,supplier,both',
+            'party_type' => 'required|in:sundry_debtors,sundry_creditors,both,dealer,customer,supplier',
             'customer_type_id' => 'nullable|exists:customer_types,id',
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
@@ -162,6 +279,12 @@ class CustomerController extends Controller
             'pincode' => 'nullable|string|max:12',
             'address' => 'nullable|string',
         ]);
+
+        $validated['party_type'] = match ($validated['party_type']) {
+            'customer', 'dealer' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'supplier' => Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+            default => $validated['party_type'],
+        };
 
         $defaultTypeId = CustomerType::query()->value('id');
         $companyId = auth()->user()?->company_id;
@@ -180,14 +303,18 @@ class CustomerController extends Controller
 
         if (filled($validated['address'] ?? null)) {
             $customer->addresses()->create([
-                'type' => 'billing',
+                'type' => 'both',
                 'label' => 'Main Office',
                 'name' => $customer->name,
+                'address_line_1' => $validated['address'],
                 'address' => $validated['address'],
                 'state' => $validated['state'] ?? null,
                 'pincode' => $validated['pincode'] ?? null,
                 'gstin' => $validated['gstin'] ?? null,
                 'is_default' => true,
+                'is_default_billing' => true,
+                'is_default_delivery' => true,
+                'is_active' => true,
             ]);
         }
 
@@ -206,10 +333,10 @@ class CustomerController extends Controller
 
     protected function validated(Request $request, ?Customer $customer = null): array
     {
-        $data = $request->validate([
+        $rules = [
             'name' => 'required|string|max:255',
             'code' => 'nullable|string|max:30|unique:customers,code'.($customer ? ','.$customer->id : ''),
-            'party_type' => 'required|in:dealer,customer,supplier,both',
+            'party_type' => 'required|in:sundry_debtors,sundry_creditors,both,dealer,customer,supplier',
             'customer_type_id' => 'nullable|exists:customer_types,id',
             'area_id' => 'nullable|exists:areas,id',
             'route_id' => 'nullable|exists:routes,id',
@@ -238,14 +365,21 @@ class CustomerController extends Controller
             'contacts.*.level' => 'nullable|in:primary,secondary,accounts,support',
             'contacts.*.is_primary' => 'nullable|boolean',
             'addresses' => 'nullable|array',
-            'addresses.*.type' => 'nullable|in:billing,shipping,warehouse',
+            'addresses.*.id' => 'nullable|integer',
+            'addresses.*.type' => 'nullable|in:billing,delivery,both,shipping,warehouse',
             'addresses.*.label' => 'nullable|string|max:100',
-            'addresses.*.name' => 'nullable|string|max:255',
+            'addresses.*.contact_person' => 'nullable|string|max:255',
+            'addresses.*.contact_phone' => 'nullable|string|max:20',
+            'addresses.*.address_line_1' => 'nullable|string|max:255',
+            'addresses.*.address_line_2' => 'nullable|string|max:255',
             'addresses.*.address' => 'nullable|string',
+            'addresses.*.city' => 'nullable|string|max:100',
             'addresses.*.state' => 'nullable|string|max:100',
             'addresses.*.pincode' => 'nullable|string|max:12',
             'addresses.*.gstin' => 'nullable|string|max:20',
-            'addresses.*.is_default' => 'nullable|boolean',
+            'addresses.*.is_default' => 'nullable',
+            'addresses.*.is_default_billing' => 'nullable',
+            'addresses.*.is_default_delivery' => 'nullable',
             'bank_accounts' => 'nullable|array',
             'bank_accounts.*.account_holder_name' => 'nullable|string|max:255',
             'bank_accounts.*.bank_name' => 'nullable|string|max:255',
@@ -263,8 +397,59 @@ class CustomerController extends Controller
             'credit_cheques.*.cheque_type' => 'nullable|in:regular,security,pdc',
             'credit_cheques.*.status' => 'nullable|in:pending,received,deposited,cleared,cancelled,bounced',
             'credit_cheques.*.notes' => 'nullable|string',
-        ]);
+        ];
 
+        $validator = Validator::make($request->all(), $rules);
+
+        $validator->after(function ($validator) use ($request) {
+            $addresses = $request->input('addresses', []);
+            if (!is_array($addresses)) {
+                return;
+            }
+
+            $defaultBillingCount = 0;
+            $defaultDeliveryCount = 0;
+
+            foreach ($addresses as $index => $addr) {
+                $state = $addr['state'] ?? null;
+                $city = $addr['city'] ?? null;
+
+                if (filled($city) && filled($state)) {
+                    if (! IndianCities::isValidCityForState($city, $state)) {
+                        $validator->errors()->add(
+                            "addresses.{$index}.city",
+                            "The selected city \"{$city}\" does not belong to the state \"{$state}\"."
+                        );
+                    }
+                }
+
+                $isDefaultBilling = filter_var($addr['is_default_billing'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                    || filter_var($addr['is_default'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $isDefaultDelivery = filter_var($addr['is_default_delivery'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+                if ($isDefaultBilling) {
+                    $defaultBillingCount++;
+                }
+                if ($isDefaultDelivery) {
+                    $defaultDeliveryCount++;
+                }
+            }
+
+            if ($defaultBillingCount > 1) {
+                $validator->errors()->add('addresses', 'Only one address can be set as the default billing address.');
+            }
+            if ($defaultDeliveryCount > 1) {
+                $validator->errors()->add('addresses', 'Only one address can be set as the default delivery address.');
+            }
+        });
+
+        $data = $validator->validate();
+
+        $data['party_type'] = match ($data['party_type']) {
+            'customer', 'dealer' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'supplier' => Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+            default => $data['party_type'],
+        };
         $data['is_active'] = $request->boolean('is_active');
         $data['customer_type_id'] = $data['customer_type_id'] ?? CustomerType::query()->value('id');
         $data['credit_limit'] = $data['credit_limit'] ?? 0;
@@ -304,24 +489,7 @@ class CustomerController extends Controller
         }
 
         // 2. Addresses
-        $addresses = collect($request->input('addresses', []))
-            ->filter(fn ($row) => filled($row['address'] ?? null) || filled($row['label'] ?? null) || filled($row['name'] ?? null))
-            ->map(fn ($row) => [
-                'type' => $row['type'] ?? 'billing',
-                'label' => $row['label'] ?? null,
-                'name' => $row['name'] ?? null,
-                'address' => $row['address'] ?? null,
-                'state' => $row['state'] ?? null,
-                'pincode' => $row['pincode'] ?? null,
-                'gstin' => $row['gstin'] ?? null,
-                'is_default' => (bool) ($row['is_default'] ?? false),
-            ])
-            ->values();
-
-        $customer->addresses()->delete();
-        foreach ($addresses as $row) {
-            $customer->addresses()->create($row);
-        }
+        $this->syncAddresses($request, $customer);
 
         // 3. Bank Accounts
         $bankAccounts = collect($request->input('bank_accounts', []))
@@ -364,6 +532,101 @@ class CustomerController extends Controller
         }
     }
 
+    protected function syncAddresses(Request $request, Customer $customer): void
+    {
+        $rawAddresses = $request->input('addresses', []);
+        $submittedAddresses = collect($rawAddresses)
+            ->filter(function ($row) {
+                return filled($row['address_line_1'] ?? null)
+                    || filled($row['address'] ?? null)
+                    || filled($row['label'] ?? null)
+                    || filled($row['city'] ?? null);
+            })
+            ->values();
+
+        $existingAddresses = $customer->addresses()->get()->keyBy('id');
+        $handledIds = [];
+
+        $hasDefaultBilling = $submittedAddresses->contains(function ($row) {
+            return filter_var($row['is_default_billing'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                || filter_var($row['is_default'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        });
+
+        $hasDefaultDelivery = $submittedAddresses->contains(function ($row) {
+            return filter_var($row['is_default_delivery'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        });
+
+        if (!$hasDefaultBilling && $submittedAddresses->isNotEmpty()) {
+            $firstBillingIdx = $submittedAddresses->search(fn ($r) => in_array($r['type'] ?? '', ['billing', 'both'], true));
+            $idx = $firstBillingIdx !== false ? $firstBillingIdx : 0;
+            $submittedAddresses[$idx]['is_default_billing'] = true;
+        }
+
+        if (!$hasDefaultDelivery && $submittedAddresses->isNotEmpty()) {
+            $firstDeliveryIdx = $submittedAddresses->search(fn ($r) => in_array($r['type'] ?? '', ['delivery', 'both', 'shipping'], true));
+            $idx = $firstDeliveryIdx !== false ? $firstDeliveryIdx : 0;
+            $submittedAddresses[$idx]['is_default_delivery'] = true;
+        }
+
+        foreach ($submittedAddresses as $row) {
+            $id = !empty($row['id']) ? (int) $row['id'] : null;
+            $line1 = trim((string) ($row['address_line_1'] ?? $row['address'] ?? ''));
+            $line2 = trim((string) ($row['address_line_2'] ?? ''));
+            $compositeAddress = trim($line1 . ($line2 ? ', ' . $line2 : ''));
+
+            $isDefaultBilling = filter_var($row['is_default_billing'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                || filter_var($row['is_default'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $isDefaultDelivery = filter_var($row['is_default_delivery'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+            $payload = [
+                'type' => in_array($row['type'] ?? '', ['billing', 'delivery', 'both', 'shipping', 'warehouse'], true) ? $row['type'] : 'both',
+                'label' => $row['label'] ?? 'Office',
+                'contact_person' => $row['contact_person'] ?? null,
+                'contact_phone' => $row['contact_phone'] ?? null,
+                'address_line_1' => $line1 ?: null,
+                'address_line_2' => $line2 ?: null,
+                'address' => $compositeAddress ?: null,
+                'city' => $row['city'] ?? null,
+                'state' => $row['state'] ?? null,
+                'pincode' => $row['pincode'] ?? null,
+                'gstin' => $row['gstin'] ?? null,
+                'is_default_billing' => $isDefaultBilling,
+                'is_default_delivery' => $isDefaultDelivery,
+                'is_default' => $isDefaultBilling,
+                'is_active' => true,
+            ];
+
+            if ($id && $existingAddresses->has($id)) {
+                $existingAddresses[$id]->update($payload);
+                $handledIds[] = $id;
+            } else {
+                $created = $customer->addresses()->create($payload);
+                $handledIds[] = $created->id;
+            }
+        }
+
+        // Deactivate referenced addresses, delete unreferenced ones
+        foreach ($existingAddresses as $existingId => $addr) {
+            if (!in_array($existingId, $handledIds, true)) {
+                if ($addr->isReferencedInTransactions()) {
+                    $addr->update(['is_active' => false]);
+                } else {
+                    $addr->delete();
+                }
+            }
+        }
+
+        // Sync legacy customer fields from default billing address
+        $defBilling = $customer->defaultBillingAddress();
+        if ($defBilling) {
+            $customer->updateQuietly([
+                'address' => $defBilling->full_address ?: $customer->address,
+                'state' => $defBilling->state ?: $customer->state,
+                'pincode' => $defBilling->pincode ?: $customer->pincode,
+            ]);
+        }
+    }
+
     protected function formData(): array
     {
         $allUsers = User::orderBy('name')->get();
@@ -391,6 +654,7 @@ class CustomerController extends Controller
             'salesManagers' => $salesManagers,
             'salespersons' => $salespersons,
             'states' => IndianStates::all(),
+            'stateCities' => IndianCities::all(),
         ];
     }
 }

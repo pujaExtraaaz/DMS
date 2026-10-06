@@ -44,6 +44,10 @@ class Order extends Model
 
         'converted_by_name',
         'cancelled_by_name',
+        'billing_address_id',
+        'shipping_address_id',
+        'billing_address',
+        'shipping_address',
     ];
 
     protected function casts(): array
@@ -116,5 +120,15 @@ class Order extends Model
                 (float) $item->quantity - (float) $item->delivered_qty
             );
         });
+    }
+
+    public function billingAddress(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'billing_address_id');
+    }
+
+    public function shippingAddress(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'shipping_address_id');
     }
 }

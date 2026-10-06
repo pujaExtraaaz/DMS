@@ -58,6 +58,44 @@ class OrderService
                 $data['region_override_reason'] ?? null
             );
 
+            $billingAddress = null;
+            if (!empty($data['billing_address_id'])) {
+                $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['billing_address_id'])
+                    ->where('customer_id', $customer->id)
+                    ->first();
+                if (!$billingAddress) {
+                    throw ValidationException::withMessages([
+                        'billing_address_id' => 'The selected billing address does not belong to the selected customer.',
+                    ]);
+                }
+            }
+            $shippingAddress = null;
+            if (!empty($data['shipping_address_id'])) {
+                $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['shipping_address_id'])
+                    ->where('customer_id', $customer->id)
+                    ->first();
+                if (!$shippingAddress) {
+                    throw ValidationException::withMessages([
+                        'shipping_address_id' => 'The selected delivery address does not belong to the selected customer.',
+                    ]);
+                }
+            }
+
+            if (!$billingAddress) {
+                $billingAddress = $customer->defaultBillingAddress();
+            }
+            if (!$shippingAddress) {
+                $shippingAddress = $customer->defaultDeliveryAddress() ?? $billingAddress;
+            }
+
+            $billingSnapshot = !empty($data['billing_address'])
+                ? $data['billing_address']
+                : ($billingAddress ? $billingAddress->formatSnapshot() : $customer->address);
+
+            $shippingSnapshot = !empty($data['shipping_address'])
+                ? $data['shipping_address']
+                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $customer->address));
+
             $order = Order::create([
                 'order_no' => $this->documentNumberService->next(
                     'ORD',
@@ -65,6 +103,10 @@ class OrderService
                     4
                 ),
                 'customer_id' => $customer->id,
+                'billing_address_id' => $billingAddress?->id,
+                'shipping_address_id' => $shippingAddress?->id,
+                'billing_address' => $billingSnapshot,
+                'shipping_address' => $shippingSnapshot,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'quotation_id' => $data['quotation_id'] ?? null,
                 'salesperson_id' => $actor->id,

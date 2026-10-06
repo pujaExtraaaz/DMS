@@ -15,6 +15,8 @@ use App\Http\Controllers\Master\VehicleController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit')->group(function () {
+    Route::post('customer-types/quick-store', [CustomerTypeController::class, 'quickStore'])->name('customer-types.quick-store');
+    Route::get('customer-types/list', [CustomerTypeController::class, 'list'])->name('customer-types.list');
     Route::resource('customer-types', CustomerTypeController::class);
     Route::resource('areas', AreaController::class);
     Route::resource('routes', RouteController::class);
@@ -30,7 +32,9 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         // GST lookup & quick-add endpoints for Party/Customer
         Route::match(['get', 'post'], 'customers/gst-lookup', [CustomerController::class, 'gstLookup'])->name('customers.gst-lookup');
         Route::post('customers/quick-add', [CustomerController::class, 'quickAdd'])->name('customers.quick-add');
+        Route::get('customers/{customer}/addresses', [CustomerController::class, 'addresses'])->name('customers.addresses');
         Route::resource('customers', CustomerController::class);
+        Route::get('parties', [CustomerController::class, 'index'])->name('parties.index');
 
         // Quick-add product endpoint used by PO / PI / Sales create flows.
         Route::post('products/quick-add', [QuickAddProductController::class, 'store'])->name('products.quick-add');

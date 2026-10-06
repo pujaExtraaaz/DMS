@@ -21,6 +21,41 @@
         'cheque_type' => 'regular',
     ];
     $initialCreditCheques = old('credit_cheques', ($item->exists && $item->relationLoaded('creditCheques') && $item->creditCheques->isNotEmpty()) ? $item->creditCheques->toArray() : [$defaultCreditCheque]);
+
+    $defaultAddress = [
+        'id' => null,
+        'label' => 'Head Office / Billing',
+        'contact_person' => '',
+        'contact_phone' => '',
+        'address_line_1' => '',
+        'address_line_2' => '',
+        'city' => '',
+        'state' => '',
+        'pincode' => '',
+        'type' => 'both',
+        'is_default_billing' => true,
+        'is_default_delivery' => true,
+    ];
+    $initialAddresses = old('addresses', $initialAddresses ?? (
+        ($item->exists && $item->relationLoaded('addresses') && $item->addresses->isNotEmpty()) 
+            ? $item->addresses->map(function ($a) {
+                return [
+                    'id' => $a->id,
+                    'label' => $a->label ?? 'Office',
+                    'contact_person' => $a->contact_person ?? '',
+                    'contact_phone' => $a->contact_phone ?? '',
+                    'address_line_1' => $a->address_line_1 ?? $a->address ?? '',
+                    'address_line_2' => $a->address_line_2 ?? '',
+                    'city' => $a->city ?? '',
+                    'state' => $a->state ?? '',
+                    'pincode' => $a->pincode ?? '',
+                    'type' => $a->type ?? 'both',
+                    'is_default_billing' => (bool) ($a->is_default_billing || $a->is_default),
+                    'is_default_delivery' => (bool) ($a->is_default_delivery),
+                ];
+            })->toArray()
+            : [$defaultAddress]
+    ));
 @endphp
 
 @section('content')
@@ -87,19 +122,36 @@
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Party Type *</label>
                     <select name="party_type" x-model="form.party_type" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        @foreach(['customer' => 'Customer', 'supplier' => 'Supplier', 'dealer' => 'Dealer', 'both' => 'Both (Customer & Supplier)'] as $val => $label)
-                            <option value="{{ $val }}" @selected(old('party_type', $item->party_type ?? 'customer')===$val)>{{ $label }}</option>
+                        @foreach([\App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_DEBTORS => 'Sundry Debtors', \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS => 'Sundry Creditors', \App\Domains\Master\Models\Customer::PARTY_TYPE_BOTH => 'Both'] as $val => $label)
+                            <option value="{{ $val }}" @selected(old('party_type', $item->party_type_key ?? 'sundry_debtors')===$val)>{{ $label }}</option>
                         @endforeach
                     </select>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Category / Type</label>
-                    <select name="customer_type_id" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        <option value="">Select category</option>
+                    <div class="flex items-center justify-between mb-1">
+                        <label for="customer_type_id" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Classification</label>
+                        <button type="button"
+                                @click="openClassificationModal()"
+                                class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 hover:underline focus:outline-none">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Add Manually
+                        </button>
+                    </div>
+                    <select name="customer_type_id"
+                            id="customer_type_id"
+                            x-ref="classificationSelect"
+                            x-model="selectedCustomerTypeId"
+                            @change="onClassificationChange($event)"
+                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Select Classification</option>
                         @foreach($customerTypes as $t)
                             <option value="{{ $t->id }}" @selected(old('customer_type_id', $item->customer_type_id)==$t->id)>{{ $t->name }}</option>
                         @endforeach
+                        <template x-for="t in customClassifications" :key="t.id">
+                            <option :value="t.id" x-text="t.name"></option>
+                        </template>
+                        <option value="__add_manually__" class="font-semibold text-indigo-600 bg-indigo-50">+ Add Manually</option>
                     </select>
                 </div>
 
@@ -121,27 +173,133 @@
                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 </div>
 
-                <div class="md:col-span-2">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Registered Address</label>
-                    <textarea name="address" x-model="form.address" rows="2" placeholder="Full street address, building, locality"
-                              class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('address', $item->address ?? '') }}</textarea>
-                </div>
+                <input type="hidden" name="address" :value="form.address">
+                <input type="hidden" name="state" :value="form.state">
+                <input type="hidden" name="pincode" :value="form.pincode">
+            </div>
+        </div>
 
+        <!-- Addresses (Multiple Delivery & Billing Locations) -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">State</label>
-                    <select name="state" x-model="form.state" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        <option value="">Select State / UT</option>
-                        @foreach($states as $code => $name)
-                            <option value="{{ $name }}" @selected(old('state', $item->state)==$name)>{{ $name }} ({{ $code }})</option>
-                        @endforeach
-                    </select>
+                    <h3 class="text-sm font-semibold text-slate-700">Addresses &amp; Locations</h3>
+                    <p class="text-xs text-slate-500">Multiple addresses allowed per party. Set default billing and delivery addresses.</p>
                 </div>
+                <button type="button" @click="addAddress()"
+                        class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    + Add Address
+                </button>
+            </div>
 
-                <div>
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Pincode</label>
-                    <input type="text" name="pincode" x-model="form.pincode"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
+            <div class="space-y-4">
+                <template x-for="(addr, idx) in addresses" :key="idx">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4 transition shadow-xs">
+                        <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-600" x-text="`Address #${idx + 1}`"></span>
+                                <span x-show="addr.label" class="text-xs font-medium text-slate-500" x-text="`(${addr.label})`"></span>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <label class="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-slate-700">
+                                    <input type="radio" name="default_billing_radio" :checked="addr.is_default_billing" @change="setDefaultBilling(idx)"
+                                           class="text-indigo-600 focus:ring-indigo-500">
+                                    <span>Default Billing</span>
+                                </label>
+                                <label class="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-slate-700">
+                                    <input type="radio" name="default_delivery_radio" :checked="addr.is_default_delivery" @change="setDefaultDelivery(idx)"
+                                           class="text-emerald-600 focus:ring-emerald-500">
+                                    <span>Default Delivery</span>
+                                </label>
+                                <button type="button" x-show="addresses.length > 1" @click="removeAddress(idx)"
+                                        class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Hidden fields to submit to backend -->
+                        <input type="hidden" :name="`addresses[${idx}][id]`" :value="addr.id || ''">
+                        <input type="hidden" :name="`addresses[${idx}][is_default_billing]`" :value="addr.is_default_billing ? 1 : 0">
+                        <input type="hidden" :name="`addresses[${idx}][is_default_delivery]`" :value="addr.is_default_delivery ? 1 : 0">
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Label *</label>
+                                <input type="text" :name="`addresses[${idx}][label]`" x-model="addr.label" placeholder="e.g. Head Office, Warehouse"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Type</label>
+                                <select :name="`addresses[${idx}][type]`" x-model="addr.type"
+                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    <option value="both">Both (Billing &amp; Delivery)</option>
+                                    <option value="billing">Billing Only</option>
+                                    <option value="delivery">Delivery Only</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Contact Person (optional)</label>
+                                <input type="text" :name="`addresses[${idx}][contact_person]`" x-model="addr.contact_person" placeholder="Name"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Contact Phone (optional)</label>
+                                <input type="text" :name="`addresses[${idx}][contact_phone]`" x-model="addr.contact_phone" placeholder="Phone"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 1 *</label>
+                                <input type="text" :name="`addresses[${idx}][address_line_1]`" x-model="addr.address_line_1" @input="syncPrimaryAddress()"
+                                       placeholder="Flat / Door / Block No., Premises, Street"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 2 (optional)</label>
+                                <input type="text" :name="`addresses[${idx}][address_line_2]`" x-model="addr.address_line_2" @input="syncPrimaryAddress()"
+                                       placeholder="Area, Landmark, Locality"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">State *</label>
+                                <select :name="`addresses[${idx}][state]`" x-model="addr.state" @change="syncPrimaryAddress()"
+                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                                    <option value="">Select State / UT</option>
+                                    @foreach($states as $code => $name)
+                                        <option value="{{ $name }}">{{ $name }} ({{ $code }})</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">City *</label>
+                                <input type="text" :name="`addresses[${idx}][city]`" x-model="addr.city" :list="`city-list-${idx}`"
+                                       placeholder="Enter or select city"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                                <datalist :id="`city-list-${idx}`">
+                                    <template x-for="c in getCities(addr.state)" :key="c">
+                                        <option :value="c"></option>
+                                    </template>
+                                </datalist>
+                                <template x-if="addr.city && addr.state && !isCityValidForState(addr.city, addr.state)">
+                                    <p class="text-[11px] text-rose-600 mt-1 font-medium">⚠️ Note: Selected city does not belong to <span x-text="addr.state"></span></p>
+                                </template>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">PIN Code *</label>
+                                <input type="text" :name="`addresses[${idx}][pincode]`" x-model="addr.pincode" maxlength="12" @input="syncPrimaryAddress()"
+                                       placeholder="6-digit PIN code"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                            </div>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
 
@@ -317,6 +475,89 @@
         </label>
 
         <x-ui.button type="submit" variant="primary">Save Party</x-ui.button>
+
+        <!-- Add Classification Modal -->
+        <div x-show="classificationModalOpen"
+             x-cloak
+             class="fixed inset-0 z-50 overflow-y-auto"
+             aria-labelledby="modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="closeClassificationModal()">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div x-show="classificationModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 transition-opacity bg-slate-900/50 backdrop-blur-sm"
+                     @click="closeClassificationModal()"></div>
+
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+                <div x-show="classificationModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     class="relative inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl sm:my-8"
+                     @click.stop>
+
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800" id="modal-title">Add Classification</h3>
+                        <button type="button" @click="closeClassificationModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- Error Feedback -->
+                    <div x-show="classificationError" x-cloak class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span x-text="classificationError"></span>
+                    </div>
+
+                    <!-- Success Feedback -->
+                    <div x-show="classificationSuccess" x-cloak class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        <span x-text="classificationSuccess"></span>
+                    </div>
+
+                    <div class="mt-4 space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Classification Name *</label>
+                            <input type="text"
+                                   x-ref="classificationInput"
+                                   x-model="newClassificationName"
+                                   :disabled="classificationSaving"
+                                   @keydown.enter.prevent="saveClassification()"
+                                   placeholder="e.g. Retailer, Super Stockist, Corporate"
+                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed">
+                            <p class="text-[11px] text-slate-500 mt-1">This classification will be saved to the master database and selected automatically.</p>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeClassificationModal()"
+                                    :disabled="classificationSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    @click="saveClassification()"
+                                    :disabled="classificationSaving"
+                                    class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 shadow-sm transition">
+                                <svg x-show="classificationSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                <span x-text="classificationSaving ? 'Saving...' : 'Save'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </form>
 </x-ui.card>
 
@@ -330,10 +571,116 @@ function partyFormController() {
             message: '',
             note: ''
         },
+        selectedCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
+        previousCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
+        customClassifications: [],
+        knownClassificationNames: {!! json_encode($customerTypes->pluck('name')->map(fn($n) => mb_strtolower(trim($n)))->values()) !!},
+        classificationModalOpen: false,
+        newClassificationName: '',
+        classificationSaving: false,
+        classificationError: '',
+        classificationSuccess: '',
+
+        openClassificationModal() {
+            this.classificationModalOpen = true;
+            this.newClassificationName = '';
+            this.classificationError = '';
+            this.classificationSuccess = '';
+            this.$nextTick(() => {
+                this.$refs.classificationInput?.focus();
+            });
+        },
+        closeClassificationModal() {
+            this.classificationModalOpen = false;
+            this.classificationError = '';
+            this.classificationSuccess = '';
+            if (this.selectedCustomerTypeId === '__add_manually__') {
+                this.selectedCustomerTypeId = this.previousCustomerTypeId;
+            }
+        },
+        onClassificationChange(event) {
+            if (this.selectedCustomerTypeId === '__add_manually__') {
+                this.openClassificationModal();
+            } else {
+                this.previousCustomerTypeId = this.selectedCustomerTypeId;
+            }
+        },
+        async saveClassification() {
+            const rawName = this.newClassificationName || '';
+            const name = rawName.trim();
+
+            if (!name) {
+                this.classificationError = 'Classification Name is required.';
+                return;
+            }
+
+            // Client-side case-insensitive duplicate check
+            const lowerName = name.toLowerCase();
+            if (this.knownClassificationNames.includes(lowerName)) {
+                this.classificationError = 'A classification with this name already exists.';
+                return;
+            }
+
+            this.classificationSaving = true;
+            this.classificationError = '';
+            this.classificationSuccess = '';
+
+            try {
+                const response = await fetch("{{ route('masters.customer-types.quick-store') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ name: name })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    this.classificationError = data.message || 'Failed to save classification.';
+                    this.classificationSaving = false;
+                    return;
+                }
+
+                const newItem = data.item;
+                const newIdStr = String(newItem.id);
+
+                const alreadyCustom = this.customClassifications.some(c => String(c.id) === newIdStr);
+                if (!alreadyCustom) {
+                    this.customClassifications.push({
+                        id: newItem.id,
+                        name: newItem.name
+                    });
+                }
+                this.knownClassificationNames.push(newItem.name.trim().toLowerCase());
+
+                const selectEl = this.$refs.classificationSelect;
+                if (selectEl && !selectEl.querySelector(`option[value="${newItem.id}"]`)) {
+                    const opt = new Option(newItem.name, newItem.id);
+                    const addManuallyOpt = selectEl.querySelector('option[value="__add_manually__"]');
+                    selectEl.insertBefore(opt, addManuallyOpt);
+                }
+
+                this.selectedCustomerTypeId = newIdStr;
+                this.previousCustomerTypeId = newIdStr;
+                this.classificationSuccess = data.message || 'Classification created successfully!';
+
+                setTimeout(() => {
+                    this.closeClassificationModal();
+                }, 700);
+            } catch (err) {
+                this.classificationError = 'An error occurred while saving the classification. Please try again.';
+            } finally {
+                this.classificationSaving = false;
+            }
+        },
+
         form: {
             name: {!! json_encode(old('name', $item->name ?? '')) !!},
             gstin: {!! json_encode(old('gstin', $item->gstin ?? '')) !!},
-            party_type: {!! json_encode(old('party_type', $item->party_type ?? 'customer')) !!},
+            party_type: {!! json_encode(old('party_type', $item->party_type_key ?? 'sundry_debtors')) !!},
             pan: {!! json_encode(old('pan', $item->pan ?? '')) !!},
             phone: {!! json_encode(old('phone', $item->phone ?? '')) !!},
             email: {!! json_encode(old('email', $item->email ?? '')) !!},
@@ -343,6 +690,84 @@ function partyFormController() {
         },
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
         creditCheques: {!! json_encode($initialCreditCheques) !!},
+        addresses: {!! json_encode($initialAddresses) !!},
+        stateCities: {!! json_encode($stateCities ?? \App\Support\IndianCities::all()) !!},
+
+        getCities(stateName) {
+            if (!stateName) return [];
+            return this.stateCities[stateName] || [];
+        },
+
+        addAddress() {
+            const hasBilling = this.addresses.some(a => a.is_default_billing);
+            const hasDelivery = this.addresses.some(a => a.is_default_delivery);
+            this.addresses.push({
+                id: null,
+                label: 'Branch / Warehouse',
+                contact_person: '',
+                contact_phone: '',
+                address_line_1: '',
+                address_line_2: '',
+                city: '',
+                state: this.form.state || '',
+                pincode: '',
+                type: 'delivery',
+                is_default_billing: !hasBilling,
+                is_default_delivery: !hasDelivery
+            });
+        },
+
+        removeAddress(idx) {
+            if (this.addresses.length <= 1) return;
+            const wasBilling = this.addresses[idx].is_default_billing;
+            const wasDelivery = this.addresses[idx].is_default_delivery;
+            this.addresses.splice(idx, 1);
+            if (wasBilling && this.addresses.length > 0) {
+                this.setDefaultBilling(0);
+            }
+            if (wasDelivery && this.addresses.length > 0) {
+                this.setDefaultDelivery(0);
+            }
+            this.syncPrimaryAddress();
+        },
+
+        setDefaultBilling(index) {
+            this.addresses.forEach((addr, i) => {
+                addr.is_default_billing = (i === index);
+            });
+            this.syncPrimaryAddress();
+        },
+
+        setDefaultDelivery(index) {
+            this.addresses.forEach((addr, i) => {
+                addr.is_default_delivery = (i === index);
+            });
+        },
+
+        syncPrimaryAddress() {
+            const primary = this.addresses.find(a => a.is_default_billing) || this.addresses[0];
+            if (primary) {
+                const line1 = primary.address_line_1 || '';
+                const line2 = primary.address_line_2 || '';
+                this.form.address = (line1 + (line2 ? ', ' + line2 : '')).trim();
+                if (primary.state) this.form.state = primary.state;
+                if (primary.pincode) this.form.pincode = primary.pincode;
+            }
+        },
+
+        isCityValidForState(city, state) {
+            if (!city || !state) return true;
+            const cleanCity = city.trim().toLowerCase();
+            const citiesInState = (this.stateCities[state] || []).map(c => c.toLowerCase());
+            if (citiesInState.includes(cleanCity)) return true;
+            for (const [st, cities] of Object.entries(this.stateCities)) {
+                if (st === state) continue;
+                if (cities.map(c => c.toLowerCase()).includes(cleanCity)) {
+                    return false;
+                }
+            }
+            return true;
+        },
 
         addBankAccount() {
             this.bankAccounts.push({
@@ -400,6 +825,18 @@ function partyFormController() {
                     }
                     if (data.party.address && data.party.address.trim() !== '') {
                         this.form.address = data.party.address;
+                        if (this.addresses.length > 0) {
+                            this.addresses[0].address_line_1 = data.party.address;
+                            if (data.party.state) {
+                                this.addresses[0].state = data.party.state;
+                            }
+                            if (data.party.pincode) {
+                                this.addresses[0].pincode = data.party.pincode;
+                            }
+                            if (data.party.city) {
+                                this.addresses[0].city = data.party.city;
+                            }
+                        }
                     }
 
                     if (data.is_live) {

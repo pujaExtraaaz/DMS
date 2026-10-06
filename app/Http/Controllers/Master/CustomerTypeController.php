@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Master;
 
 use App\Domains\Master\Models\CustomerType;
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -25,12 +26,98 @@ class CustomerTypeController extends Controller
         return view('masters.customer-types.form', array_merge(['item' => new CustomerType], $this->formData()));
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
+        if ($request->expectsJson() || $request->ajax()) {
+            return $this->quickStore($request);
+        }
+
         $data = $this->validated($request);
         CustomerType::create($data);
 
         return $this->flashSuccess('Customer Type created successfully.', 'masters.customer-types.index');
+    }
+
+    public function quickStore(Request $request): JsonResponse
+    {
+        $name = trim((string) $request->input('name', ''));
+
+        if ($name === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Classification Name is required.',
+            ], 422);
+        }
+
+        if (mb_strlen($name) > 255) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Classification Name cannot exceed 255 characters.',
+            ], 422);
+        }
+
+        // Case-insensitive duplicate check, trimming spaces
+        $exists = CustomerType::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])->exists();
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A classification with this name already exists.',
+            ], 422);
+        }
+
+        // Auto-generate unique code
+        $baseCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $name));
+        if ($baseCode === '') {
+            $baseCode = 'CLS';
+        }
+        $baseCode = substr($baseCode, 0, 15);
+        $code = $baseCode;
+        $suffix = 1;
+        while (CustomerType::where('code', $code)->exists()) {
+            $code = substr($baseCode, 0, 14) . '_' . $suffix;
+            $suffix++;
+        }
+
+        try {
+            $customerType = CustomerType::create([
+                'name' => $name,
+                'code' => $code,
+                'is_active' => true,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Classification created successfully.',
+                'item' => [
+                    'id' => $customerType->id,
+                    'name' => $customerType->name,
+                    'code' => $customerType->code,
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            if (
+                str_contains($e->getMessage(), 'Integrity constraint violation') ||
+                str_contains($e->getMessage(), 'Duplicate entry') ||
+                str_contains($e->getMessage(), 'UNIQUE constraint failed')
+            ) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'A classification with this name already exists.',
+                ], 422);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while saving the classification: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function list(): JsonResponse
+    {
+        return response()->json([
+            'items' => CustomerType::where('is_active', true)->orderBy('name')->get(['id', 'name', 'code']),
+        ]);
     }
 
     public function show(CustomerType $customer_type): RedirectResponse
@@ -63,7 +150,7 @@ class CustomerTypeController extends Controller
         $rules = ['name' => 'required|string|max:255', 'code' => 'required|string|max:20|unique:customer_types,code', 'description' => 'nullable|string', 'is_active' => 'boolean'];
         if ($customer_type) {
             if (isset($rules['code'])) {
-                $rules['code'] = 'required|string|max:20|unique:customer-types,code,'.$customer_type->id;
+                $rules['code'] = 'required|string|max:20|unique:customer_types,code,'.$customer_type->id;
             }
             if (isset($rules['registration_no'])) {
                 $rules['registration_no'] = 'required|string|max:20|unique:vehicles,registration_no,'.$customer_type->id;

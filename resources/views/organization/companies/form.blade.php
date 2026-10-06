@@ -14,25 +14,125 @@
                 <x-ui.input name="name" label="Trade Name" :value="old('name', $item->name)" required />
                 <x-ui.input name="legal_name" label="Legal Name" :value="old('legal_name', $item->legal_name)" />
                 <div class="md:col-span-2" x-data="{
-                    logoPreview: '{{ $item->logo_path ? asset('storage/' . $item->logo_path) : '' }}',
-                    previewImage(e) {
-                        const file = e.target.files[0];
-                        if (file) {
-                            this.logoPreview = URL.createObjectURL(file);
+                    savedLogoUrl: '{{ $item->logo_url ?? '' }}',
+                    previewUrl: '',
+                    removed: false,
+                    errorMessage: '',
+                    imageLoadFailed: false,
+
+                    get currentSrc() {
+                        if (this.removed) return '';
+                        if (this.previewUrl) return this.previewUrl;
+                        if (!this.imageLoadFailed && this.savedLogoUrl) return this.savedLogoUrl;
+                        return '';
+                    },
+
+                    get hasLogo() {
+                        return !!this.currentSrc;
+                    },
+
+                    handleFileChange(event) {
+                        this.errorMessage = '';
+                        const input = event.target;
+                        const file = input.files && input.files[0];
+
+                        if (!file) {
+                            return;
                         }
+
+                        const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml'];
+                        const allowedExtensions = ['png', 'jpg', 'jpeg', 'webp', 'svg'];
+                        const fileExt = (file.name.split('.').pop() || '').toLowerCase();
+
+                        if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExt)) {
+                            this.errorMessage = 'Please select a valid image file (PNG, JPG, SVG, or WEBP).';
+                            input.value = '';
+                            return;
+                        }
+
+                        if (file.size > 2 * 1024 * 1024) {
+                            this.errorMessage = 'File size exceeds 2 MB. Please select a smaller image.';
+                            input.value = '';
+                            return;
+                        }
+
+                        if (this.previewUrl) {
+                            URL.revokeObjectURL(this.previewUrl);
+                        }
+
+                        this.previewUrl = URL.createObjectURL(file);
+                        this.removed = false;
+                        this.imageLoadFailed = false;
+                    },
+
+                    removeLogo() {
+                        if (this.previewUrl) {
+                            URL.revokeObjectURL(this.previewUrl);
+                            this.previewUrl = '';
+                        }
+                        if (this.$refs.fileInput) {
+                            this.$refs.fileInput.value = '';
+                        }
+                        this.removed = true;
+                        this.errorMessage = '';
+                    },
+
+                    handleImageError() {
+                        this.imageLoadFailed = true;
                     }
                 }">
                     <label class="block text-sm font-medium text-slate-700 mb-1">Company Logo</label>
-                    <div class="flex items-center gap-4">
-                        <template x-if="logoPreview">
-                            <div class="relative w-20 h-20 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center p-1">
-                                <img :src="logoPreview" class="max-w-full max-h-full object-contain">
+                    <div class="flex items-start gap-4">
+                        <div class="relative w-24 h-24 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center p-1.5 shrink-0 shadow-sm">
+                            <template x-if="hasLogo">
+                                <div class="w-full h-full flex items-center justify-center bg-white rounded-lg p-1">
+                                    <img :src="currentSrc"
+                                         alt="Company Logo Preview"
+                                         x-on:error="handleImageError()"
+                                         class="max-w-full max-h-full object-contain">
+                                </div>
+                            </template>
+                            <template x-if="!hasLogo">
+                                <div class="flex flex-col items-center justify-center text-slate-400 text-center p-1">
+                                    <svg class="w-8 h-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                                    </svg>
+                                    <span class="text-[10px] text-slate-400 mt-1 font-medium">No Logo</span>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="space-y-1.5 flex-1">
+                            <input type="file"
+                                   name="logo"
+                                   x-ref="fileInput"
+                                   accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                   @change="handleFileChange($event)"
+                                   class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition cursor-pointer">
+
+                            <input type="hidden" name="remove_logo" :value="removed && savedLogoUrl ? '1' : '0'">
+
+                            <div class="flex items-center gap-3">
+                                <template x-if="hasLogo">
+                                    <button type="button"
+                                            @click="removeLogo()"
+                                            class="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline">
+                                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                        Remove Logo
+                                    </button>
+                                </template>
                             </div>
-                        </template>
-                        <div class="space-y-1">
-                            <input type="file" name="logo" accept="image/*" @change="previewImage($event)"
-                                   class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+
                             <p class="text-xs text-slate-400">PNG, JPG, SVG or WEBP up to 2MB. Displayed on sidebar, header, and invoice prints.</p>
+
+                            <template x-if="errorMessage">
+                                <p class="text-xs font-medium text-rose-600 flex items-center gap-1" x-text="errorMessage"></p>
+                            </template>
+                            @error('logo')
+                                <p class="text-xs font-medium text-rose-600">{{ $message }}</p>
+                            @enderror
                         </div>
                     </div>
                 </div>

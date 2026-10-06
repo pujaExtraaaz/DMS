@@ -94,6 +94,11 @@
                     @endif
                 </td>
                 <td style="width: 60%; text-align: center;">
+                    @if($company?->logo_url)
+                        <div style="margin-bottom: 4px;">
+                            <img src="{{ $company->logo_url }}" alt="{{ $companyName }}" style="max-height: 44px; max-width: 160px; object-fit: contain;">
+                        </div>
+                    @endif
                     <div style="font-size: 9px; color: #4b5563;">e-Invoice System</div>
                     <div class="header-title">e-Invoice</div>
                     <div style="font-size: 10px; font-weight: bold;">TAX INVOICE</div>
@@ -132,118 +137,92 @@
             </tr>
             <tr>
                 <td>
-                    <div><span class="bold">Name:</span> {{ $customer->name }}</div>
-                    <div><span class="bold">Address:</span> {{ $customer->address ?: '-' }}</div>
-                    <div><span class="bold">State:</span> {{ $customer->state ?: '-' }} &nbsp;&nbsp; <span class="bold">Pin Code:</span> {{ $customer->pincode ?: '-' }}</div>
-                    <div><span class="bold">GSTIN/Unique ID:</span> {{ $customer->gstin ?: '-' }}</div>
+                    <div><span class="bold">Name:</span> {{ $invoice->billingAddress?->contact_person ?: $customer->name }}</div>
+                    <div><span class="bold">Address:</span> {!! nl2br(e($invoice->billing_address ?: ($customer->address ?: '-'))) !!}</div>
+                    <div><span class="bold">State:</span> {{ $invoice->billingAddress?->state ?: ($customer->state ?: '-') }} &nbsp;&nbsp; <span class="bold">Pin Code:</span> {{ $invoice->billingAddress?->pincode ?: ($customer->pincode ?: '-') }}</div>
+                    <div><span class="bold">GSTIN/Unique ID:</span> {{ $invoice->billingAddress?->gstin ?: ($customer->gstin ?: '-') }}</div>
                 </td>
                 <td>
-                    <div><span class="bold">Name:</span> {{ $customer->shipping_name ?: $customer->name }}</div>
-                    <div><span class="bold">Address:</span> {{ $customer->shipping_address ?: ($customer->address ?: '-') }}</div>
-                    <div><span class="bold">State:</span> {{ $customer->shipping_state ?: ($customer->state ?: '-') }} &nbsp;&nbsp; <span class="bold">Pin Code:</span> {{ $customer->shipping_pincode ?: ($customer->pincode ?: '-') }}</div>
-                    <div><span class="bold">GSTIN/Unique ID:</span> {{ $customer->shipping_gstin ?: ($customer->gstin ?: '-') }}</div>
+                    <div><span class="bold">Name:</span> {{ $invoice->shippingAddress?->contact_person ?: ($customer->shipping_name ?: $customer->name) }}</div>
+                    <div><span class="bold">Address:</span> {!! nl2br(e($invoice->shipping_address ?: ($invoice->billing_address ?: ($customer->shipping_address ?: ($customer->address ?: '-'))))) !!}</div>
+                    <div><span class="bold">State:</span> {{ $invoice->shippingAddress?->state ?: ($invoice->delivery_state ?: ($customer->shipping_state ?: ($customer->state ?: '-'))) }} &nbsp;&nbsp; <span class="bold">Pin Code:</span> {{ $invoice->shippingAddress?->pincode ?: ($customer->shipping_pincode ?: ($customer->pincode ?: '-')) }}</div>
+                    <div><span class="bold">GSTIN/Unique ID:</span> {{ $invoice->shippingAddress?->gstin ?: ($customer->shipping_gstin ?: ($customer->gstin ?: '-')) }}</div>
                 </td>
             </tr>
         </table>
 
-        <div style="font-size: 9px; margin-bottom: 6px;">
-            <span class="bold">Supply type:</span> Outward &nbsp;&nbsp;&nbsp;&nbsp;
-            <span class="bold">Transaction mode:</span> Tax Invoice
+        <table class="grid-table">
+            <tr class="bg-gray">
+                <th style="width: 4%;">#</th>
+                <th style="width: 32%;">Item Description</th>
+                <th style="width: 10%;">HSN</th>
+                <th style="width: 8%;" class="text-right">Qty</th>
+                <th style="width: 10%;" class="text-right">Unit Price</th>
+                <th style="width: 8%;" class="text-right">Discount</th>
+                <th style="width: 8%;" class="text-right">Taxable</th>
+                <th style="width: 10%;" class="text-right">GST Rate</th>
+                <th style="width: 10%;" class="text-right">Total</th>
+            </tr>
+            @foreach($invoice->items as $i => $item)
+                <tr>
+                    <td class="text-center">{{ $i + 1 }}</td>
+                    <td>
+                        <div class="bold">{{ $item->item_name }}</div>
+                        @if($item->batch_no)<div style="color: #4b5563;">Batch: {{ $item->batch_no }}</div>@endif
+                        @if($item->serial_no)<div style="color: #4b5563;">S/N: {{ $item->serial_no }}</div>@endif
+                    </td>
+                    <td>{{ $item->hsn_code ?: '-' }}</td>
+                    <td class="text-right">{{ number_format($item->quantity, 0) }}</td>
+                    <td class="text-right">{{ number_format($item->unit_price, 2) }}</td>
+                    <td class="text-right">{{ number_format($item->discount_amount, 2) }}</td>
+                    <td class="text-right">{{ number_format($item->taxable_amount, 2) }}</td>
+                    <td class="text-right">{{ number_format($item->gst_rate, 2) }}%</td>
+                    <td class="text-right bold">{{ number_format($item->total_amount, 2) }}</td>
+                </tr>
+            @endforeach
+        </table>
+
+        <table class="grid-table">
+            <tr class="bg-gray">
+                <th class="text-right">Taxable Amount</th>
+                <th class="text-right">CGST</th>
+                <th class="text-right">SGST</th>
+                <th class="text-right">IGST</th>
+                <th class="text-right">Round Off</th>
+                <th class="text-right">Invoice Total</th>
+            </tr>
+            <tr>
+                <td class="text-right">{{ number_format($invoice->taxable_amount, 2) }}</td>
+                <td class="text-right">{{ number_format($invoice->cgst_amount, 2) }}</td>
+                <td class="text-right">{{ number_format($invoice->sgst_amount, 2) }}</td>
+                <td class="text-right">{{ number_format($invoice->igst_amount, 2) }}</td>
+                <td class="text-right">{{ number_format($invoice->round_off, 2) }}</td>
+                <td class="text-right bold" style="font-size: 11px;">INR {{ number_format($invoice->total_amount, 2) }}</td>
+            </tr>
+        </table>
+
+        <div style="font-size: 9px; margin-bottom: 12px;">
+            <span class="bold">Amount in Words:</span>
+            {{ \App\Support\NumberToWords::convert($invoice->total_amount) }}
         </div>
 
-        <table class="grid-table">
-            <thead>
-                <tr class="bg-gray text-center">
-                    <th style="width: 4%;">S.No</th>
-                    <th style="width: 24%;">Description of supply / Item description</th>
-                    <th style="width: 8%;">HSN Code</th>
-                    <th style="width: 8%;">Qty</th>
-                    <th style="width: 10%;">Rate per unit</th>
-                    <th style="width: 10%;">Taxable Value</th>
-                    <th style="width: 12%;">CGST</th>
-                    <th style="width: 12%;">SGST</th>
-                    <th style="width: 12%;">Total (₹)</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($invoice->items as $idx => $item)
-                    @php
-                        $taxRate = (float) ($item->product->tax_rate ?? 18);
-                        $halfTax = $taxRate / 2;
-                        $lineTaxable = (float) $item->line_total;
-                        $cgstAmount = $lineTaxable * ($halfTax / 100);
-                        $sgstAmount = $lineTaxable * ($halfTax / 100);
-                        $lineFinal = $lineTaxable + $cgstAmount + $sgstAmount;
-                    @endphp
-                    <tr>
-                        <td class="text-center">{{ $idx + 1 }}</td>
-                        <td>{{ $item->product->name }}</td>
-                        <td class="text-center">{{ $item->product->hsn_code ?: '-' }}</td>
-                        <td class="text-right">{{ number_format($item->quantity, 2) }} {{ $item->uom->code }}</td>
-                        <td class="text-right">{{ number_format($item->unit_price, 2) }}</td>
-                        <td class="text-right">{{ number_format($lineTaxable, 2) }}</td>
-                        <td class="text-right">{{ number_format($halfTax, 2) }}% ({{ number_format($cgstAmount, 2) }})</td>
-                        <td class="text-right">{{ number_format($halfTax, 2) }}% ({{ number_format($sgstAmount, 2) }})</td>
-                        <td class="text-right bold">{{ number_format($lineFinal, 2) }}</td>
-                    </tr>
-                @endforeach
-            </tbody>
-            <tfoot>
-                <tr class="bg-gray">
-                    <td colspan="5" class="text-right bold">Total:</td>
-                    <td class="text-right bold">₹{{ number_format($invoice->subtotal, 2) }}</td>
-                    <td colspan="2" class="text-right bold">Tax: ₹{{ number_format($invoice->tax_amount, 2) }}</td>
-                    <td class="text-right bold">₹{{ number_format($invoice->grand_total, 2) }}</td>
-                </tr>
-            </tfoot>
-        </table>
-
-        <table class="grid-table">
+        <table class="grid-table" style="margin-bottom: 0;">
             <tr>
-                <td style="width: 55%;">
-                    <div class="bold" style="border-bottom: 1px solid #ccc; padding-bottom: 2px; margin-bottom: 4px;">Payee Information</div>
-                    <div><span class="bold">Payee name:</span> {{ $companyName }}</div>
-                    <div><span class="bold">Bank:</span> {{ $company?->bank_name ?: '-' }}</div>
-                    <div><span class="bold">A/c No:</span> {{ $company?->bank_account_no ?: '-' }}</div>
-                    <div><span class="bold">IFSC:</span> {{ $company?->bank_ifsc ?: '-' }}</div>
-                    @if($company?->upi_id)
-                        <div><span class="bold">UPI ID:</span> {{ $company->upi_id }}</div>
-                    @endif
-                    <div><span class="bold">Payment mode:</span> UPI / NEFT / RTGS</div>
+                <td style="width: 50%;">
+                    <div class="bold">Bank Details:</div>
+                    <div>Bank: {{ $company?->bank_name ?: 'HDFC Bank' }}</div>
+                    <div>A/C: {{ $company?->bank_account_no ?: '-' }}</div>
+                    <div>IFSC: {{ $company?->bank_ifsc ?: '-' }}</div>
+                    @if($company?->upi_id)<div>UPI: {{ $company->upi_id }}</div>@endif
+                    <div style="margin-top: 6px;" class="bold">Terms &amp; Conditions:</div>
+                    <div style="color: #4b5563;">{{ $company?->selling_terms_and_conditions ?: '1. Subject to local jurisdiction. 2. Goods once sold will not be taken back.' }}</div>
                 </td>
-                <td style="width: 25%; text-align:center;">
-                    @if(! empty($upiQrDataUri))
-                        <img src="{{ $upiQrDataUri }}" alt="Scan &amp; Pay UPI QR" width="120" height="120" style="border:1px solid #ccc;">
-                        <div style="font-size:8px; color:#6b7280; margin-top:2px;">Scan &amp; pay via any UPI app</div>
-                    @endif
-                </td>
-                <td style="width: 20%;">
-                    <table style="width: 100%; border: none;">
-                        <tr><td style="border:none;" class="bold">Taxable:</td><td style="border:none;" class="text-right">₹{{ number_format($invoice->subtotal, 2) }}</td></tr>
-                        @if((float) $invoice->discount_amount > 0)
-                            <tr><td style="border:none;" class="bold">Discount:</td><td style="border:none;" class="text-right">−₹{{ number_format($invoice->discount_amount, 2) }}</td></tr>
-                        @endif
-                        <tr><td style="border:none;" class="bold">Tax:</td><td style="border:none;" class="text-right">₹{{ number_format($invoice->tax_amount, 2) }}</td></tr>
-                        <tr style="border-top: 1px solid #000;"><td style="border:none;" class="bold">Grand Total:</td><td style="border:none;" class="text-right bold">₹{{ number_format($invoice->grand_total, 2) }}</td></tr>
-                        <tr><td style="border:none;" class="bold">Paid:</td><td style="border:none;" class="text-right">₹{{ number_format($invoice->paid_amount, 2) }}</td></tr>
-                        <tr><td style="border:none;" class="bold">Balance:</td><td style="border:none;" class="text-right bold">₹{{ number_format(max(0, $invoice->grand_total - $invoice->paid_amount), 2) }}</td></tr>
-                    </table>
+                <td style="width: 50%; text-align: right; vertical-align: bottom;">
+                    <div style="margin-bottom: 40px;">For <span class="bold">{{ $companyName }}</span></div>
+                    <div class="bold">Authorized Signatory</div>
                 </td>
             </tr>
         </table>
-
-        @if($invoice->terms_and_conditions)
-            <div style="margin-top:10px; padding:6px 8px; border:1px solid #d1d5db; font-size:9px;">
-                <div class="bold" style="margin-bottom:2px;">Terms &amp; Conditions</div>
-                <div style="white-space:pre-line;">{{ $invoice->terms_and_conditions }}</div>
-            </div>
-        @endif
-
-        @if($invoice->eInvoice?->ack_no)
-            <div style="margin-top:6px; font-size:8px; color:#4b5563;">
-                Ack No: {{ $invoice->eInvoice->ack_no }} · Ack Dt: {{ optional($invoice->eInvoice->ack_date)->format('d M Y H:i') ?? '—' }}
-            </div>
-        @endif
     </div>
 </body>
 </html>

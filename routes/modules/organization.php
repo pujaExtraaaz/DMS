@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('organization')->name('organization.')->middleware('role_or_permission:super-admin|organization.view|organization.create|organization.edit|organization.manage')->group(function () {
     Route::get('company-profile', [CompanyProfileController::class, 'show'])->name('company-profile');
+    Route::get('company-profile/logo', [CompanyProfileController::class, 'logo'])->name('company-profile.logo');
     Route::put('company-profile', [CompanyProfileController::class, 'update'])->name('company-profile.update');
     Route::resource('companies', CompanyController::class)->except(['show']);
     Route::resource('branches', BranchController::class)->except(['show']);

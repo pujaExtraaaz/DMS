@@ -29,6 +29,10 @@ class PurchaseOrder extends Model
         'created_by',
         'approved_by',
         'approved_at',
+        'billing_address_id',
+        'shipping_address_id',
+        'billing_address',
+        'shipping_address',
     ];
 
     protected function casts(): array
@@ -91,5 +95,15 @@ class PurchaseOrder extends Model
     public function isReceivable(): bool
     {
         return in_array($this->status, ['approved', 'partially_received'], true);
+    }
+
+    public function billingAddress(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'billing_address_id');
+    }
+
+    public function shippingAddress(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'shipping_address_id');
     }
 }

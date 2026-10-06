@@ -35,6 +35,10 @@ class PurchaseInvoice extends Model
         'credit_days',
         'due_date',
         'posted_at',
+        'billing_address_id',
+        'shipping_address_id',
+        'billing_address',
+        'shipping_address',
     ];
 
     protected function casts(): array
@@ -90,5 +94,15 @@ class PurchaseInvoice extends Model
     public function inventoryMovements(): MorphMany
     {
         return $this->morphMany(InventoryMovement::class, 'reference');
+    }
+
+    public function billingAddress(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'billing_address_id');
+    }
+
+    public function shippingAddress(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'shipping_address_id');
     }
 }

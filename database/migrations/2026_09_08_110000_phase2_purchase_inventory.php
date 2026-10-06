@@ -333,10 +333,12 @@ return new class extends Migration
             $table->foreignId('warehouse_id')->nullable()->after('id')->constrained()->nullOnDelete();
         });
 
-        DB::statement("ALTER TABLE stock_movements MODIFY COLUMN type ENUM(
-            'purchase','sale','adjustment','return','delivery_short',
-            'transfer_in','transfer_out','opening','inward'
-        ) NOT NULL");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE stock_movements MODIFY COLUMN type ENUM(
+                'purchase','sale','adjustment','return','delivery_short',
+                'transfer_in','transfer_out','opening','inward'
+            ) NOT NULL");
+        }
 
         Schema::table('purchases', function (Blueprint $table) {
             $table->foreignId('supplier_party_id')->nullable()->after('supplier_name')->constrained('customers')->nullOnDelete();
@@ -351,9 +353,11 @@ return new class extends Migration
             $table->dropConstrainedForeignId('supplier_party_id');
         });
 
-        DB::statement("ALTER TABLE stock_movements MODIFY COLUMN type ENUM(
-            'purchase','sale','adjustment','return','delivery_short'
-        ) NOT NULL");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE stock_movements MODIFY COLUMN type ENUM(
+                'purchase','sale','adjustment','return','delivery_short'
+            ) NOT NULL");
+        }
 
         Schema::table('stock_movements', function (Blueprint $table) {
             $table->dropConstrainedForeignId('warehouse_id');

@@ -53,6 +53,10 @@ class Invoice extends Model
         'transport_mode',
         'reference_no',
         'delivery_state',
+        'billing_address_id',
+        'shipping_address_id',
+        'billing_address',
+        'shipping_address',
         'qr_token',
     ];
 
@@ -120,5 +124,15 @@ class Invoice extends Model
     public function deal(): HasOne
     {
         return $this->hasOne(Deal::class);
+    }
+
+    public function billingAddress(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'billing_address_id');
+    }
+
+    public function shippingAddress(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'shipping_address_id');
     }
 }

@@ -46,28 +46,28 @@ return new class extends Migration
         }
 
         // 3. Sales Manager on customers
-        if (! Schema::hasColumn('customers', 'sales_manager_id')) {
+        if (Schema::hasTable('customers') && ! Schema::hasColumn('customers', 'sales_manager_id')) {
             Schema::table('customers', function (Blueprint $table) {
                 $table->foreignId('sales_manager_id')->nullable()->after('salesperson_id')->constrained('users')->nullOnDelete();
             });
         }
 
         // 4. Batch Name on purchase_order_items
-        if (! Schema::hasColumn('purchase_order_items', 'batch_no')) {
+        if (Schema::hasTable('purchase_order_items') && ! Schema::hasColumn('purchase_order_items', 'batch_no')) {
             Schema::table('purchase_order_items', function (Blueprint $table) {
                 $table->string('batch_no', 60)->nullable()->after('line_total');
             });
         }
 
         // 5. Credit Days on purchase_invoices
-        if (! Schema::hasColumn('purchase_invoices', 'credit_days')) {
+        if (Schema::hasTable('purchase_invoices') && ! Schema::hasColumn('purchase_invoices', 'credit_days')) {
             Schema::table('purchase_invoices', function (Blueprint $table) {
                 $table->unsignedInteger('credit_days')->nullable()->after('due_date');
             });
         }
 
         // 6. Logo Path on companies
-        if (! Schema::hasColumn('companies', 'logo_path')) {
+        if (Schema::hasTable('companies') && ! Schema::hasColumn('companies', 'logo_path')) {
             Schema::table('companies', function (Blueprint $table) {
                 $table->string('logo_path')->nullable()->after('msme_registration_no');
             });

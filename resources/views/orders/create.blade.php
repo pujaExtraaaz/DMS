@@ -297,6 +297,61 @@
 
             </div>
 
+            <!-- Party Addresses Selection -->
+            <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4 mt-6" x-show="customerId" x-cloak>
+                <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Billing &amp; Delivery Addresses</span>
+                    <span class="text-xs text-slate-500" x-text="addressesLoading ? 'Loading addresses...' : `${partyAddresses.length} address(es) available`"></span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Billing Address Card -->
+                    <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Billing Address</label>
+                            <span class="text-[11px] text-indigo-600 font-medium">Billed to</span>
+                        </div>
+                        <select name="billing_address_id" x-model="selectedBillingId" @change="onBillingAddressChange()"
+                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Default Address</option>
+                            <template x-for="addr in partyAddresses" :key="addr.id">
+                                <option :value="addr.id" x-text="`${addr.label} — ${addr.full_address}`"></option>
+                            </template>
+                        </select>
+                        <textarea name="billing_address" x-model="billingSnapshot" rows="3"
+                                  placeholder="Billing address snapshot"
+                                  class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                    </div>
+
+                    <!-- Delivery Address Card -->
+                    <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Delivery / Consignee Address</label>
+                            <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium">
+                                <input type="checkbox" x-model="sameAsBilling" @change="onSameAsBillingToggle()"
+                                       class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span>Same as Billing Address</span>
+                            </label>
+                        </div>
+                        <div x-show="!sameAsBilling">
+                            <select name="shipping_address_id" x-model="selectedShippingId" @change="onShippingAddressChange()"
+                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="">Default Delivery Address</option>
+                                <template x-for="addr in partyAddresses" :key="addr.id">
+                                    <option :value="addr.id" x-text="`${addr.label} — ${addr.full_address}`"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div x-show="sameAsBilling" class="text-xs text-slate-500 italic py-1">
+                            Delivery address matches the selected Billing Address.
+                        </div>
+                        <textarea name="shipping_address" x-model="shippingSnapshot" rows="3"
+                                  placeholder="Delivery address snapshot"
+                                  class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                    </div>
+                </div>
+            </div>
+
         </x-ui.card>
 
 
@@ -715,8 +770,19 @@ document.addEventListener('alpine:init', () => {
 
             nextKey: 1,
 
+            partyAddresses: [],
+            addressesLoading: false,
+            selectedBillingId: '',
+            selectedShippingId: '',
+            sameAsBilling: true,
+            billingSnapshot: '',
+            shippingSnapshot: '',
 
         init() {
+
+            if (this.customerId) {
+                this.fetchCustomerAddresses();
+            }
 
             const oldItems = @json($initialItems);
 
@@ -840,6 +906,8 @@ document.addEventListener('alpine:init', () => {
 
         customerChanged() {
 
+            this.fetchCustomerAddresses();
+
             this.rows.forEach(row => {
 
                 if (
@@ -854,6 +922,61 @@ document.addEventListener('alpine:init', () => {
 
             });
 
+        },
+
+        async fetchCustomerAddresses() {
+            if (!this.customerId) {
+                this.partyAddresses = [];
+                this.billingSnapshot = '';
+                this.shippingSnapshot = '';
+                return;
+            }
+            this.addressesLoading = true;
+            try {
+                const res = await fetch(`{{ url('/masters/customers') }}/${this.customerId}/addresses`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    this.partyAddresses = data.addresses || [];
+                    this.selectedBillingId = data.default_billing_id || (this.partyAddresses[0]?.id ?? '');
+                    this.selectedShippingId = data.default_delivery_id || this.selectedBillingId;
+
+                    this.onBillingAddressChange();
+                    if (!this.sameAsBilling) {
+                        this.onShippingAddressChange();
+                    } else {
+                        this.shippingSnapshot = this.billingSnapshot;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load party addresses:', e);
+            } finally {
+                this.addressesLoading = false;
+            }
+        },
+
+        onBillingAddressChange() {
+            const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedBillingId));
+            this.billingSnapshot = addr ? (addr.snapshot || addr.full_address) : '';
+            if (this.sameAsBilling) {
+                this.selectedShippingId = this.selectedBillingId;
+                this.shippingSnapshot = this.billingSnapshot;
+            }
+        },
+
+        onShippingAddressChange() {
+            const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedShippingId));
+            this.shippingSnapshot = addr ? (addr.snapshot || addr.full_address) : '';
+        },
+
+        onSameAsBillingToggle() {
+            if (this.sameAsBilling) {
+                this.selectedShippingId = this.selectedBillingId;
+                this.shippingSnapshot = this.billingSnapshot;
+            } else {
+                this.onShippingAddressChange();
+            }
         },
 
 

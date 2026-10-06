@@ -43,6 +43,10 @@ class PurchaseOrderController extends Controller
     {
         $validated = $request->validate([
             'supplier_id' => 'required|exists:customers,id',
+            'billing_address_id' => 'nullable|exists:party_addresses,id',
+            'shipping_address_id' => 'nullable|exists:party_addresses,id',
+            'billing_address' => 'nullable|string',
+            'shipping_address' => 'nullable|string',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'po_date' => 'required|date',
             'expected_date' => 'nullable|date',
@@ -164,7 +168,7 @@ class PurchaseOrderController extends Controller
         return [
             'suppliers' => Customer::query()
                 ->where('is_active', true)
-                ->whereIn('party_type', ['supplier', 'both'])
+                ->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])
                 ->orderBy('name')
                 ->get(),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),

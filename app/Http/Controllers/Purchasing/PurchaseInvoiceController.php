@@ -7,7 +7,7 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
-use App\Domains\Purchasing\Services\PurchaseInvoiceService;
+use App\Domains\Purchasing\Services\PurchaseOrderService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,7 +16,7 @@ use Illuminate\View\View;
 class PurchaseInvoiceController extends Controller
 {
     public function __construct(
-        protected PurchaseInvoiceService $service
+        protected PurchaseOrderService $service
     ) {}
 
     public function index(Request $request): View
@@ -36,7 +36,7 @@ class PurchaseInvoiceController extends Controller
 
         return view('purchasing.invoices.index', [
             'items' => $items,
-            'suppliers' => Customer::whereIn('party_type', ['supplier', 'both'])->where('is_active', true)->orderBy('name')->get(),
+            'suppliers' => Customer::whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])->where('is_active', true)->orderBy('name')->get(),
             'search' => $request->string('search'),
             'status' => $request->string('status'),
             'supplierId' => $request->string('supplier_id'),
@@ -51,7 +51,7 @@ class PurchaseInvoiceController extends Controller
 
         return view('purchasing.invoices.create', [
             'order' => $order,
-            'suppliers' => Customer::whereIn('party_type', ['supplier', 'both'])->where('is_active', true)->orderBy('name')->get(),
+            'suppliers' => Customer::whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])->where('is_active', true)->orderBy('name')->get(),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
             'products' => Product::where('is_active', true)->orderBy('name')->get(),
         ]);
@@ -62,6 +62,10 @@ class PurchaseInvoiceController extends Controller
         $validated = $request->validate([
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
             'supplier_id' => 'required|exists:customers,id',
+            'billing_address_id' => 'nullable|exists:party_addresses,id',
+            'shipping_address_id' => 'nullable|exists:party_addresses,id',
+            'billing_address' => 'nullable|string',
+            'shipping_address' => 'nullable|string',
             'warehouse_id' => 'required|exists:warehouses,id',
             'invoice_date' => 'required|date',
             'supplier_invoice_number' => 'nullable|string|max:100',
@@ -82,7 +86,7 @@ class PurchaseInvoiceController extends Controller
             'items.*.serial_numbers.*' => 'nullable|string|max:100',
         ]);
 
-        $invoice = $this->service->createInvoice($validated);
+        $invoice = $this->service->createInvoice($validated, $request->user());
 
         return $this->flashSuccess('Purchase invoice created as draft.', 'purchasing.invoices.show', $invoice);
     }
@@ -146,5 +150,37 @@ class PurchaseInvoiceController extends Controller
                 }),
             ],
         ]);
+    }
+
+    public function preview(PurchaseInvoice $invoice): View
+    {
+        $invoice->load([
+            'items.product',
+            'supplier',
+            'warehouse',
+            'purchaseOrder',
+        ]);
+
+        $company = \App\Domains\Organization\Models\Company::query()->find(
+            auth()->user()?->company_id
+        ) ?? \App\Domains\Organization\Models\Company::query()->first();
+
+        $url = route('invoice.qr', [
+            'type' => 'purchase',
+            'token' => $invoice->qr_token,
+        ]);
+
+        $invoiceQrDataUri = \App\Support\QrCodeRenderer::dataUri($url, 180);
+
+        return view('purchasing.invoices.preview', [
+            'invoice' => $invoice,
+            'company' => $company,
+            'invoiceQrDataUri' => $invoiceQrDataUri,
+        ]);
+    }
+
+    public function purchaseOrderData(PurchaseOrder $order)
+    {
+        return $this->orderItems($order);
     }
 }

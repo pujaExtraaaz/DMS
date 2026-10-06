@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('crm')->name('crm.')->middleware('role_or_permission:super-admin|crm.view|crm.create|crm.edit|crm.manage')->group(function () {
     Route::get('leads', [LeadController::class, 'index'])->name('leads.index');
+    Route::get('leads/create', [LeadController::class, 'create'])->name('leads.create');
+    Route::post('leads', [LeadController::class, 'store'])->name('leads.store');
     Route::get('leads/{lead}', [LeadController::class, 'show'])->name('leads.show');
     Route::post('leads/{lead}/assign', [LeadController::class, 'assign'])->name('leads.assign');
     Route::post('leads/{lead}/followup', [LeadController::class, 'followup'])->name('leads.followup');

@@ -23,9 +23,13 @@
         @csrf
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <x-ui.select name="customer_id" id="customer_id" label="Customer" required placeholder="Select">
-                @foreach($customers as $c)<option value="{{ $c->id }}">{{ $c->name }}</option>@endforeach
-            </x-ui.select>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
+                <select name="customer_id" id="customer_id" x-model="customerId" @change="onCustomerChange($event.target.value)" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <option value="">Select Customer</option>
+                    @foreach($customers as $c)<option value="{{ $c->id }}" @selected(old('customer_id')==$c->id)>{{ $c->name }}</option>@endforeach
+                </select>
+            </div>
             <x-ui.input name="invoice_date" label="Invoice Date" type="date" :value="now()->toDateString()" required />
             <x-ui.input name="reference_no" label="Reference / Order No" :value="old('reference_no')" />
             <x-ui.input name="vehicle_no" label="Vehicle No" :value="old('vehicle_no')" />
@@ -38,6 +42,61 @@
                 </select>
             </div>
             <x-ui.input name="delivery_state" label="Delivery State" :value="old('delivery_state')" />
+        </div>
+
+        <!-- Party Addresses Selection -->
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4" x-show="customerId" x-cloak>
+            <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Billing &amp; Delivery Addresses</span>
+                <span class="text-xs text-slate-500" x-text="addressesLoading ? 'Loading addresses...' : `${partyAddresses.length} address(es) available`"></span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Billing Address Card -->
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Billing Address</label>
+                        <span class="text-[11px] text-indigo-600 font-medium">Billed to</span>
+                    </div>
+                    <select name="billing_address_id" x-model="selectedBillingId" @change="onBillingAddressChange()"
+                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Default Address</option>
+                        <template x-for="addr in partyAddresses" :key="addr.id">
+                            <option :value="addr.id" x-text="`${addr.label} — ${addr.full_address}`"></option>
+                        </template>
+                    </select>
+                    <textarea name="billing_address" x-model="billingSnapshot" rows="3"
+                              placeholder="Billing address snapshot"
+                              class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                </div>
+
+                <!-- Delivery Address Card -->
+                <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Delivery / Consignee Address</label>
+                        <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium">
+                            <input type="checkbox" x-model="sameAsBilling" @change="onSameAsBillingToggle()"
+                                   class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <span>Same as Billing Address</span>
+                        </label>
+                    </div>
+                    <div x-show="!sameAsBilling">
+                        <select name="shipping_address_id" x-model="selectedShippingId" @change="onShippingAddressChange()"
+                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Default Delivery Address</option>
+                            <template x-for="addr in partyAddresses" :key="addr.id">
+                                <option :value="addr.id" x-text="`${addr.label} — ${addr.full_address}`"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div x-show="sameAsBilling" class="text-xs text-slate-500 italic py-1">
+                        Delivery address matches the selected Billing Address.
+                    </div>
+                    <textarea name="shipping_address" x-model="shippingSnapshot" rows="3"
+                              placeholder="Delivery address snapshot"
+                              class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                </div>
+            </div>
         </div>
 
         <div class="flex items-center justify-between">
@@ -209,7 +268,81 @@ function invoiceForm(products, uoms) {
         universalType: 'flat',
         universalValue: 0,
         batchPicker: { open: false, loading: false, targetIdx: null, batches: [] },
-        init() { this.addLine(); },
+        customerId: '',
+        partyAddresses: [],
+        addressesLoading: false,
+        selectedBillingId: '',
+        selectedShippingId: '',
+        sameAsBilling: true,
+        billingSnapshot: '',
+        shippingSnapshot: '',
+        init() {
+            this.addLine();
+            const custSelect = document.getElementById('customer_id');
+            if (custSelect && custSelect.value) {
+                this.onCustomerChange(custSelect.value);
+            }
+        },
+        async onCustomerChange(id) {
+            this.customerId = id;
+            if (!id) {
+                this.partyAddresses = [];
+                this.billingSnapshot = '';
+                this.shippingSnapshot = '';
+                return;
+            }
+            this.addressesLoading = true;
+            try {
+                const res = await fetch(`{{ url('/masters/customers') }}/${id}/addresses`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    this.partyAddresses = data.addresses || [];
+                    this.selectedBillingId = data.default_billing_id || (this.partyAddresses[0]?.id ?? '');
+                    this.selectedShippingId = data.default_delivery_id || this.selectedBillingId;
+
+                    this.onBillingAddressChange();
+                    if (!this.sameAsBilling) {
+                        this.onShippingAddressChange();
+                    } else {
+                        this.shippingSnapshot = this.billingSnapshot;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load party addresses:', e);
+            } finally {
+                this.addressesLoading = false;
+            }
+        },
+        onBillingAddressChange() {
+            const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedBillingId));
+            this.billingSnapshot = addr ? (addr.snapshot || addr.full_address) : '';
+            if (this.sameAsBilling) {
+                this.selectedShippingId = this.selectedBillingId;
+                this.shippingSnapshot = this.billingSnapshot;
+                if (addr?.state) {
+                    const stateInput = document.querySelector('input[name="delivery_state"]');
+                    if (stateInput) stateInput.value = addr.state;
+                }
+            }
+        },
+        onShippingAddressChange() {
+            const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedShippingId));
+            this.shippingSnapshot = addr ? (addr.snapshot || addr.full_address) : '';
+            if (addr?.state) {
+                const stateInput = document.querySelector('input[name="delivery_state"]');
+                if (stateInput) stateInput.value = addr.state;
+            }
+        },
+        onSameAsBillingToggle() {
+            if (this.sameAsBilling) {
+                this.selectedShippingId = this.selectedBillingId;
+                this.shippingSnapshot = this.billingSnapshot;
+            } else {
+                this.onShippingAddressChange();
+            }
+        },
         addLine() {
             this.lines.push({
                 _key: ++this._seq,

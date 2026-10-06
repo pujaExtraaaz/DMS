@@ -99,6 +99,10 @@ class InvoiceController extends Controller
             'transport_mode' => 'nullable|string|max:30',
             'reference_no' => 'nullable|string|max:60',
             'delivery_state' => 'nullable|string|max:100',
+            'billing_address_id' => 'nullable|exists:party_addresses,id',
+            'shipping_address_id' => 'nullable|exists:party_addresses,id',
+            'billing_address' => 'nullable|string',
+            'shipping_address' => 'nullable|string',
             'discount_amount' => 'nullable|numeric|min:0',
             'universal_discount_type' => 'nullable|in:percent,flat',
             'universal_discount_value' => 'nullable|numeric|min:0',
@@ -118,6 +122,47 @@ class InvoiceController extends Controller
         try {
             $invoice = DB::transaction(function () use ($validated) {
                 $customer = Customer::findOrFail($validated['customer_id']);
+
+                // Verify address ownership
+                $billingAddress = null;
+                if (!empty($validated['billing_address_id'])) {
+                    $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $validated['billing_address_id'])
+                        ->where('customer_id', $customer->id)
+                        ->first();
+                    if (!$billingAddress) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'billing_address_id' => ['The selected billing address does not belong to the selected customer.'],
+                        ]);
+                    }
+                }
+
+                $shippingAddress = null;
+                if (!empty($validated['shipping_address_id'])) {
+                    $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $validated['shipping_address_id'])
+                        ->where('customer_id', $customer->id)
+                        ->first();
+                    if (!$shippingAddress) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'shipping_address_id' => ['The selected delivery address does not belong to the selected customer.'],
+                        ]);
+                    }
+                }
+
+                if (!$billingAddress) {
+                    $billingAddress = $customer->defaultBillingAddress();
+                }
+                if (!$shippingAddress) {
+                    $shippingAddress = $customer->defaultDeliveryAddress() ?? $billingAddress;
+                }
+
+                $billingSnapshot = !empty($validated['billing_address'])
+                    ? $validated['billing_address']
+                    : ($billingAddress ? $billingAddress->formatSnapshot() : $customer->address);
+
+                $shippingSnapshot = !empty($validated['shipping_address'])
+                    ? $validated['shipping_address']
+                    : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $customer->address));
+
                 $pricing = $this->salePricingService->price($customer, $validated['items'], (float) ($validated['discount_amount'] ?? 0));
                 $due = $this->dueDateService->forSalesInvoice($customer, $validated['invoice_date']);
 
@@ -134,6 +179,10 @@ class InvoiceController extends Controller
                 $invoice = Invoice::create([
                     'invoice_no' => $this->invoiceNumberGenerator->generate(),
                     'customer_id' => $validated['customer_id'],
+                    'billing_address_id' => $billingAddress?->id,
+                    'shipping_address_id' => $shippingAddress?->id,
+                    'billing_address' => $billingSnapshot,
+                    'shipping_address' => $shippingSnapshot,
                     'salesperson_id' => auth()->id(),
                     'invoice_date' => $validated['invoice_date'],
                     'due_date' => $due['due_date'],
@@ -155,7 +204,7 @@ class InvoiceController extends Controller
                     'vehicle_no' => $validated['vehicle_no'] ?? null,
                     'transport_mode' => $validated['transport_mode'] ?? null,
                     'reference_no' => $validated['reference_no'] ?? null,
-                    'delivery_state' => $validated['delivery_state'] ?? $customer->shipping_state ?? $customer->state,
+                    'delivery_state' => $shippingAddress?->state ?? ($validated['delivery_state'] ?? $customer->shipping_state ?? $customer->state),
                 ]);
 
                 foreach ($pricing['lines'] as $idx => $line) {

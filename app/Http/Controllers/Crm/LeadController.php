@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Crm;
 use App\Domains\Crm\Models\Lead;
 use App\Domains\Crm\Models\LeadActivity;
 use App\Domains\Crm\Models\LeadAssignment;
+use App\Domains\Crm\Models\LeadCampaign;
 use App\Domains\Crm\Models\LeadConversion;
 use App\Domains\Crm\Models\LeadFollowup;
+use App\Domains\Crm\Models\LeadSource;
 use App\Domains\Master\Models\Customer;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\AuditLogService;
 use App\Support\DocumentNumberService;
+use App\Support\IndianStates;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +26,89 @@ class LeadController extends Controller
         protected AuditLogService $auditLogService,
         protected DocumentNumberService $documentNumbers,
     ) {}
+
+    public function create(): View
+    {
+        return view('crm.leads.form', [
+            'lead' => new Lead([
+                'status' => 'new',
+                'priority' => 'normal',
+            ]),
+            'users' => User::orderBy('name')->get(),
+            'sources' => LeadSource::where('is_active', true)->orderBy('name')->get(),
+            'campaigns' => LeadCampaign::where('is_active', true)->orderBy('name')->get(),
+            'statuses' => ['new', 'contacted', 'qualified', 'unqualified', 'lost'],
+            'priorities' => ['low', 'normal', 'high', 'urgent'],
+            'states' => IndianStates::all(),
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'mobile' => 'nullable|string|max:20',
+            'email' => 'nullable|email|max:255',
+            'organization' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
+            'lead_source_id' => 'nullable|exists:lead_sources,id',
+            'lead_campaign_id' => 'nullable|exists:lead_campaigns,id',
+            'priority' => 'required|in:low,normal,high,urgent',
+            'status' => 'required|in:new,contacted,qualified,unqualified,lost',
+            'assigned_to' => 'nullable|exists:users,id',
+            'interested_product' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
+        ]);
+
+        $duplicateWarning = null;
+        if (!empty($data['mobile']) || !empty($data['email'])) {
+            $existing = Lead::query()
+                ->when(!empty($data['mobile']), fn ($q) => $q->where('mobile', $data['mobile']))
+                ->when(empty($data['mobile']) && !empty($data['email']), fn ($q) => $q->where('email', $data['email']))
+                ->first();
+
+            if ($existing) {
+                $duplicateWarning = "A lead with matching contact details already exists (#{$existing->id} - {$existing->name}).";
+            }
+        }
+
+        $data['company_id'] = auth()->user()?->company_id;
+        $data['branch_id'] = auth()->user()?->branch_id;
+
+        $lead = DB::transaction(function () use ($data) {
+            $lead = Lead::create($data);
+
+            if (!empty($data['assigned_to'])) {
+                LeadAssignment::create([
+                    'lead_id' => $lead->id,
+                    'assigned_to' => $data['assigned_to'],
+                    'assigned_by' => auth()->id(),
+                    'method' => 'manual',
+                    'notes' => 'Assigned upon lead creation.',
+                ]);
+            }
+
+            LeadActivity::create([
+                'lead_id' => $lead->id,
+                'user_id' => auth()->id(),
+                'activity_type' => 'creation',
+                'body' => 'Lead created manually by ' . (auth()->user()?->name ?? 'User'),
+            ]);
+
+            return $lead;
+        });
+
+        $this->auditLogService->record($lead, 'created');
+
+        if ($duplicateWarning) {
+            return redirect()->route('crm.leads.show', $lead)
+                ->with('warning', $duplicateWarning)
+                ->with('success', 'Lead created successfully.');
+        }
+
+        return $this->flashSuccess('Lead created.', 'crm.leads.show', ['lead' => $lead]);
+    }
 
     public function index(Request $request): View
     {
@@ -143,7 +229,7 @@ class LeadController extends Controller
                     'branch_id' => $lead->branch_id ?? auth()->user()?->branch_id,
                     'name' => $lead->name,
                     'code' => $this->documentNumbers->next('CST'),
-                    'party_type' => 'customer',
+                    'party_type' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
                     'customer_type_id' => $defaultTypeId,
                     'phone' => $lead->mobile,
                     'email' => $lead->email,

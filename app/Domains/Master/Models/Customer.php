@@ -36,11 +36,60 @@ class Customer extends Model
         'is_active',
     ];
 
-    protected $appends = ['pan'];
+    public const PARTY_TYPE_SUNDRY_DEBTORS = 'sundry_debtors';
+    public const PARTY_TYPE_SUNDRY_CREDITORS = 'sundry_creditors';
+    public const PARTY_TYPE_BOTH = 'both';
+
+    public const PARTY_TYPES = [
+        self::PARTY_TYPE_SUNDRY_DEBTORS => 'Sundry Debtors',
+        self::PARTY_TYPE_SUNDRY_CREDITORS => 'Sundry Creditors',
+        self::PARTY_TYPE_BOTH => 'Both',
+    ];
+
+    protected $appends = ['pan', 'party_type_label', 'party_type_key'];
 
     public function getPanAttribute(): ?string
     {
         return ($this->gstin && strlen($this->gstin) >= 12) ? substr($this->gstin, 2, 10) : null;
+    }
+
+    public function getPartyTypeKeyAttribute(): string
+    {
+        return match ($this->party_type) {
+            'sundry_creditors', 'supplier' => self::PARTY_TYPE_SUNDRY_CREDITORS,
+            'both' => self::PARTY_TYPE_BOTH,
+            default => self::PARTY_TYPE_SUNDRY_DEBTORS,
+        };
+    }
+
+    public function getPartyTypeLabelAttribute(): string
+    {
+        return self::PARTY_TYPES[$this->party_type_key] ?? 'Sundry Debtors';
+    }
+
+    public function isSupplier(): bool
+    {
+        return in_array($this->party_type, [self::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', self::PARTY_TYPE_BOTH], true);
+    }
+
+    public function isCustomerParty(): bool
+    {
+        return in_array($this->party_type, [self::PARTY_TYPE_SUNDRY_DEBTORS, 'customer', 'dealer', self::PARTY_TYPE_BOTH], true);
+    }
+
+    public function isBoth(): bool
+    {
+        return $this->party_type === self::PARTY_TYPE_BOTH;
+    }
+
+    public function scopeSuppliers($query)
+    {
+        return $query->whereIn('party_type', [self::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', self::PARTY_TYPE_BOTH]);
+    }
+
+    public function scopeDebtors($query)
+    {
+        return $query->whereIn('party_type', [self::PARTY_TYPE_SUNDRY_DEBTORS, 'customer', 'dealer', self::PARTY_TYPE_BOTH]);
     }
 
     protected function casts(): array
@@ -110,7 +159,34 @@ class Customer extends Model
 
     public function defaultAddress(): ?PartyAddress
     {
-        return $this->addresses()->where('is_default', true)->first()
-            ?? $this->addresses()->first();
+        return $this->defaultBillingAddress() ?? $this->defaultDeliveryAddress() ?? $this->addresses()->first();
+    }
+
+    public function activeAddresses(): HasMany
+    {
+        return $this->hasMany(PartyAddress::class)->where('is_active', true);
+    }
+
+    public function defaultBillingAddress(): ?PartyAddress
+    {
+        return $this->addresses()
+            ->where('is_active', true)
+            ->where(function ($q) {
+                $q->where('is_default_billing', true)
+                  ->orWhere('is_default', true);
+            })
+            ->first()
+            ?? $this->addresses()->where('is_active', true)->whereIn('type', ['billing', 'both'])->first()
+            ?? $this->addresses()->where('is_active', true)->first();
+    }
+
+    public function defaultDeliveryAddress(): ?PartyAddress
+    {
+        return $this->addresses()
+            ->where('is_active', true)
+            ->where('is_default_delivery', true)
+            ->first()
+            ?? $this->addresses()->where('is_active', true)->whereIn('type', ['delivery', 'shipping', 'both'])->first()
+            ?? $this->defaultBillingAddress();
     }
 }

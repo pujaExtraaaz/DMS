@@ -3,6 +3,8 @@
 @section('content')
 <x-ui.page-header title="CRM Leads">
 <x-slot name="actions">
+<div class="flex items-center gap-2">
+<x-ui.button :href="route('crm.leads.create')" variant="primary">+ New Lead</x-ui.button>
 <form method="GET" class="flex gap-2">
 <input type="search" name="search" value="{{ request('search') }}" placeholder="Search name/mobile/email" class="rounded-lg border-gray-300 text-sm">
 <select name="status" class="rounded-lg border-gray-300 text-sm">
@@ -13,6 +15,7 @@
 </select>
 <x-ui.button type="submit" variant="secondary">Filter</x-ui.button>
 </form>
+</div>
 </x-slot>
 </x-ui.page-header>
 <x-ui.card>
@@ -37,7 +40,15 @@
 <td class="px-3 py-2 text-right"><x-ui.button size="sm" variant="secondary" :href="route('crm.leads.show', $item)">Open</x-ui.button></td>
 </tr>
 @empty
-<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">No leads yet. Meta webhook will populate this list.</td></tr>
+<tr>
+<td colspan="6" class="px-3 py-8 text-center text-slate-500">
+<p class="font-medium text-slate-600">No leads found.</p>
+<p class="text-xs text-slate-400 mt-1">Create a new lead manually or receive leads via the Meta webhook.</p>
+<div class="mt-3">
+<x-ui.button :href="route('crm.leads.create')" size="sm" variant="primary">+ Create Lead</x-ui.button>
+</div>
+</td>
+</tr>
 @endforelse
 </tbody></table></div>
 <div class="mt-4">{{ $items->links() }}</div>

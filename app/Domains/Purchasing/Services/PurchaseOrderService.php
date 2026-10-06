@@ -72,11 +72,53 @@ class PurchaseOrderService
 
             unset($item);
 
+            $billingAddress = null;
+            if (!empty($data['billing_address_id'])) {
+                $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['billing_address_id'])
+                    ->where('customer_id', $supplier->id)
+                    ->first();
+                if (!$billingAddress) {
+                    throw ValidationException::withMessages([
+                        'billing_address_id' => 'The selected billing address does not belong to the selected supplier.',
+                    ]);
+                }
+            }
+            $shippingAddress = null;
+            if (!empty($data['shipping_address_id'])) {
+                $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['shipping_address_id'])
+                    ->where('customer_id', $supplier->id)
+                    ->first();
+                if (!$shippingAddress) {
+                    throw ValidationException::withMessages([
+                        'shipping_address_id' => 'The selected delivery address does not belong to the selected supplier.',
+                    ]);
+                }
+            }
+
+            if (!$billingAddress) {
+                $billingAddress = $supplier->defaultBillingAddress();
+            }
+            if (!$shippingAddress) {
+                $shippingAddress = $supplier->defaultDeliveryAddress() ?? $billingAddress;
+            }
+
+            $billingSnapshot = !empty($data['billing_address'])
+                ? $data['billing_address']
+                : ($billingAddress ? $billingAddress->formatSnapshot() : $supplier->address);
+
+            $shippingSnapshot = !empty($data['shipping_address'])
+                ? $data['shipping_address']
+                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $supplier->address));
+
             $po = PurchaseOrder::create([
                 'company_id' => $data['company_id'] ?? $actor->company_id,
                 'branch_id' => $data['branch_id'] ?? $actor->branch_id,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'supplier_id' => $supplier->id,
+                'billing_address_id' => $billingAddress?->id,
+                'shipping_address_id' => $shippingAddress?->id,
+                'billing_address' => $billingSnapshot,
+                'shipping_address' => $shippingSnapshot,
                 'po_no' => $this->documentNumberService->next('PO'),
                 'po_date' => $data['po_date'],
                 'expected_date' => $data['expected_date'] ?? null,
@@ -350,10 +392,52 @@ class PurchaseOrderService
                 $inwardDate,
             );
 
+            $billingAddress = null;
+            if (!empty($data['billing_address_id'])) {
+                $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['billing_address_id'])
+                    ->where('customer_id', $supplierId)
+                    ->first();
+                if (!$billingAddress) {
+                    throw ValidationException::withMessages([
+                        'billing_address_id' => 'The selected billing address does not belong to the selected supplier.',
+                    ]);
+                }
+            }
+            $shippingAddress = null;
+            if (!empty($data['shipping_address_id'])) {
+                $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['shipping_address_id'])
+                    ->where('customer_id', $supplierId)
+                    ->first();
+                if (!$shippingAddress) {
+                    throw ValidationException::withMessages([
+                        'shipping_address_id' => 'The selected delivery address does not belong to the selected supplier.',
+                    ]);
+                }
+            }
+
+            if (!$billingAddress) {
+                $billingAddress = $supplier->defaultBillingAddress();
+            }
+            if (!$shippingAddress) {
+                $shippingAddress = $supplier->defaultDeliveryAddress() ?? $billingAddress;
+            }
+
+            $billingSnapshot = !empty($data['billing_address'])
+                ? $data['billing_address']
+                : ($billingAddress ? $billingAddress->formatSnapshot() : $supplier->address);
+
+            $shippingSnapshot = !empty($data['shipping_address'])
+                ? $data['shipping_address']
+                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $supplier->address));
+
             $invoice = PurchaseInvoice::create([
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
                 'purchase_inward_id' => $data['purchase_inward_id'] ?? null,
                 'supplier_id' => $supplierId,
+                'billing_address_id' => $billingAddress?->id,
+                'shipping_address_id' => $shippingAddress?->id,
+                'billing_address' => $billingSnapshot,
+                'shipping_address' => $shippingSnapshot,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'invoice_no' => $this->documentNumberService->next('PI'),
                 'supplier_invoice_no' => $data['supplier_invoice_no'] ?? null,

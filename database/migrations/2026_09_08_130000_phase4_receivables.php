@@ -13,13 +13,17 @@ return new class extends Migration
             $table->dropForeign(['invoice_id']);
         });
 
-        DB::statement('ALTER TABLE payments MODIFY COLUMN invoice_id BIGINT UNSIGNED NULL');
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE payments MODIFY COLUMN invoice_id BIGINT UNSIGNED NULL');
+        }
 
         Schema::table('payments', function (Blueprint $table) {
             $table->foreign('invoice_id')->references('id')->on('invoices')->nullOnDelete();
         });
 
-        DB::statement("ALTER TABLE payments MODIFY COLUMN method ENUM('cash','upi','bank','cheque','other') NOT NULL DEFAULT 'cash'");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE payments MODIFY COLUMN method ENUM('cash','upi','bank','cheque','other') NOT NULL DEFAULT 'cash'");
+        }
 
         Schema::create('payment_allocations', function (Blueprint $table) {
             $table->id();
@@ -117,7 +121,9 @@ return new class extends Migration
         });
 
         // Widen ledger type carefully so credit_note can post without enum rebuild pain later.
-        DB::statement("ALTER TABLE outstanding_ledger MODIFY COLUMN type VARCHAR(30) NOT NULL");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE outstanding_ledger MODIFY COLUMN type VARCHAR(30) NOT NULL");
+        }
     }
 
     public function down(): void
@@ -128,14 +134,18 @@ return new class extends Migration
         Schema::dropIfExists('cheques');
         Schema::dropIfExists('payment_allocations');
 
-        DB::statement("ALTER TABLE outstanding_ledger MODIFY COLUMN type ENUM('invoice','payment','settlement','adjustment') NOT NULL");
-        DB::statement("ALTER TABLE payments MODIFY COLUMN method ENUM('cash','upi','bank','other') NOT NULL DEFAULT 'cash'");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE outstanding_ledger MODIFY COLUMN type ENUM('invoice','payment','settlement','adjustment') NOT NULL");
+            DB::statement("ALTER TABLE payments MODIFY COLUMN method ENUM('cash','upi','bank','other') NOT NULL DEFAULT 'cash'");
+        }
 
         Schema::table('payments', function (Blueprint $table) {
             $table->dropForeign(['invoice_id']);
         });
 
-        DB::statement('ALTER TABLE payments MODIFY COLUMN invoice_id BIGINT UNSIGNED NOT NULL');
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE payments MODIFY COLUMN invoice_id BIGINT UNSIGNED NOT NULL');
+        }
 
         Schema::table('payments', function (Blueprint $table) {
             $table->foreign('invoice_id')->references('id')->on('invoices');

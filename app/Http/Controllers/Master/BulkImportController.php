@@ -43,7 +43,7 @@ class BulkImportController extends Controller
 
         $sample = match ($type) {
             'products' => ['Widget X', '', '84713010', 'PCS', 'Acme', 'Widgets', 'Red', 100, 150, 130, 175, 18, 12, 24, 0],
-            'parties' => ['Sample Distributor', '', 'customer', 'Retail', 'Zone A', 'Route 1', '9999999999', 'ops@sample.co', '', '#12, MG Road', 'Karnataka', '560001', 50000, 30, 18, 'Ravi', '9999888877', 'ravi@sample.co', 'Owner'],
+            'parties' => ['Sample Distributor', '', 'sundry_debtors', 'Retail', 'Zone A', 'Route 1', '9999999999', 'ops@sample.co', '', '#12, MG Road', 'Karnataka', '560001', 50000, 30, 18, 'Ravi', '9999888877', 'ravi@sample.co', 'Owner'],
             'price-master' => ['Retail', 'PROD-1-00001', 'PCS', 150, 0],
         };
 

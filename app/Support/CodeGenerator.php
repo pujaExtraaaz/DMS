@@ -59,6 +59,11 @@ class CodeGenerator
         return self::next(Customer::class, 'PTY', $companyId, 'code');
     }
 
+    public static function forEmployee(?int $companyId = null): string
+    {
+        return self::next(\App\Domains\Hrms\Models\Employee::class, 'EMP', $companyId, 'employee_code');
+    }
+
     protected static function next(string $modelClass, string $prefix, ?int $companyId, string $column): string
     {
         $scope = $companyId ? (string) $companyId : 'GLOBAL';

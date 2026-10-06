@@ -101,7 +101,7 @@ function quickAddSupplierModal(targetSelectName) {
             state: '',
             pincode: '',
             address: '',
-            party_type: 'supplier'
+            party_type: 'sundry_creditors'
         },
         openModal() {
             this.reset();
@@ -119,7 +119,7 @@ function quickAddSupplierModal(targetSelectName) {
                 state: '',
                 pincode: '',
                 address: '',
-                party_type: 'supplier'
+                party_type: 'sundry_creditors'
             };
             this.errorMessage = '';
             this.saving = false;

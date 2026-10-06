@@ -54,7 +54,9 @@ return new class extends Migration
         });
 
         // Widen communication type for email / notification channels (Phase 8).
-        DB::statement("ALTER TABLE communication_logs MODIFY COLUMN type VARCHAR(40) NOT NULL");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE communication_logs MODIFY COLUMN type VARCHAR(40) NOT NULL");
+        }
     }
 
     public function down(): void
@@ -63,6 +65,8 @@ return new class extends Migration
         Schema::dropIfExists('interest_ledgers');
         Schema::dropIfExists('interest_rules');
 
-        DB::statement("ALTER TABLE communication_logs MODIFY COLUMN type ENUM('whatsapp_invoice','payment_link','payment_reminder') NOT NULL");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE communication_logs MODIFY COLUMN type ENUM('whatsapp_invoice','payment_link','payment_reminder') NOT NULL");
+        }
     }
 };
