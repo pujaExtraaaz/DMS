@@ -66,9 +66,11 @@ class HeaderNavigationTest extends TestCase
             'Left sidebar must still contain the Log Out button'
         );
 
-        // 5. Ensure Option 9 and Option 10 labels match new specification
-        $this->assertStringContainsString('9 · HR · CRM · TALLY', $sidebarContent);
-        $this->assertStringContainsString('10 · REPORTS', $sidebarContent);
+        // 5. Ensure numbered sections match specification
+        $this->assertStringContainsString('8 · OD Limit &amp; Interest', $sidebarContent);
+        $this->assertStringContainsString('9 · Commercials', $sidebarContent);
+        $this->assertStringContainsString('10 · HR · CRM · TALLY', $sidebarContent);
+        $this->assertStringContainsString('11 · REPORTS', $sidebarContent);
         $this->assertStringNotContainsString('Operations & HR', $sidebarContent);
         $this->assertStringNotContainsString('Intelligence & Reports', $sidebarContent);
     }
