@@ -87,6 +87,11 @@ class Company extends Model
         return array_merge([$primary], $additional);
     }
 
+    public function odAccounts(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Banking\Models\OdAccount::class);
+    }
+
     public function getBankAccountsAttribute(): array
     {
         $primary = [
@@ -98,6 +103,31 @@ class Company extends Model
         $additional = $this->additional_details['bank_accounts'] ?? [];
 
         return array_merge([$primary], $additional);
+    }
+
+    /**
+     * Normalized collection of non-empty company bank accounts configured in Company Profile.
+     */
+    public function getCompanyBankAccounts(): \Illuminate\Support\Collection
+    {
+        return collect($this->bank_accounts)
+            ->filter(fn ($b) => is_array($b) && filled($b['bank_account_no'] ?? null))
+            ->map(function ($b) {
+                $accNo = trim((string) ($b['bank_account_no'] ?? ''));
+                $bankName = trim((string) ($b['bank_name'] ?? 'Bank Account'));
+                $ifsc = trim((string) ($b['bank_ifsc'] ?? ''));
+                $upi = trim((string) ($b['upi_id'] ?? ''));
+
+                return [
+                    'account_number' => $accNo,
+                    'bank_name' => $bankName,
+                    'ifsc' => $ifsc,
+                    'upi_id' => $upi,
+                    'label' => "{$bankName} - {$accNo}",
+                ];
+            })
+            ->unique('account_number')
+            ->values();
     }
 
     public function getLogoUrlAttribute(): ?string

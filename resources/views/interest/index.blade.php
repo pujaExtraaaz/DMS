@@ -30,54 +30,85 @@
 </div>
 </x-ui.card>
 
-<x-ui.card title="Interest Ledgers" class="xl:col-span-2">
-<form method="GET" class="mb-4 flex flex-wrap gap-3 items-end">
-<x-ui.select name="status" label="Status">
-<option value="">All</option>
-@foreach(['preview','posted','waived','reversed'] as $s)
-<option value="{{ $s }}" @selected(request('status')===$s)>{{ ucfirst($s) }}</option>
-@endforeach
-</x-ui.select>
-<x-ui.select name="customer_id" label="Customer">
-<option value="">All</option>
-@foreach($customers as $c)<option value="{{ $c->id }}" @selected(request('customer_id')==$c->id)>{{ $c->name }}</option>@endforeach
-</x-ui.select>
-<x-ui.button type="submit" variant="secondary">Filter</x-ui.button>
-</form>
-<div class="overflow-x-auto">
-<table class="min-w-full divide-y divide-slate-200 text-sm">
-<thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Date</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Customer</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Invoice</th>
-<th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Overdue</th>
-<th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Days</th>
-<th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Interest</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Status</th>
-<th class="px-3 py-2"></th>
-</tr></thead>
-<tbody class="divide-y divide-slate-100">
-@forelse($ledgers as $row)
-<tr>
-<td class="px-3 py-2">{{ $row->as_of_date->format('d M Y') }}</td>
-<td class="px-3 py-2">{{ $row->customer?->name }}</td>
-<td class="px-3 py-2">{{ $row->invoice?->invoice_no ?: '—' }}</td>
-<td class="px-3 py-2 text-right">₹{{ number_format($row->overdue_balance, 2) }}</td>
-<td class="px-3 py-2 text-right">{{ $row->overdue_days }}</td>
-<td class="px-3 py-2 text-right">₹{{ number_format($row->interest_amount, 2) }}</td>
-<td class="px-3 py-2"><x-ui.badge variant="info">{{ ucfirst($row->status) }}</x-ui.badge></td>
-<td class="px-3 py-2 text-right">
-@if($row->status === 'preview')
-<form method="POST" action="{{ route('interest.ledgers.post', $row) }}">@csrf<button class="text-emerald-600 text-sm font-medium">Post</button></form>
-@endif
-</td>
-</tr>
-@empty
-<tr><td colspan="8" class="px-3 py-6 text-center text-slate-500">No interest rows. Run preview.</td></tr>
-@endforelse
-</tbody></table></div>
-<div class="mt-4">{{ $ledgers->links() }}</div>
-<p class="mt-3 text-xs text-slate-500">Formula: overdue_balance × annual_rate × days / 365</p>
+<x-ui.card title="Interest Ledgers" class="xl:col-span-2" id="listing-container" data-dynamic-container>
+    <x-ui.table-toolbar
+        :search="$search ?? request('search')"
+        search-placeholder="Search customer, invoice, status..."
+        :reset-url="route('interest.index')"
+    >
+        <x-slot name="filters">
+            <select
+                name="status"
+                data-dynamic-filter
+                class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+            >
+                <option value="">Status: All</option>
+                @foreach(['preview','posted','waived','reversed'] as $s)
+                    <option value="{{ $s }}" @selected(request('status') === $s)>{{ ucfirst($s) }}</option>
+                @endforeach
+            </select>
+
+            <select
+                name="customer_id"
+                data-dynamic-filter
+                class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+            >
+                <option value="">Customer: All</option>
+                @foreach($customers as $c)
+                    <option value="{{ $c->id }}" @selected(request('customer_id') == $c->id)>{{ $c->name }}</option>
+                @endforeach
+            </select>
+        </x-slot>
+    </x-ui.table-toolbar>
+
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+            <thead class="bg-slate-50">
+                <tr>
+                    <x-ui.sortable-th column="as_of_date" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'">Date</x-ui.sortable-th>
+                    <x-ui.sortable-th column="customer" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'">Customer</x-ui.sortable-th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Invoice</th>
+                    <x-ui.sortable-th column="overdue_amount" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'" align="right">Overdue</x-ui.sortable-th>
+                    <x-ui.sortable-th column="overdue_days" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'" align="right">Days</x-ui.sortable-th>
+                    <x-ui.sortable-th column="interest_amount" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'" align="right">Interest</x-ui.sortable-th>
+                    <x-ui.sortable-th column="status" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'">Status</x-ui.sortable-th>
+                    <th class="px-3 py-2"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                @forelse($ledgers as $row)
+                    <tr class="hover:bg-slate-50">
+                        <td class="px-3 py-2 text-slate-600 whitespace-nowrap">{{ $row->as_of_date->format('d M Y') }}</td>
+                        <td class="px-3 py-2 font-medium text-slate-900">{{ $row->customer?->name }}</td>
+                        <td class="px-3 py-2 text-slate-600">{{ $row->invoice?->invoice_no ?: '—' }}</td>
+                        <td class="px-3 py-2 text-right font-medium text-slate-900">₹{{ number_format($row->overdue_balance, 2) }}</td>
+                        <td class="px-3 py-2 text-right text-slate-600">{{ $row->overdue_days }}</td>
+                        <td class="px-3 py-2 text-right font-semibold text-rose-600">₹{{ number_format($row->interest_amount, 2) }}</td>
+                        <td class="px-3 py-2">
+                            <x-ui.badge variant="info">{{ ucfirst($row->status) }}</x-ui.badge>
+                        </td>
+                        <td class="px-3 py-2 text-right">
+                            @if($row->status === 'preview')
+                                <form method="POST" action="{{ route('interest.ledgers.post', $row) }}">
+                                    @csrf
+                                    <button class="text-emerald-600 hover:text-emerald-800 text-sm font-medium">Post</button>
+                                </form>
+                            @endif
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="8" class="px-3 py-6 text-center text-slate-500">
+                            <x-ui.empty-state title="No interest rows" description="Try adjusting filters or run preview." />
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-4">{{ $ledgers->links() }}</div>
+    <p class="mt-3 text-xs text-slate-500">Formula: overdue_balance × annual_rate × days / 365</p>
 </x-ui.card>
 </div>
 @endsection

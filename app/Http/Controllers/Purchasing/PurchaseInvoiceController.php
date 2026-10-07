@@ -12,34 +12,77 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use App\Support\DocumentExporter;
+use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 
 class PurchaseInvoiceController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected PurchaseOrderService $service
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
-        $items = PurchaseInvoice::query()
+        $query = PurchaseInvoice::query()
             ->with(['supplier', 'warehouse', 'purchaseOrder'])
-            ->when($request->filled('search'), function ($q) use ($request) {
-                $q->where('invoice_number', 'like', '%'.$request->search.'%')
-                    ->orWhere('supplier_invoice_number', 'like', '%'.$request->search.'%');
-            })
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_id', $request->supplier_id))
-            ->latest('invoice_date')
-            ->latest('id')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('invoice_date', '>=', $request->date_from))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('invoice_date', '<=', $request->date_to));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['invoice_number', 'supplier_invoice_number', 'notes'],
+            ['supplier' => ['name', 'code']]
+        );
+
+        $allowedSorts = [
+            'invoice_number' => 'invoice_number',
+            'supplier_invoice_number' => 'supplier_invoice_number',
+            'invoice_date' => 'invoice_date',
+            'status' => 'status',
+            'total_amount' => 'total_amount',
+            'created_at' => 'created_at',
+            'supplier' => function ($q, $dir) {
+                $q->join('customers', 'purchase_invoices.supplier_id', '=', 'customers.id')
+                  ->orderBy('customers.name', $dir)
+                  ->select('purchase_invoices.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'invoice_date',
+            defaultDirection: 'desc'
+        );
+
+        if ($request->filled('export')) {
+            $exportFormat = strtolower($request->string('export')->toString());
+            if (in_array($exportFormat, ['csv', 'excel', 'xlsx', 'pdf'], true)) {
+                return DocumentExporter::exportPurchaseInvoicesListing($query->get(), $exportFormat);
+            }
+        }
+
+        $invoices = $query->paginate(15)->withQueryString();
 
         return view('purchasing.invoices.index', [
-            'items' => $items,
+            'invoices' => $invoices,
+            'items' => $invoices,
             'suppliers' => Customer::whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])->where('is_active', true)->orderBy('name')->get(),
+            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
             'search' => $request->string('search'),
             'status' => $request->string('status'),
             'supplierId' => $request->string('supplier_id'),
+            'warehouseId' => $request->string('warehouse_id'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 
@@ -177,6 +220,14 @@ class PurchaseInvoiceController extends Controller
             'company' => $company,
             'invoiceQrDataUri' => $invoiceQrDataUri,
         ]);
+    }
+
+    public function export(PurchaseInvoice $invoice, string $format): Response
+    {
+        $format = strtolower($format);
+        abort_unless(in_array($format, ['pdf', 'xlsx', 'excel', 'csv'], true), 404);
+
+        return DocumentExporter::exportPurchaseInvoice($invoice, $format);
     }
 
     public function purchaseOrderData(PurchaseOrder $order)

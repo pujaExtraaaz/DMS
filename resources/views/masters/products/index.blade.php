@@ -1,88 +1,108 @@
 @extends('layouts.dms')
 @section('title', 'Products')
 @section('content')
-<x-ui.page-header title="Products">
-    <x-slot name="actions">
-        <form method="GET" class="flex min-w-0 flex-1 gap-2 sm:max-w-md">
-            <input
-                type="search"
-                name="search"
-                value="{{ request('search') }}"
-                placeholder="Search name or SKU or Serial No."
-                class="min-w-0 flex-1 rounded-lg border-gray-300 text-sm"
-            >
+<div id="listing-container" data-dynamic-container>
+    <x-ui.page-header title="Products">
+        <x-slot name="actions">
+            <x-ui.button variant="primary" :href="route('masters.products.create')">+ Add Product</x-ui.button>
+        </x-slot>
+    </x-ui.page-header>
 
-            <select
-                name="sort"
-                class="rounded-lg border-gray-300 text-sm"
-            >
-                <option value="serial_no" @selected(request('sort', 'created_at') === 'serial_no')>
-                    Serial No.
-                </option>
-                <option value="name" @selected(request('sort') === 'name')>
-                    Name
-                </option>
-                <option value="sku" @selected(request('sort') === 'sku')>
-                    SKU
-                </option>
-            </select>
+    <x-ui.card>
+        <x-ui.table-toolbar
+            :search="$search ?? request('search')"
+            search-placeholder="Search name, SKU, serial no, barcode..."
+            :reset-url="route('masters.products.index')"
+        >
+            <x-slot name="filters">
+                <select
+                    name="brand_id"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">Brand: All</option>
+                    @foreach($brands ?? [] as $b)
+                        <option value="{{ $b->id }}" @selected(request('brand_id') == $b->id)>{{ $b->name }}</option>
+                    @endforeach
+                </select>
 
-            <select
-                name="direction"
-                class="rounded-lg border-gray-300 text-sm"
-            >
-                <option value="asc" @selected(request('direction') === 'asc')>
-                    ASC
-                </option>
-                <option value="desc" @selected(request('direction', 'desc') === 'desc')>
-                    DESC
-                </option>
-            </select>
+                <select
+                    name="category_id"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">Category: All</option>
+                    @foreach($categories ?? [] as $cat)
+                        <option value="{{ $cat->id }}" @selected(request('category_id') == $cat->id)>{{ $cat->name }}</option>
+                    @endforeach
+                </select>
 
-            <x-ui.button type="submit" variant="secondary">Filter</x-ui.button>
-        </form>
-        <x-ui.button variant="primary" :href="route('masters.products.create')">Add Product</x-ui.button>
-    </x-slot>
-</x-ui.page-header>
+                <select
+                    name="status"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">Status: All</option>
+                    <option value="active" @selected(request('status') === 'active')>Active</option>
+                    <option value="inactive" @selected(request('status') === 'inactive')>Inactive</option>
+                </select>
+            </x-slot>
+        </x-ui.table-toolbar>
 
-<x-ui.card>
-    <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-slate-200 text-sm">
-            <thead class="bg-slate-50">
-                <tr>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Serial No.</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Name</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">SKU</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Unit</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Tax</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-100">
-                @forelse($items as $item)
-                    <tr class="hover:bg-slate-50">
-                        <td class="px-3 py-2 font-mono text-xs text-slate-600">{{ $item->serial_no }}</td>
-                        <td class="px-3 py-2 font-medium text-slate-900">{{ $item->name }}</td>
-                        <td class="px-3 py-2 font-mono text-xs text-slate-600">{{ $item->sku }}</td>
-                        <td class="px-3 py-2 text-slate-600">{{ $item->baseUom?->code ?? '—' }}</td>
-                        <td class="px-3 py-2 text-right text-slate-700">{{ $item->tax_rate }}%</td>
-                        <td class="px-3 py-2 text-right">
-                            <x-ui.button variant="secondary" size="sm" :href="route('masters.products.edit', $item)">Edit</x-ui.button>
-                        </td>
-                    </tr>
-                @empty
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50">
                     <tr>
-                        <td colspan=6" class="px-3 py-8 text-center text-slate-500">
-                            No products found. Click <strong>Add Product</strong> to create one.
-                        </td>
+                        <x-ui.sortable-th column="serial_no" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
+                            Serial No.
+                        </x-ui.sortable-th>
+                        <x-ui.sortable-th column="name" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
+                            Name
+                        </x-ui.sortable-th>
+                        <x-ui.sortable-th column="sku" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
+                            SKU
+                        </x-ui.sortable-th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Unit</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Tax</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Actions</th>
                     </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
+                </thead>
+                <tbody class="divide-y divide-slate-100 bg-white">
+                    @forelse($items as $item)
+                        <tr class="hover:bg-slate-50/75 transition-colors">
+                            <td class="px-4 py-3 font-mono text-xs text-slate-600">{{ $item->serial_no ?: '—' }}</td>
+                            <td class="px-4 py-3 font-medium text-slate-900">{{ $item->name }}</td>
+                            <td class="px-4 py-3 font-mono text-xs text-slate-600">{{ $item->sku }}</td>
+                            <td class="px-4 py-3 text-slate-600">{{ $item->baseUom?->code ?? '—' }}</td>
+                            <td class="px-4 py-3 text-right text-slate-700 font-medium">{{ $item->tax_rate }}%</td>
+                            <td class="px-4 py-3 text-right whitespace-nowrap">
+                                <x-ui.button variant="secondary" size="sm" :href="route('masters.products.edit', $item)">Edit</x-ui.button>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="6" class="p-0">
+                                <x-ui.empty-state
+                                    title="No matching products found"
+                                    description="Try clearing search or filters to see more results."
+                                    class="border-0 rounded-none py-10"
+                                >
+                                    <x-slot name="action">
+                                        <a href="{{ route('masters.products.index') }}" data-reset-filters class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500">
+                                            Reset Filters
+                                        </a>
+                                    </x-slot>
+                                </x-ui.empty-state>
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
 
-    @if($items->hasPages())
-        <div class="mt-4">{{ $items->links() }}</div>
-    @endif
-</x-ui.card>
+        @if($items->hasPages())
+            <div class="mt-4">{{ $items->links() }}</div>
+        @endif
+    </x-ui.card>
+</div>
 @endsection

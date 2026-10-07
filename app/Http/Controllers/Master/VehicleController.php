@@ -8,16 +8,44 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class VehicleController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = Vehicle::query()->latest()
-            ->when($request->filled('search'), fn ($q) => $q->where('name', 'like', '%'.$request->search.'%'))
-            ->paginate(15)
-            ->withQueryString();
+        $query = Vehicle::query()
+            ->when($request->filled('type'), fn ($q) => $q->where('type', $request->type))
+            ->when($request->filled('status'), function ($q) use ($request) {
+                if ($request->status === 'active') {
+                    $q->where('is_active', true);
+                } elseif ($request->status === 'inactive') {
+                    $q->where('is_active', false);
+                }
+            });
 
-        return view('masters.vehicles.index', compact('items'));
+        $this->applySearch($query, $request->input('search'), ['name', 'registration_no', 'type']);
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            ['name', 'registration_no', 'type', 'is_active', 'created_at'],
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('masters.vehicles.index', [
+            'items' => $items,
+            'search' => $request->string('search'),
+            'status' => $request->string('status'),
+            'type' => $request->string('type'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

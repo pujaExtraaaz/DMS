@@ -10,6 +10,7 @@ use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Warehouse;
 use App\Http\Controllers\Controller;
 use App\Support\DocumentNumberService;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,19 +18,59 @@ use Illuminate\View\View;
 
 class StockAdjustmentController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected StockMovementService $stockMovementService,
         protected DocumentNumberService $documentNumberService,
     ) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $adjustments = StockAdjustment::query()
+        $query = StockAdjustment::query()
             ->with(['warehouse', 'creator'])
-            ->latest('adjustment_date')
-            ->paginate(15);
+            ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
+            ->when($request->filled('reason'), fn ($q) => $q->where('reason', $request->reason))
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('from_date'), fn ($q) => $q->whereDate('adjustment_date', '>=', $request->from_date))
+            ->when($request->filled('to_date'), fn ($q) => $q->whereDate('adjustment_date', '<=', $request->to_date));
 
-        return view('inventory.adjustments.index', compact('adjustments'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['adjustment_no', 'reason', 'status', 'notes'],
+            ['warehouse' => ['name']]
+        );
+
+        $allowedSorts = [
+            'adjustment_no' => 'adjustment_no',
+            'adjustment_date' => 'adjustment_date',
+            'reason' => 'reason',
+            'status' => 'status',
+            'warehouse' => function ($q, $dir) {
+                $q->leftJoin('warehouses', 'stock_adjustments.warehouse_id', '=', 'warehouses.id')
+                  ->orderBy('warehouses.name', $dir)
+                  ->select('stock_adjustments.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'adjustment_date',
+            defaultDirection: 'desc'
+        );
+
+        $adjustments = $query->paginate(15)->withQueryString();
+
+        return view('inventory.adjustments.index', [
+            'adjustments' => $adjustments,
+            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'warehouse_id', 'reason', 'status', 'from_date', 'to_date']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

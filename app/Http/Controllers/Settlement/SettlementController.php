@@ -9,6 +9,7 @@ use App\Domains\Sales\Models\Invoice;
 use App\Domains\Settlement\Models\Settlement;
 use App\Domains\Settlement\Models\SettlementLine;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,21 +18,59 @@ use Illuminate\View\View;
 
 class SettlementController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected OutstandingLedgerService $outstandingLedgerService,
     ) {}
 
     public function index(Request $request): View
     {
-        $loadSheets = LoadSheet::query()
+        $query = LoadSheet::query()
             ->with(['route', 'driver', 'settlement'])
             ->whereIn('status', ['delivered', 'dispatched', 'in_transit'])
-            ->when($request->filled('unsettled'), fn ($q) => $q->doesntHave('settlement'))
-            ->latest('load_date')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('unsettled') && $request->unsettled !== '', function ($q) use ($request) {
+                if ($request->unsettled == '1') {
+                    $q->doesntHave('settlement');
+                } elseif ($request->unsettled == '0') {
+                    $q->has('settlement');
+                }
+            });
 
-        return view('settlements.index', compact('loadSheets'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['load_sheet_no', 'status'],
+            ['route' => ['name'], 'driver' => ['name']]
+        );
+
+        $allowedSorts = [
+            'load_sheet_no' => 'load_sheet_no',
+            'load_date' => 'load_date',
+            'status' => 'status',
+            'route' => function ($q, $dir) {
+                $q->leftJoin('routes', 'load_sheets.route_id', '=', 'routes.id')
+                  ->orderBy('routes.name', $dir)
+                  ->select('load_sheets.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'load_date',
+            defaultDirection: 'desc'
+        );
+
+        $loadSheets = $query->paginate(15)->withQueryString();
+
+        return view('settlements.index', [
+            'loadSheets' => $loadSheets,
+            'filters' => $request->only(['search', 'unsettled']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(LoadSheet $loadSheet): View

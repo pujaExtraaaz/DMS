@@ -179,6 +179,7 @@
     </div>
 
     @livewireScripts
+    <script src="{{ asset('js/dynamic-tables.js') }}" defer></script>
     @stack('scripts')
 </body>
 </html>

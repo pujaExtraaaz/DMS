@@ -8,26 +8,51 @@ use App\Domains\Target\Models\TargetPeriod;
 use App\Domains\Target\Services\TargetService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class TargetController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected TargetService $targetService,
     ) {}
 
     public function index(Request $request): View
     {
-        $periods = TargetPeriod::query()
+        $query = TargetPeriod::query()
             ->withCount('targets')
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->orderByDesc('starts_on')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('period_type'), fn ($q) => $q->where('period_type', $request->period_type));
 
-        return view('targets.index', compact('periods'));
+        $this->applySearch($query, $request->input('search'), [
+            'name',
+            'period_type',
+            'status',
+        ]);
+
+        [$sort, $direction] = $this->applySorting(
+            $query,
+            $request,
+            [
+                'starts_on' => 'starts_on',
+                'name' => 'name',
+                'period_type' => 'period_type',
+                'type' => 'period_type',
+                'ends_on' => 'ends_on',
+                'status' => 'status',
+                'targets_count' => 'targets_count',
+            ],
+            'starts_on',
+            'desc'
+        );
+
+        $periods = $query->paginate(15)->withQueryString();
+
+        return view('targets.index', compact('periods', 'sort', 'direction'));
     }
 
     public function createPeriod(): View

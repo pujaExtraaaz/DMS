@@ -97,19 +97,26 @@
     </form>
 </x-ui.card>
 
+<div id="listing-container" data-dynamic-container>
 <!-- Attendance Table -->
 <x-ui.card>
+    <x-ui.table-toolbar
+        placeholder="Search attendances by employee, notes..."
+        :searchValue="request('search')"
+        :resetUrl="route('hrms.attendances.index')"
+    />
+
     <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-slate-200 text-sm">
             <thead class="bg-slate-50">
                 <tr>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Date</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Employee</th>
+                    <x-ui.sortable-th column="attendance_date" label="Date" :currentSort="$sort" :currentDirection="$direction" />
+                    <x-ui.sortable-th column="employee" label="Employee" :currentSort="$sort" :currentDirection="$direction" />
                     <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Department</th>
                     <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">In</th>
                     <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Out</th>
-                    <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Status</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Hours</th>
+                    <x-ui.sortable-th column="status" label="Status" align="center" :currentSort="$sort" :currentDirection="$direction" />
+                    <x-ui.sortable-th column="hours_worked" label="Hours" align="right" :currentSort="$sort" :currentDirection="$direction" />
                     <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Action</th>
                 </tr>
             </thead>
@@ -144,4 +151,5 @@
     </div>
     <div class="mt-4">{{ $items->links() }}</div>
 </x-ui.card>
+</div>
 @endsection

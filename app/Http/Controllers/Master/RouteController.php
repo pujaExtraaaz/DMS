@@ -8,16 +8,46 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
+use App\Domains\Master\Models\Area;
+use App\Support\Traits\SortableAndSearchable;
+
 class RouteController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = Route::query()->with(['area'])->latest()
-            ->when($request->filled('search'), fn ($q) => $q->where('name', 'like', '%'.$request->search.'%'))
-            ->paginate(15)
-            ->withQueryString();
+        $query = Route::query()->with(['area'])
+            ->when($request->filled('area_id'), fn ($q) => $q->where('area_id', $request->area_id))
+            ->when($request->filled('status'), function ($q) use ($request) {
+                if ($request->status === 'active') {
+                    $q->where('is_active', true);
+                } elseif ($request->status === 'inactive') {
+                    $q->where('is_active', false);
+                }
+            });
 
-        return view('masters.routes.index', compact('items'));
+        $this->applySearch($query, $request->input('search'), ['name', 'code']);
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            ['name', 'code', 'is_active', 'created_at'],
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('masters.routes.index', [
+            'items' => $items,
+            'areas' => Area::where('is_active', true)->orderBy('name')->get(),
+            'search' => $request->string('search'),
+            'status' => $request->string('status'),
+            'areaId' => $request->input('area_id'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

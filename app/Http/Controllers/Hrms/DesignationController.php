@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Hrms;
 
 use App\Domains\Hrms\Models\Designation;
 use App\Domains\Organization\Models\Company;
+use App\Support\Traits\SortableAndSearchable;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -11,16 +12,46 @@ use Illuminate\View\View;
 
 class DesignationController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = Designation::query()
-            ->with('company')
-            ->when($request->filled('search'), fn ($q) => $q->where('name', 'like', '%'.$request->search.'%'))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+        $query = Designation::query()->with('company');
 
-        return view('hrms.designations.index', compact('items'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['name', 'code'],
+            ['company' => ['name']]
+        );
+
+        $allowedSorts = [
+            'name' => 'name',
+            'code' => 'code',
+            'is_active' => 'is_active',
+            'company' => function ($q, $dir) {
+                $q->leftJoin('companies', 'designations.company_id', '=', 'companies.id')
+                  ->orderBy('companies.name', $dir)
+                  ->select('designations.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('hrms.designations.index', [
+            'items' => $items,
+            'filters' => $request->only(['search']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

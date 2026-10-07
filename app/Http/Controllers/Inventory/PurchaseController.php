@@ -10,6 +10,7 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Warehouse;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,21 +19,51 @@ use Illuminate\View\View;
 
 class PurchaseController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected StockMovementService $stockMovementService,
     ) {}
 
     public function index(Request $request): View
     {
-        $purchases = Purchase::query()
+        $query = Purchase::query()
             ->with(['creator', 'items.product', 'items.uom'])
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('purchase_date', '>=', $request->date_from))
             ->when($request->filled('date_to'), fn ($q) => $q->whereDate('purchase_date', '<=', $request->date_to))
-            ->latest('purchase_date')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status));
 
-        return view('inventory.purchases.index', compact('purchases'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['purchase_no', 'supplier_name'],
+            ['items.product' => ['name', 'sku']]
+        );
+
+        $allowedSorts = [
+            'purchase_no' => 'purchase_no',
+            'purchase_date' => 'purchase_date',
+            'supplier_name' => 'supplier_name',
+            'grand_total' => 'grand_total',
+            'status' => 'status',
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'purchase_date',
+            defaultDirection: 'desc'
+        );
+
+        $purchases = $query->paginate(15)->withQueryString();
+
+        return view('inventory.purchases.index', [
+            'purchases' => $purchases,
+            'filters' => $request->only(['search', 'date_from', 'date_to', 'status']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

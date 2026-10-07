@@ -12,27 +12,62 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use InvalidArgumentException;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class QuotationController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(protected QuotationService $quotationService) {}
 
     public function index(Request $request): View
     {
-        $items = Quotation::query()
+        $query = Quotation::query()
             ->with(['customer', 'salesperson'])
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $search = trim($request->q);
-                $q->where(function ($inner) use ($search) {
-                    $inner->where('quotation_no', 'like', "%{$search}%")
-                        ->orWhereHas('customer', fn ($c) => $c->where('name', 'like', "%{$search}%"));
-                });
-            })
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->latest('quotation_date')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('quotation_date', '>=', $request->date_from))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('quotation_date', '<=', $request->date_to));
 
-        return view('sales.quotations.index', compact('items'));
+        $this->applySearch(
+            $query,
+            $request->input('search') ?: $request->input('q'),
+            ['quotation_no', 'notes'],
+            ['customer' => ['name', 'code']]
+        );
+
+        $allowedSorts = [
+            'quotation_no' => 'quotation_no',
+            'quotation_date' => 'quotation_date',
+            'status' => 'status',
+            'grand_total' => 'grand_total',
+            'created_at' => 'created_at',
+            'customer' => function ($q, $dir) {
+                $q->join('customers', 'quotations.customer_id', '=', 'customers.id')
+                  ->orderBy('customers.name', $dir)
+                  ->select('quotations.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'quotation_date',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('sales.quotations.index', [
+            'items' => $items,
+            'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
+            'search' => $request->string('search', $request->string('q')),
+            'status' => $request->string('status'),
+            'customerId' => $request->input('customer_id'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

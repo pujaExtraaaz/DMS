@@ -5,21 +5,47 @@ namespace App\Http\Controllers\Organization;
 use App\Domains\Organization\Models\BusinessGroup;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class BusinessGroupController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = BusinessGroup::query()
-            ->withCount('links')
-            ->when($request->filled('search'), fn ($q) => $q->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')->orWhere('code', 'like', '%'.$request->search.'%');
-            }))
-            ->latest()->paginate(15)->withQueryString();
-        return view('organization.business-groups.index', ['items' => $items, 'search' => $request->string('search')]);
+        $query = BusinessGroup::query()
+            ->withCount('links');
+
+        $this->applySearch($query, $request->input('search'), [
+            'name',
+            'code',
+            'description',
+        ]);
+
+        [$sort, $direction] = $this->applySorting(
+            $query,
+            $request,
+            [
+                'name' => 'name',
+                'code' => 'code',
+                'links_count' => 'links_count',
+                'is_active' => 'is_active',
+            ],
+            'name',
+            'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('organization.business-groups.index', [
+            'items' => $items,
+            'search' => $request->string('search'),
+            'sort' => $sort,
+            'direction' => $direction,
+        ]);
     }
 
     public function create(): View

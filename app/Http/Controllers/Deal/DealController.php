@@ -11,6 +11,7 @@ use App\Domains\Master\Models\Customer;
 use App\Domains\Order\Models\Order;
 use App\Domains\Sales\Models\Invoice;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -18,6 +19,8 @@ use InvalidArgumentException;
 
 class DealController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected DealService $dealService,
         protected MarginService $marginService,
@@ -25,17 +28,48 @@ class DealController extends Controller
 
     public function index(Request $request): View
     {
-        $items = Deal::query()
+        $query = Deal::query()
             ->with(['customer', 'invoice'])
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['reference', 'site_name', 'status'],
+            ['customer' => ['name']]
+        );
+
+        $allowedSorts = [
+            'reference' => 'reference',
+            'site_name' => 'site_name',
+            'status' => 'status',
+            'sale_amount' => 'sale_amount',
+            'net_margin' => 'net_margin',
+            'created_at' => 'created_at',
+            'customer' => function ($q, $dir) {
+                $q->join('customers', 'deals.customer_id', '=', 'customers.id')
+                  ->orderBy('customers.name', $dir)
+                  ->select('deals.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'created_at',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
 
         return view('deals.index', [
             'items' => $items,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'customer_id', 'status']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 

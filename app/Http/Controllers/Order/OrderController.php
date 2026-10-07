@@ -44,6 +44,7 @@ class OrderController extends Controller
             'status',
             'grand_total',
             'created_at',
+            'customer',
         ];
 
         $sort = in_array(
@@ -63,6 +64,8 @@ class OrderController extends Controller
             ->groupBy('status')
             ->pluck('aggregate', 'status');
 
+        $searchTerm = trim((string) ($request->input('search') ?: $request->input('q')));
+
         $orders = Order::query()
             ->with([
                 'customer.area',
@@ -70,20 +73,15 @@ class OrderController extends Controller
                 'salesperson',
             ])
             ->when(
-                $request->filled('q'),
-                function ($query) use ($request) {
-                    $search = trim($request->input('q'));
-
-                    if ($search === '') {
-                        return;
-                    }
-
-                    $query->where(function ($q) use ($search) {
-                        $q->where('order_no', 'like', "%{$search}%")
-                            ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                $searchTerm !== '',
+                function ($query) use ($searchTerm) {
+                    $query->where(function ($q) use ($searchTerm) {
+                        $q->where('order_no', 'like', "%{$searchTerm}%")
+                            ->orWhereHas('customer', function ($customerQuery) use ($searchTerm) {
                                 $customerQuery
-                                    ->where('name', 'like', "%{$search}%")
-                                    ->orWhere('code', 'like', "%{$search}%");
+                                    ->where('name', 'like', "%{$searchTerm}%")
+                                    ->orWhere('code', 'like', "%{$searchTerm}%")
+                                    ->orWhere('phone', 'like', "%{$searchTerm}%");
                             });
                     });
                 }
@@ -134,9 +132,17 @@ class OrderController extends Controller
                     '<=',
                     $request->input('date_to')
                 )
-            )
-            ->orderBy($sort, $direction)
-            ->orderByDesc('id')
+            );
+
+        if ($sort === 'customer') {
+            $orders->join('customers', 'orders.customer_id', '=', 'customers.id')
+                   ->orderBy('customers.name', $direction)
+                   ->select('orders.*');
+        } else {
+            $orders->orderBy($sort, $direction);
+        }
+
+        $orders = $orders->orderByDesc('orders.id')
             ->paginate(15)
             ->withQueryString();
 

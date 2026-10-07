@@ -9,16 +9,45 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class SubCategoryController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = SubCategory::query()->with('category')
-            ->when($request->filled('search'), fn ($q) => $q->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')->orWhere('code', 'like', '%'.$request->search.'%');
-            }))
-            ->latest()->paginate(15)->withQueryString();
-        return view('masters.sub-categories.index', ['items' => $items, 'search' => $request->string('search')]);
+        $query = SubCategory::query()->with('category')
+            ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->category_id))
+            ->when($request->filled('status'), function ($q) use ($request) {
+                if ($request->status === 'active') {
+                    $q->where('is_active', true);
+                } elseif ($request->status === 'inactive') {
+                    $q->where('is_active', false);
+                }
+            });
+
+        $this->applySearch($query, $request->input('search'), ['name', 'code', 'detail']);
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            ['name', 'code', 'is_active', 'created_at'],
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('masters.sub-categories.index', [
+            'items' => $items,
+            'search' => $request->string('search'),
+            'status' => $request->string('status'),
+            'categoryId' => $request->input('category_id'),
+            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

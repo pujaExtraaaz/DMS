@@ -4,22 +4,51 @@ namespace App\Http\Controllers\Payment;
 
 use App\Domains\Payment\Models\Payment;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class ReconciliationController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $payments = Payment::query()
+        $query = Payment::query()
             ->with(['customer', 'invoice'])
             ->when($request->filled('method'), fn ($q) => $q->where('method', $request->method))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('paid_at', '>=', $request->date_from))
             ->when($request->filled('date_to'), fn ($q) => $q->whereDate('paid_at', '<=', $request->date_to))
-            ->where('status', 'completed')
-            ->latest('paid_at')
-            ->paginate(20)
-            ->withQueryString();
+            ->where('status', 'completed');
+
+        $this->applySearch($query, $request->input('search'), [
+            'method',
+            'reference',
+            'notes',
+        ], [
+            'customer' => ['name', 'phone'],
+            'invoice' => ['invoice_no'],
+        ]);
+
+        [$sort, $direction] = $this->applySorting(
+            $query,
+            $request,
+            [
+                'paid_at' => 'paid_at',
+                'date' => 'paid_at',
+                'customer' => function ($q, $dir) {
+                    $q->leftJoin('customers as rc_cust', 'payments.customer_id', '=', 'rc_cust.id')
+                        ->orderBy('rc_cust.name', $dir)
+                        ->select('payments.*');
+                },
+                'method' => 'method',
+                'amount' => 'amount',
+            ],
+            'paid_at',
+            'desc'
+        );
+
+        $payments = $query->paginate(20)->withQueryString();
 
         $summaryQuery = Payment::query()
             ->where('status', 'completed')
@@ -33,6 +62,6 @@ class ReconciliationController extends Controller
             'total' => (clone $summaryQuery)->sum('amount'),
         ];
 
-        return view('payments.reconciliation', compact('payments', 'summary'));
+        return view('payments.reconciliation', compact('payments', 'summary', 'sort', 'direction'));
     }
 }

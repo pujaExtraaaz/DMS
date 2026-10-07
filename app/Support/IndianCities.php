@@ -145,18 +145,36 @@ class IndianCities
         'Ladakh' => ['Leh', 'Kargil'],
         'Dadra and Nagar Haveli and Daman and Diu' => ['Daman', 'Diu', 'Silvassa'],
         'Lakshadweep' => ['Kavaratti', 'Agatti', 'Amini', 'Andrott', 'Minicoy'],
+        'Andhra Pradesh (Old)' => [
+            'Visakhapatnam', 'Vijayawada', 'Guntur', 'Nellore', 'Kurnool', 'Kakinada',
+            'Rajamahendravaram', 'Kadapa', 'Mangalagiri', 'Tirupati', 'Anantapur', 'Vizianagaram',
+            'Eluru', 'Ongole', 'Nandyal', 'Machilipatnam', 'Adoni', 'Tenali', 'Proddatur',
+            'Chittoor', 'Hindupur', 'Bhimavaram', 'Madanapalle', 'Guntakal', 'Srikakulam'
+        ],
+        'Other Territory' => ['Other Territory'],
     ];
 
     /**
-     * Get all cities mapped by state.
+     * Get all cities mapped by state, sorted alphabetically (A-Z).
+     *
+     * @return array<string, array<int, string>>
      */
     public static function all(): array
     {
-        return self::$stateCities;
+        $result = [];
+        foreach (self::$stateCities as $state => $cities) {
+            $sorted = $cities;
+            natcasesort($sorted);
+            $result[$state] = array_values($sorted);
+        }
+
+        return $result;
     }
 
     /**
-     * Get cities list for a given state name.
+     * Get cities list for a given state name, sorted alphabetically (A-Z).
+     *
+     * @return array<int, string>
      */
     public static function getCitiesForState(?string $state): array
     {
@@ -165,7 +183,10 @@ class IndianCities
         }
 
         $normalizedState = self::normalizeStateName($state);
-        return self::$stateCities[$normalizedState] ?? [];
+        $cities = self::$stateCities[$normalizedState] ?? [];
+        natcasesort($cities);
+
+        return array_values($cities);
     }
 
     /**

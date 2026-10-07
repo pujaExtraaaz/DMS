@@ -19,12 +19,14 @@ use App\Domains\Sales\Models\Invoice;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\ReportExporter;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 
 class ReportController extends Controller
 {
+    use SortableAndSearchable;
     public function sales(Request $request)
     {
         $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
@@ -105,7 +107,7 @@ class ReportController extends Controller
 
     public function stock(Request $request)
     {
-        $stockLevels = StockLevel::query()
+        $query = StockLevel::query()
             ->with(['product.brand', 'product.category', 'uom', 'warehouse'])
             ->when($request->boolean('low_only'), fn ($q) => $q->where('quantity', '<', 10))
             ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
@@ -115,9 +117,41 @@ class ReportController extends Controller
                     $p->when($request->filled('brand_id'), fn ($x) => $x->where('brand_id', $request->brand_id))
                         ->when($request->filled('category_id'), fn ($x) => $x->where('category_id', $request->category_id));
                 });
-            })
-            ->orderBy('product_id')
-            ->get();
+            });
+
+        $this->applySearch($query, $request->input('search'), [], [
+            'product' => ['name', 'sku', 'barcode'],
+            'warehouse' => ['name'],
+        ]);
+
+        [$sort, $direction] = $this->applySorting(
+            $query,
+            $request,
+            [
+                'product' => function ($q, $dir) {
+                    $q->leftJoin('products as sl_products', 'stock_levels.product_id', '=', 'sl_products.id')
+                        ->orderBy('sl_products.name', $dir)
+                        ->select('stock_levels.*');
+                },
+                'brand' => function ($q, $dir) {
+                    $q->leftJoin('products as sl_products', 'stock_levels.product_id', '=', 'sl_products.id')
+                        ->leftJoin('brands as sl_brands', 'sl_products.brand_id', '=', 'sl_brands.id')
+                        ->orderBy('sl_brands.name', $dir)
+                        ->select('stock_levels.*');
+                },
+                'warehouse' => function ($q, $dir) {
+                    $q->leftJoin('warehouses as sl_warehouses', 'stock_levels.warehouse_id', '=', 'sl_warehouses.id')
+                        ->orderBy('sl_warehouses.name', $dir)
+                        ->select('stock_levels.*');
+                },
+                'quantity' => 'quantity',
+                'qty' => 'quantity',
+            ],
+            'product',
+            'asc'
+        );
+
+        $stockLevels = $query->get();
 
         $export = $request->input('export');
         if (in_array($export, ['csv', 'pdf'], true)) {
@@ -137,7 +171,7 @@ class ReportController extends Controller
                 : ReportExporter::pdf($filename, 'Stock Report', $headers, $rows, ['Generated' => now()->format('d M Y H:i')]);
         }
 
-        return view('reporting.stock', array_merge(compact('stockLevels'), $this->filterOptions()));
+        return view('reporting.stock', array_merge(compact('stockLevels', 'sort', 'direction'), $this->filterOptions()));
     }
 
     public function payments(Request $request): View
@@ -360,7 +394,7 @@ class ReportController extends Controller
         $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
         $dateTo = $request->input('date_to', now()->toDateString());
 
-        $movements = StockMovement::query()
+        $query = StockMovement::query()
             ->with(['product', 'uom', 'warehouse'])
             ->whereDate('created_at', '>=', $dateFrom)
             ->whereDate('created_at', '<=', $dateTo)
@@ -371,15 +405,46 @@ class ReportController extends Controller
                     $p->when($request->filled('brand_id'), fn ($x) => $x->where('brand_id', $request->brand_id))
                         ->when($request->filled('category_id'), fn ($x) => $x->where('category_id', $request->category_id));
                 });
-            })
-            ->latest('id')
-            ->paginate(50)
-            ->withQueryString();
+            });
+
+        $this->applySearch($query, $request->input('search'), [
+            'type',
+            'notes',
+        ], [
+            'product' => ['name', 'sku'],
+            'warehouse' => ['name'],
+        ]);
+
+        [$sort, $direction] = $this->applySorting(
+            $query,
+            $request,
+            [
+                'created_at' => 'created_at',
+                'when' => 'created_at',
+                'product' => function ($q, $dir) {
+                    $q->leftJoin('products as sm_products', 'stock_movements.product_id', '=', 'sm_products.id')
+                        ->orderBy('sm_products.name', $dir)
+                        ->select('stock_movements.*');
+                },
+                'type' => 'type',
+                'quantity' => 'quantity',
+                'qty' => 'quantity',
+                'balance_after' => 'balance_after',
+                'balance' => 'balance_after',
+                'notes' => 'notes',
+            ],
+            'created_at',
+            'desc'
+        );
+
+        $movements = $query->paginate(50)->withQueryString();
 
         return view('reporting.stock-ledger', array_merge([
             'movements' => $movements,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'sort' => $sort,
+            'direction' => $direction,
         ], $this->filterOptions()));
     }
 
@@ -388,7 +453,7 @@ class ReportController extends Controller
         $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
         $dateTo = $request->input('date_to', now()->toDateString());
 
-        $purchases = Purchase::query()
+        $query = Purchase::query()
             ->with(['items.product', 'creator', 'supplierParty', 'warehouse'])
             ->whereBetween('purchase_date', [$dateFrom, $dateTo])
             ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_party_id', $request->supplier_id))
@@ -399,13 +464,41 @@ class ReportController extends Controller
                         ->when($request->filled('brand_id'), fn ($x) => $x->where('brand_id', $request->brand_id))
                         ->when($request->filled('category_id'), fn ($x) => $x->where('category_id', $request->category_id));
                 });
-            })
-            ->latest('purchase_date')
-            ->paginate(30)
-            ->withQueryString();
+            });
+
+        $this->applySearch($query, $request->input('search'), [
+            'purchase_no',
+            'supplier_name',
+            'status',
+            'notes',
+        ], [
+            'supplierParty' => ['name', 'phone'],
+        ]);
+
+        [$sort, $direction] = $this->applySorting(
+            $query,
+            $request,
+            [
+                'purchase_no' => 'purchase_no',
+                'purchase_date' => 'purchase_date',
+                'date' => 'purchase_date',
+                'supplier' => function ($q, $dir) {
+                    $q->leftJoin('customers as s_parties', 'purchases.supplier_party_id', '=', 's_parties.id')
+                        ->orderByRaw("COALESCE(s_parties.name, purchases.supplier_name) {$dir}")
+                        ->select('purchases.*');
+                },
+                'grand_total' => 'grand_total',
+                'total' => 'grand_total',
+                'status' => 'status',
+            ],
+            'purchase_date',
+            'desc'
+        );
+
+        $purchases = $query->paginate(30)->withQueryString();
 
         return view('reporting.purchase-register', array_merge(
-            compact('purchases', 'dateFrom', 'dateTo'),
+            compact('purchases', 'dateFrom', 'dateTo', 'sort', 'direction'),
             $this->filterOptions()
         ));
     }

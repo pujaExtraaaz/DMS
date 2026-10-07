@@ -34,8 +34,9 @@
             gap: 10px;
         }
 
-        .toolbar-left {
+        .toolbar-left, .toolbar-right {
             display: flex;
+            align-items: center;
             gap: 8px;
         }
 
@@ -44,16 +45,26 @@
             border: 1px solid #d1d5db;
             background: #fff;
             color: #111827;
-            padding: 9px 15px;
-            border-radius: 8px;
-            font-size: 13px;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 12.5px;
+            font-weight: 500;
             cursor: pointer;
             text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .toolbar .primary {
             background: #4f46e5;
             border-color: #4f46e5;
+            color: #fff;
+        }
+
+        .toolbar .btn-success {
+            background: #059669;
+            border-color: #059669;
             color: #fff;
         }
 
@@ -237,17 +248,33 @@
     $supplier = $invoice->supplier;
 @endphp
 
-<div class="toolbar">
+@if(empty($isPdf))
+<div class="toolbar no-print">
     <div class="toolbar-left">
         <a href="{{ route('purchasing.invoices.show', $invoice) }}">
             Back to Invoice
         </a>
+        <a href="{{ route('purchasing.invoices.index') }}">
+            Invoice Listing
+        </a>
     </div>
 
-    <button class="primary" onclick="window.print()">
-        Print Invoice
-    </button>
+    <div class="toolbar-right">
+        <button class="primary" onclick="window.print()">
+            Print Invoice
+        </button>
+        <a href="{{ route('purchasing.invoices.export', ['invoice' => $invoice, 'format' => 'pdf']) }}" class="primary">
+            PDF
+        </a>
+        <a href="{{ route('purchasing.invoices.export', ['invoice' => $invoice, 'format' => 'xlsx']) }}" class="btn-success">
+            Excel (.xlsx)
+        </a>
+        <a href="{{ route('purchasing.invoices.export', ['invoice' => $invoice, 'format' => 'csv']) }}">
+            CSV
+        </a>
+    </div>
 </div>
+@endif
 
 <div class="invoice">
 
@@ -471,6 +498,13 @@
 
     <div class="bottom-grid">
         <div class="bottom-left">
+            <div class="notes-box" style="min-height: auto; margin-bottom: 8px;">
+                <div class="bold" style="margin-bottom: 4px;">Amount in Words</div>
+                <div style="font-weight: 700; color: #111827;">
+                    {{ \App\Support\DocumentExporter::numberToIndianWords($invoice->total_amount ?? $invoice->grand_total) }}
+                </div>
+            </div>
+
             <div class="notes-box">
                 <div class="bold" style="margin-bottom: 4px;">Terms &amp; Conditions</div>
                 <div style="color: #4b5563; font-size: 11px;">

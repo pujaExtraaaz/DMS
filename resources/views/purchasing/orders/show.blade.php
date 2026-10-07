@@ -4,6 +4,7 @@
 <x-ui.page-header :title="$order->po_no">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('purchasing.orders.index')">Back</x-ui.button>
+        <x-ui.button variant="secondary" :href="route('purchasing.orders.preview', $order)">Print Preview</x-ui.button>
         @if($order->status==='draft')
             <form method="POST" action="{{ route('purchasing.orders.submit', $order) }}">@csrf<x-ui.button type="submit" variant="secondary">Submit</x-ui.button></form>
             <form method="POST" action="{{ route('purchasing.orders.approve', $order) }}">@csrf<x-ui.button type="submit" variant="primary">Approve</x-ui.button></form>
@@ -41,12 +42,13 @@
 <x-ui.card>
 <div class="overflow-x-auto"><table class="min-w-full text-sm">
 <thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">UOM</th><th class="px-3 py-2 text-right">Ordered</th><th class="px-3 py-2 text-right">Received</th><th class="px-3 py-2 text-right">Unit Cost</th><th class="px-3 py-2 text-right">Line Total</th>
+<th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">Batch Name</th><th class="px-3 py-2 text-left">UOM</th><th class="px-3 py-2 text-right">Ordered</th><th class="px-3 py-2 text-right">Received</th><th class="px-3 py-2 text-right">Unit Cost</th><th class="px-3 py-2 text-right">Line Total</th>
 </tr></thead>
 <tbody class="divide-y">
 @foreach($order->items as $item)
 <tr>
 <td class="px-3 py-2">{{ $item->product?->name }}</td>
+<td class="px-3 py-2 font-mono text-xs">{{ $item->batch_no ?? '-' }}</td>
 <td class="px-3 py-2">{{ $item->uom?->code }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->quantity, 2) }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->received_qty, 2) }}</td>

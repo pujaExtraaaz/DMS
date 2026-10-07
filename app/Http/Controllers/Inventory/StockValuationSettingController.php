@@ -7,26 +7,60 @@ use App\Domains\Inventory\Services\StockValuationService;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\FinancialYear;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class StockValuationSettingController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(protected StockValuationService $valuationService) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $items = StockValuationSetting::query()
+        $query = StockValuationSetting::query()
             ->with(['company', 'financialYear'])
-            ->latest()
-            ->paginate(20);
+            ->when($request->filled('company_id'), fn ($q) => $q->where('company_id', $request->company_id))
+            ->when($request->filled('method'), fn ($q) => $q->where('method', $request->method));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['method'],
+            ['company' => ['name']]
+        );
+
+        $allowedSorts = [
+            'method' => 'method',
+            'is_active' => 'is_active',
+            'created_at' => 'created_at',
+            'company' => function ($q, $dir) {
+                $q->join('companies', 'stock_valuation_settings.company_id', '=', 'companies.id')
+                  ->orderBy('companies.name', $dir)
+                  ->select('stock_valuation_settings.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'created_at',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(20)->withQueryString();
 
         return view('inventory.valuation.index', [
             'items' => $items,
             'valuation' => $this->valuationService->inventoryValue(null, auth()->user()?->company_id),
             'companies' => Company::where('is_active', true)->orderBy('name')->get(),
             'financialYears' => FinancialYear::orderByDesc('starts_on')->get(),
+            'filters' => $request->only(['search', 'company_id', 'method']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 

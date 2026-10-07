@@ -13,25 +13,77 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use App\Support\DocumentExporter;
+use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 
 class PurchaseOrderController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected PurchaseOrderService $purchaseOrderService,
         protected FinancialYearService $financialYearService,
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
-        $orders = PurchaseOrder::query()
+        $query = PurchaseOrder::query()
             ->with(['supplier', 'warehouse', 'creator'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('search'), fn ($q) => $q->where('po_no', 'like', '%'.$request->search.'%'))
-            ->latest('po_date')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_id', $request->supplier_id))
+            ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('po_date', '>=', $request->date_from))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('po_date', '<=', $request->date_to));
 
-        return view('purchasing.orders.index', compact('orders'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['po_no', 'notes'],
+            ['supplier' => ['name', 'code']]
+        );
+
+        $allowedSorts = [
+            'po_no' => 'po_no',
+            'po_date' => 'po_date',
+            'status' => 'status',
+            'grand_total' => 'grand_total',
+            'created_at' => 'created_at',
+            'supplier' => function ($q, $dir) {
+                $q->join('customers', 'purchase_orders.supplier_id', '=', 'customers.id')
+                  ->orderBy('customers.name', $dir)
+                  ->select('purchase_orders.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'po_date',
+            defaultDirection: 'desc'
+        );
+
+        if ($request->filled('export')) {
+            $exportFormat = strtolower($request->string('export')->toString());
+            if (in_array($exportFormat, ['csv', 'excel', 'xlsx', 'pdf'], true)) {
+                return DocumentExporter::exportPurchaseOrdersListing($query->get(), $exportFormat);
+            }
+        }
+
+        $orders = $query->paginate(15)->withQueryString();
+
+        return view('purchasing.orders.index', [
+            'orders' => $orders,
+            'suppliers' => Customer::where('is_active', true)->orderBy('name')->get(),
+            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
+            'search' => $request->string('search'),
+            'status' => $request->string('status'),
+            'supplierId' => $request->input('supplier_id'),
+            'warehouseId' => $request->input('warehouse_id'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View
@@ -62,7 +114,15 @@ class PurchaseOrderController extends Controller
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.weight' => 'nullable|numeric|min:0',
             'items.*.batch_no' => 'nullable|string|max:60',
+            'items.*.batch_name' => 'nullable|string|max:60',
         ]);
+
+        foreach ($validated['items'] as &$item) {
+            if (isset($item['batch_name']) && !isset($item['batch_no'])) {
+                $item['batch_no'] = $item['batch_name'];
+            }
+        }
+        unset($item);
 
         $this->financialYearService->assertOpen($validated['po_date']);
 
@@ -78,6 +138,25 @@ class PurchaseOrderController extends Controller
         $order->load(['items.product', 'items.uom', 'supplier', 'warehouse', 'creator', 'approver', 'inwards']);
 
         return view('purchasing.orders.show', compact('order'));
+    }
+
+    public function preview(PurchaseOrder $order): View
+    {
+        $order->load(['items.product', 'items.uom', 'supplier', 'warehouse', 'creator', 'approver']);
+        $company = $order->company ?? \App\Domains\Organization\Models\Company::query()->find(auth()->user()?->company_id) ?? \App\Domains\Organization\Models\Company::query()->first();
+
+        return view('purchasing.orders.preview', [
+            'order' => $order,
+            'company' => $company,
+        ]);
+    }
+
+    public function export(PurchaseOrder $order, string $format): Response
+    {
+        $format = strtolower($format);
+        abort_unless(in_array($format, ['pdf', 'xlsx', 'excel', 'csv'], true), 404);
+
+        return DocumentExporter::exportPurchaseOrder($order, $format);
     }
 
     public function approve(PurchaseOrder $order): RedirectResponse

@@ -82,6 +82,11 @@ class Customer extends Model
         return $this->party_type === self::PARTY_TYPE_BOTH;
     }
 
+    public function isFrozen(): bool
+    {
+        return $this->credit_status === 'frozen';
+    }
+
     public function scopeSuppliers($query)
     {
         return $query->whereIn('party_type', [self::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', self::PARTY_TYPE_BOTH]);

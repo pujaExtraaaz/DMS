@@ -14,6 +14,7 @@ use App\Domains\Purchasing\Services\PurchaseOrderService;
 use App\Domains\Sales\Models\Invoice;
 use App\Models\User;
 use App\Support\IndianCities;
+use App\Support\IndianStates;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -668,4 +669,69 @@ class PartyMultipleAddressTest extends TestCase
         $response = $this->actingAs($this->user)->post(route('invoices.store'), $payload);
         $response->assertSessionHasErrors('billing_address_id');
     }
+
+    public function test_indian_states_all_alphabetical_is_sorted_a_to_z(): void
+    {
+        $states = IndianStates::allAlphabetical();
+        $stateNames = array_values($states);
+
+        $sortedNames = $stateNames;
+        natcasesort($sortedNames);
+        $sortedNames = array_values($sortedNames);
+
+        $this->assertSame($sortedNames, $stateNames);
+        $this->assertSame('Maharashtra', $states['27']);
+        $this->assertSame('Rajasthan', $states['08']);
+
+        $options = IndianStates::options();
+        $this->assertNotEmpty($options);
+        $this->assertSame('35', $options[0]['code']);
+        $this->assertSame('Andaman and Nicobar Islands', $options[0]['name']);
+    }
+
+    public function test_cities_api_returns_alphabetical_cities_for_state(): void
+    {
+        $response = $this->actingAs($this->user)->getJson(route('masters.cities', ['state' => 'Maharashtra']));
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'state' => 'Maharashtra',
+        ]);
+
+        $cities = $response->json('cities');
+        $this->assertIsArray($cities);
+        $this->assertContains('Mumbai', $cities);
+        $this->assertContains('Pune', $cities);
+
+        $sortedCities = $cities;
+        natcasesort($sortedCities);
+        $this->assertSame(array_values($sortedCities), $cities);
+
+        // Rajasthan check
+        $rajResponse = $this->actingAs($this->user)->getJson(route('masters.cities', ['state' => 'Rajasthan']));
+        $rajResponse->assertStatus(200);
+        $rajCities = $rajResponse->json('cities');
+        $this->assertContains('Jaipur', $rajCities);
+        $this->assertNotContains('Mumbai', $rajCities);
+
+        $sortedRaj = $rajCities;
+        natcasesort($sortedRaj);
+        $this->assertSame(array_values($sortedRaj), $rajCities);
+    }
+
+    public function test_party_create_form_provides_alphabetical_states_and_cities(): void
+    {
+        $response = $this->actingAs($this->user)->get(route('masters.customers.create'));
+
+        $response->assertStatus(200);
+        $content = $response->getContent();
+
+        $this->assertStringContainsString('stateDropdown(addr', $content);
+        $this->assertStringContainsString('cityDropdown(addr', $content);
+        $this->assertStringContainsString('Select State / UT', $content);
+        $this->assertStringContainsString('Select State First', $content);
+        $this->assertStringContainsString('No cities found', $content);
+    }
 }
+

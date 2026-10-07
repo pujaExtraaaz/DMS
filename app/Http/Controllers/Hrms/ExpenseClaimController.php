@@ -6,6 +6,7 @@ use App\Domains\Hrms\Models\Employee;
 use App\Domains\Hrms\Models\ExpenseClaim;
 use App\Http\Controllers\Controller;
 use App\Support\AuditLogService;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -14,21 +15,52 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ExpenseClaimController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(protected AuditLogService $auditLogService) {}
 
     public function index(Request $request): View
     {
-        $items = ExpenseClaim::query()
+        $query = ExpenseClaim::query()
             ->with(['employee', 'approver', 'settler'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('employee_id'), fn ($q) => $q->where('employee_id', $request->employee_id))
-            ->latest('claim_date')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('employee_id'), fn ($q) => $q->where('employee_id', $request->employee_id));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['claim_type', 'description', 'status'],
+            ['employee' => ['name', 'employee_code']]
+        );
+
+        $allowedSorts = [
+            'claim_date' => 'claim_date',
+            'claim_type' => 'claim_type',
+            'claim_amount' => 'claim_amount',
+            'status' => 'status',
+            'employee' => function ($q, $dir) {
+                $q->join('employees', 'expense_claims.employee_id', '=', 'employees.id')
+                  ->orderBy('employees.name', $dir)
+                  ->select('expense_claims.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'claim_date',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
 
         return view('hrms.expense-claims.index', [
             'items' => $items,
             'employees' => Employee::where('status', 'active')->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'status', 'employee_id']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 

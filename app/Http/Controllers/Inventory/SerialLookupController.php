@@ -6,12 +6,15 @@ use App\Domains\Inventory\Models\ProductSerial;
 use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Purchasing\Services\SerialBatchService;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class SerialLookupController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(protected SerialBatchService $serialBatchService) {}
 
     public function index(Request $request): View
@@ -21,17 +24,52 @@ class SerialLookupController extends Controller
             $serial = $this->serialBatchService->findSerial(trim($request->string('serial_number')->toString()));
         }
 
-        $recent = ProductSerial::query()
+        $query = ProductSerial::query()
             ->with(['product', 'warehouse'])
-            ->latest('id')
-            ->limit(25)
-            ->get();
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['serial_number', 'status', 'reservation_note'],
+            ['product' => ['name', 'sku'], 'warehouse' => ['name']]
+        );
+
+        $allowedSorts = [
+            'serial_number' => 'serial_number',
+            'status' => 'status',
+            'created_at' => 'created_at',
+            'product' => function ($q, $dir) {
+                $q->join('products', 'product_serials.product_id', '=', 'products.id')
+                  ->orderBy('products.name', $dir)
+                  ->select('product_serials.*');
+            },
+            'warehouse' => function ($q, $dir) {
+                $q->leftJoin('warehouses', 'product_serials.warehouse_id', '=', 'warehouses.id')
+                  ->orderBy('warehouses.name', $dir)
+                  ->select('product_serials.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'created_at',
+            defaultDirection: 'desc'
+        );
+
+        $recent = $query->paginate(20)->withQueryString();
 
         return view('inventory.serials.index', [
             'serial' => $serial,
             'query' => $request->string('serial_number')->toString(),
             'recent' => $recent,
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'status', 'warehouse_id']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 

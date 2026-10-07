@@ -26,6 +26,8 @@ class PurchaseOrderItem extends Model
         'sgst_amount',
     ];
 
+    protected $appends = ['batch_name'];
+
     protected function casts(): array
     {
         return [
@@ -60,5 +62,10 @@ class PurchaseOrderItem extends Model
     public function remainingQty(): float
     {
         return max(0, (float) $this->quantity - (float) $this->received_qty);
+    }
+
+    public function getBatchNameAttribute(): ?string
+    {
+        return $this->batch_no;
     }
 }

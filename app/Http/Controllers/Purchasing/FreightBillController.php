@@ -12,15 +12,41 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class FreightBillController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(protected DocumentNumberService $documentNumberService) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $items = FreightBill::query()->with('creator')->latest('bill_date')->paginate(15);
+        $query = FreightBill::query()
+            ->with('creator')
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('bill_date', '>=', $request->date_from))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('bill_date', '<=', $request->date_to));
 
-        return view('purchasing.freight-bills.index', compact('items'));
+        $this->applySearch($query, $request->input('search'), ['freight_no', 'transporter_name', 'vehicle_no', 'lr_no']);
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            ['freight_no', 'bill_date', 'transporter_name', 'status', 'total_amount', 'created_at'],
+            defaultSort: 'bill_date',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('purchasing.freight-bills.index', [
+            'items' => $items,
+            'search' => $request->string('search'),
+            'status' => $request->string('status'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

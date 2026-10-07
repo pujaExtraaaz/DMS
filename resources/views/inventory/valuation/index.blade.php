@@ -32,29 +32,53 @@
 </form>
 </x-ui.card>
 
+<div id="listing-container" data-dynamic-container>
 <x-ui.card title="Configured Settings">
+<x-ui.table-toolbar
+    placeholder="Search by company or method..."
+    :searchValue="request('search')"
+    :resetUrl="route('inventory.valuation.index')"
+>
+    <x-slot name="filters">
+        <select name="company_id" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>
+            <option value="">All Companies</option>
+            @foreach($companies as $c)
+                <option value="{{ $c->id }}" @selected(request('company_id') == $c->id)>{{ $c->name }}</option>
+            @endforeach
+        </select>
+        <select name="method" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>
+            <option value="">All Methods</option>
+            <option value="fifo" @selected(request('method') === 'fifo')>FIFO</option>
+            <option value="lifo" @selected(request('method') === 'lifo')>LIFO</option>
+        </select>
+    </x-slot>
+</x-ui.table-toolbar>
+
 <div class="overflow-x-auto">
 <table class="min-w-full divide-y divide-slate-200 text-sm">
 <thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Company</th>
+<x-ui.sortable-th column="company" label="Company" :currentSort="$sort" :currentDirection="$direction" />
 <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">FY</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Method</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Active</th>
+<x-ui.sortable-th column="method" label="Method" :currentSort="$sort" :currentDirection="$direction" />
+<x-ui.sortable-th column="is_active" label="Active" :currentSort="$sort" :currentDirection="$direction" />
 </tr></thead>
 <tbody class="divide-y divide-slate-100">
 @forelse($items as $item)
 <tr>
-<td class="px-3 py-2">{{ $item->company?->name }}</td>
+<td class="px-3 py-2 font-medium">{{ $item->company?->name }}</td>
 <td class="px-3 py-2">{{ $item->financialYear?->name ?? '—' }}</td>
-<td class="px-3 py-2 uppercase">{{ $item->method }}</td>
-<td class="px-3 py-2">{{ $item->is_active ? 'Yes' : 'No' }}</td>
+<td class="px-3 py-2 uppercase font-semibold">{{ $item->method }}</td>
+<td class="px-3 py-2">
+    <x-ui.badge :variant="$item->is_active ? 'success' : 'secondary'">{{ $item->is_active ? 'Yes' : 'No' }}</x-ui.badge>
+</td>
 </tr>
 @empty
-<tr><td colspan="4" class="px-3 py-6 text-center text-slate-500">No settings yet — default FIFO applies.</td></tr>
+<tr><td colspan="4" class="px-3 py-6 text-center text-slate-500">No settings found.</td></tr>
 @endforelse
 </tbody></table>
 </div>
 <div class="mt-4">{{ $items->links() }}</div>
 </x-ui.card>
+</div>
 </div>
 @endsection

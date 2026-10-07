@@ -11,22 +11,50 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class PriceMasterController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = PriceMaster::query()
+        $query = PriceMaster::query()
             ->with(['customerType', 'product', 'uom'])
             ->when($request->filled('product_id'), fn ($q) => $q->where('product_id', $request->product_id))
-            ->when($request->filled('customer_type_id'), fn ($q) => $q->where('customer_type_id', $request->customer_type_id))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('customer_type_id'), fn ($q) => $q->where('customer_type_id', $request->customer_type_id));
+
+        $this->applySearch($query, $request->input('search'), [], [
+            'product' => ['name', 'sku'],
+            'customerType' => ['name'],
+        ]);
+
+        $allowedSorts = [
+            'rate' => 'rate',
+            'product' => function ($q, $dir) {
+                $q->join('products', 'price_masters.product_id', '=', 'products.id')
+                  ->orderBy('products.name', $dir)
+                  ->select('price_masters.*');
+            },
+            'customer_type' => function ($q, $dir) {
+                $q->join('customer_types', 'price_masters.customer_type_id', '=', 'customer_types.id')
+                  ->orderBy('customer_types.name', $dir)
+                  ->select('price_masters.*');
+            },
+            'created_at' => 'price_masters.created_at',
+        ];
+
+        $sortData = $this->applySorting($query, $request, $allowedSorts, defaultSort: 'product', defaultDirection: 'asc');
+
+        $items = $query->paginate(15)->withQueryString();
 
         return view('masters.price-masters.index', [
             'items' => $items,
             'products' => Product::where('is_active', true)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+            'search' => $request->string('search'),
         ]);
     }
 

@@ -213,6 +213,19 @@
             </div>
         @endif
 
+        @if($can('od.view', 'od.manage', 'payments.view', 'reports.view'))
+            <div x-data="{ open: {{ $is('od.*') ? 'true' : 'false' }} }">
+                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
+                    <span>OD Limit &amp; Interest</span>
+                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                </button>
+                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
+                    <a href="{{ route('od.index') }}" class="{{ $itemClass }} {{ $linkClass(['od.index*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>OD Limit &amp; Interest</span></a>
+                    <a href="{{ route('od.report') }}" class="{{ $itemClass }} {{ $linkClass(['od.report*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>OD Report</span></a>
+                </div>
+            </div>
+        @endif
+
         @if($can('deals.view', 'targets.view', 'schemes.view', 'interest.view'))
             <div x-data="{ open: {{ $is('deals.*', 'expense-types.*', 'targets.*', 'schemes.*', 'interest.*') ? 'true' : 'false' }} }">
                 <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
@@ -283,6 +296,7 @@
                     <a href="{{ route('reports.profit-loss') }}" class="{{ $itemClass }} {{ $linkClass(['reports.profit-loss']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Profit &amp; Loss</span></a>
                     <a href="{{ route('reports.balance-sheet') }}" class="{{ $itemClass }} {{ $linkClass(['reports.balance-sheet']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Balance Sheet</span></a>
                     <a href="{{ route('reports.trial-balance') }}" class="{{ $itemClass }} {{ $linkClass(['reports.trial-balance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Trial Balance</span></a>
+                    <a href="{{ route('reports.od') }}" class="{{ $itemClass }} {{ $linkClass(['reports.od', 'od.report*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>OD Report</span></a>
                 </div>
             </div>
         @endif

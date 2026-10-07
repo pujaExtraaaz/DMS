@@ -4,6 +4,8 @@
 
 @section('content')
     <div
+        id="listing-container"
+        data-dynamic-container
         x-data="orderIndex()"
         x-init="init()"
         @keydown.window="handleShortcut($event)"
@@ -73,7 +75,8 @@
                         id="order-search"
                         type="search"
                         name="q"
-                        value="{{ request('q') }}"
+                        value="{{ request('q', request('search')) }}"
+                        data-dynamic-search
                         placeholder="Order no, customer name or code..."
                         class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
                     >
@@ -86,6 +89,7 @@
 
                     <select
                         name="status"
+                        data-dynamic-filter
                         class="mt-1 block w-full rounded-lg border-gray-300 text-sm"
                     >
                         <option value="">All</option>
@@ -108,6 +112,7 @@
 
                     <select
                         name="salesperson_id"
+                        data-dynamic-filter
                         class="mt-1 block w-full rounded-lg border-gray-300 text-sm"
                     >
                         <option value="">All</option>
@@ -130,6 +135,7 @@
 
                     <select
                         name="area_id"
+                        data-dynamic-filter
                         class="mt-1 block w-full rounded-lg border-gray-300 text-sm"
                     >
                         <option value="">All</option>
@@ -150,29 +156,37 @@
                         Filter
                     </x-ui.button>
 
-                    <x-ui.button
-                        type="button"
-                        variant="secondary"
-                        :href="route('orders.index')"
+                    <a
+                        href="{{ route('orders.index') }}"
+                        data-reset-filters
+                        class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
                     >
                         Reset
-                    </x-ui.button>
+                    </a>
                 </div>
 
                 <div class="md:col-span-2 lg:col-span-6 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <x-ui.input
-                        name="date_from"
-                        label="From"
-                        type="date"
-                        :value="request('date_from')"
-                    />
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">From</label>
+                        <input
+                            name="date_from"
+                            type="date"
+                            data-dynamic-filter
+                            value="{{ request('date_from') }}"
+                            class="mt-1 block w-full rounded-lg border-gray-300 text-sm"
+                        />
+                    </div>
 
-                    <x-ui.input
-                        name="date_to"
-                        label="To"
-                        type="date"
-                        :value="request('date_to')"
-                    />
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">To</label>
+                        <input
+                            name="date_to"
+                            type="date"
+                            data-dynamic-filter
+                            value="{{ request('date_to') }}"
+                            class="mt-1 block w-full rounded-lg border-gray-300 text-sm"
+                        />
+                    </div>
                 </div>
             </form>
 
@@ -251,33 +265,33 @@
                                 >
                             </th>
 
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                            <x-ui.sortable-th column="order_no" :current-sort="request('sort', 'order_date')" :current-direction="request('direction', 'desc')">
                                 Order
-                            </th>
+                            </x-ui.sortable-th>
 
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                            <x-ui.sortable-th column="customer" :current-sort="request('sort', 'order_date')" :current-direction="request('direction', 'desc')">
                                 Customer
-                            </th>
+                            </x-ui.sortable-th>
 
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                            <x-ui.sortable-th column="order_date" :current-sort="request('sort', 'order_date')" :current-direction="request('direction', 'desc')" default-direction="desc">
                                 Date
-                            </th>
+                            </x-ui.sortable-th>
 
                             <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
                                 Salesperson
                             </th>
 
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                            <x-ui.sortable-th column="status" :current-sort="request('sort', 'order_date')" :current-direction="request('direction', 'desc')">
                                 Status
-                            </th>
+                            </x-ui.sortable-th>
 
                             <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
                                 Items
                             </th>
 
-                            <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
+                            <x-ui.sortable-th column="grand_total" :current-sort="request('sort', 'order_date')" :current-direction="request('direction', 'desc')" default-direction="desc" align="right">
                                 Total
-                            </th>
+                            </x-ui.sortable-th>
 
                             <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
                                 Actions

@@ -11,21 +11,46 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class CompanyController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = Company::query()
+        $query = Company::query()
             ->with('businessGroup')
-            ->when($request->filled('search'), fn ($q) => $q->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%');
-            }))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('business_group_id'), fn ($q) => $q->where('business_group_id', $request->business_group_id))
+            ->when($request->filled('status'), function ($q) use ($request) {
+                if ($request->status === 'active') {
+                    $q->where('is_active', true);
+                } elseif ($request->status === 'inactive') {
+                    $q->where('is_active', false);
+                }
+            });
 
-        return view('organization.companies.index', ['items' => $items, 'search' => $request->string('search')]);
+        $this->applySearch($query, $request->input('search'), ['name', 'code', 'gstin', 'email']);
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            ['name', 'code', 'is_active', 'created_at'],
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('organization.companies.index', [
+            'items' => $items,
+            'businessGroups' => BusinessGroup::where('is_active', true)->orderBy('name')->get(),
+            'search' => $request->string('search'),
+            'status' => $request->string('status'),
+            'businessGroupId' => $request->input('business_group_id'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

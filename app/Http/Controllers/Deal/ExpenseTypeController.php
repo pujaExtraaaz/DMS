@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Deal;
 
 use App\Domains\Deal\Models\ExpenseType;
+use App\Support\Traits\SortableAndSearchable;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -10,18 +11,41 @@ use Illuminate\View\View;
 
 class ExpenseTypeController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = ExpenseType::query()
-            ->when($request->filled('search'), fn ($q) => $q->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%');
-            }))
-            ->orderBy('name')
-            ->paginate(20)
-            ->withQueryString();
+        $query = ExpenseType::query();
 
-        return view('expense-types.index', ['items' => $items, 'search' => $request->string('search')]);
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['name', 'code', 'accounting_treatment']
+        );
+
+        $allowedSorts = [
+            'name' => 'name',
+            'code' => 'code',
+            'accounting_treatment' => 'accounting_treatment',
+            'is_active' => 'is_active',
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(20)->withQueryString();
+
+        return view('expense-types.index', [
+            'items' => $items,
+            'filters' => $request->only(['search']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

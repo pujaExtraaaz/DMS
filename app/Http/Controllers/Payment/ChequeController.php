@@ -6,6 +6,7 @@ use App\Domains\Master\Models\Customer;
 use App\Domains\Payment\Models\Cheque;
 use App\Domains\Payment\Services\ChequeService;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -13,22 +14,55 @@ use InvalidArgumentException;
 
 class ChequeController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(protected ChequeService $chequeService) {}
 
     public function index(Request $request): View
     {
-        $items = Cheque::query()
+        $query = Cheque::query()
             ->with(['customer', 'recorder'])
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('purpose'), fn ($q) => $q->where('purpose', $request->purpose))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('purpose'), fn ($q) => $q->where('purpose', $request->purpose));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['cheque_no', 'bank_name', 'branch_name', 'purpose', 'status', 'notes'],
+            ['customer' => ['name']]
+        );
+
+        $allowedSorts = [
+            'cheque_no' => 'cheque_no',
+            'purpose' => 'purpose',
+            'status' => 'status',
+            'amount' => 'amount',
+            'cheque_date' => 'cheque_date',
+            'created_at' => 'created_at',
+            'customer' => function ($q, $dir) {
+                $q->join('customers', 'cheques.customer_id', '=', 'customers.id')
+                  ->orderBy('customers.name', $dir)
+                  ->select('cheques.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'created_at',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
 
         return view('payments.cheques.index', [
             'items' => $items,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'customer_id', 'status', 'purpose']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 

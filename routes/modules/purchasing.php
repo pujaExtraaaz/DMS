@@ -11,6 +11,8 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
     Route::get('orders', [PurchaseOrderController::class, 'index'])->name('orders.index');
     Route::get('orders/create', [PurchaseOrderController::class, 'create'])->name('orders.create');
     Route::post('orders', [PurchaseOrderController::class, 'store'])->name('orders.store');
+    Route::get('orders/{order}/preview', [PurchaseOrderController::class, 'preview'])->name('orders.preview');
+    Route::get('orders/{order}/export/{format}', [PurchaseOrderController::class, 'export'])->name('orders.export');
     Route::get('orders/{order}', [PurchaseOrderController::class, 'show'])->name('orders.show');
     Route::post('orders/{order}/submit', [PurchaseOrderController::class, 'submit'])->name('orders.submit');
     Route::post('orders/{order}/approve', [PurchaseOrderController::class, 'approve'])->name('orders.approve');
@@ -27,6 +29,8 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
 
     Route::get('invoices/{invoice}/preview', [PurchaseInvoiceController::class, 'preview'])
         ->name('invoices.preview');
+    Route::get('invoices/{invoice}/export/{format}', [PurchaseInvoiceController::class, 'export'])
+        ->name('invoices.export');
     
     Route::get('invoices/purchase-order/{order}/data', [PurchaseInvoiceController::class, 'purchaseOrderData'])
         ->name('invoices.purchase-order-data');

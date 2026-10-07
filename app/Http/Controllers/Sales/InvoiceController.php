@@ -27,10 +27,14 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use App\Support\DocumentExporter;
+use App\Support\Traits\SortableAndSearchable;
 use Symfony\Component\HttpFoundation\Response;
 
 class InvoiceController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected InvoiceNumberGenerator $invoiceNumberGenerator,
         protected PriceMasterService $priceMasterService,
@@ -44,21 +48,60 @@ class InvoiceController extends Controller
         protected FinancialYearService $financialYearService,
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
-        $invoices = Invoice::query()
+        $query = Invoice::query()
             ->with(['customer', 'salesperson'])
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('invoice_date', '>=', $request->date_from))
-            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('invoice_date', '<=', $request->date_to))
-            ->latest('invoice_date')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('invoice_date', '<=', $request->date_to));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['invoice_no', 'notes'],
+            ['customer' => ['name', 'code', 'phone']]
+        );
+
+        $allowedSorts = [
+            'invoice_no' => 'invoice_no',
+            'invoice_date' => 'invoice_date',
+            'status' => 'status',
+            'grand_total' => 'grand_total',
+            'created_at' => 'created_at',
+            'customer' => function ($q, $dir) {
+                $q->join('customers', 'invoices.customer_id', '=', 'customers.id')
+                  ->orderBy('customers.name', $dir)
+                  ->select('invoices.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'invoice_date',
+            defaultDirection: 'desc'
+        );
+
+        if ($request->filled('export')) {
+            $exportFormat = strtolower($request->string('export')->toString());
+            if (in_array($exportFormat, ['csv', 'excel', 'xlsx', 'pdf'], true)) {
+                return DocumentExporter::exportSalesInvoicesListing($query->get(), $exportFormat);
+            }
+        }
+
+        $invoices = $query->paginate(15)->withQueryString();
 
         return view('sales.invoices.index', [
             'invoices' => $invoices,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
+            'search' => $request->string('search'),
+            'status' => $request->string('status'),
+            'customerId' => $request->input('customer_id'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 
@@ -336,6 +379,45 @@ class InvoiceController extends Controller
             'invoiceQrDataUri' => $invoiceQrDataUri,
             'upiQrDataUri' => $upiQrDataUri,
         ]);
+    }
+
+    public function preview(Invoice $invoice): View
+    {
+        $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'eInvoice', 'eWayBill']);
+        $company = \App\Domains\Organization\Models\Company::query()->find(auth()->user()?->company_id) ?? \App\Domains\Organization\Models\Company::query()->first();
+
+        $invoiceUrl = route('invoice.qr', [
+            'type' => 'sales',
+            'token' => $invoice->qr_token,
+        ]);
+        $invoiceQrDataUri = QrCodeRenderer::dataUri($invoiceUrl, 180);
+
+        $upiQrDataUri = null;
+        if ($company && filled($company->upi_id)) {
+            $upiUri = QrCodeRenderer::upiIntent(
+                $company->upi_id,
+                $company->name,
+                (float) $invoice->grand_total,
+                'Inv '.$invoice->invoice_no,
+                $invoice->invoice_no
+            );
+            $upiQrDataUri = QrCodeRenderer::dataUri($upiUri, 160);
+        }
+
+        return view('sales.invoices.preview', [
+            'invoice' => $invoice,
+            'company' => $company,
+            'invoiceQrDataUri' => $invoiceQrDataUri,
+            'upiQrDataUri' => $upiQrDataUri,
+        ]);
+    }
+
+    public function export(Invoice $invoice, string $format): Response
+    {
+        $format = strtolower($format);
+        abort_unless(in_array($format, ['pdf', 'xlsx', 'excel', 'csv'], true), 404);
+
+        return DocumentExporter::exportSalesInvoice($invoice, $format);
     }
 
     public function eWayBillDocument(Invoice $invoice): View
