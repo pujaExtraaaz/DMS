@@ -10,6 +10,9 @@ use App\Domains\Master\Models\Uom;
 use App\Domains\Master\Observers\ProductPriceObserver;
 use App\Domains\Master\Services\PriceMasterService;
 use App\Domains\Master\Services\ProductDiscountService;
+use App\Domains\Banking\Models\BankAccountTransaction;
+use App\Domains\Banking\Models\OdAccount;
+use App\Domains\Inventory\Models\StockAdjustment;
 use App\Domains\Order\Models\Order;
 use App\Domains\Order\Services\OrderConversionService;
 use App\Domains\Payment\Models\CreditNote;
@@ -64,6 +67,13 @@ class AppServiceProvider extends ServiceProvider
         \Tally\Models\Invoice::observe($booksSync);
         \Tally\Models\Voucher::observe($booksSync);
         \Tally\Models\PurchaseOrder::observe($booksSync);
+        Order::observe($booksSync);
+        StockAdjustment::observe($booksSync);
+        OdAccount::observe($booksSync);
+        BankAccountTransaction::observe($booksSync);
+        \Tally\Models\SalesOrder::observe($booksSync);
+        \Tally\Models\StockTransaction::observe($booksSync);
+        \Tally\Models\BankAccount::observe($booksSync);
     }
 }
 

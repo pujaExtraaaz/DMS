@@ -21,7 +21,7 @@
 ])
 
 @php
-    use App\Accounting\VoucherType;
+    use Tally\Accounting\VoucherType;
 
     $blank = ['ledger_id' => '', 'debit' => '', 'credit' => '', 'narration' => '', 'reference' => '', 'cost_centre_id' => ''];
     $doubleEntry = in_array($voucher->voucher_type, [VoucherType::Journal, VoucherType::Receipt], true);

@@ -743,7 +743,10 @@ class VoucherController extends Controller
 
     private function typeFromRoute(Request $request): VoucherType
     {
-        return match ($request->route()?->getName()) {
+        $name = $request->route()?->getName() ?? '';
+        $name = str_starts_with($name, 'books.tally.') ? substr($name, strlen('books.tally.')) : $name;
+
+        return match ($name) {
             'vouchers.payment.create', 'vouchers.payment.store' => VoucherType::Payment,
             'vouchers.receipt.create', 'vouchers.receipt.store' => VoucherType::Receipt,
             'vouchers.contra.create', 'vouchers.contra.store' => VoucherType::Contra,

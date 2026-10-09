@@ -100,6 +100,11 @@ final class BooksCompany
         return self::namedLedger($company, 'CASH', 'Cash', 'CASH');
     }
 
+    public static function clearingLedger(Company $company): Ledger
+    {
+        return self::namedLedger($company, 'CURRENT_ASSETS', 'Bank clearing', 'BANK-CLEAR');
+    }
+
     public static function generalGroup(Company $company): ProductGroup
     {
         $group = ProductGroup::query()->firstOrCreate(

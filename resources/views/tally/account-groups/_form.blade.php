@@ -1,5 +1,5 @@
 @php
-    use App\Accounting\AccountNature;
+    use Tally\Accounting\AccountNature;
 @endphp
 <div class="form-grid">
     <x-tally::form.field name="name" label="Name" required>

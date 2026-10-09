@@ -1,5 +1,5 @@
 @php
-    use App\Accounting\OpeningBalanceType;
+    use Tally\Accounting\OpeningBalanceType;
 @endphp
 <div class="form-grid">
     <x-tally::form.field name="name" label="Name" required>

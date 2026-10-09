@@ -11,7 +11,7 @@ class TallyPanel
      */
     public static function buttons(): array
     {
-        $route = request()->route()?->getName() ?? '';
+        $route = self::routeName();
         $current = self::currentKey($route);
 
         if ($route === 'dashboard' && request('screen') !== 'tiles') {
@@ -92,7 +92,7 @@ class TallyPanel
      */
     public static function footer(): array
     {
-        $route = request()->route()?->getName() ?? '';
+        $route = self::routeName();
         $items = [['key' => 'Q', 'label' => 'Quit']];
 
         if (self::isVoucher($route) || self::isMaster($route) || $route === 'companies.features' || $route === 'masters.menu' || $route === 'masters.create-menu') {
@@ -110,6 +110,13 @@ class TallyPanel
     public static function exception(): ?string
     {
         return null;
+    }
+
+    private static function routeName(): string
+    {
+        $route = request()->route()?->getName() ?? '';
+
+        return str_starts_with($route, 'books.tally.') ? substr($route, strlen('books.tally.')) : $route;
     }
 
     private static function isVoucher(string $route): bool

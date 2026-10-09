@@ -6,12 +6,14 @@ use App\Domains\Payment\Models\Payment;
 use App\Domains\Payment\Models\PaymentAllocation;
 use App\Domains\Payment\Services\OutstandingLedgerService;
 use App\Domains\Sales\Models\Invoice;
+use App\Domains\Sync\Handlers\BankTransactionSync;
 use App\Domains\Sync\Support\BooksCompany;
 use App\Domains\Sync\Support\BooksPoster;
 use App\Domains\Sync\Support\SyncFailureLogger;
 use App\Domains\Sync\Support\SyncLinks;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 use Tally\Accounting\VoucherStatus;
 use Tally\Accounting\VoucherType;
 use Tally\Models\Party;
@@ -34,6 +36,14 @@ class PaymentSync
 
         if ($model instanceof Voucher && $model->voucher_type === VoucherType::Receipt) {
             $this->pull($model);
+        }
+
+        if ($model instanceof Voucher) {
+            try {
+                app(BankTransactionSync::class)->sync($model);
+            } catch (Throwable $exception) {
+                SyncFailureLogger::write(BankTransactionSync::KEY, 'books_to_dms', $model, $exception);
+            }
         }
     }
 
@@ -108,6 +118,14 @@ class PaymentSync
 
     public function remove(Model $source): void
     {
+        if ($source instanceof Voucher) {
+            try {
+                app(BankTransactionSync::class)->remove($source);
+            } catch (Throwable $exception) {
+                SyncFailureLogger::write(BankTransactionSync::KEY, 'books_to_dms', $source, $exception);
+            }
+        }
+
         if ($source instanceof Payment) {
             $voucher = Voucher::query()->find(SyncLinks::acctId(self::KEY, $source));
             if (! $voucher) {
