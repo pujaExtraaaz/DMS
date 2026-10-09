@@ -22,6 +22,8 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\SetUserBranchScope::class,
         ]);
 
+        $middleware->trustProxies(at: '*');
+
         $middleware->validateCsrfTokens(except: [
             'api/tally-connector/*',
         ]);

@@ -24,6 +24,10 @@ Route::get('/eway-bill/qr/{token}', [
     'ewayBill',
 ])->name('eway-bill.qr');
 
+Route::get('storage/{path}', [\App\Http\Controllers\StorageFileController::class, 'show'])
+    ->where('path', '.*')
+    ->name('storage.local');
+
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

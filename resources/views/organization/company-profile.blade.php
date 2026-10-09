@@ -107,7 +107,7 @@
                             <input type="file"
                                    name="logo"
                                    x-ref="fileInput"
-                                   accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                   accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
                                    @change="handleFileChange($event)"
                                    class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition cursor-pointer">
 
@@ -242,68 +242,272 @@
             $bankAccounts = old('bank_accounts');
             if (empty($bankAccounts)) {
                 if ($item->exists) {
-                    $primaryBank = [
-                        'bank_name' => $item->bank_name ?? '',
-                        'bank_account_no' => $item->bank_account_no ?? '',
-                        'bank_ifsc' => $item->bank_ifsc ?? '',
-                        'upi_id' => $item->upi_id ?? '',
-                    ];
-                    $additionalBanks = $item->additional_details['bank_accounts'] ?? [];
-                    $bankAccounts = array_merge([$primaryBank], $additionalBanks);
+                    $bankAccounts = $item->bank_accounts;
                 } else {
                     $bankAccounts = [[
                         'bank_name' => '',
                         'bank_account_no' => '',
                         'bank_ifsc' => '',
                         'upi_id' => '',
+                        'od_limit' => 0,
+                        'interest_rate' => 0,
                     ]];
                 }
+            } else {
+                $bankAccounts = array_map(function ($b) {
+                    $b['od_limit'] = isset($b['od_limit']) ? (float) $b['od_limit'] : 0.0;
+                    $b['interest_rate'] = isset($b['interest_rate']) ? (float) $b['interest_rate'] : 0.0;
+                    return $b;
+                }, $bankAccounts);
             }
         @endphp
 
-        <div x-data='{ bankAccounts: @json($bankAccounts) }' class="space-y-4">
-            <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-700">Banking &amp; Payments</h3>
-                <button type="button"
-                        @click='bankAccounts.push({ bank_name: "", bank_account_no: "", bank_ifsc: "", upi_id: "" })'
-                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
-                    + ADD
-                </button>
+        <script>
+            function companyBankAndOdProfile(initialAccounts) {
+                return {
+                    bankAccounts: Array.isArray(initialAccounts) && initialAccounts.length ? initialAccounts : [{
+                        bank_name: '',
+                        bank_account_no: '',
+                        bank_ifsc: '',
+                        upi_id: '',
+                        od_limit: 0,
+                        interest_rate: 0
+                    }],
+                    annualInterest(acc) {
+                        const limit = parseFloat(acc.od_limit) || 0;
+                        const rate = parseFloat(acc.interest_rate) || 0;
+                        return (limit * rate) / 100;
+                    },
+                    monthlyInterest(acc) {
+                        return this.annualInterest(acc) / 12;
+                    },
+                    formatInr(val) {
+                        const num = parseFloat(val) || 0;
+                        return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    },
+                    maskAccount(accNo) {
+                        if (!accNo) return '—';
+                        const str = String(accNo).trim();
+                        if (str.length <= 4) return str;
+                        return '•••• •••• ' + str.slice(-4);
+                    },
+                    addAccount() {
+                        this.bankAccounts.push({
+                            bank_name: '',
+                            bank_account_no: '',
+                            bank_ifsc: '',
+                            upi_id: '',
+                            od_limit: 0,
+                            interest_rate: 0
+                        });
+                    },
+                    removeAccount(index) {
+                        if (this.bankAccounts.length > 1) {
+                            this.bankAccounts.splice(index, 1);
+                        }
+                    }
+                };
+            }
+            if (window.Alpine) {
+                window.Alpine.data('companyBankAndOdProfile', companyBankAndOdProfile);
+            } else {
+                document.addEventListener('alpine:init', () => {
+                    window.Alpine.data('companyBankAndOdProfile', companyBankAndOdProfile);
+                });
+            }
+        </script>
+
+        <div x-data="companyBankAndOdProfile({{ Illuminate\Support\Js::from($bankAccounts) }})" class="space-y-6">
+            {{-- Banking & Payments Section --}}
+            <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-semibold text-slate-700">Banking &amp; Payments</h3>
+                    <button type="button"
+                            @click="addAccount()"
+                            class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
+                        + ADD
+                    </button>
+                </div>
+
+                <div class="space-y-4">
+                    <template x-for="(account, index) in bankAccounts" :key="index">
+                        <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Bank Account #${index + 1}`"></span>
+                                <button type="button"
+                                        x-show="bankAccounts.length > 1"
+                                        @click="removeAccount(index)"
+                                        class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
+                                    Remove
+                                </button>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Bank Name</label>
+                                    <input type="text" :name="`bank_accounts[${index}][bank_name]`" x-model="account.bank_name" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">Bank Account No</label>
+                                    <input type="text" :name="`bank_accounts[${index}][bank_account_no]`" x-model="account.bank_account_no" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">IFSC</label>
+                                    <input type="text" :name="`bank_accounts[${index}][bank_ifsc]`" x-model="account.bank_ifsc" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-700 mb-1">UPI ID (for invoice QR)</label>
+                                    <input type="text" :name="`bank_accounts[${index}][upi_id]`" x-model="account.upi_id" placeholder="business@bank" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
             </div>
 
-            <div class="space-y-4">
+            {{-- OD Limit & Interest Section --}}
+            <div class="space-y-4 pt-2 border-t border-slate-200">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-700">OD Limit &amp; Interest</h3>
+                        <p class="text-xs text-slate-500">Configure overdraft limits and annual interest rates directly for each of your bank accounts.</p>
+                    </div>
+                </div>
+
+                {{-- Message when no bank accounts are present --}}
+                <template x-if="bankAccounts.length === 0">
+                    <div class="rounded-xl border border-dashed border-amber-300 bg-amber-50/70 p-6 text-center space-y-2">
+                        <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-700 font-bold text-lg">
+                            ₹
+                        </div>
+                        <h4 class="text-sm font-semibold text-amber-900">No Bank Account Configured</h4>
+                        <p class="text-xs text-amber-800 max-w-md mx-auto">
+                            Please add at least one bank account under the <strong>Banking &amp; Payments</strong> section above before configuring OD settings.
+                        </p>
+                    </div>
+                </template>
+
+                {{-- Direct per-bank-account OD configuration cards --}}
                 <template x-for="(account, index) in bankAccounts" :key="index">
-                    <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Bank Account #${index + 1}`"></span>
-                            <button type="button"
-                                    x-show="bankAccounts.length > 1"
-                                    @click="bankAccounts.splice(index, 1)"
-                                    class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
-                                Remove
-                            </button>
+                    <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
+                        {{-- Read-only Bank Header --}}
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                            <div class="flex items-center gap-2.5">
+                                <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-white text-xs font-bold shrink-0" x-text="index + 1"></span>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Bank Name:</span>
+                                        <span class="text-sm font-bold text-slate-800" x-text="account.bank_name ? account.bank_name : 'Bank Account #' + (index + 1)"></span>
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 mt-0.5">
+                                        <span>A/C No: <span class="font-mono font-medium text-slate-900" x-text="maskAccount(account.bank_account_no)"></span></span>
+                                        <template x-if="account.bank_ifsc">
+                                            <span class="text-slate-400">&bull; <span class="text-slate-600">IFSC: <span class="font-mono text-slate-900" x-text="account.bank_ifsc"></span></span></span>
+                                        </template>
+                                        <template x-if="account.upi_id">
+                                            <span class="text-slate-400">&bull; <span class="text-slate-600">UPI: <span class="font-mono text-slate-900" x-text="account.upi_id"></span></span></span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                            <template x-if="parseFloat(account.od_limit) > 0">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 self-start sm:self-auto">
+                                    OD Facility Active
+                                </span>
+                            </template>
                         </div>
 
+                        {{-- Editable OD Limit & Interest Rate Inputs --}}
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Bank Name</label>
-                                <input type="text" :name="`bank_accounts[${index}][bank_name]`" x-model="account.bank_name" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <label class="block text-xs font-medium text-slate-700 mb-1">
+                                    OD Limit (₹)
+                                </label>
+                                <div class="relative rounded-lg shadow-sm">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                        <span class="text-slate-500 sm:text-sm">₹</span>
+                                    </div>
+                                    <input type="number"
+                                           step="0.01"
+                                           min="0"
+                                           :name="`bank_accounts[${index}][od_limit]`"
+                                           x-model.number="account.od_limit"
+                                           placeholder="0.00"
+                                           class="block w-full rounded-lg border-gray-300 pl-7 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                                </div>
+                                <p class="mt-1 text-[11px] text-slate-500">Approved overdraft limit for this account (no negative values).</p>
                             </div>
+
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Bank Account No</label>
-                                <input type="text" :name="`bank_accounts[${index}][bank_account_no]`" x-model="account.bank_account_no" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <label class="block text-xs font-medium text-slate-700 mb-1">
+                                    Interest Rate (% per annum)
+                                </label>
+                                <div class="relative rounded-lg shadow-sm">
+                                    <input type="number"
+                                           step="0.01"
+                                           min="0"
+                                           max="100"
+                                           :name="`bank_accounts[${index}][interest_rate]`"
+                                           x-model.number="account.interest_rate"
+                                           placeholder="e.g. 10.50"
+                                           class="block w-full rounded-lg border-gray-300 pr-8 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                        <span class="text-slate-500 sm:text-sm">%</span>
+                                    </div>
+                                </div>
+                                <p class="mt-1 text-[11px] text-slate-500">Annual interest rate applicable (0.00% to 100.00%).</p>
                             </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">IFSC</label>
-                                <input type="text" :name="`bank_accounts[${index}][bank_ifsc]`" x-model="account.bank_ifsc" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+
+                        {{-- Interest Calculation Card for this account --}}
+                        <div class="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 via-white to-slate-50 p-4 space-y-3">
+                            <div class="flex items-center justify-between border-b border-indigo-100/70 pb-2">
+                                <div class="flex items-center gap-2">
+                                    <div class="flex h-5 w-5 items-center justify-center rounded bg-indigo-600 text-white text-xs font-bold">
+                                        ₹
+                                    </div>
+                                    <span class="text-xs font-bold uppercase tracking-wider text-indigo-900">Interest Calculation</span>
+                                </div>
+                                <span class="text-xs text-slate-600 font-medium" x-text="`${account.bank_name || 'Bank'} (${maskAccount(account.bank_account_no)})`"></span>
                             </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">UPI ID (for invoice QR)</label>
-                                <input type="text" :name="`bank_accounts[${index}][upi_id]`" x-model="account.upi_id" placeholder="business@bank" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div class="rounded-lg bg-white p-3 border border-slate-200 shadow-xs">
+                                    <p class="text-[11px] font-medium text-slate-500 uppercase tracking-wider">OD Limit</p>
+                                    <p class="text-base font-bold text-slate-900 mt-0.5" x-text="formatInr(account.od_limit)"></p>
+                                </div>
+
+                                <div class="rounded-lg bg-white p-3 border border-slate-200 shadow-xs">
+                                    <p class="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Interest Rate</p>
+                                    <p class="text-base font-bold text-indigo-600 mt-0.5" x-text="`${(parseFloat(account.interest_rate) || 0).toFixed(2)}% p.a.`"></p>
+                                </div>
+
+                                <div class="rounded-lg bg-white p-3 border border-indigo-200 shadow-xs">
+                                    <p class="text-[11px] font-medium text-indigo-600 uppercase tracking-wider">Estimated Annual Interest</p>
+                                    <p class="text-base font-bold text-indigo-700 mt-0.5" x-text="formatInr(annualInterest(account))"></p>
+                                </div>
+
+                                <div class="rounded-lg bg-white p-3 border border-indigo-200 shadow-xs">
+                                    <p class="text-[11px] font-medium text-indigo-600 uppercase tracking-wider">Estimated Monthly Interest</p>
+                                    <p class="text-base font-bold text-indigo-700 mt-0.5" x-text="formatInr(monthlyInterest(account))"></p>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </template>
+
+                {{-- Important note once at the bottom of the section --}}
+                <div class="rounded-lg bg-amber-50 border border-amber-200/80 p-3 text-[11px] text-amber-800 flex items-start gap-2">
+                    <svg class="h-4 w-4 shrink-0 text-amber-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                        <p class="font-semibold text-amber-900">Important Note on Estimates</p>
+                        <p class="mt-0.5 text-amber-800/90 leading-relaxed">
+                            These figures are estimates based on the full OD limit being used throughout the period. Actual interest must be calculated using the outstanding OD balance and the bank's applicable interest calculation rules.
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
 

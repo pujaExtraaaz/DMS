@@ -367,4 +367,156 @@ class OdLimitAndInterestTest extends TestCase
             'interest_rate' => 12,
         ]);
     }
+
+    public function test_od_report_shows_account_dropdown_with_account_numbers_and_summary_metrics(): void
+    {
+        OdAccount::create([
+            'company_id' => $this->companyA->id,
+            'account_number' => '1234567890',
+            'bank_name' => 'HDFC Bank',
+            'od_limit' => 1000000.00,
+            'interest_rate' => 12.00,
+            'effective_from' => '2026-10-01',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->user)->get(route('reports.od', ['account_number' => '1234567890']));
+        $response->assertStatus(200);
+
+        // Exactly one dropdown for Bank Account No.
+        $response->assertSee('Bank Account No.');
+        $response->assertSee('1234567890 (HDFC Bank)');
+        $response->assertSee('9876543210 (ICICI Bank)');
+
+        // Extra filter controls must NOT be present
+        $response->assertDontSee('From Date');
+        $response->assertDontSee('To Date');
+        $response->assertDontSee('Search / Apply Filters');
+        $response->assertDontSee('Quick Periods:');
+
+        // Summary panel shows configured OD limit, rate, and estimated interest
+        $response->assertSee('Configured OD Limit');
+        $response->assertSee('1,000,000.00');
+        $response->assertSee('12.00% p.a.');
+        $response->assertSee('Estimated Annual Interest');
+        $response->assertSee('120,000.00');
+        $response->assertSee('Estimated Monthly Interest');
+        $response->assertSee('10,000.00');
+    }
+
+    public function test_od_report_shows_empty_state_when_no_account_selected(): void
+    {
+        $response = $this->actingAs($this->user)->get(route('reports.od'));
+        $response->assertStatus(200);
+
+        $response->assertSee('Please Select a Bank Account');
+        $response->assertDontSee('Total Transactions:');
+    }
+
+    public function test_od_report_shows_no_transactions_message_for_empty_account(): void
+    {
+        OdAccount::create([
+            'company_id' => $this->companyA->id,
+            'account_number' => '1234567890',
+            'bank_name' => 'HDFC Bank',
+            'od_limit' => 1000000.00,
+            'interest_rate' => 12.00,
+            'effective_from' => '2026-10-01',
+            'status' => 'active',
+        ]);
+
+        // Account has no transactions
+        $response = $this->actingAs($this->user)->get(route('reports.od', ['account_number' => '1234567890']));
+        $response->assertStatus(200);
+
+        // Account summary is still displayed
+        $response->assertSee('Configured OD Limit');
+        $response->assertSee('1,000,000.00');
+
+        // Helpful empty transactions message
+        $response->assertSee('No transactions found for this account');
+    }
+
+    public function test_od_report_shows_clear_message_when_account_has_no_od_configuration(): void
+    {
+        // Account 9876543210 has no OD configured
+        $response = $this->actingAs($this->user)->get(route('reports.od', ['account_number' => '9876543210']));
+        $response->assertStatus(200);
+
+        $response->assertSee('No OD Configuration Found for this Bank Account');
+        $response->assertSee('NO OD CONFIGURED');
+        $response->assertDontSee('Estimated Annual Interest');
+    }
+
+    public function test_od_report_orders_transactions_newest_first_with_required_columns(): void
+    {
+        $odAccount = OdAccount::create([
+            'company_id' => $this->companyA->id,
+            'account_number' => '1234567890',
+            'bank_name' => 'HDFC Bank',
+            'od_limit' => 1000000.00,
+            'interest_rate' => 12.00,
+            'effective_from' => '2026-10-01',
+            'status' => 'active',
+        ]);
+
+        BankAccountTransaction::create([
+            'company_id' => $this->companyA->id,
+            'account_number' => '1234567890',
+            'transaction_date' => '2026-10-01',
+            'transaction_no' => 'TXN-OCT-01',
+            'description' => 'Supplier payment 1',
+            'transaction_type' => 'withdrawal',
+            'debit' => 500000.00,
+            'credit' => 0.00,
+        ]);
+
+        BankAccountTransaction::create([
+            'company_id' => $this->companyA->id,
+            'account_number' => '1234567890',
+            'transaction_date' => '2026-10-03',
+            'transaction_no' => 'TXN-OCT-03',
+            'description' => 'Client deposit',
+            'transaction_type' => 'deposit',
+            'debit' => 0.00,
+            'credit' => 200000.00,
+        ]);
+
+        $response = $this->actingAs($this->user)->get(route('reports.od', ['account_number' => '1234567890']));
+        $response->assertStatus(200);
+
+        // Required table headers
+        $response->assertSee('Sr. No.');
+        $response->assertSee('Transaction Date');
+        $response->assertSee('Voucher / Reference Number');
+        $response->assertSee('Transaction Type');
+        $response->assertSee('Particulars / Description');
+        $response->assertSee('Debit (₹)');
+        $response->assertSee('Credit (₹)');
+        $response->assertSee('Running Balance (₹)');
+        $response->assertSee('OD Limit (₹)');
+        $response->assertSee('Available OD Limit (₹)');
+
+        // Newest transaction (TXN-OCT-03) appears before older transaction (TXN-OCT-01) in HTML
+        $content = $response->getContent();
+        $posOct03 = strpos($content, 'TXN-OCT-03');
+        $posOct01 = strpos($content, 'TXN-OCT-01');
+        $this->assertNotFalse($posOct03);
+        $this->assertNotFalse($posOct01);
+        $this->assertTrue($posOct03 < $posOct01, 'TXN-OCT-03 must appear before TXN-OCT-01 (newest first)');
+    }
+
+    public function test_od_report_tenant_isolation_prevents_viewing_other_company_account(): void
+    {
+        // Company B account 5555666677 belongs to Company B
+        // User belongs to Company A
+        $response = $this->actingAs($this->user)->get(route('reports.od', [
+            'account_number' => '5555666677',
+        ]));
+        $response->assertStatus(200);
+
+        // Must NOT expose Company B's bank account or name
+        $response->assertDontSee('5555666677');
+        $response->assertDontSee('SBI Bank');
+    }
 }

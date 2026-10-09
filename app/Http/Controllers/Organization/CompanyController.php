@@ -132,20 +132,44 @@ class CompanyController extends Controller
             'logo' => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,svg', 'max:2048'],
             'remove_logo' => 'nullable|boolean',
             'is_active' => 'boolean',
+        ], [
+            'logo.file' => 'The uploaded logo must be a valid file.',
+            'logo.mimes' => 'The company logo must be a file of type: PNG, JPG, JPEG, WEBP, or SVG.',
+            'logo.max' => 'The company logo size must not exceed 2 MB.',
         ]);
         $data['is_active'] = $request->boolean('is_active');
         $data['due_date_basis'] = $data['due_date_basis'] ?? ($company?->due_date_basis ?? 'invoice_date');
         $data['msme_category'] = $data['msme_category'] ?? 'none';
 
         if ($request->hasFile('logo')) {
-            $path = $request->file('logo')->store('companies/logos', 'public');
-            if ($company?->logo_path && Storage::disk('public')->exists($company->logo_path)) {
-                Storage::disk('public')->delete($company->logo_path);
+            $file = $request->file('logo');
+            Storage::disk('public')->makeDirectory('companies/logos');
+            $path = $file->store('companies/logos', 'public');
+
+            if ($path === false) {
+                \Illuminate\Support\Facades\Log::error('Failed to store company logo to public disk', [
+                    'company_id' => $company?->id ?? null,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+
+                return back()->withInput()->withErrors([
+                    'logo' => 'Failed to save the uploaded logo to server storage. Please check disk permissions.',
+                ]);
+            }
+
+            if ($company?->logo_path && $company->logo_path !== $path) {
+                $oldClean = $company->getCleanLogoPath();
+                if ($oldClean && Storage::disk('public')->exists($oldClean)) {
+                    Storage::disk('public')->delete($oldClean);
+                }
             }
             $data['logo_path'] = $path;
         } elseif ($request->boolean('remove_logo')) {
-            if ($company?->logo_path && Storage::disk('public')->exists($company->logo_path)) {
-                Storage::disk('public')->delete($company->logo_path);
+            if ($company?->logo_path) {
+                $oldClean = $company->getCleanLogoPath();
+                if ($oldClean && Storage::disk('public')->exists($oldClean)) {
+                    Storage::disk('public')->delete($oldClean);
+                }
             }
             $data['logo_path'] = null;
         }

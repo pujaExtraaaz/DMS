@@ -61,7 +61,7 @@
     <table class="summary-box">
         <tr>
             <td>
-                <div class="summary-label">Approved OD Limit</div>
+                <div class="summary-label">Configured OD Limit</div>
                 <div class="summary-val">₹{{ number_format($report['odLimit'], 2) }}</div>
             </td>
             <td>
@@ -69,21 +69,23 @@
                 <div class="summary-val">{{ number_format($report['interestRate'], 2) }}% p.a.</div>
             </td>
             <td>
-                <div class="summary-label">Current OD Utilized</div>
+                <div class="summary-label">Est. Annual Interest</div>
+                <div class="summary-val">₹{{ number_format($report['estimatedAnnualInterest'] ?? 0, 2) }}</div>
+            </td>
+            <td>
+                <div class="summary-label">Est. Monthly Interest</div>
+                <div class="summary-val">₹{{ number_format($report['estimatedMonthlyInterest'] ?? 0, 2) }}</div>
+            </td>
+            <td>
+                <div class="summary-label">Current Running Balance</div>
                 <div class="summary-val {{ $report['isExceeded'] ? 'text-exceeded' : '' }}">
                     ₹{{ number_format($report['currentUtilized'], 2) }}
                 </div>
             </td>
             <td>
-                <div class="summary-label">Available OD</div>
+                <div class="summary-label">Available OD Limit</div>
                 <div class="summary-val" style="color: #059669;">
                     ₹{{ number_format($report['availableOd'], 2) }}
-                </div>
-            </td>
-            <td>
-                <div class="summary-label">Utilization %</div>
-                <div class="summary-val {{ $report['isExceeded'] ? 'text-exceeded' : '' }}">
-                    {{ number_format($report['utilizationPct'], 1) }}%
                 </div>
             </td>
             <td>
@@ -96,51 +98,54 @@
     </table>
 
     <!-- Transaction Table -->
+    @php
+        $pdfRows = !empty($report['displayRows']) && $report['displayRows']->isNotEmpty() ? $report['displayRows'] : $report['rows'];
+    @endphp
     <table class="data-table">
         <thead>
             <tr>
+                <th style="width: 25px;" class="text-center">Sr.</th>
                 <th style="width: 55px;">Date</th>
-                <th style="width: 80px;">Transaction No</th>
+                <th style="width: 75px;">Voucher / Ref No</th>
                 <th>Particulars / Description</th>
-                <th style="width: 60px;">Type</th>
-                <th class="text-right" style="width: 65px;">Debit (Dr)</th>
-                <th class="text-right" style="width: 65px;">Credit (Cr)</th>
-                <th class="text-right" style="width: 70px;">OD Utilized</th>
-                <th class="text-right" style="width: 70px;">Available OD</th>
-                <th class="text-center" style="width: 40px;">Rate</th>
+                <th style="width: 55px;">Type</th>
+                <th class="text-right" style="width: 60px;">Debit (₹)</th>
+                <th class="text-right" style="width: 60px;">Credit (₹)</th>
+                <th class="text-right" style="width: 65px;">Running Bal.</th>
+                <th class="text-right" style="width: 65px;">Available OD</th>
                 <th class="text-center" style="width: 30px;">Days</th>
-                <th class="text-right" style="width: 55px;">Daily Int.</th>
-                <th class="text-right" style="width: 65px;">Cumul. Int.</th>
+                <th class="text-right" style="width: 50px;">Daily Int.</th>
+                <th class="text-right" style="width: 55px;">Cumul. Int.</th>
             </tr>
         </thead>
         <tbody>
-            @foreach($report['rows'] as $row)
-                <tr class="{{ $row['is_opening'] ? 'opening' : '' }}">
+            @foreach($pdfRows as $idx => $row)
+                <tr class="{{ ($row['is_opening'] ?? false) ? 'opening' : '' }}">
+                    <td class="text-center">{{ $row['sr_no'] ?? ($idx + 1) }}</td>
                     <td>{{ $row['date'] instanceof \Carbon\Carbon ? $row['date']->format('d/m/Y') : $row['date'] }}</td>
                     <td>{{ $row['transaction_no'] }}</td>
                     <td>{{ $row['description'] }}</td>
                     <td>{{ ucfirst(str_replace('_', ' ', $row['transaction_type'])) }}</td>
                     <td class="text-right">{{ $row['debit'] > 0 ? number_format($row['debit'], 2) : '-' }}</td>
                     <td class="text-right">{{ $row['credit'] > 0 ? number_format($row['credit'], 2) : '-' }}</td>
-                    <td class="text-right {{ $row['is_exceeded'] ? 'text-exceeded' : '' }}">
-                        {{ number_format($row['od_utilized'], 2) }}
+                    <td class="text-right {{ ($row['is_exceeded'] ?? false) ? 'text-exceeded' : '' }}">
+                        {{ number_format($row['running_balance'] ?? $row['od_utilized'], 2) }}
                     </td>
                     <td class="text-right">{{ number_format($row['available_od'], 2) }}</td>
-                    <td class="text-center">{{ number_format($row['interest_rate'], 2) }}%</td>
-                    <td class="text-center">{{ $row['days'] }}</td>
-                    <td class="text-right">{{ number_format($row['daily_interest'], 2) }}</td>
-                    <td class="text-right" style="font-weight: bold;">{{ number_format($row['cumulative_interest'], 2) }}</td>
+                    <td class="text-center">{{ $row['days'] ?? 0 }}</td>
+                    <td class="text-right">{{ number_format($row['daily_interest'] ?? 0, 2) }}</td>
+                    <td class="text-right" style="font-weight: bold;">{{ number_format($row['cumulative_interest'] ?? 0, 2) }}</td>
                 </tr>
             @endforeach
         </tbody>
         <tfoot>
             <tr class="totals">
-                <td colspan="4" class="text-right">TOTALS / CLOSING:</td>
+                <td colspan="5" class="text-right">TOTALS / CLOSING:</td>
                 <td class="text-right">{{ number_format($report['totalDebit'], 2) }}</td>
                 <td class="text-right">{{ number_format($report['totalCredit'], 2) }}</td>
                 <td class="text-right">{{ number_format($report['currentUtilized'], 2) }}</td>
                 <td class="text-right">{{ number_format($report['availableOd'], 2) }}</td>
-                <td colspan="3" class="text-right">PERIOD INTEREST:</td>
+                <td colspan="2" class="text-right">PERIOD INTEREST:</td>
                 <td class="text-right" style="font-size: 9px; color: #312e81;">₹{{ number_format($report['totalPeriodInterest'], 2) }}</td>
             </tr>
         </tfoot>

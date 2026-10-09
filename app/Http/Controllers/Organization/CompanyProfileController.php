@@ -67,16 +67,24 @@ class CompanyProfileController extends Controller
             'bank_accounts.*.bank_account_no' => 'nullable|string|max:50',
             'bank_accounts.*.bank_ifsc' => 'nullable|string|max:20',
             'bank_accounts.*.upi_id' => 'nullable|string|max:100',
+            'bank_accounts.*.od_limit' => 'nullable|numeric|min:0',
+            'bank_accounts.*.interest_rate' => 'nullable|numeric|min:0|max:100',
             'bank_name' => 'nullable|string|max:255',
             'bank_account_no' => 'nullable|string|max:50',
             'bank_ifsc' => 'nullable|string|max:20',
             'upi_id' => 'nullable|string|max:100',
+            'od_limit' => 'nullable|numeric|min:0',
+            'interest_rate' => 'nullable|numeric|min:0|max:100',
             'purchase_terms_and_conditions' => 'nullable|string',
             'selling_terms_and_conditions' => 'nullable|string',
             'due_date_basis' => 'nullable|in:invoice_date,inward_date',
             'logo' => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,svg', 'max:2048'],
             'remove_logo' => 'nullable|boolean',
             'is_active' => 'boolean',
+        ], [
+            'logo.file' => 'The uploaded logo must be a valid file.',
+            'logo.mimes' => 'The company logo must be a file of type: PNG, JPG, JPEG, WEBP, or SVG.',
+            'logo.max' => 'The company logo size must not exceed 2 MB.',
         ]);
 
         $data['is_active'] = $request->boolean('is_active', true);
@@ -84,14 +92,34 @@ class CompanyProfileController extends Controller
         $data['msme_category'] = $data['msme_category'] ?? 'none';
 
         if ($request->hasFile('logo')) {
-            $path = $request->file('logo')->store('companies/logos', 'public');
-            if ($company->logo_path && Storage::disk('public')->exists($company->logo_path)) {
-                Storage::disk('public')->delete($company->logo_path);
+            $file = $request->file('logo');
+            Storage::disk('public')->makeDirectory('companies/logos');
+            $path = $file->store('companies/logos', 'public');
+
+            if ($path === false) {
+                \Illuminate\Support\Facades\Log::error('Failed to store company logo to public disk', [
+                    'company_id' => $company->id ?? null,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+
+                return back()->withInput()->withErrors([
+                    'logo' => 'Failed to save the uploaded logo to server storage. Please check disk permissions.',
+                ]);
+            }
+
+            if ($company->logo_path && $company->logo_path !== $path) {
+                $oldClean = $company->getCleanLogoPath();
+                if ($oldClean && Storage::disk('public')->exists($oldClean)) {
+                    Storage::disk('public')->delete($oldClean);
+                }
             }
             $data['logo_path'] = $path;
         } elseif ($request->boolean('remove_logo')) {
-            if ($company->logo_path && Storage::disk('public')->exists($company->logo_path)) {
-                Storage::disk('public')->delete($company->logo_path);
+            if ($company->logo_path) {
+                $oldClean = $company->getCleanLogoPath();
+                if ($oldClean && Storage::disk('public')->exists($oldClean)) {
+                    Storage::disk('public')->delete($oldClean);
+                }
             }
             $data['logo_path'] = null;
         }
@@ -132,6 +160,12 @@ class CompanyProfileController extends Controller
             $data['bank_account_no'] = $primaryBank['bank_account_no'] ?? null;
             $data['bank_ifsc'] = $primaryBank['bank_ifsc'] ?? null;
             $data['upi_id'] = $primaryBank['upi_id'] ?? null;
+            $data['od_limit'] = isset($primaryBank['od_limit']) && is_numeric($primaryBank['od_limit'])
+                ? max(0, (float) $primaryBank['od_limit'])
+                : (isset($data['od_limit']) ? (float) $data['od_limit'] : 0.0);
+            $data['interest_rate'] = isset($primaryBank['interest_rate']) && is_numeric($primaryBank['interest_rate'])
+                ? max(0, min(100, (float) $primaryBank['interest_rate']))
+                : (isset($data['interest_rate']) ? (float) $data['interest_rate'] : 0.0);
 
             $additionalDetails['bank_accounts'] = $bankAccounts->slice(1)->values()->all();
         }
@@ -149,6 +183,44 @@ class CompanyProfileController extends Controller
             }
         }
 
+        // Synchronize OD configurations per bank account with OdAccount model
+        foreach ($bankAccounts as $bank) {
+            $accNo = trim((string) ($bank['bank_account_no'] ?? ''));
+            if (empty($accNo)) {
+                continue;
+            }
+
+            $odLimit = isset($bank['od_limit']) && is_numeric($bank['od_limit'])
+                ? max(0, (float) $bank['od_limit'])
+                : 0.0;
+            $interestRate = isset($bank['interest_rate']) && is_numeric($bank['interest_rate'])
+                ? max(0, min(100, (float) $bank['interest_rate']))
+                : 0.0;
+
+            $existingOd = \App\Domains\Banking\Models\OdAccount::where('company_id', $company->id)
+                ->where('account_number', $accNo)
+                ->first();
+
+            if ($existingOd || $odLimit > 0 || $interestRate > 0) {
+                \App\Domains\Banking\Models\OdAccount::updateOrCreate(
+                    [
+                        'company_id' => $company->id,
+                        'account_number' => $accNo,
+                    ],
+                    [
+                        'bank_name' => $bank['bank_name'] ?? ($existingOd->bank_name ?? 'Bank Account'),
+                        'ifsc_code' => $bank['bank_ifsc'] ?? ($existingOd->ifsc_code ?? null),
+                        'od_limit' => $odLimit,
+                        'interest_rate' => $interestRate,
+                        'interest_calculation_method' => $existingOd->interest_calculation_method ?? 'daily_simple',
+                        'effective_from' => $existingOd->effective_from ?? now()->startOfMonth()->toDateString(),
+                        'status' => 'active',
+                        'updated_by' => $user?->id,
+                    ]
+                );
+            }
+        }
+
         return $this->flashSuccess('Company profile updated successfully.', 'organization.company-profile');
     }
 
@@ -157,10 +229,20 @@ class CompanyProfileController extends Controller
         $user = $request->user();
         $company = Company::find($user?->company_id) ?? Company::first();
 
-        if (! $company || ! $company->logo_path || ! Storage::disk('public')->exists($company->logo_path)) {
+        $cleanPath = $company?->getCleanLogoPath();
+
+        if (! $company || ! $cleanPath || ! Storage::disk('public')->exists($cleanPath)) {
             abort(404);
         }
 
-        return Storage::disk('public')->response($company->logo_path);
+        $extension = strtolower(pathinfo($cleanPath, PATHINFO_EXTENSION));
+        $headers = [
+            'Cache-Control' => 'public, max-age=86400, must-revalidate',
+        ];
+        if ($extension === 'svg') {
+            $headers['Content-Type'] = 'image/svg+xml';
+        }
+
+        return Storage::disk('public')->response($cleanPath, null, $headers);
     }
 }
