@@ -108,10 +108,11 @@ class LeadCreationTest extends TestCase
         $this->assertDatabaseCount('leads', 0);
     }
 
-    public function test_duplicate_contact_produces_warning_on_creation(): void
+    public function test_duplicate_contact_blocks_creation_with_validation_error(): void
     {
         $user = $this->makeUser();
         Lead::create([
+            'company_id' => $user->company_id,
             'name' => 'Existing Customer Lead',
             'mobile' => '9988776655',
             'status' => 'new',
@@ -125,8 +126,10 @@ class LeadCreationTest extends TestCase
             'status' => 'new',
         ]);
 
-        $response->assertSessionHas('warning');
-        $this->assertDatabaseCount('leads', 2);
+        $response->assertSessionHasErrors([
+            'mobile' => 'This mobile/contact number is already registered with another lead.',
+        ]);
+        $this->assertDatabaseCount('leads', 1);
     }
 
     public function test_unauthorized_user_cannot_access_lead_creation(): void

@@ -14,7 +14,7 @@
     @csrf
 
     <x-ui.card>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <div>
                 <div class="flex items-center justify-between mb-1">
                     <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Supplier *</label>
@@ -27,7 +27,7 @@
                         class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     <option value="">Select supplier</option>
                     @foreach($suppliers as $s)
-                        <option value="{{ $s->id }}" @selected(old('supplier_id', $order?->supplier_id)==$s->id)>{{ $s->name }}</option>
+                        <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', $order?->supplier_id)==$s->id)>{{ $s->name }}</option>
                     @endforeach
                 </select>
             </div>
@@ -45,7 +45,7 @@
 
             <div>
                 <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Invoice Date *</label>
-                <input type="date" name="invoice_date" value="{{ old('invoice_date', date('Y-m-d')) }}" required
+                <input type="date" name="invoice_date" x-model="invoiceDate" @change="recalcDueDate()" @input="recalcDueDate()" value="{{ old('invoice_date', date('Y-m-d')) }}" required
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
             </div>
 
@@ -56,9 +56,43 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Credit Days</label>
-                <input type="number" name="credit_days" min="0" placeholder="0" value="{{ old('credit_days', 0) }}"
+                <div class="flex items-center justify-between mb-1">
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Credit Days</label>
+                    <span class="text-xs text-slate-500" x-show="dueDatePreview">
+                        Due: <span class="font-semibold text-indigo-600" x-text="dueDatePreview"></span>
+                    </span>
+                </div>
+                <input type="number" name="credit_days" min="0" placeholder="0"
+                       x-model.number="creditDays"
+                       @input="recalcDueDate()"
+                       value="{{ old('credit_days', $order?->credit_days ?? 0) }}"
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <input type="hidden" name="due_date" :value="dueDateFormattedYmd">
+
+                <div class="flex items-center gap-1.5 mt-2">
+                    <span class="text-[11px] font-medium text-slate-400">Quick:</span>
+                    <button type="button"
+                            @click="setCreditDays(30)"
+                            :class="creditDays === 30 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'"
+                            class="px-2 py-0.5 text-xs font-medium rounded border transition-colors">
+                        30 Days
+                    </button>
+                    <button type="button"
+                            @click="setCreditDays(45)"
+                            :class="creditDays === 45 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'"
+                            class="px-2 py-0.5 text-xs font-medium rounded border transition-colors">
+                        45 Days
+                    </button>
+                    <button type="button"
+                            @click="setCreditDays(50)"
+                            :class="creditDays === 50 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'"
+                            class="px-2 py-0.5 text-xs font-medium rounded border transition-colors">
+                        50 Days
+                    </button>
+                </div>
+                <p class="mt-1 text-[11px] text-slate-500" x-show="dueDatePreview">
+                    Due Date Preview: <strong class="text-slate-700" x-text="dueDatePreview"></strong>
+                </p>
             </div>
         </div>
 
@@ -145,7 +179,6 @@
                         <th class="p-3 w-24">Total Tax %</th>
                         <th class="p-3 w-28">Batch</th>
                         <th class="p-3 w-28">Batch MRP</th>
-                        <th class="p-3 w-28">Batch Selling Price</th>
                         <th class="p-3 w-32 text-right">Line Total</th>
                         <th class="p-3 w-10"></th>
                     </tr>
@@ -200,10 +233,6 @@
                             </td>
                             <td class="p-3">
                                 <input type="number" step="0.01" min="0" :name="`items[${i}][batch_mrp]`" x-model.number="row.batch_mrp" placeholder="MRP"
-                                       class="block w-full rounded border-gray-300 text-xs focus:border-indigo-500">
-                            </td>
-                            <td class="p-3">
-                                <input type="number" step="0.01" min="0" :name="`items[${i}][selling_price]`" x-model.number="row.selling_price" placeholder="Selling Price"
                                        class="block w-full rounded border-gray-300 text-xs focus:border-indigo-500">
                             </td>
                             <td class="p-3 text-right font-semibold text-slate-800" x-text="formatCurrency(row.line_total)"></td>
@@ -272,6 +301,10 @@ function purchaseInvoiceForm(products, initialOrder) {
         billingSnapshot: initialOrder ? (initialOrder.billing_address || '') : '',
         shippingSnapshot: initialOrder ? (initialOrder.shipping_address || '') : '',
         sameAsBilling: !initialOrder || !initialOrder.shipping_address_id || (initialOrder.shipping_address_id === initialOrder.billing_address_id),
+        invoiceDate: '{{ old('invoice_date', date('Y-m-d')) }}',
+        creditDays: {{ old('credit_days', $order?->credit_days ?? 0) }},
+        dueDatePreview: '',
+        dueDateFormattedYmd: '',
         freightCharge: 0,
         otherCharges: 0,
         subtotal: 0,
@@ -280,6 +313,7 @@ function purchaseInvoiceForm(products, initialOrder) {
         items: [],
 
         async init() {
+            this.recalcDueDate();
             if (this.supplierId) {
                 await this.loadSupplierAddresses(this.supplierId);
             }
@@ -296,7 +330,6 @@ function purchaseInvoiceForm(products, initialOrder) {
                         sgst_percent: Number(it.sgst_percent) || 0,
                         batch_number: '',
                         batch_mrp: p ? (Number(p.mrp) || 0) : 0,
-                        selling_price: p ? (Number(p.selling_price) || 0) : 0,
                         serial_numbers: [],
                         line_total: 0
                     };
@@ -318,7 +351,6 @@ function purchaseInvoiceForm(products, initialOrder) {
                 sgst_percent: 0,
                 batch_number: '',
                 batch_mrp: 0,
-                selling_price: 0,
                 serial_numbers: [],
                 line_total: 0
             });
@@ -342,7 +374,6 @@ function purchaseInvoiceForm(products, initialOrder) {
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.batch_mrp = Number(p.mrp) || 0;
-                row.selling_price = Number(p.selling_price) || 0;
             }
             this.recalc();
         },
@@ -389,6 +420,15 @@ function purchaseInvoiceForm(products, initialOrder) {
                 this.shippingSnapshot = '';
                 return;
             }
+
+            const supOpt = document.querySelector(`select[name="supplier_id"] option[value="${this.supplierId}"]`);
+            if (supOpt && supOpt.dataset.creditDays && (!this.creditDays || this.creditDays === 0)) {
+                const sDays = parseInt(supOpt.dataset.creditDays, 10);
+                if (sDays > 0) {
+                    this.setCreditDays(sDays);
+                }
+            }
+
             await this.loadSupplierAddresses(this.supplierId);
         },
 
@@ -443,6 +483,43 @@ function purchaseInvoiceForm(products, initialOrder) {
             } else {
                 this.onShippingAddressChange();
             }
+        },
+
+        setCreditDays(days) {
+            this.creditDays = parseInt(days, 10) || 0;
+            this.recalcDueDate();
+        },
+
+        recalcDueDate() {
+            if (!this.invoiceDate) {
+                this.dueDatePreview = '—';
+                this.dueDateFormattedYmd = '';
+                return;
+            }
+            const days = parseInt(this.creditDays, 10);
+            const validDays = (!isNaN(days) && days >= 0) ? days : 0;
+
+            const parts = String(this.invoiceDate).split('-');
+            if (parts.length !== 3) {
+                this.dueDatePreview = '—';
+                this.dueDateFormattedYmd = '';
+                return;
+            }
+
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const day = parseInt(parts[2], 10);
+
+            const d = new Date(year, month, day);
+            d.setDate(d.getDate() + validDays);
+
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            this.dueDateFormattedYmd = `${yyyy}-${mm}-${dd}`;
+
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            this.dueDatePreview = `${dd} ${monthNames[d.getMonth()]} ${yyyy}`;
         }
     };
 }

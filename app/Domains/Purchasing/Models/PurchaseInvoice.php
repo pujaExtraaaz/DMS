@@ -2,7 +2,7 @@
 
 namespace App\Domains\Purchasing\Models;
 
-use App\Domains\Inventory\Models\InventoryMovement;
+use App\Domains\Inventory\Models\StockMovement;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
@@ -61,9 +61,24 @@ class PurchaseInvoice extends Model
             'tax_amount' => 'decimal:2',
             'freight_charge' => 'decimal:2',
             'other_charges' => 'decimal:2',
+            'grand_total' => 'decimal:2',
             'total_amount' => 'decimal:2',
             'credit_days' => 'integer',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (PurchaseInvoice $invoice) {
+            if (empty($invoice->qr_token)) {
+                $invoice->qr_token = (string) \Illuminate\Support\Str::uuid();
+            }
+        });
+    }
+
+    public function getTotalAmountAttribute(): float
+    {
+        return (float) ($this->attributes['grand_total'] ?? 0);
     }
 
     public function company(): BelongsTo
@@ -103,7 +118,7 @@ class PurchaseInvoice extends Model
 
     public function inventoryMovements(): MorphMany
     {
-        return $this->morphMany(InventoryMovement::class, 'reference');
+        return $this->morphMany(StockMovement::class, 'reference');
     }
 
     public function billingAddress(): BelongsTo

@@ -421,9 +421,18 @@ class DocumentExporter
         $totals = [
             'Subtotal (Taxable)' => '₹ ' . number_format((float) $invoice->subtotal, 2),
             'Tax Amount' => '₹ ' . number_format((float) $invoice->tax_amount, 2),
-            'Grand Total' => '₹ ' . number_format((float) $invoice->grand_total, 2),
-            'Amount in Words' => self::numberToIndianWords($invoice->grand_total),
         ];
+
+        if ((float) ($invoice->freight_charge ?? 0) > 0) {
+            $totals['Freight / Landed Charge'] = '₹ ' . number_format((float) $invoice->freight_charge, 2);
+        }
+
+        if ((float) ($invoice->other_charges ?? 0) > 0) {
+            $totals['Other Charges'] = '₹ ' . number_format((float) $invoice->other_charges, 2);
+        }
+
+        $totals['Grand Total'] = '₹ ' . number_format((float) $invoice->grand_total, 2);
+        $totals['Amount in Words'] = self::numberToIndianWords($invoice->grand_total);
 
         if ($format === 'csv') {
             return self::exportCsv($filename, $headers, $rows, $meta, $totals);

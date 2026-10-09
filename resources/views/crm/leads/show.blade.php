@@ -2,20 +2,43 @@
 @section('title', 'Lead '.$lead->name)
 @section('content')
 <x-ui.page-header :title="$lead->name">
-<x-slot name="actions"><x-ui.button variant="secondary" :href="route('crm.leads.index')">Back</x-ui.button></x-slot>
+<x-slot name="actions">
+    <x-ui.button variant="primary" :href="route('crm.leads.edit', $lead)">Edit Lead</x-ui.button>
+    <x-ui.button variant="secondary" :href="route('crm.leads.index')">Back</x-ui.button>
+</x-slot>
 </x-ui.page-header>
 <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
 <x-ui.card title="Lead details" class="xl:col-span-2">
-<dl class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-<div><dt class="text-slate-500">Mobile</dt><dd class="font-medium">{{ $lead->mobile ?: '—' }}</dd></div>
-<div><dt class="text-slate-500">Email</dt><dd class="font-medium">{{ $lead->email ?: '—' }}</dd></div>
-<div><dt class="text-slate-500">Organization</dt><dd class="font-medium">{{ $lead->organization ?: '—' }}</dd></div>
-<div><dt class="text-slate-500">City / State</dt><dd class="font-medium">{{ trim(($lead->city ?? '').' / '.($lead->state ?? ''), ' /') ?: '—' }}</dd></div>
-<div><dt class="text-slate-500">Status</dt><dd class="font-medium">{{ ucfirst($lead->status) }}</dd></div>
-<div><dt class="text-slate-500">Priority</dt><dd class="font-medium">{{ ucfirst($lead->priority ?? 'normal') }}</dd></div>
-<div><dt class="text-slate-500">Source</dt><dd class="font-medium">{{ $lead->source?->name ?: '—' }}</dd></div>
-<div><dt class="text-slate-500">Campaign</dt><dd class="font-medium">{{ $lead->campaign?->name ?: '—' }}</dd></div>
-<div class="md:col-span-2"><dt class="text-slate-500">Notes</dt><dd class="font-medium">{{ $lead->notes ?: '—' }}</dd></div>
+<dl class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Contact Name</dt><dd class="font-medium text-slate-900">{{ $lead->name }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Company Name</dt><dd class="font-medium text-slate-900">{{ $lead->company_name ?: $lead->organization ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Title</dt><dd class="font-medium text-slate-900">{{ $lead->title ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Sales Person</dt><dd class="font-medium text-slate-900">{{ $lead->assignee?->name ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mobile</dt><dd class="font-medium text-slate-900">{{ $lead->mobile ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Second Mobile (SECND MOB)</dt><dd class="font-medium text-slate-900">{{ $lead->secondary_mobile ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Phone</dt><dd class="font-medium text-slate-900">{{ $lead->phone ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Landline</dt><dd class="font-medium text-slate-900">{{ $lead->landline ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Email</dt><dd class="font-medium text-slate-900">{{ $lead->email ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Secondary Email</dt><dd class="font-medium text-slate-900">{{ $lead->secondary_email ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Tag</dt><dd class="font-medium text-slate-900">{{ $lead->tag ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Sub Category</dt><dd class="font-medium text-slate-900">{{ $lead->subCategory?->name ?: $lead->sub_category ?: '—' }}</dd></div>
+<div class="md:col-span-2">
+    <dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mailing Address</dt>
+    <dd class="font-medium text-slate-900">
+        @php
+            $addrParts = array_filter([$lead->street, $lead->city, $lead->state, $lead->zip]);
+        @endphp
+        {{ !empty($addrParts) ? implode(', ', $addrParts) : '—' }}
+    </dd>
+</div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Status</dt><dd class="font-medium text-slate-900">{{ ucfirst($lead->status) }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Priority</dt><dd class="font-medium text-slate-900">{{ ucfirst($lead->priority ?? 'normal') }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Source</dt><dd class="font-medium text-slate-900">{{ $lead->source?->name ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Campaign</dt><dd class="font-medium text-slate-900">{{ $lead->campaign?->name ?: '—' }}</dd></div>
+@if($lead->interested_product)
+    <div class="md:col-span-2"><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Interested Product</dt><dd class="font-medium text-slate-900">{{ $lead->interested_product }}</dd></div>
+@endif
+<div class="md:col-span-2"><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Notes</dt><dd class="font-medium text-slate-900">{{ $lead->notes ?: '—' }}</dd></div>
 </dl>
 </x-ui.card>
 <div class="space-y-6">

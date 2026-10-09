@@ -430,6 +430,10 @@ class PurchaseOrderService
                 ? $data['shipping_address']
                 : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $supplier->address));
 
+            $freightCharge = max(0.0, (float) ($data['freight_charge'] ?? 0));
+            $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
+            $grandTotal = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+
             $invoice = PurchaseInvoice::create([
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
                 'purchase_inward_id' => $data['purchase_inward_id'] ?? null,
@@ -440,7 +444,7 @@ class PurchaseOrderService
                 'shipping_address' => $shippingSnapshot,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'invoice_no' => $this->documentNumberService->next('PI'),
-                'supplier_invoice_no' => $data['supplier_invoice_no'] ?? null,
+                'supplier_invoice_no' => $data['supplier_invoice_no'] ?? $data['supplier_invoice_number'] ?? null,
                 'invoice_date' => $data['invoice_date'],
                 'due_date' => $data['due_date'] ?? $due['due_date'],
                 'credit_days' => $data['credit_days'] ?? null,
@@ -449,7 +453,9 @@ class PurchaseOrderService
                 'status' => 'posted',
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'grand_total' => $subtotal + $taxAmount,
+                'freight_charge' => $freightCharge,
+                'other_charges' => $otherCharges,
+                'grand_total' => $grandTotal,
                 'rate_override_reason' => $overrideReason,
                 'notes' => $data['notes'] ?? null,
                 'terms_and_conditions' => $data['terms_and_conditions'] ?? null,
@@ -552,12 +558,19 @@ class PurchaseOrderService
                 continue;
             }
 
+            $uomId = $item['uom_id'] ?? null;
+            if (! $uomId && ! empty($item['product_id'])) {
+                $uomId = Product::query()->whereKey($item['product_id'])->value('base_uom_id');
+            }
+
             $normalized[] = [
                 'product_id' => (int) $item['product_id'],
-                'uom_id' => (int) $item['uom_id'],
+                'uom_id' => (int) $uomId,
                 'quantity' => $qty,
                 'unit_cost' => (float) ($item['unit_cost'] ?? 0),
-                'tax_percent' => (float) ($item['tax_percent'] ?? 0),
+                'tax_percent' => isset($item['tax_percent'])
+                    ? (float) $item['tax_percent']
+                    : ((float) ($item['cgst_percent'] ?? 0) + (float) ($item['sgst_percent'] ?? 0)),
                 'cgst_percent' => isset($item['cgst_percent'])
                     ? (float) $item['cgst_percent']
                     : ((float) ($item['tax_percent'] ?? 0) / 2),
@@ -565,7 +578,7 @@ class PurchaseOrderService
                     ? (float) $item['sgst_percent']
                     : ((float) ($item['tax_percent'] ?? 0) / 2),
                 'weight' => isset($item['weight']) ? (float) $item['weight'] : null,
-                'batch_no' => $item['batch_no'] ?? $item['batch_name'] ?? null,
+                'batch_no' => $item['batch_no'] ?? $item['batch_number'] ?? $item['batch_name'] ?? null,
                 'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
                 'batch_mrp' => isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
                 'expiry_date' => $item['expiry_date'] ?? null,

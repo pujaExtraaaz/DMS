@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Master;
 
+use App\Domains\Crm\Imports\LeadsImport;
 use App\Domains\Master\Imports\PartiesImport;
 use App\Domains\Master\Imports\PriceMasterImport;
 use App\Domains\Master\Imports\ProductsImport;
@@ -14,7 +15,7 @@ use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Bulk import + template downloads for Products, Parties, and Price Master.
+ * Bulk import + template downloads for Products, Parties, Price Master, and CRM Leads.
  * Templates are generated in-memory as CSVs so operators can populate them and
  * upload the same file back — matches the AVIT 11/09/2026 requirement #22.
  */
@@ -38,6 +39,10 @@ class BulkImportController extends Controller
                           'credit_limit', 'credit_days', 'interest_rate',
                           'contact_name', 'contact_phone', 'contact_email', 'contact_role'],
             'price-master' => ['customer_type', 'sku', 'uom_code', 'rate', 'min_qty'],
+            'leads' => ['contact_name', 'company_name', 'title', 'email', 'secondary_email',
+                        'mobile', 'second_mobile_number', 'phone', 'landline',
+                        'sales_person', 'tag', 'sub_category',
+                        'mailing_street', 'mailing_city', 'mailing_state', 'mailing_zip'],
             default => abort(404, 'Unknown template'),
         };
 
@@ -45,6 +50,7 @@ class BulkImportController extends Controller
             'products' => ['Widget X', '', '84713010', 'PCS', 'Acme', 'Widgets', 'Red', 100, 150, 130, 175, 18, 12, 24, 0],
             'parties' => ['Sample Distributor', '', 'sundry_debtors', 'Retail', 'Zone A', 'Route 1', '9999999999', 'ops@sample.co', '', '#12, MG Road', 'Karnataka', '560001', 50000, 30, 18, 'Ravi', '9999888877', 'ravi@sample.co', 'Owner'],
             'price-master' => ['Retail', 'PROD-1-00001', 'PCS', 150, 0],
+            'leads' => ['Anand Verma', 'Apex Tech Solutions', 'Director', 'anand@apextech.in', 'billing@apextech.in', '9820011223', '9820099887', '022-26543210', '022-26543211', 'Admin', 'VIP', 'Electronics', 'Plot 42, MIDC, Andheri East', 'Mumbai', 'Maharashtra', '400093'],
         };
 
         return response()->streamDownload(function () use ($columns, $sample) {
@@ -65,6 +71,7 @@ class BulkImportController extends Controller
             'products' => new ProductsImport(auth()->user()?->company_id),
             'parties' => new PartiesImport(auth()->user()?->company_id),
             'price-master' => new PriceMasterImport(),
+            'leads' => new LeadsImport(auth()->user()?->company_id),
             default => abort(404, 'Unknown import type'),
         };
 

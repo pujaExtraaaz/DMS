@@ -45,11 +45,12 @@
     </x-ui.card>
 @endif
 
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
     @foreach([
         'products' => ['Products', 'Match on SKU; UOM code must exist. Missing brand / category auto-created.'],
         'parties' => ['Parties (Customers &amp; Suppliers)', 'Match on Code; classification (customer type) auto-created if new. Contact + billing address created inline.'],
         'price-master' => ['Price Master', 'Match on Customer Type + SKU + UOM + Min Qty; updates rate.'],
+        'leads' => ['CRM Leads', 'Match on Mobile or Email. Maps Contact Name, Company, Title, Secondary Email, Mobiles, Landline, Sales Person, Tag, Address, etc.'],
     ] as $type => [$label, $note])
         <x-ui.card :title="$label">
             <p class="text-xs text-slate-500 mb-3">{!! $note !!}</p>

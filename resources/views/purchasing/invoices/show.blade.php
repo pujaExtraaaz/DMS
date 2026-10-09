@@ -76,5 +76,34 @@
 </tr>
 @endforeach
 </tbody></table>
+
+    <div class="mt-4 pt-4 border-t border-slate-200 flex justify-end">
+        <div class="w-full max-w-xs space-y-2 text-xs">
+            <div class="flex justify-between text-slate-600">
+                <span>Taxable Subtotal:</span>
+                <span class="font-mono font-medium">₹{{ number_format((float) $invoice->subtotal, 2) }}</span>
+            </div>
+            <div class="flex justify-between text-slate-600">
+                <span>Tax Amount:</span>
+                <span class="font-mono font-medium">₹{{ number_format((float) $invoice->tax_amount, 2) }}</span>
+            </div>
+            @if((float) ($invoice->freight_charge ?? 0) > 0)
+                <div class="flex justify-between text-slate-600">
+                    <span>Freight / Landed Charge:</span>
+                    <span class="font-mono font-medium">₹{{ number_format((float) $invoice->freight_charge, 2) }}</span>
+                </div>
+            @endif
+            @if((float) ($invoice->other_charges ?? 0) > 0)
+                <div class="flex justify-between text-slate-600">
+                    <span>Other Charges:</span>
+                    <span class="font-mono font-medium">₹{{ number_format((float) $invoice->other_charges, 2) }}</span>
+                </div>
+            @endif
+            <div class="flex justify-between text-base font-bold text-slate-900 pt-2 border-t border-slate-200">
+                <span>Grand Total:</span>
+                <span class="font-mono text-indigo-600">₹{{ number_format((float) $invoice->grand_total, 2) }}</span>
+            </div>
+        </div>
+    </div>
 </x-ui.card>
 @endsection

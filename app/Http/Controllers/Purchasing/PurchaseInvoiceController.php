@@ -116,6 +116,7 @@ class PurchaseInvoiceController extends Controller
             'freight_charge' => 'nullable|numeric|min:0',
             'other_charges' => 'nullable|numeric|min:0',
             'credit_days' => 'nullable|integer|min:0',
+            'due_date' => 'nullable|date',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
@@ -123,7 +124,6 @@ class PurchaseInvoiceController extends Controller
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.batch_number' => 'nullable|string|max:100',
-            'items.*.selling_price' => 'nullable|numeric|min:0',
             'items.*.batch_mrp' => 'nullable|numeric|min:0',
             'items.*.serial_numbers' => 'nullable|array',
             'items.*.serial_numbers.*' => 'nullable|string|max:100',
@@ -131,7 +131,7 @@ class PurchaseInvoiceController extends Controller
 
         $invoice = $this->service->createInvoice($validated, $request->user());
 
-        return $this->flashSuccess('Purchase invoice created as draft.', 'purchasing.invoices.show', $invoice);
+        return $this->flashSuccess('Purchase invoice created as draft.', 'purchasing.invoices.show', ['invoice' => $invoice]);
     }
 
     public function show(PurchaseInvoice $invoice): View
@@ -146,7 +146,7 @@ class PurchaseInvoiceController extends Controller
         try {
             $this->service->postInvoice($invoice);
 
-            return $this->flashSuccess('Purchase invoice posted. Stock has been incremented.', 'purchasing.invoices.show', $invoice);
+            return $this->flashSuccess('Purchase invoice posted. Stock has been incremented.', 'purchasing.invoices.show', ['invoice' => $invoice]);
         } catch (\Throwable $e) {
             return back()->with('error', 'Failed to post invoice: '.$e->getMessage());
         }
@@ -157,7 +157,7 @@ class PurchaseInvoiceController extends Controller
         try {
             $this->service->cancelInvoice($invoice);
 
-            return $this->flashSuccess('Purchase invoice cancelled and stock reversed.', 'purchasing.invoices.show', $invoice);
+            return $this->flashSuccess('Purchase invoice cancelled and stock reversed.', 'purchasing.invoices.show', ['invoice' => $invoice]);
         } catch (\Throwable $e) {
             return back()->with('error', 'Failed to cancel invoice: '.$e->getMessage());
         }

@@ -340,7 +340,7 @@
                 @if($invoice->due_date)
                     <tr>
                         <td class="bold right">Due Date:</td>
-                        <td class="right">{{ optional($invoice->due_date)->format('d/m/Y') }}</td>
+                        <td class="right">{{ optional($invoice->due_date)->format('d/m/Y') }} @if($invoice->credit_days)<span style="color:#6b7280; font-size:11px;">({{ $invoice->credit_days }} days)</span>@endif</td>
                     </tr>
                 @endif
 
@@ -580,10 +580,24 @@
                     </tr>
                 @endif
 
+                @if((float) ($invoice->freight_charge ?? 0) > 0)
+                    <tr>
+                        <td>Freight / Landed Charge:</td>
+                        <td class="right">{{ number_format((float) $invoice->freight_charge, 2) }}</td>
+                    </tr>
+                @endif
+
+                @if((float) ($invoice->other_charges ?? 0) > 0)
+                    <tr>
+                        <td>Other Charges:</td>
+                        <td class="right">{{ number_format((float) $invoice->other_charges, 2) }}</td>
+                    </tr>
+                @endif
+
                 <tr class="section-title">
                     <td class="bold" style="font-size: 13px;">Grand Total:</td>
                     <td class="right bold" style="font-size: 13px;">
-                        INR {{ number_format((float) $invoice->total_amount, 2) }}
+                        INR {{ number_format((float) ($invoice->grand_total ?: $invoice->total_amount), 2) }}
                     </td>
                 </tr>
 
