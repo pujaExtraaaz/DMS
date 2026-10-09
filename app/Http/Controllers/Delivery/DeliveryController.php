@@ -7,6 +7,7 @@ use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,21 +15,66 @@ use Illuminate\View\View;
 
 class DeliveryController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected StockMovementService $stockMovementService,
     ) {}
 
     public function index(Request $request): View
     {
-        $deliveries = Delivery::query()
+        $query = Delivery::query()
             ->with(['customer', 'invoice', 'loadSheet'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('load_sheet_id'), fn ($q) => $q->where('load_sheet_id', $request->load_sheet_id))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('load_sheet_id'), fn ($q) => $q->where('load_sheet_id', $request->load_sheet_id));
 
-        return view('deliveries.index', compact('deliveries'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['status'],
+            [
+                'customer' => ['name'],
+                'invoice' => ['invoice_no'],
+                'loadSheet' => ['load_sheet_no'],
+            ]
+        );
+
+        $allowedSorts = [
+            'status' => 'status',
+            'created_at' => 'created_at',
+            'customer' => function ($q, $dir) {
+                $q->join('customers', 'deliveries.customer_id', '=', 'customers.id')
+                  ->orderBy('customers.name', $dir)
+                  ->select('deliveries.*');
+            },
+            'invoice' => function ($q, $dir) {
+                $q->join('invoices', 'deliveries.invoice_id', '=', 'invoices.id')
+                  ->orderBy('invoices.invoice_no', $dir)
+                  ->select('deliveries.*');
+            },
+            'loadSheet' => function ($q, $dir) {
+                $q->join('load_sheets', 'deliveries.load_sheet_id', '=', 'load_sheets.id')
+                  ->orderBy('load_sheets.load_sheet_no', $dir)
+                  ->select('deliveries.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'created_at',
+            defaultDirection: 'desc'
+        );
+
+        $deliveries = $query->paginate(15)->withQueryString();
+
+        return view('deliveries.index', [
+            'deliveries' => $deliveries,
+            'filters' => $request->only(['search', 'status', 'load_sheet_id']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function show(Delivery $delivery): View

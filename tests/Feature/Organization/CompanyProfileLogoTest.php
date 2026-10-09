@@ -260,4 +260,82 @@ class CompanyProfileLogoTest extends TestCase
             ->get(route('organization.company-profile.logo'));
         $missingResponse->assertNotFound();
     }
+
+    public function test_public_storage_route_serves_logo_with_correct_mime_and_cache_headers(): void
+    {
+        Storage::disk('public')->put('companies/logos/test-logo.png', 'png image content');
+        Storage::disk('public')->put('companies/logos/vector.svg', '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+
+        // 1. Test PNG via public storage route
+        $response = $this->get('/storage/companies/logos/test-logo.png');
+        $response->assertOk();
+        $response->assertHeader('Content-Type', 'image/png');
+        $this->assertStringContainsString('public', (string) $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('max-age=86400', (string) $response->headers->get('Cache-Control'));
+
+        // 2. Test SVG via public storage route
+        $svgResponse = $this->get('/storage/companies/logos/vector.svg');
+        $svgResponse->assertOk();
+        $svgResponse->assertHeader('Content-Type', 'image/svg+xml');
+
+        // 3. Test redundant storage/ prefix in path
+        $prefixedResponse = $this->get('/storage/storage/companies/logos/test-logo.png');
+        $prefixedResponse->assertOk();
+    }
+
+    public function test_public_storage_route_blocks_path_traversal(): void
+    {
+        $response = $this->get('/storage/../.env');
+        $response->assertNotFound();
+
+        $response2 = $this->get('/storage/companies/../../app/private/secret.txt');
+        $response2->assertNotFound();
+    }
+
+    public function test_public_storage_route_returns_404_for_missing_file(): void
+    {
+        $response = $this->get('/storage/companies/logos/non-existent-image.png');
+        $response->assertNotFound();
+    }
+
+    public function test_logo_with_redundant_public_or_storage_prefix_is_cleanly_resolved(): void
+    {
+        Storage::disk('public')->put('companies/logos/brand.png', 'brand bytes');
+
+        $this->company->update(['logo_path' => 'public/companies/logos/brand.png']);
+        $this->assertTrue($this->company->hasLogo());
+        $this->assertStringContainsString('/storage/companies/logos/brand.png', $this->company->logo_url);
+
+        $this->company->update(['logo_path' => '/storage/companies/logos/brand.png']);
+        $this->assertTrue($this->company->hasLogo());
+        $this->assertStringContainsString('/storage/companies/logos/brand.png', $this->company->logo_url);
+    }
+
+    public function test_failed_upload_due_to_validation_preserves_existing_logo(): void
+    {
+        $validFile = UploadedFile::fake()->image('original.png');
+        $this->actingAs($this->user)
+            ->put(route('organization.company-profile.update'), [
+                'name' => 'Acme Corp',
+                'logo' => $validFile,
+            ]);
+
+        $this->company->refresh();
+        $originalPath = $this->company->logo_path;
+        $this->assertNotNull($originalPath);
+
+        // Attempt upload with an oversized file (3 MB)
+        $oversizedFile = UploadedFile::fake()->create('huge.png', 3500, 'image/png');
+        $response = $this->actingAs($this->user)
+            ->put(route('organization.company-profile.update'), [
+                'name' => 'Acme Corp',
+                'logo' => $oversizedFile,
+            ]);
+
+        $response->assertSessionHasErrors(['logo']);
+
+        $this->company->refresh();
+        $this->assertSame($originalPath, $this->company->logo_path);
+        Storage::disk('public')->assertExists($originalPath);
+    }
 }

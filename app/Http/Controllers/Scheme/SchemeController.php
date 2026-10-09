@@ -7,6 +7,7 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Scheme\Models\Scheme;
 use App\Domains\Scheme\Services\SchemeService;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -14,20 +15,55 @@ use InvalidArgumentException;
 
 class SchemeController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected SchemeService $schemeService,
     ) {}
 
     public function index(Request $request): View
     {
-        $items = Scheme::query()
+        $query = Scheme::query()
             ->with('brand')
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('brand_id'), fn ($q) => $q->where('brand_id', $request->brand_id));
 
-        return view('schemes.index', compact('items'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['code', 'name', 'status', 'description'],
+            ['brand' => ['name']]
+        );
+
+        $allowedSorts = [
+            'code' => 'code',
+            'name' => 'name',
+            'status' => 'status',
+            'starts_on' => 'starts_on',
+            'brand' => function ($q, $dir) {
+                $q->leftJoin('brands', 'schemes.brand_id', '=', 'brands.id')
+                  ->orderBy('brands.name', $dir)
+                  ->select('schemes.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('schemes.index', [
+            'items' => $items,
+            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'status', 'brand_id']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

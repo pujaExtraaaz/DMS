@@ -41,6 +41,9 @@
             <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600">
                 <strong>Auto code:</strong> a unique brand code (<code>BR-&lt;company&gt;-&lt;seq&gt;</code>) is generated on save to prevent duplicates.
             </div>
+            @error('code')
+                <p class="text-xs text-red-600">{{ $message }}</p>
+            @enderror
         @endif
         <label class="flex items-center gap-2 text-sm">
             <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600"> Active

@@ -8,31 +8,64 @@ use App\Domains\Interest\Models\InterestRule;
 use App\Domains\Interest\Services\InterestService;
 use App\Domains\Master\Models\Customer;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class InterestController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected InterestService $interestService,
     ) {}
 
     public function index(Request $request): View
     {
-        $ledgers = InterestLedger::query()
+        $query = InterestLedger::query()
             ->with(['customer', 'invoice', 'rule'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
-            ->latest('as_of_date')
-            ->latest('id')
-            ->paginate(20)
-            ->withQueryString();
+            ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id));
+
+        $this->applySearch($query, $request->input('search'), [
+            'status',
+        ], [
+            'customer' => ['name', 'phone'],
+            'invoice' => ['invoice_no'],
+        ]);
+
+        [$sort, $direction] = $this->applySorting(
+            $query,
+            $request,
+            [
+                'as_of_date' => 'as_of_date',
+                'date' => 'as_of_date',
+                'customer' => function ($q, $dir) {
+                    $q->leftJoin('customers as int_cust', 'interest_ledgers.customer_id', '=', 'int_cust.id')
+                        ->orderBy('int_cust.name', $dir)
+                        ->select('interest_ledgers.*');
+                },
+                'overdue_amount' => 'overdue_amount',
+                'overdue' => 'overdue_amount',
+                'overdue_days' => 'overdue_days',
+                'days' => 'overdue_days',
+                'interest_amount' => 'interest_amount',
+                'interest' => 'interest_amount',
+                'status' => 'status',
+            ],
+            'as_of_date',
+            'desc'
+        );
+
+        $ledgers = $query->paginate(20)->withQueryString();
 
         return view('interest.index', [
             'ledgers' => $ledgers,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
             'rules' => InterestRule::query()->orderByDesc('is_default')->orderBy('name')->limit(10)->get(),
+            'sort' => $sort,
+            'direction' => $direction,
         ]);
     }
 

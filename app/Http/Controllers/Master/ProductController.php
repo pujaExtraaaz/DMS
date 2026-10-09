@@ -17,42 +17,46 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class ProductController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $sort = $request->input('sort', 'created_at');
-        $direction = strtolower($request->input('direction', 'desc')) === 'asc'
-            ? 'asc'
-            : 'desc';
-
-        $allowedSorts = [
-            'serial_no',
-            'name',
-            'sku',
-            'created_at',
-        ];
-
-        if (! in_array($sort, $allowedSorts, true)) {
-            $sort = 'created_at';
-        }
-
-        $items = Product::query()
+        $query = Product::query()
             ->with(['baseUom', 'brand', 'category'])
-            ->when($request->filled('search'), function ($q) use ($request) {
-                $search = trim((string) $request->input('search'));
+            ->when($request->filled('brand_id'), fn ($q) => $q->where('brand_id', $request->brand_id))
+            ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->category_id))
+            ->when($request->filled('status'), function ($q) use ($request) {
+                if ($request->status === 'active') {
+                    $q->where('is_active', true);
+                } elseif ($request->status === 'inactive') {
+                    $q->where('is_active', false);
+                }
+            });
 
-                $q->where(function ($q) use ($search) {
-                    $q->where('name', 'like', '%'.$search.'%')
-                        ->orWhere('sku', 'like', '%'.$search.'%')
-                        ->orWhere('serial_no', 'like', '%'.$search.'%');
-                });
-            })
-            ->orderBy($sort, $direction)
-            ->paginate(15)
-            ->withQueryString();
+        $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'barcode', 'hsn_code']);
 
-        return view('masters.products.index', compact('items'));
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            ['name', 'sku', 'serial_no', 'is_active', 'created_at'],
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('masters.products.index', [
+            'items' => $items,
+            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+            'search' => $request->string('search'),
+        ]);
     }
 
     public function create(): View

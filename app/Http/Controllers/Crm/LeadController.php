@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Support\AuditLogService;
 use App\Support\DocumentNumberService;
 use App\Support\IndianStates;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +23,7 @@ use Illuminate\View\View;
 
 class LeadController extends Controller
 {
+    use SortableAndSearchable;
     public function __construct(
         protected AuditLogService $auditLogService,
         protected DocumentNumberService $documentNumbers,
@@ -112,23 +114,50 @@ class LeadController extends Controller
 
     public function index(Request $request): View
     {
-        $items = Lead::query()
+        $query = Lead::query()
             ->with(['source', 'assignee', 'campaign'])
             ->forUserBranch()
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('search'), function ($q) use ($request) {
-                $s = $request->string('search');
-                $q->where(function ($q) use ($s) {
-                    $q->where('name', 'like', "%{$s}%")
-                        ->orWhere('mobile', 'like', "%{$s}%")
-                        ->orWhere('email', 'like', "%{$s}%");
-                });
-            })
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status));
 
-        return view('crm.leads.index', compact('items'));
+        $this->applySearch($query, $request->input('search'), [
+            'name',
+            'mobile',
+            'email',
+            'organization',
+            'city',
+            'state',
+        ], [
+            'source' => ['name'],
+            'assignee' => ['name'],
+        ]);
+
+        [$sort, $direction] = $this->applySorting(
+            $query,
+            $request,
+            [
+                'created_at' => 'created_at',
+                'name' => 'name',
+                'lead' => 'name',
+                'status' => 'status',
+                'priority' => 'priority',
+                'source' => function ($q, $dir) {
+                    $q->leftJoin('lead_sources as ls', 'leads.lead_source_id', '=', 'ls.id')
+                        ->orderBy('ls.name', $dir)
+                        ->select('leads.*');
+                },
+                'assignee' => function ($q, $dir) {
+                    $q->leftJoin('users as u_assignee', 'leads.assigned_to', '=', 'u_assignee.id')
+                        ->orderBy('u_assignee.name', $dir)
+                        ->select('leads.*');
+                },
+            ],
+            'created_at',
+            'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('crm.leads.index', compact('items', 'sort', 'direction'));
     }
 
     public function show(Lead $lead): View

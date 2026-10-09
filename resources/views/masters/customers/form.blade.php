@@ -269,27 +269,174 @@
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">State *</label>
-                                <select :name="`addresses[${idx}][state]`" x-model="addr.state" @change="syncPrimaryAddress()"
-                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
-                                    <option value="">Select State / UT</option>
-                                    @foreach($states as $code => $name)
-                                        <option value="{{ $name }}">{{ $name }} ({{ $code }})</option>
-                                    @endforeach
-                                </select>
+                                <div class="relative" x-data="stateDropdown(addr, statesList, () => syncPrimaryAddress())" @click.outside="close()">
+                                    <!-- Hidden input for standard form submission -->
+                                    <input type="hidden" :name="`addresses[${idx}][state]`" :value="addr.state">
+
+                                    <!-- Trigger Button -->
+                                    <button type="button"
+                                            x-ref="triggerButton"
+                                            @click="toggle()"
+                                            @keydown="onKeyDown($event)"
+                                            :class="open ? 'ring-2 ring-indigo-500 border-indigo-500' : 'border-gray-300 hover:border-gray-400'"
+                                            class="relative w-full rounded-lg border bg-white py-2 pl-3 pr-2 text-left text-sm shadow-xs focus:outline-none transition flex items-center justify-between">
+                                        <span class="block truncate" :class="addr.state ? 'text-slate-800 font-medium' : 'text-slate-400'"
+                                              x-text="selectedLabel || 'Select State / UT'"></span>
+                                        <div class="flex items-center gap-1 shrink-0 ml-2">
+                                            <template x-if="addr.state">
+                                                <span @click.stop="clearState()" title="Clear State"
+                                                      class="p-0.5 text-slate-400 hover:text-rose-500 rounded cursor-pointer transition">
+                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                    </svg>
+                                                </span>
+                                            </template>
+                                            <svg class="h-4 w-4 text-slate-400 transition-transform duration-150" :class="open ? 'rotate-180 text-indigo-600' : ''" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                            </svg>
+                                        </div>
+                                    </button>
+
+                                    <!-- Dropdown Menu -->
+                                    <div x-show="open"
+                                         x-cloak
+                                         x-transition:enter="transition ease-out duration-100"
+                                         x-transition:enter-start="opacity-0 translate-y-1"
+                                         x-transition:enter-end="opacity-100 translate-y-0"
+                                         x-transition:leave="transition ease-in duration-75"
+                                         x-transition:leave-start="opacity-100 translate-y-0"
+                                         x-transition:leave-end="opacity-0 translate-y-1"
+                                         class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 rounded-lg bg-white shadow-lg ring-1 ring-black/5 border border-slate-200 overflow-hidden flex flex-col focus:outline-none"
+                                         style="display: none;">
+                                        <div class="p-2 border-b border-slate-100 bg-slate-50/70 sticky top-0 z-10">
+                                            <div class="relative">
+                                                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
+                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                                    </svg>
+                                                </div>
+                                                <input type="text"
+                                                       x-ref="searchInput"
+                                                       x-model="search"
+                                                       @input="highlightedIndex = 0"
+                                                       @keydown="onKeyDown($event)"
+                                                       placeholder="Search state..."
+                                                       class="block w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                            </div>
+                                        </div>
+                                        <ul x-ref="optionsList" class="max-h-48 overflow-y-auto py-1 text-sm divide-y divide-slate-50">
+                                            <template x-for="(st, sIdx) in filteredStates" :key="st.code || st.name">
+                                                <li :data-index="sIdx"
+                                                    @click="selectState(st)"
+                                                    @mouseenter="highlightedIndex = sIdx"
+                                                    :class="{
+                                                        'bg-indigo-50 text-indigo-900 font-semibold': addr.state === st.name,
+                                                        'bg-slate-100 text-slate-900': highlightedIndex === sIdx && addr.state !== st.name,
+                                                        'text-slate-700': addr.state !== st.name && highlightedIndex !== sIdx
+                                                    }"
+                                                    class="cursor-pointer select-none px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-100 transition-colors">
+                                                    <span x-text="st.name"></span>
+                                                    <span class="text-[11px] font-mono text-slate-400 font-normal" x-text="st.code ? `(${st.code})` : ''"></span>
+                                                </li>
+                                            </template>
+                                            <template x-if="filteredStates.length === 0">
+                                                <li class="p-3 text-xs text-slate-400 text-center italic">
+                                                    No states found
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">City *</label>
-                                <input type="text" :name="`addresses[${idx}][city]`" x-model="addr.city" :list="`city-list-${idx}`"
-                                       placeholder="Enter or select city"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
-                                <datalist :id="`city-list-${idx}`">
-                                    <template x-for="c in getCities(addr.state)" :key="c">
-                                        <option :value="c"></option>
+                                <div class="relative" x-data="cityDropdown(addr, stateCities)" @click.outside="close()">
+                                    <!-- Hidden input for standard form submission -->
+                                    <input type="hidden" :name="`addresses[${idx}][city]`" :value="addr.city">
+
+                                    <!-- Trigger Button -->
+                                    <button type="button"
+                                            x-ref="triggerButton"
+                                            @click="toggle()"
+                                            @keydown="onKeyDown($event)"
+                                            :disabled="isDisabled"
+                                            :class="{
+                                                'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none': isDisabled,
+                                                'ring-2 ring-indigo-500 border-indigo-500 bg-white': !isDisabled && open,
+                                                'border-gray-300 hover:border-gray-400 bg-white': !isDisabled && !open
+                                            }"
+                                            class="relative w-full rounded-lg border py-2 pl-3 pr-2 text-left text-sm shadow-xs focus:outline-none transition flex items-center justify-between">
+                                        <span class="block truncate"
+                                              :class="(!isDisabled && addr.city) ? 'text-slate-800 font-medium' : 'text-slate-400'"
+                                              x-text="isDisabled ? 'Select State First' : (addr.city || 'Select City')"></span>
+                                        <div class="flex items-center gap-1 shrink-0 ml-2">
+                                            <template x-if="!isDisabled && addr.city">
+                                                <span @click.stop="clearCity()" title="Clear City"
+                                                      class="p-0.5 text-slate-400 hover:text-rose-500 rounded cursor-pointer transition">
+                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                    </svg>
+                                                </span>
+                                            </template>
+                                            <svg class="h-4 w-4 text-slate-400 transition-transform duration-150" :class="(!isDisabled && open) ? 'rotate-180 text-indigo-600' : ''" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                            </svg>
+                                        </div>
+                                    </button>
+
+                                    <!-- Dropdown Menu -->
+                                    <div x-show="!isDisabled && open"
+                                         x-cloak
+                                         x-transition:enter="transition ease-out duration-100"
+                                         x-transition:enter-start="opacity-0 translate-y-1"
+                                         x-transition:enter-end="opacity-100 translate-y-0"
+                                         x-transition:leave="transition ease-in duration-75"
+                                         x-transition:leave-start="opacity-100 translate-y-0"
+                                         x-transition:leave-end="opacity-0 translate-y-1"
+                                         class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 rounded-lg bg-white shadow-lg ring-1 ring-black/5 border border-slate-200 overflow-hidden flex flex-col focus:outline-none"
+                                         style="display: none;">
+                                        <div class="p-2 border-b border-slate-100 bg-slate-50/70 sticky top-0 z-10">
+                                            <div class="relative">
+                                                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
+                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                                    </svg>
+                                                </div>
+                                                <input type="text"
+                                                       x-ref="searchInput"
+                                                       x-model="search"
+                                                       @input="highlightedIndex = 0"
+                                                       @keydown="onKeyDown($event)"
+                                                       placeholder="Search city..."
+                                                       class="block w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                            </div>
+                                        </div>
+                                        <ul x-ref="optionsList" class="max-h-48 overflow-y-auto py-1 text-sm divide-y divide-slate-50">
+                                            <template x-for="(city, cIdx) in filteredCities" :key="city">
+                                                <li :data-index="cIdx"
+                                                    @click="selectCity(city)"
+                                                    @mouseenter="highlightedIndex = cIdx"
+                                                    :class="{
+                                                        'bg-indigo-50 text-indigo-900 font-semibold': addr.city === city,
+                                                        'bg-slate-100 text-slate-900': highlightedIndex === cIdx && addr.city !== city,
+                                                        'text-slate-700': addr.city !== city && highlightedIndex !== cIdx
+                                                    }"
+                                                    class="cursor-pointer select-none px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-100 transition-colors">
+                                                    <span x-text="city"></span>
+                                                    <span x-show="addr.city === city" class="text-indigo-600 font-bold">✓</span>
+                                                </li>
+                                            </template>
+                                            <template x-if="filteredCities.length === 0">
+                                                <li class="p-3 text-xs text-slate-400 text-center italic">
+                                                    No cities found
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                    <template x-if="addr.city && addr.state && !isCityValidForState(addr.city, addr.state)">
+                                        <p class="text-[11px] text-rose-600 mt-1 font-medium">⚠️ Note: Selected city does not belong to <span x-text="addr.state"></span></p>
                                     </template>
-                                </datalist>
-                                <template x-if="addr.city && addr.state && !isCityValidForState(addr.city, addr.state)">
-                                    <p class="text-[11px] text-rose-600 mt-1 font-medium">⚠️ Note: Selected city does not belong to <span x-text="addr.state"></span></p>
-                                </template>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">PIN Code *</label>
@@ -692,6 +839,7 @@ function partyFormController() {
         creditCheques: {!! json_encode($initialCreditCheques) !!},
         addresses: {!! json_encode($initialAddresses) !!},
         stateCities: {!! json_encode($stateCities ?? \App\Support\IndianCities::all()) !!},
+        statesList: {!! json_encode($stateOptions ?? \App\Support\IndianStates::options()) !!},
 
         getCities(stateName) {
             if (!stateName) return [];
@@ -868,6 +1016,238 @@ function partyFormController() {
             } finally {
                 this.searchingGst = false;
             }
+        }
+    };
+}
+
+function stateDropdown(addr, statesList, onStateSelected) {
+    return {
+        open: false,
+        search: '',
+        highlightedIndex: 0,
+        get states() {
+            return Array.isArray(statesList) ? statesList : [];
+        },
+        get filteredStates() {
+            const list = this.states;
+            if (!this.search || !this.search.trim()) {
+                return list;
+            }
+            const q = this.search.toLowerCase().trim();
+            return list.filter(s =>
+                (s.name && s.name.toLowerCase().includes(q)) ||
+                (s.code && String(s.code).toLowerCase().includes(q))
+            );
+        },
+        get selectedLabel() {
+            if (!addr.state) return '';
+            const raw = String(addr.state).trim().toLowerCase();
+            const match = this.states.find(s =>
+                (s.name && s.name.toLowerCase() === raw) ||
+                (s.code && String(s.code).toLowerCase() === raw)
+            );
+            if (match) {
+                if (String(addr.state).trim() === String(match.code)) {
+                    addr.state = match.name;
+                }
+                return `${match.name} (${match.code})`;
+            }
+            return addr.state;
+        },
+        toggle() {
+            if (this.open) {
+                this.close();
+            } else {
+                this.open = true;
+                this.search = '';
+                this.highlightedIndex = 0;
+                this.$nextTick(() => {
+                    this.$refs.searchInput?.focus();
+                });
+            }
+        },
+        close() {
+            this.open = false;
+            this.search = '';
+        },
+        clearState() {
+            addr.state = '';
+            addr.city = '';
+            if (typeof onStateSelected === 'function') {
+                onStateSelected();
+            }
+            this.close();
+            this.$nextTick(() => {
+                this.$refs.triggerButton?.focus();
+            });
+        },
+        selectState(st) {
+            const isChanged = (addr.state !== st.name);
+            addr.state = st.name;
+            if (isChanged) {
+                addr.city = '';
+            }
+            if (typeof onStateSelected === 'function') {
+                onStateSelected();
+            }
+            this.close();
+            this.$nextTick(() => {
+                this.$refs.triggerButton?.focus();
+            });
+        },
+        onKeyDown(event) {
+            const list = this.filteredStates;
+            if (!this.open) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
+                    event.preventDefault();
+                    this.toggle();
+                }
+                return;
+            }
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex + 1) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex - 1 + list.length) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (list.length > 0 && list[this.highlightedIndex]) {
+                    this.selectState(list[this.highlightedIndex]);
+                }
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.close();
+                this.$nextTick(() => {
+                    this.$refs.triggerButton?.focus();
+                });
+            }
+        },
+        scrollActiveIntoView() {
+            this.$nextTick(() => {
+                const el = this.$refs.optionsList?.querySelector(`[data-index="${this.highlightedIndex}"]`);
+                if (el) {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+    };
+}
+
+function cityDropdown(addr, stateCities) {
+    return {
+        open: false,
+        search: '',
+        highlightedIndex: 0,
+        get availableCities() {
+            if (!addr.state) return [];
+            const mapping = (stateCities && typeof stateCities === 'object') ? stateCities : {};
+            let list = mapping[addr.state] || [];
+            if (!list || !list.length) {
+                const lower = addr.state.toLowerCase();
+                for (const [st, cities] of Object.entries(mapping)) {
+                    if (st.toLowerCase() === lower) {
+                        list = cities;
+                        break;
+                    }
+                }
+            }
+            const copy = Array.isArray(list) ? [...list] : [];
+            if (addr.city && !copy.some(c => c.toLowerCase() === addr.city.toLowerCase())) {
+                copy.unshift(addr.city);
+            }
+            return copy;
+        },
+        get filteredCities() {
+            const list = this.availableCities;
+            if (!this.search || !this.search.trim()) {
+                return list;
+            }
+            const q = this.search.toLowerCase().trim();
+            return list.filter(c => c.toLowerCase().includes(q));
+        },
+        get isDisabled() {
+            return !addr.state;
+        },
+        toggle() {
+            if (this.isDisabled) return;
+            if (this.open) {
+                this.close();
+            } else {
+                this.open = true;
+                this.search = '';
+                this.highlightedIndex = 0;
+                this.$nextTick(() => {
+                    this.$refs.searchInput?.focus();
+                });
+            }
+        },
+        close() {
+            this.open = false;
+            this.search = '';
+        },
+        clearCity() {
+            addr.city = '';
+            this.close();
+            this.$nextTick(() => {
+                this.$refs.triggerButton?.focus();
+            });
+        },
+        selectCity(city) {
+            addr.city = city;
+            this.close();
+            this.$nextTick(() => {
+                this.$refs.triggerButton?.focus();
+            });
+        },
+        onKeyDown(event) {
+            if (this.isDisabled) return;
+            const list = this.filteredCities;
+            if (!this.open) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
+                    event.preventDefault();
+                    this.toggle();
+                }
+                return;
+            }
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex + 1) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex - 1 + list.length) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (list.length > 0 && list[this.highlightedIndex]) {
+                    this.selectCity(list[this.highlightedIndex]);
+                }
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.close();
+                this.$nextTick(() => {
+                    this.$refs.triggerButton?.focus();
+                });
+            }
+        },
+        scrollActiveIntoView() {
+            this.$nextTick(() => {
+                const el = this.$refs.optionsList?.querySelector(`[data-index="${this.highlightedIndex}"]`);
+                if (el) {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            });
         }
     };
 }

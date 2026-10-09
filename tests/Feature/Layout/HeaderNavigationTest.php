@@ -66,10 +66,34 @@ class HeaderNavigationTest extends TestCase
             'Left sidebar must still contain the Log Out button'
         );
 
-        // 5. Ensure Option 9 and Option 10 labels match new specification
+        // 5. Ensure numbered sections match specification
+        $this->assertStringNotContainsString('OD Limit &amp; Interest', $sidebarContent);
+        $this->assertStringContainsString('8 · Commercials', $sidebarContent);
         $this->assertStringContainsString('9 · HR · CRM · TALLY', $sidebarContent);
         $this->assertStringContainsString('10 · REPORTS', $sidebarContent);
         $this->assertStringNotContainsString('Operations & HR', $sidebarContent);
         $this->assertStringNotContainsString('Intelligence & Reports', $sidebarContent);
+
+        // 6. Ensure user actions section is placed after 10 · REPORTS in the document flow inside <nav>
+        $posReports = strpos($sidebarContent, '10 · REPORTS');
+        $posProfile = strpos($sidebarContent, $user->name);
+        $posUsers = strpos($sidebarContent, 'Users &amp; Roles');
+        $posLogout = strpos($sidebarContent, 'Log Out');
+
+        $this->assertNotFalse($posReports, 'Sidebar must contain 10 · REPORTS');
+        $this->assertNotFalse($posProfile, 'Sidebar must contain user profile');
+        $this->assertNotFalse($posUsers, 'Sidebar must contain Users & Roles');
+        $this->assertNotFalse($posLogout, 'Sidebar must contain Log Out');
+
+        $this->assertTrue($posReports < $posProfile, '10 · REPORTS must appear before user profile in sidebar');
+        $this->assertTrue($posProfile < $posUsers, 'User profile must appear before Users & Roles in sidebar');
+        $this->assertTrue($posUsers < $posLogout, 'Users & Roles must appear before Log Out in sidebar');
+
+        // Ensure user actions are inside <nav>
+        preg_match('/<nav[\s\S]*?<\/nav>/i', $sidebarContent, $navMatch);
+        $navContent = $navMatch[0] ?? '';
+        $this->assertStringContainsString($user->name, $navContent, 'User profile must be inside <nav>');
+        $this->assertStringContainsString('Users &amp; Roles', $navContent, 'Users & Roles must be inside <nav>');
+        $this->assertStringContainsString('Log Out', $navContent, 'Log Out must be inside <nav>');
     }
 }

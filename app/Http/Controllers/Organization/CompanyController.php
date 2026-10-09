@@ -11,21 +11,46 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class CompanyController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = Company::query()
+        $query = Company::query()
             ->with('businessGroup')
-            ->when($request->filled('search'), fn ($q) => $q->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%');
-            }))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('business_group_id'), fn ($q) => $q->where('business_group_id', $request->business_group_id))
+            ->when($request->filled('status'), function ($q) use ($request) {
+                if ($request->status === 'active') {
+                    $q->where('is_active', true);
+                } elseif ($request->status === 'inactive') {
+                    $q->where('is_active', false);
+                }
+            });
 
-        return view('organization.companies.index', ['items' => $items, 'search' => $request->string('search')]);
+        $this->applySearch($query, $request->input('search'), ['name', 'code', 'gstin', 'email']);
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            ['name', 'code', 'is_active', 'created_at'],
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('organization.companies.index', [
+            'items' => $items,
+            'businessGroups' => BusinessGroup::where('is_active', true)->orderBy('name')->get(),
+            'search' => $request->string('search'),
+            'status' => $request->string('status'),
+            'businessGroupId' => $request->input('business_group_id'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View
@@ -107,20 +132,44 @@ class CompanyController extends Controller
             'logo' => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,svg', 'max:2048'],
             'remove_logo' => 'nullable|boolean',
             'is_active' => 'boolean',
+        ], [
+            'logo.file' => 'The uploaded logo must be a valid file.',
+            'logo.mimes' => 'The company logo must be a file of type: PNG, JPG, JPEG, WEBP, or SVG.',
+            'logo.max' => 'The company logo size must not exceed 2 MB.',
         ]);
         $data['is_active'] = $request->boolean('is_active');
         $data['due_date_basis'] = $data['due_date_basis'] ?? ($company?->due_date_basis ?? 'invoice_date');
         $data['msme_category'] = $data['msme_category'] ?? 'none';
 
         if ($request->hasFile('logo')) {
-            $path = $request->file('logo')->store('companies/logos', 'public');
-            if ($company?->logo_path && Storage::disk('public')->exists($company->logo_path)) {
-                Storage::disk('public')->delete($company->logo_path);
+            $file = $request->file('logo');
+            Storage::disk('public')->makeDirectory('companies/logos');
+            $path = $file->store('companies/logos', 'public');
+
+            if ($path === false) {
+                \Illuminate\Support\Facades\Log::error('Failed to store company logo to public disk', [
+                    'company_id' => $company?->id ?? null,
+                    'original_name' => $file->getClientOriginalName(),
+                ]);
+
+                return back()->withInput()->withErrors([
+                    'logo' => 'Failed to save the uploaded logo to server storage. Please check disk permissions.',
+                ]);
+            }
+
+            if ($company?->logo_path && $company->logo_path !== $path) {
+                $oldClean = $company->getCleanLogoPath();
+                if ($oldClean && Storage::disk('public')->exists($oldClean)) {
+                    Storage::disk('public')->delete($oldClean);
+                }
             }
             $data['logo_path'] = $path;
         } elseif ($request->boolean('remove_logo')) {
-            if ($company?->logo_path && Storage::disk('public')->exists($company->logo_path)) {
-                Storage::disk('public')->delete($company->logo_path);
+            if ($company?->logo_path) {
+                $oldClean = $company->getCleanLogoPath();
+                if ($oldClean && Storage::disk('public')->exists($oldClean)) {
+                    Storage::disk('public')->delete($oldClean);
+                }
             }
             $data['logo_path'] = null;
         }

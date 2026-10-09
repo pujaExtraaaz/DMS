@@ -65,29 +65,55 @@
     </x-ui.card>
 </div>
 
+<div id="listing-container" data-dynamic-container>
 <x-ui.card title="Recent Serials">
+<x-ui.table-toolbar
+    placeholder="Search serials by number, product, note..."
+    :searchValue="request('search')"
+    :resetUrl="route('inventory.serials.index')"
+>
+    <x-slot name="filters">
+        <select name="status" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>
+            <option value="">All Statuses</option>
+            @foreach(['in_stock', 'reserved', 'delivered', 'returned'] as $st)
+                <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst(str_replace('_', ' ', $st)) }}</option>
+            @endforeach
+        </select>
+        <select name="warehouse_id" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>
+            <option value="">All Warehouses</option>
+            @foreach($warehouses as $w)
+                <option value="{{ $w->id }}" @selected(request('warehouse_id') == $w->id)>{{ $w->name }}</option>
+            @endforeach
+        </select>
+    </x-slot>
+</x-ui.table-toolbar>
+
 <div class="overflow-x-auto">
 <table class="min-w-full divide-y divide-slate-200 text-sm">
 <thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Serial</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Product</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Status</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Warehouse</th>
+<x-ui.sortable-th column="serial_number" label="Serial" :currentSort="$sort" :currentDirection="$direction" />
+<x-ui.sortable-th column="product" label="Product" :currentSort="$sort" :currentDirection="$direction" />
+<x-ui.sortable-th column="status" label="Status" :currentSort="$sort" :currentDirection="$direction" />
+<x-ui.sortable-th column="warehouse" label="Warehouse" :currentSort="$sort" :currentDirection="$direction" />
 <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Note</th>
 </tr></thead>
 <tbody class="divide-y divide-slate-100">
 @forelse($recent as $row)
 <tr>
 <td class="px-3 py-2"><a class="text-indigo-600 hover:underline" href="{{ route('inventory.serials.index', ['serial_number' => $row->serial_number]) }}">{{ $row->serial_number }}</a></td>
-<td class="px-3 py-2">{{ $row->product?->name }}</td>
-<td class="px-3 py-2">{{ $row->status }}</td>
+<td class="px-3 py-2 font-medium">{{ $row->product?->name }}</td>
+<td class="px-3 py-2">
+    <x-ui.badge>{{ ucfirst(str_replace('_', ' ', $row->status)) }}</x-ui.badge>
+</td>
 <td class="px-3 py-2">{{ $row->warehouse?->name ?? '—' }}</td>
 <td class="px-3 py-2">{{ $row->reservation_note ?? '—' }}</td>
 </tr>
 @empty
-<tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">No serials yet.</td></tr>
+<tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">No serials found.</td></tr>
 @endforelse
 </tbody></table>
 </div>
+<div class="mt-4">{{ $recent->links() }}</div>
 </x-ui.card>
+</div>
 @endsection

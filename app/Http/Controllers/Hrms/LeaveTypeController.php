@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Hrms;
 
 use App\Domains\Hrms\Models\LeaveType;
 use App\Domains\Organization\Models\Company;
+use App\Support\Traits\SortableAndSearchable;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -11,11 +12,41 @@ use Illuminate\View\View;
 
 class LeaveTypeController extends Controller
 {
-    public function index(): View
-    {
-        $items = LeaveType::query()->latest()->paginate(15);
+    use SortableAndSearchable;
 
-        return view('hrms.leave-types.index', compact('items'));
+    public function index(Request $request): View
+    {
+        $query = LeaveType::query();
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['name', 'code']
+        );
+
+        $allowedSorts = [
+            'name' => 'name',
+            'default_days' => 'default_days',
+            'is_paid' => 'is_paid',
+            'is_active' => 'is_active',
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('hrms.leave-types.index', [
+            'items' => $items,
+            'filters' => $request->only(['search']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

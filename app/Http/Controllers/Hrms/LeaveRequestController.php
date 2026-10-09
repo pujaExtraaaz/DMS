@@ -8,6 +8,7 @@ use App\Domains\Hrms\Models\LeaveRequest;
 use App\Domains\Hrms\Models\LeaveType;
 use App\Http\Controllers\Controller;
 use App\Support\AuditLogService;
+use App\Support\Traits\SortableAndSearchable;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,21 +17,57 @@ use Illuminate\View\View;
 
 class LeaveRequestController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(protected AuditLogService $auditLogService) {}
 
     public function index(Request $request): View
     {
-        $items = LeaveRequest::query()
+        $query = LeaveRequest::query()
             ->with(['employee', 'leaveType', 'approver'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->when($request->filled('employee_id'), fn ($q) => $q->where('employee_id', $request->employee_id))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('employee_id'), fn ($q) => $q->where('employee_id', $request->employee_id));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['reason', 'status'],
+            ['employee' => ['name', 'employee_code'], 'leaveType' => ['name']]
+        );
+
+        $allowedSorts = [
+            'from_date' => 'from_date',
+            'days' => 'days',
+            'status' => 'status',
+            'created_at' => 'created_at',
+            'employee' => function ($q, $dir) {
+                $q->join('employees', 'leave_requests.employee_id', '=', 'employees.id')
+                  ->orderBy('employees.name', $dir)
+                  ->select('leave_requests.*');
+            },
+            'leave_type' => function ($q, $dir) {
+                $q->join('leave_types', 'leave_requests.leave_type_id', '=', 'leave_types.id')
+                  ->orderBy('leave_types.name', $dir)
+                  ->select('leave_requests.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'created_at',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
 
         return view('hrms.leave-requests.index', [
             'items' => $items,
             'employees' => Employee::where('status', 'active')->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'status', 'employee_id']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 

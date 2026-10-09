@@ -12,6 +12,7 @@ use App\Domains\Master\Models\Route;
 use App\Domains\Master\Models\Vehicle;
 use App\Domains\Sales\Models\Invoice;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,18 +21,62 @@ use Illuminate\View\View;
 
 class LoadSheetController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $loadSheets = LoadSheet::query()
+        $query = LoadSheet::query()
             ->with(['route', 'vehicle', 'driver', 'deliveryPerson'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('route_id'), fn ($q) => $q->where('route_id', $request->route_id))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('load_date', '>=', $request->date_from))
-            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('load_date', '<=', $request->date_to))
-            ->latest('load_date')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('load_date', '<=', $request->date_to));
 
-        return view('logistics.load-sheets.index', compact('loadSheets'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['load_sheet_no', 'status'],
+            [
+                'route' => ['name'],
+                'vehicle' => ['registration_no'],
+                'driver' => ['name'],
+                'deliveryPerson' => ['name'],
+            ]
+        );
+
+        $allowedSorts = [
+            'load_sheet_no' => 'load_sheet_no',
+            'load_date' => 'load_date',
+            'status' => 'status',
+            'route' => function ($q, $dir) {
+                $q->leftJoin('routes', 'load_sheets.route_id', '=', 'routes.id')
+                  ->orderBy('routes.name', $dir)
+                  ->select('load_sheets.*');
+            },
+            'vehicle' => function ($q, $dir) {
+                $q->leftJoin('vehicles', 'load_sheets.vehicle_id', '=', 'vehicles.id')
+                  ->orderBy('vehicles.registration_no', $dir)
+                  ->select('load_sheets.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'load_date',
+            defaultDirection: 'desc'
+        );
+
+        $loadSheets = $query->paginate(15)->withQueryString();
+
+        return view('logistics.load-sheets.index', [
+            'loadSheets' => $loadSheets,
+            'routes' => Route::where('is_active', true)->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'status', 'route_id', 'date_from', 'date_to']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

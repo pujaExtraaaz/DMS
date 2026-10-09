@@ -332,6 +332,7 @@ class OrderModuleTest extends TestCase
             $product = Product::create([
                 'name' => 'Test Product',
                 'sku' => 'TEST-001',
+                'serial_no' => 'SN-001',
                 'base_uom_id' => $uom->id,
                 'is_active' => true,
             ]);

@@ -69,9 +69,12 @@ class CodeGenerator
         $scope = $companyId ? (string) $companyId : 'GLOBAL';
         $needle = "{$prefix}-{$scope}-";
 
-        $existing = $modelClass::query()
-            ->where($column, 'like', $needle.'%')
-            ->pluck($column);
+        $query = $modelClass::query()->where($column, 'like', $needle.'%');
+        if (\Illuminate\Support\Facades\DB::transactionLevel() > 0) {
+            $query->lockForUpdate();
+        }
+
+        $existing = $query->pluck($column);
 
         $max = 0;
         foreach ($existing as $val) {
@@ -84,7 +87,11 @@ class CodeGenerator
         $next = $max + 1;
         $candidate = sprintf('%s-%s-%05d', $prefix, $scope, $next);
 
-        while ($modelClass::query()->where($column, $candidate)->exists()) {
+        $existsQuery = fn ($val) => \Illuminate\Support\Facades\DB::transactionLevel() > 0
+            ? $modelClass::query()->where($column, $val)->lockForUpdate()->exists()
+            : $modelClass::query()->where($column, $val)->exists();
+
+        while ($existsQuery($candidate)) {
             $next++;
             $candidate = sprintf('%s-%s-%05d', $prefix, $scope, $next);
         }

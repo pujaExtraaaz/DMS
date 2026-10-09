@@ -10,6 +10,8 @@ Route::prefix('invoices')->name('invoices.')->middleware('role_or_permission:sup
     Route::get('/create', [InvoiceController::class, 'create'])->name('create');
     Route::post('/', [InvoiceController::class, 'store'])->name('store');
     Route::get('/{invoice}/pdf', [InvoiceController::class, 'pdf'])->name('pdf');
+    Route::get('/{invoice}/preview', [InvoiceController::class, 'preview'])->name('preview');
+    Route::get('/{invoice}/export/{format}', [InvoiceController::class, 'export'])->name('export');
     Route::get('/{invoice}/e-invoice-preview', [InvoiceController::class, 'eInvoicePreview'])->name('e-invoice.preview');
     Route::get('/{invoice}/e-invoice', [InvoiceController::class, 'eInvoiceDocument'])->name('e-invoice.document');
     Route::get('/{invoice}/eway', [InvoiceController::class, 'eWayBillDocument'])->name('eway.document');

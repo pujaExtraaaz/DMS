@@ -30,6 +30,22 @@ class FinancialReportController extends Controller
 
         $rows = $this->buildDayBook($from, $to);
 
+        if ($search = trim($request->input('search', ''))) {
+            $lower = mb_strtolower($search);
+            $rows = $rows->filter(function ($r) use ($lower) {
+                return str_contains(mb_strtolower($r['voucher'] ?? ''), $lower)
+                    || str_contains(mb_strtolower($r['party'] ?? ''), $lower)
+                    || str_contains(mb_strtolower($r['type'] ?? ''), $lower)
+                    || str_contains(mb_strtolower($r['narration'] ?? ''), $lower);
+            })->values();
+        }
+
+        $sort = $request->input('sort', 'date');
+        $dir = $request->input('direction', 'asc');
+        $rows = $dir === 'desc'
+            ? $rows->sortByDesc($sort)->values()
+            : $rows->sortBy($sort)->values();
+
         if ($request->filled('export')) {
             return $this->export($request, 'day-book', 'Day Book',
                 ['Date', 'Voucher Type', 'Voucher No', 'Party', 'Narration', 'Debit', 'Credit'],
@@ -45,6 +61,8 @@ class FinancialReportController extends Controller
             'rows' => $rows,
             'dateFrom' => $from,
             'dateTo' => $to,
+            'sort' => $sort,
+            'direction' => $dir,
             'totals' => [
                 'debit' => $rows->sum('debit'),
                 'credit' => $rows->sum('credit'),

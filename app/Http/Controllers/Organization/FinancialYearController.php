@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Organization;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\FinancialYear;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -14,10 +15,45 @@ use Illuminate\View\View;
 
 class FinancialYearController extends Controller
 {
+    use SortableAndSearchable;
+
     public function index(Request $request): View
     {
-        $items = FinancialYear::query()->with('company')->latest()->paginate(15)->withQueryString();
-        return view('organization.financial-years.index', ['items' => $items, 'search' => $request->string('search')]);
+        $query = FinancialYear::query()->with('company');
+
+        $this->applySearch($query, $request->input('search'), [
+            'name',
+        ], [
+            'company' => ['name'],
+        ]);
+
+        [$sort, $direction] = $this->applySorting(
+            $query,
+            $request,
+            [
+                'starts_on' => 'starts_on',
+                'name' => 'name',
+                'company' => function ($q, $dir) {
+                    $q->leftJoin('companies as c_fy', 'financial_years.company_id', '=', 'c_fy.id')
+                        ->orderBy('c_fy.name', $dir)
+                        ->select('financial_years.*');
+                },
+                'ends_on' => 'ends_on',
+                'is_current' => 'is_current',
+                'is_closed' => 'is_closed',
+            ],
+            'starts_on',
+            'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('organization.financial-years.index', [
+            'items' => $items,
+            'search' => $request->string('search'),
+            'sort' => $sort,
+            'direction' => $direction,
+        ]);
     }
 
     public function create(): View

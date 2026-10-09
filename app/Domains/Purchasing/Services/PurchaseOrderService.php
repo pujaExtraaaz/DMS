@@ -565,7 +565,7 @@ class PurchaseOrderService
                     ? (float) $item['sgst_percent']
                     : ((float) ($item['tax_percent'] ?? 0) / 2),
                 'weight' => isset($item['weight']) ? (float) $item['weight'] : null,
-                'batch_no' => $item['batch_no'] ?? null,
+                'batch_no' => $item['batch_no'] ?? $item['batch_name'] ?? null,
                 'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
                 'batch_mrp' => isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
                 'expiry_date' => $item['expiry_date'] ?? null,

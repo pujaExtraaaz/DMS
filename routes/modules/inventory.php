@@ -15,6 +15,9 @@ Route::prefix('inventory')->name('inventory.')->middleware('role_or_permission:s
 
     Route::get('transfers', [StockTransferController::class, 'index'])->name('transfers.index');
     Route::get('transfers/create', [StockTransferController::class, 'create'])->name('transfers.create');
+    Route::get('transfers/stock-availability', [StockTransferController::class, 'stockAvailability'])->name('transfers.stock-availability');
+    Route::post('transfers/name-transfer', [StockTransferController::class, 'storeNameTransfer'])->name('transfers.name-transfer');
+    Route::get('transfers/reclassifications/{reclassification}', [StockTransferController::class, 'showReclassification'])->name('transfers.reclassifications.show');
     Route::post('transfers', [StockTransferController::class, 'store'])->name('transfers.store');
     Route::get('transfers/{transfer}', [StockTransferController::class, 'show'])->name('transfers.show');
     Route::post('transfers/{transfer}/dispatch', [StockTransferController::class, 'dispatch'])->name('transfers.dispatch');

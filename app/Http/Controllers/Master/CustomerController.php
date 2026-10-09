@@ -19,8 +19,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class CustomerController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected GstLookupService $gstLookupService
     ) {}
@@ -76,16 +80,22 @@ class CustomerController extends Controller
         ]);
     }
 
+    public function cities(Request $request): JsonResponse
+    {
+        $state = $request->query('state');
+        $cities = IndianCities::getCitiesForState($state);
+
+        return response()->json([
+            'success' => true,
+            'state' => $state,
+            'cities' => $cities,
+        ]);
+    }
+
     public function index(Request $request): View
     {
-        $items = Customer::query()
+        $query = Customer::query()
             ->with(['customerType', 'area', 'route', 'salesperson', 'salesManager'])
-            ->when($request->filled('search'), fn ($q) => $q->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%'.$request->search.'%')
-                    ->orWhere('code', 'like', '%'.$request->search.'%')
-                    ->orWhere('phone', 'like', '%'.$request->search.'%')
-                    ->orWhere('gstin', 'like', '%'.$request->search.'%');
-            }))
             ->when($request->filled('party_type'), function ($q) use ($request) {
                 $type = $request->party_type;
                 if ($type === Customer::PARTY_TYPE_SUNDRY_DEBTORS) {
@@ -98,16 +108,35 @@ class CustomerController extends Controller
             })
             ->when($request->filled('area_id'), fn ($q) => $q->where('area_id', $request->area_id))
             ->when($request->filled('customer_type_id'), fn ($q) => $q->where('customer_type_id', $request->customer_type_id))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('status'), function ($q) use ($request) {
+                if ($request->status === 'active') {
+                    $q->where('is_active', true);
+                } elseif ($request->status === 'inactive') {
+                    $q->where('is_active', false);
+                }
+            });
+
+        $this->applySearch($query, $request->input('search'), ['name', 'code', 'phone', 'gstin', 'email']);
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            ['name', 'code', 'party_type', 'phone', 'gstin', 'is_active', 'created_at'],
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
 
         return view('masters.customers.index', [
             'items' => $items,
             'search' => $request->string('search'),
             'partyType' => $request->string('party_type'),
+            'status' => $request->string('status'),
             'areas' => Area::where('is_active', true)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 
@@ -275,7 +304,9 @@ class CustomerController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
             'gstin' => 'nullable|string|max:20',
+            'pan' => 'nullable|string|max:20',
             'state' => 'nullable|string|max:100',
+            'city' => 'nullable|string|max:100',
             'pincode' => 'nullable|string|max:12',
             'address' => 'nullable|string',
         ]);
@@ -287,6 +318,13 @@ class CustomerController extends Controller
         };
 
         $defaultTypeId = CustomerType::query()->value('id');
+        if (! $defaultTypeId) {
+            $defaultTypeId = CustomerType::create([
+                'name' => 'General',
+                'code' => 'GEN',
+                'is_active' => true,
+            ])->id;
+        }
         $companyId = auth()->user()?->company_id;
         $validated['customer_type_id'] = $validated['customer_type_id'] ?? $defaultTypeId;
         if (blank($validated['code'] ?? null) || Customer::where('code', $validated['code'])->exists()) {
@@ -299,34 +337,43 @@ class CustomerController extends Controller
         $validated['branch_id'] = auth()->user()?->branch_id;
         $validated['is_active'] = true;
 
+        $city = $validated['city'] ?? null;
+        unset($validated['city'], $validated['pan']);
+
         $customer = Customer::create($validated);
 
-        if (filled($validated['address'] ?? null)) {
-            $customer->addresses()->create([
-                'type' => 'both',
-                'label' => 'Main Office',
-                'name' => $customer->name,
-                'address_line_1' => $validated['address'],
-                'address' => $validated['address'],
-                'state' => $validated['state'] ?? null,
-                'pincode' => $validated['pincode'] ?? null,
-                'gstin' => $validated['gstin'] ?? null,
-                'is_default' => true,
-                'is_default_billing' => true,
-                'is_default_delivery' => true,
-                'is_active' => true,
-            ]);
-        }
+        // Always create a default address record so address snapshots and shipping/billing pickers work immediately
+        $addressLine = $validated['address'] ?? '';
+        $customer->addresses()->create([
+            'type' => 'both',
+            'label' => 'Main Office',
+            'name' => $customer->name,
+            'address_line_1' => $addressLine,
+            'address' => $addressLine,
+            'city' => $city,
+            'state' => $validated['state'] ?? null,
+            'pincode' => $validated['pincode'] ?? null,
+            'gstin' => $validated['gstin'] ?? null,
+            'is_default' => true,
+            'is_default_billing' => true,
+            'is_default_delivery' => true,
+            'is_active' => true,
+        ]);
 
         return response()->json([
             'success' => true,
+            'message' => 'Customer created successfully.',
             'party' => [
                 'id' => $customer->id,
                 'name' => $customer->name,
                 'code' => $customer->code,
                 'party_type' => $customer->party_type,
                 'gstin' => $customer->gstin,
+                'pan' => $customer->pan,
                 'state' => $customer->state,
+                'city' => $city,
+                'phone' => $customer->phone,
+                'email' => $customer->email,
             ],
         ]);
     }
@@ -653,7 +700,8 @@ class CustomerController extends Controller
             'routes' => Route::where('is_active', true)->orderBy('name')->get(),
             'salesManagers' => $salesManagers,
             'salespersons' => $salespersons,
-            'states' => IndianStates::all(),
+            'states' => IndianStates::allAlphabetical(),
+            'stateOptions' => IndianStates::options(),
             'stateCities' => IndianCities::all(),
         ];
     }

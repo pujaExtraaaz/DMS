@@ -106,7 +106,7 @@
                             <input type="file"
                                    name="logo"
                                    x-ref="fileInput"
-                                   accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                   accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
                                    @change="handleFileChange($event)"
                                    class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 transition cursor-pointer">
 

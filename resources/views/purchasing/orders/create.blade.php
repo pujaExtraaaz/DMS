@@ -90,62 +90,130 @@
     <th class="px-3 py-2 text-left">SGST %</th>
     <th class="px-3 py-2"></th>
     </tr></thead>
-    <tbody id="po-lines"><tr>
-    <td class="px-3 py-2">
-        <select name="items[0][product_id]" class="po-product block w-52 rounded-lg border-gray-300 text-sm" required onchange="handlePoProductChange(this)">
-            <option value="">Select product</option>
-            @foreach($products as $p)
-                <option value="{{ $p->id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-uom="{{ $p->base_uom_id }}">{{ $p->name }}</option>
-            @endforeach
-        </select>
-    </td>
-    <td class="px-3 py-2">
-        <input type="text" name="items[0][batch_no]" class="block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional">
-    </td>
-    <td class="px-3 py-2">
-        <select name="items[0][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
-            @foreach($uoms as $u)<option value="{{ $u->id }}">{{ $u->code }}</option>@endforeach
-        </select>
-    </td>
-    <td class="px-3 py-2"><input type="number" step="0.0001" name="items[0][quantity]" class="block w-20 rounded-lg border-gray-300 text-sm" value="1" required></td>
-    <td class="px-3 py-2"><input type="number" step="0.0001" name="items[0][unit_cost]" class="po-cost block w-28 rounded-lg border-gray-300 text-sm" value="0" required></td>
-    <td class="px-3 py-2">
-        <input
-            type="number"
-            step="0.01"
-            min="0"
-            max="100"
-            name="items[0][tax_percent]"
-            class="po-tax block w-20 rounded-lg border-gray-300 text-sm"
-            value="0"
-        >
-    </td>
-    <td class="px-3 py-2">
-        <input
-            type="number"
-            step="0.01"
-            min="0"
-            max="100"
-            name="items[0][cgst_percent]"
-            class="po-cgst block w-20 rounded-lg border-gray-300 text-sm"
-            value="0"
-        >
-    </td>
-    <td class="px-3 py-2">
-        <input
-            type="number"
-            step="0.01"
-            min="0"
-            max="100"
-            name="items[0][sgst_percent]"
-            class="po-sgst block w-20 rounded-lg border-gray-300 text-sm"
-            value="0"
-        >
-    </td>
-    <td class="px-3 py-2 text-right">
-        <button type="button" onclick="removePoRow(this)" class="text-xs text-red-600 hover:text-red-800 po-remove-btn" style="display:none;">Remove</button>
-    </td>
-    </tr></tbody></table></div>
+    <tbody id="po-lines">
+    @php
+        $oldItems = old('items');
+    @endphp
+    @if(!empty($oldItems) && is_array($oldItems))
+        @foreach($oldItems as $idx => $oldItem)
+            <tr>
+            <td class="px-3 py-2">
+                <select name="items[{{ $idx }}][product_id]" class="po-product block w-52 rounded-lg border-gray-300 text-sm" required onchange="handlePoProductChange(this)">
+                    <option value="">Select product</option>
+                    @foreach($products as $p)
+                        <option value="{{ $p->id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected(($oldItem['product_id'] ?? null) == $p->id)>{{ $p->name }}</option>
+                    @endforeach
+                </select>
+            </td>
+            <td class="px-3 py-2">
+                <input type="text" name="items[{{ $idx }}][batch_no]" list="po-batch-list-{{ $idx }}" class="po-batch-input block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional" value="{{ $oldItem['batch_no'] ?? $oldItem['batch_name'] ?? '' }}">
+                <datalist id="po-batch-list-{{ $idx }}"></datalist>
+            </td>
+            <td class="px-3 py-2">
+                <select name="items[{{ $idx }}][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
+                    @foreach($uoms as $u)<option value="{{ $u->id }}" @selected(($oldItem['uom_id'] ?? null) == $u->id)>{{ $u->code }}</option>@endforeach
+                </select>
+            </td>
+            <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][quantity]" class="block w-20 rounded-lg border-gray-300 text-sm" value="{{ $oldItem['quantity'] ?? 1 }}" required></td>
+            <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][unit_cost]" class="po-cost block w-28 rounded-lg border-gray-300 text-sm" value="{{ $oldItem['unit_cost'] ?? 0 }}" required></td>
+            <td class="px-3 py-2">
+                <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    name="items[{{ $idx }}][tax_percent]"
+                    class="po-tax block w-20 rounded-lg border-gray-300 text-sm"
+                    value="{{ $oldItem['tax_percent'] ?? 0 }}"
+                >
+            </td>
+            <td class="px-3 py-2">
+                <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    name="items[{{ $idx }}][cgst_percent]"
+                    class="po-cgst block w-20 rounded-lg border-gray-300 text-sm"
+                    value="{{ $oldItem['cgst_percent'] ?? 0 }}"
+                >
+            </td>
+            <td class="px-3 py-2">
+                <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    name="items[{{ $idx }}][sgst_percent]"
+                    class="po-sgst block w-20 rounded-lg border-gray-300 text-sm"
+                    value="{{ $oldItem['sgst_percent'] ?? 0 }}"
+                >
+            </td>
+            <td class="px-3 py-2 text-right">
+                <button type="button" onclick="removePoRow(this)" class="text-xs text-red-600 hover:text-red-800 po-remove-btn" @if(count($oldItems) === 1) style="display:none;" @endif>Remove</button>
+            </td>
+            </tr>
+        @endforeach
+    @else
+        <tr>
+        <td class="px-3 py-2">
+            <select name="items[0][product_id]" class="po-product block w-52 rounded-lg border-gray-300 text-sm" required onchange="handlePoProductChange(this)">
+                <option value="">Select product</option>
+                @foreach($products as $p)
+                    <option value="{{ $p->id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-uom="{{ $p->base_uom_id }}">{{ $p->name }}</option>
+                @endforeach
+            </select>
+        </td>
+        <td class="px-3 py-2">
+            <input type="text" name="items[0][batch_no]" list="po-batch-list-0" class="po-batch-input block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional">
+            <datalist id="po-batch-list-0"></datalist>
+        </td>
+        <td class="px-3 py-2">
+            <select name="items[0][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
+                @foreach($uoms as $u)<option value="{{ $u->id }}">{{ $u->code }}</option>@endforeach
+            </select>
+        </td>
+        <td class="px-3 py-2"><input type="number" step="0.0001" name="items[0][quantity]" class="block w-20 rounded-lg border-gray-300 text-sm" value="1" required></td>
+        <td class="px-3 py-2"><input type="number" step="0.0001" name="items[0][unit_cost]" class="po-cost block w-28 rounded-lg border-gray-300 text-sm" value="0" required></td>
+        <td class="px-3 py-2">
+            <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                name="items[0][tax_percent]"
+                class="po-tax block w-20 rounded-lg border-gray-300 text-sm"
+                value="0"
+            >
+        </td>
+        <td class="px-3 py-2">
+            <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                name="items[0][cgst_percent]"
+                class="po-cgst block w-20 rounded-lg border-gray-300 text-sm"
+                value="0"
+            >
+        </td>
+        <td class="px-3 py-2">
+            <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                name="items[0][sgst_percent]"
+                class="po-sgst block w-20 rounded-lg border-gray-300 text-sm"
+                value="0"
+            >
+        </td>
+        <td class="px-3 py-2 text-right">
+            <button type="button" onclick="removePoRow(this)" class="text-xs text-red-600 hover:text-red-800 po-remove-btn" style="display:none;">Remove</button>
+        </td>
+        </tr>
+    @endif
+    </tbody></table></div>
     <div class="flex flex-wrap gap-3 items-center">
     <x-ui.button type="button" variant="secondary" onclick="addPoRow()">Add Line</x-ui.button>
     <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="submit_for_approval" value="1" class="rounded border-gray-300"> Submit for approval</label>
@@ -156,9 +224,9 @@
 </div>
 @push('scripts')
 <script>
-let poi = 1;
+let poi = {{ (!empty($oldItems) && is_array($oldItems)) ? count($oldItems) : 1 }};
 
-function handlePoProductChange(select) {
+async function handlePoProductChange(select) {
     const row = select.closest('tr');
     if (!row) return;
 
@@ -180,6 +248,32 @@ function handlePoProductChange(select) {
     if (sgstInput) sgstInput.value = (taxRate / 2).toFixed(2);
     if (costInput && (!costInput.value || costInput.value === '0')) costInput.value = cost;
     if (uomSelect && uomId) uomSelect.value = uomId;
+
+    // Load existing batches for this product into datalist if available
+    const datalist = row.querySelector('datalist');
+    if (datalist) {
+        datalist.innerHTML = '';
+        try {
+            const res = await fetch(`{{ url('/inventory/batches') }}/${encodeURIComponent(opt.value)}?include_zero=1`, {
+                headers: { 'Accept': 'application/json' }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.batches && Array.isArray(data.batches)) {
+                    data.batches.forEach(b => {
+                        if (b.batch_no) {
+                            const optEl = document.createElement('option');
+                            optEl.value = b.batch_no;
+                            optEl.textContent = b.batch_no + (b.available_qty ? ` (Stock: ${b.available_qty})` : '');
+                            datalist.appendChild(optEl);
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            // silent fallback
+        }
+    }
 }
 
 function syncPoTax(row, changed) {
@@ -217,17 +311,29 @@ function addPoRow() {
     const firstRow = table.rows[0];
     const newRow = firstRow.cloneNode(true);
 
-    newRow.innerHTML = newRow.innerHTML.replace(/items\[0\]/g, 'items[' + poi + ']');
-    
+    newRow.innerHTML = newRow.innerHTML.replace(/items\[\d+\]/g, 'items[' + poi + ']');
+
     newRow.querySelectorAll('input').forEach(input => {
         if (input.name.includes('[quantity]')) {
             input.value = '1';
-        } else if (input.name.includes('[batch_no]')) {
+        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]')) {
             input.value = '';
         } else {
             input.value = '0';
         }
     });
+
+    const batchInput = newRow.querySelector('.po-batch-input');
+    if (batchInput) {
+        batchInput.setAttribute('list', 'po-batch-list-' + poi);
+        batchInput.value = '';
+    }
+    const datalist = newRow.querySelector('datalist');
+    if (datalist) {
+        datalist.id = 'po-batch-list-' + poi;
+        datalist.innerHTML = '';
+    }
+
     newRow.querySelectorAll('select').forEach(sel => {
         if (sel.classList.contains('po-product')) {
             sel.selectedIndex = 0;

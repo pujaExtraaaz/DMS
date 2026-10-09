@@ -56,6 +56,61 @@ class IndianStates
         return array_values(self::all());
     }
 
+    /**
+     * Complete list of Indian States and Union Territories sorted alphabetically by name (A-Z).
+     *
+     * @return array<string, string> Key: GST code, Value: State/UT name
+     */
+    public static function allAlphabetical(): array
+    {
+        $states = self::all();
+        asort($states, SORT_NATURAL | SORT_FLAG_CASE);
+        return $states;
+    }
+
+    /**
+     * Names of all states sorted alphabetically.
+     *
+     * @return array<int, string>
+     */
+    public static function namesAlphabetical(): array
+    {
+        return array_values(self::allAlphabetical());
+    }
+
+    /**
+     * State options formatted with name and code, sorted alphabetically (A-Z).
+     *
+     * @return array<int, array{code: string, name: string}>
+     */
+    public static function options(): array
+    {
+        $options = [];
+        foreach (self::allAlphabetical() as $code => $name) {
+            $options[] = [
+                'code' => (string) str_pad((string) $code, 2, '0', STR_PAD_LEFT),
+                'name' => $name,
+            ];
+        }
+        return $options;
+    }
+
+    /**
+     * Lookup state GST code by name.
+     */
+    public static function codeFromName(?string $name): ?string
+    {
+        if (! $name) {
+            return null;
+        }
+        foreach (self::all() as $code => $stateName) {
+            if (strcasecmp($stateName, trim($name)) === 0) {
+                return $code;
+            }
+        }
+        return null;
+    }
+
     public static function stateFromGstin(?string $gstin): ?string
     {
         if (! $gstin || strlen(trim($gstin)) < 2) {

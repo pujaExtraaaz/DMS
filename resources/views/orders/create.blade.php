@@ -59,32 +59,46 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
                 {{-- Customer --}}
-                <x-ui.select
-                    name="customer_id"
-                    id="customer_id"
-                    label="Customer"
-                    required
-                    placeholder="Select customer"
-                    x-model="customerId"
-                    @change="customerChanged()"
-                >
-                    @foreach($customers as $customer)
+                <div class="space-y-1">
+                    <div class="flex items-center justify-between mb-1">
+                        <label for="customer_id" class="block text-sm font-medium text-slate-700">
+                            Customer <span class="text-red-500">*</span>
+                        </label>
+                        <button type="button" @click="$dispatch('open-quick-add-customer')"
+                                class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                            + Add Customer
+                        </button>
+                    </div>
 
-                        <option
-                            value="{{ $customer->id }}"
-                            @selected(
-                                old('customer_id') == $customer->id ||
-                                (!old('customer_id') && request('customer_id') == $customer->id)
-                            )
-                        >
-                            {{ $customer->name }}
-                            @if($customer->code)
-                                ({{ $customer->code }})
-                            @endif
-                        </option>
+                    <select
+                        name="customer_id"
+                        id="customer_id"
+                        required
+                        class="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500 @error('customer_id') border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500 @enderror"
+                        x-model="customerId"
+                        @change="customerChanged()"
+                    >
+                        <option value="">Select customer</option>
+                        @foreach($customers as $customer)
+                            <option
+                                value="{{ $customer->id }}"
+                                @selected(
+                                    old('customer_id') == $customer->id ||
+                                    (!old('customer_id') && request('customer_id') == $customer->id)
+                                )
+                            >
+                                {{ $customer->name }}
+                                @if($customer->code)
+                                    ({{ $customer->code }})
+                                @endif
+                            </option>
+                        @endforeach
+                    </select>
 
-                    @endforeach
-                </x-ui.select>
+                    @error('customer_id')
+                        <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
 
 
                 {{-- Order Date --}}
@@ -727,6 +741,8 @@
 
     </form>
 
+    <x-quick-add-customer targetSelect="customer_id" />
+
 </div>
 
 @endsection
@@ -779,6 +795,13 @@ document.addEventListener('alpine:init', () => {
             shippingSnapshot: '',
 
         init() {
+
+            window.addEventListener('customer-quick-added', (e) => {
+                if (e.detail && e.detail.id) {
+                    this.customerId = String(e.detail.id);
+                    this.customerChanged();
+                }
+            });
 
             if (this.customerId) {
                 this.fetchCustomerAddresses();

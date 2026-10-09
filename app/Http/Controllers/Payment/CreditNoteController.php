@@ -10,6 +10,7 @@ use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Services\CreditNoteService;
 use App\Domains\Sales\Models\Invoice;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -17,6 +18,8 @@ use InvalidArgumentException;
 
 class CreditNoteController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected CreditNoteService $creditNoteService,
         protected FinancialYearService $financialYearService,
@@ -24,17 +27,50 @@ class CreditNoteController extends Controller
 
     public function index(Request $request): View
     {
-        $items = CreditNote::query()
+        $query = CreditNote::query()
             ->with(['customer', 'invoice'])
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->latest('credit_note_date')
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('reason'), fn ($q) => $q->where('reason', $request->reason))
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('credit_note_date', '>=', $request->date_from))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('credit_note_date', '<=', $request->date_to));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['credit_note_no', 'reason', 'status', 'notes'],
+            ['customer' => ['name'], 'invoice' => ['invoice_no']]
+        );
+
+        $allowedSorts = [
+            'credit_note_no' => 'credit_note_no',
+            'reason' => 'reason',
+            'status' => 'status',
+            'grand_total' => 'grand_total',
+            'credit_note_date' => 'credit_note_date',
+            'customer' => function ($q, $dir) {
+                $q->join('customers', 'credit_notes.customer_id', '=', 'customers.id')
+                  ->orderBy('customers.name', $dir)
+                  ->select('credit_notes.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'credit_note_date',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
 
         return view('payments.credit-notes.index', [
             'items' => $items,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'customer_id', 'status', 'reason', 'date_from', 'date_to']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 

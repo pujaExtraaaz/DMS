@@ -11,18 +11,44 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
+use App\Support\Traits\SortableAndSearchable;
+
 class LandedCostController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(protected LandedCostService $landedCostService) {}
 
-    public function index(): View
+    public function index(Request $request): View
     {
-        $items = LandedCost::query()
+        $query = LandedCost::query()
             ->with(['purchaseInvoice.supplier', 'freightBill', 'creator'])
-            ->latest('landed_date')
-            ->paginate(15);
+            ->when($request->filled('date_from'), fn ($q) => $q->whereDate('landed_date', '>=', $request->date_from))
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('landed_date', '<=', $request->date_to));
 
-        return view('purchasing.landed-costs.index', compact('items'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['landed_no', 'notes'],
+            ['purchaseInvoice' => ['invoice_number', 'supplier_invoice_number']]
+        );
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            ['landed_no', 'landed_date', 'allocation_method', 'total_additional_cost', 'created_at'],
+            defaultSort: 'landed_date',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('purchasing.landed-costs.index', [
+            'items' => $items,
+            'search' => $request->string('search'),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

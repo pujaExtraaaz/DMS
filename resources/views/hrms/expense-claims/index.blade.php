@@ -7,46 +7,43 @@
 </x-slot>
 </x-ui.page-header>
 
-<x-ui.card class="mb-6">
-    <form method="GET" action="{{ route('hrms.expense-claims.index') }}" class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-        <div>
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Status</label>
-            <select name="status" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
-                <option value="">All Statuses</option>
-                @foreach(['pending', 'approved', 'settled', 'rejected'] as $st)
-                    <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst($st) }}</option>
-                @endforeach
-            </select>
-        </div>
-        <div>
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Employee</label>
-            <select name="employee_id" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
-                <option value="">All Employees</option>
-                @foreach($employees as $e)
-                    <option value="{{ $e->id }}" @selected(request('employee_id') == $e->id)>{{ $e->name }}</option>
-                @endforeach
-            </select>
-        </div>
-        <div>
-            <x-ui.button type="submit" variant="secondary" class="w-full">Filter</x-ui.button>
-        </div>
-    </form>
-</x-ui.card>
+<div id="listing-container" data-dynamic-container>
+    <x-ui.card>
+        <x-ui.table-toolbar
+            placeholder="Search expense claims by type, description, employee..."
+            :searchValue="request('search')"
+            :resetUrl="route('hrms.expense-claims.index')"
+        >
+            <x-slot name="filters">
+                <select name="status" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>
+                    <option value="">All Statuses</option>
+                    @foreach(['pending', 'approved', 'settled', 'rejected'] as $st)
+                        <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst($st) }}</option>
+                    @endforeach
+                </select>
 
-<x-ui.card>
-    <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-slate-200 text-sm">
-            <thead class="bg-slate-50">
-                <tr>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Date</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Employee</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Type</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Claim Amount</th>
-                    <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Receipt</th>
-                    <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Status</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions / Settlement</th>
-                </tr>
-            </thead>
+                <select name="employee_id" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>
+                    <option value="">All Employees</option>
+                    @foreach($employees as $e)
+                        <option value="{{ $e->id }}" @selected(request('employee_id') == $e->id)>{{ $e->name }}</option>
+                    @endforeach
+                </select>
+            </x-slot>
+        </x-ui.table-toolbar>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                <thead class="bg-slate-50">
+                    <tr>
+                        <x-ui.sortable-th column="claim_date" label="Date" :currentSort="$sort" :currentDirection="$direction" />
+                        <x-ui.sortable-th column="employee" label="Employee" :currentSort="$sort" :currentDirection="$direction" />
+                        <x-ui.sortable-th column="claim_type" label="Type" :currentSort="$sort" :currentDirection="$direction" />
+                        <x-ui.sortable-th column="claim_amount" label="Claim Amount" align="right" :currentSort="$sort" :currentDirection="$direction" />
+                        <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Receipt</th>
+                        <x-ui.sortable-th column="status" label="Status" align="center" :currentSort="$sort" :currentDirection="$direction" />
+                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions / Settlement</th>
+                    </tr>
+                </thead>
             <tbody class="divide-y divide-slate-100">
                 @forelse($items as $item)
                     <tr>
@@ -136,4 +133,5 @@
     </div>
     <div class="mt-4">{{ $items->links() }}</div>
 </x-ui.card>
+</div>
 @endsection

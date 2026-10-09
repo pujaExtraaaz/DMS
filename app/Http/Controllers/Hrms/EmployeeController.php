@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Support\AuditLogService;
 use App\Support\CodeGenerator;
 use App\Support\DocumentNumberService;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -19,6 +20,8 @@ use Illuminate\View\View;
 
 class EmployeeController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected DocumentNumberService $documentNumbers,
         protected AuditLogService $auditLogService,
@@ -26,23 +29,52 @@ class EmployeeController extends Controller
 
     public function index(Request $request): View
     {
-        $items = Employee::query()
+        $query = Employee::query()
             ->with(['department', 'designation', 'branch', 'manager'])
             ->forUserBranch()
-            ->when($request->filled('search'), function ($q) use ($request) {
-                $s = $request->string('search');
-                $q->where(function ($q) use ($s) {
-                    $q->where('name', 'like', "%{$s}%")
-                        ->orWhere('employee_code', 'like', "%{$s}%")
-                        ->orWhere('email', 'like', "%{$s}%");
-                });
-            })
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('department_id'), fn ($q) => $q->where('department_id', $request->department_id));
 
-        return view('hrms.employees.index', compact('items'));
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['name', 'employee_code', 'email', 'phone'],
+            ['department' => ['name'], 'designation' => ['name'], 'branch' => ['name']]
+        );
+
+        $allowedSorts = [
+            'name' => 'name',
+            'employee_code' => 'employee_code',
+            'status' => 'status',
+            'department' => function ($q, $dir) {
+                $q->leftJoin('departments', 'employees.department_id', '=', 'departments.id')
+                  ->orderBy('departments.name', $dir)
+                  ->select('employees.*');
+            },
+            'branch' => function ($q, $dir) {
+                $q->leftJoin('branches', 'employees.branch_id', '=', 'branches.id')
+                  ->orderBy('branches.name', $dir)
+                  ->select('employees.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'name',
+            defaultDirection: 'asc'
+        );
+
+        $items = $query->paginate(15)->withQueryString();
+
+        return view('hrms.employees.index', [
+            'items' => $items,
+            'departments' => Department::where('is_active', true)->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'status', 'department_id']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
+        ]);
     }
 
     public function create(): View

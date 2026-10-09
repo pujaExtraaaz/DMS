@@ -8,6 +8,7 @@ use App\Domains\Payment\Models\Payment;
 use App\Domains\Payment\Services\OutstandingLedgerService;
 use App\Domains\Sales\Models\Invoice;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,8 @@ use Illuminate\View\View;
 
 class PaymentController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(
         protected OutstandingLedgerService $outstandingLedgerService,
         protected FinancialYearService $financialYearService,
@@ -23,19 +26,53 @@ class PaymentController extends Controller
 
     public function index(Request $request): View
     {
-        $payments = Payment::query()
+        $query = Payment::query()
             ->with(['customer', 'invoice', 'recorder'])
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
             ->when($request->filled('method'), fn ($q) => $q->where('method', $request->method))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('paid_at', '>=', $request->date_from))
-            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('paid_at', '<=', $request->date_to))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('paid_at', '<=', $request->date_to));
+
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['payment_no', 'reference_no', 'method', 'status', 'notes'],
+            ['customer' => ['name'], 'invoice' => ['invoice_no']]
+        );
+
+        $allowedSorts = [
+            'payment_no' => 'payment_no',
+            'method' => 'method',
+            'amount' => 'amount',
+            'paid_at' => 'paid_at',
+            'customer' => function ($q, $dir) {
+                $q->join('customers', 'payments.customer_id', '=', 'customers.id')
+                  ->orderBy('customers.name', $dir)
+                  ->select('payments.*');
+            },
+            'invoice' => function ($q, $dir) {
+                $q->leftJoin('invoices', 'payments.invoice_id', '=', 'invoices.id')
+                  ->orderBy('invoices.invoice_no', $dir)
+                  ->select('payments.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'paid_at',
+            defaultDirection: 'desc'
+        );
+
+        $payments = $query->paginate(15)->withQueryString();
 
         return view('payments.index', [
             'payments' => $payments,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
+            'filters' => $request->only(['search', 'customer_id', 'method', 'date_from', 'date_to']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 

@@ -7,6 +7,7 @@ use App\Domains\Hrms\Models\Department;
 use App\Domains\Hrms\Models\Employee;
 use App\Http\Controllers\Controller;
 use App\Support\AuditLogService;
+use App\Support\Traits\SortableAndSearchable;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AttendanceController extends Controller
 {
+    use SortableAndSearchable;
+
     public function __construct(protected AuditLogService $auditLogService) {}
 
     public function index(Request $request): View|StreamedResponse
@@ -39,6 +42,13 @@ class AttendanceController extends Controller
                 }
             });
 
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['status', 'notes'],
+            ['employee' => ['name', 'employee_code']]
+        );
+
         if ($request->input('export') === 'csv') {
             return $this->exportCsv($query->get());
         }
@@ -54,7 +64,26 @@ class AttendanceController extends Controller
             'total_hours' => (float) (clone $statsQuery)->sum('hours_worked'),
         ];
 
-        $items = $query->latest('attendance_date')->paginate(20)->withQueryString();
+        $allowedSorts = [
+            'attendance_date' => 'attendance_date',
+            'status' => 'status',
+            'hours_worked' => 'hours_worked',
+            'employee' => function ($q, $dir) {
+                $q->join('employees', 'attendances.employee_id', '=', 'employees.id')
+                  ->orderBy('employees.name', $dir)
+                  ->select('attendances.*');
+            },
+        ];
+
+        $sortData = $this->applySorting(
+            $query,
+            $request,
+            $allowedSorts,
+            defaultSort: 'attendance_date',
+            defaultDirection: 'desc'
+        );
+
+        $items = $query->paginate(20)->withQueryString();
 
         $myEmployee = auth()->user()?->employee;
         $todayAttendance = $myEmployee
@@ -68,6 +97,9 @@ class AttendanceController extends Controller
             'departments' => Department::where('is_active', true)->orderBy('name')->get(),
             'myEmployee' => $myEmployee,
             'todayAttendance' => $todayAttendance,
+            'filters' => $request->only(['search', 'month', 'date', 'department_id', 'employee_id', 'status']),
+            'sort' => $sortData['sort'],
+            'direction' => $sortData['direction'],
         ]);
     }
 
