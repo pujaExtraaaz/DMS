@@ -12,7 +12,6 @@ Route::get('/', function () {
 
 require __DIR__.'/modules/payment-public.php';
 require __DIR__.'/modules/crm-public.php';
-require __DIR__.'/modules/tally-connector-public.php';
 
 Route::get('/invoice/qr/{type}/{token}', [
     \App\Http\Controllers\InvoiceQrController::class,
