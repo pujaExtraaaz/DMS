@@ -16,15 +16,13 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'branch.scope' => \App\Http\Middleware\SetUserBranchScope::class,
+            'tally.workspace' => \App\Http\Middleware\BindTallyWorkspace::class,
         ]);
 
         $middleware->appendToGroup('web', [
             \App\Http\Middleware\SetUserBranchScope::class,
         ]);
 
-        $middleware->validateCsrfTokens(except: [
-            'api/tally-connector/*',
-        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

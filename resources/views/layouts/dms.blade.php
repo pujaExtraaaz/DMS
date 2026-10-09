@@ -180,5 +180,6 @@
 
     @livewireScripts
     @stack('scripts')
+    @include('partials.sync-conflict')
 </body>
 </html>

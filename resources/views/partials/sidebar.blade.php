@@ -240,7 +240,7 @@
         @if($can('hrms.view', 'hrms.manage', 'crm.view', 'crm.manage', 'tally.view', 'tally.manage'))
             <div x-data="{ open: {{ $is('hrms.*') || $is('crm.*') || $is('tally.*') ? 'true' : 'false' }} }">
                 <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>9 · HR · CRM · TALLY</span>
+                    <span>9 · HR · CRM</span>
                     <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                 </button>
                 <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
@@ -258,9 +258,18 @@
                     @if($can('crm.view', 'crm.manage'))
                         <a href="{{ route('crm.leads.index') }}" class="{{ $itemClass }} {{ $linkClass(['crm.leads.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leads (CRM)</span></a>
                     @endif
-                    @if($can('tally.view', 'tally.manage'))
-                        <a href="{{ route('tally.queue.index') }}" class="{{ $itemClass }} {{ $linkClass(['tally.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tally Sync</span></a>
-                    @endif
+                </div>
+            </div>
+        @endif
+
+        @if($can('tally.view', 'tally.manage', 'accounting.view'))
+            <div x-data="{ open: {{ $is('books.tally*') ? 'true' : 'false' }} }">
+                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
+                    <span>10 · Books</span>
+                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                </button>
+                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
+                    <a href="{{ route('books.tally.dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tally</span></a>
                 </div>
             </div>
         @endif
@@ -268,7 +277,7 @@
         @if($can('reports.view', 'reports.manage'))
             <div x-data="{ open: {{ $is('reports.*') ? 'true' : 'false' }} }">
                 <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>10 · REPORTS</span>
+                    <span>11 · REPORTS</span>
                     <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                 </button>
                 <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">

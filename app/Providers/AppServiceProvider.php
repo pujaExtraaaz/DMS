@@ -13,14 +13,14 @@ use App\Domains\Master\Services\ProductDiscountService;
 use App\Domains\Order\Models\Order;
 use App\Domains\Order\Services\OrderConversionService;
 use App\Domains\Payment\Models\CreditNote;
-use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Payment\Services\OutstandingLedgerService;
-use App\Domains\Payment\Services\PaymentLinkService;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
+use App\Domains\Purchasing\Models\PurchaseOrder;
+use App\Domains\Payment\Services\PaymentLinkService;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sales\Services\InvoiceNumberGenerator;
-use App\Domains\Tally\Observers\TallyAutoEnqueueObserver;
+use App\Domains\Sync\Observers\BooksSyncObserver;
 use App\Policies\OrderPolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -46,18 +46,24 @@ class AppServiceProvider extends ServiceProvider
         // Automatically snapshot master pricing whenever it changes.
         Product::observe(ProductPriceObserver::class);
 
-        // ── Tally sync ──────────────────────────────────────────────────
-        // Masters (Product, Customer, UOM) — sync on every save/update.
-        Product::observe(TallyAutoEnqueueObserver::class);
-        Customer::observe(TallyAutoEnqueueObserver::class);
-        Uom::observe(TallyAutoEnqueueObserver::class);
-
-        // Vouchers — sync only when they reach a posted status.
-        Invoice::observe(TallyAutoEnqueueObserver::class);
-        Payment::observe(TallyAutoEnqueueObserver::class);
-        CreditNote::observe(TallyAutoEnqueueObserver::class);
-        PurchaseInvoice::observe(TallyAutoEnqueueObserver::class);
-        PurchaseOrder::observe(TallyAutoEnqueueObserver::class);
+        // Books sync lives here so Sales, Purchasing, and Inventory controllers stay unchanged.
+        $booksSync = BooksSyncObserver::class;
+        Product::observe($booksSync);
+        Customer::observe($booksSync);
+        Uom::observe($booksSync);
+        \App\Domains\Organization\Models\Warehouse::observe($booksSync);
+        Invoice::observe($booksSync);
+        Payment::observe($booksSync);
+        PurchaseInvoice::observe($booksSync);
+        PurchaseOrder::observe($booksSync);
+        CreditNote::observe($booksSync);
+        \Tally\Models\Product::observe($booksSync);
+        \Tally\Models\Unit::observe($booksSync);
+        \Tally\Models\Party::observe($booksSync);
+        \Tally\Models\Godown::observe($booksSync);
+        \Tally\Models\Invoice::observe($booksSync);
+        \Tally\Models\Voucher::observe($booksSync);
+        \Tally\Models\PurchaseOrder::observe($booksSync);
     }
 }
 
