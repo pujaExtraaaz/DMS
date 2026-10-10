@@ -14,7 +14,7 @@ use App\Http\Controllers\Master\UomController;
 use App\Http\Controllers\Master\VehicleController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create')->group(function () {
+Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit')->group(function () {
     Route::post('customer-types/quick-store', [CustomerTypeController::class, 'quickStore'])->name('customer-types.quick-store');
     Route::get('customer-types/list', [CustomerTypeController::class, 'list'])->name('customer-types.list');
     Route::resource('customer-types', CustomerTypeController::class);
@@ -25,7 +25,7 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
     Route::resource('drivers', DriverController::class);
     Route::resource('delivery-persons', DeliveryPersonController::class);
 
-    Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create')->group(function () {
+    Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit')->group(function () {
         Route::resource('products', ProductController::class);
         Route::resource('price-masters', PriceMasterController::class);
 

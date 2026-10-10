@@ -13,6 +13,7 @@ Route::middleware('role_or_permission:super-admin|payments.view|payments.create|
         Route::get('/', [PaymentController::class, 'index'])->name('index');
         Route::get('/create', [PaymentController::class, 'create'])->name('create');
         Route::post('/', [PaymentController::class, 'store'])->name('store');
+        Route::get('/outstanding', [OutstandingController::class, 'index'])->name('outstanding');
         Route::get('/{payment}', [PaymentController::class, 'show'])->name('show');
     });
 

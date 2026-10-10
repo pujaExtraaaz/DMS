@@ -126,7 +126,8 @@ function quickAddSupplierModal(targetSelectName) {
             this.searchingGst = false;
         },
         async fetchGstDetails() {
-            const gstin = (this.form.gstin || '').trim();
+            const gstin = (this.form.gstin || '').trim().toUpperCase();
+            this.form.gstin = gstin;
             if (gstin.length !== 15) {
                 this.errorMessage = 'Please enter a valid 15-character GSTIN.';
                 return;

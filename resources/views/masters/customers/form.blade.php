@@ -1,5 +1,5 @@
 @extends('layouts.dms')
-@section('title', $item->exists ? 'Edit Party' : 'Create Party')
+@section('title', isset($lead) ? 'Convert Lead to Customer' : ($item->exists ? 'Edit Party' : 'Create Party'))
 
 @php
     $defaultBankAccount = [
@@ -59,16 +59,50 @@
 @endphp
 
 @section('content')
-<x-ui.page-header :title="$item->exists ? 'Edit Party' : 'Create Party'">
-    <x-slot name="actions"><x-ui.button variant="secondary" :href="route('masters.customers.index')">Back</x-ui.button></x-slot>
+<x-ui.page-header :title="isset($lead) ? 'Convert Lead to Customer' : ($item->exists ? 'Edit Party' : 'Create Party')">
+    <x-slot name="actions">
+        @if(isset($lead))
+            <x-ui.button variant="secondary" :href="route('crm.leads.index')">Back to Leads</x-ui.button>
+        @else
+            <x-ui.button variant="secondary" :href="route('masters.customers.index')">Back</x-ui.button>
+        @endif
+    </x-slot>
 </x-ui.page-header>
 <x-ui.card>
+    @if(isset($lead))
+        <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-xs">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-emerald-950">
+                            Converting Lead: {{ $lead->name }}{{ $lead->company_name && $lead->company_name !== $lead->name ? ' (' . $lead->company_name . ')' : '' }}
+                        </h3>
+                        <p class="text-xs text-emerald-700">
+                            Lead contact, address, and assignment details have been pre-filled. Complete party details below and save to convert this lead into a Customer.
+                        </p>
+                    </div>
+                </div>
+                <a href="{{ route('crm.leads.index') }}" class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-xs hover:bg-emerald-50 transition">
+                    &larr; Back to Leads
+                </a>
+            </div>
+        </div>
+    @endif
+
     <form method="POST"
           action="{{ $item->exists ? route('masters.customers.update', $item) : route('masters.customers.store') }}"
           class="space-y-6 max-w-5xl"
           x-data="partyFormController()">
         @csrf
         @if($item->exists) @method('PUT') @endif
+        @if(isset($lead))
+            <input type="hidden" name="lead_id" value="{{ $lead->id }}">
+        @elseif(old('lead_id'))
+            <input type="hidden" name="lead_id" value="{{ old('lead_id') }}">
+        @endif
 
         <div>
             <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity</h3>
@@ -189,7 +223,7 @@
                 <button type="button" @click="addAddress()"
                         class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                    + Add Address
+                    Add Address
                 </button>
             </div>
 
@@ -500,6 +534,14 @@
                 </x-ui.select>
                 <x-ui.input name="interest_rate" label="Overdue Interest Rate (% per annum)" type="number" step="0.01" :value="old('interest_rate', $item->interest_rate ?? 18)" />
             </div>
+
+            <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 text-xs text-slate-600">
+                <div class="flex items-center gap-2 font-semibold text-slate-700 mb-1">
+                    <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Commercial Setup &amp; Price Schedules
+                </div>
+                <p>Specific pricing schedules and custom rates are managed centrally in <a href="{{ route('masters.price-masters.index') }}" target="_blank" class="text-indigo-600 underline font-medium hover:text-indigo-800">Master &rarr; Price Master</a> based on party classification.</p>
+            </div>
         </div>
 
         <div class="space-y-4">
@@ -621,7 +663,14 @@
             <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600"> Active
         </label>
 
-        <x-ui.button type="submit" variant="primary">Save Party</x-ui.button>
+        <div class="flex items-center gap-3 pt-2">
+            <x-ui.button type="submit" variant="primary">
+                {{ isset($lead) ? 'Save Customer & Complete Conversion' : 'Save Party' }}
+            </x-ui.button>
+            <x-ui.button variant="secondary" :href="isset($lead) ? route('crm.leads.index') : route('masters.customers.index')">
+                Cancel
+            </x-ui.button>
+        </div>
 
         <!-- Add Classification Modal -->
         <div x-show="classificationModalOpen"
@@ -950,6 +999,16 @@ function partyFormController() {
                 return;
             }
 
+            const gstinPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[0-9A-Z]{1}[0-9A-Z]{1}$/;
+            if (!gstinPattern.test(gstin)) {
+                this.gstFeedback = {
+                    type: 'error',
+                    message: 'Invalid GSTIN format. Expected 2-digit state code, 10-character PAN, entity code, and checksum (e.g. 27AAAAA0000A1Z5).',
+                    note: ''
+                };
+                return;
+            }
+
             this.searchingGst = true;
             this.gstFeedback = { type: '', message: '', note: '' };
 
@@ -958,60 +1017,88 @@ function partyFormController() {
                 const data = await response.json();
 
                 if (data.success && data.party) {
-                    // Safe field mapping - only update if data is provided and non-empty
-                    if (data.party.name && data.party.name.trim() !== '') {
-                        this.form.name = data.party.name;
-                    }
-                    if (data.party.pan && data.party.pan.trim() !== '') {
-                        this.form.pan = data.party.pan;
-                    }
-                    if (data.party.state && data.party.state.trim() !== '') {
-                        this.form.state = data.party.state;
-                    }
-                    if (data.party.pincode && data.party.pincode.trim() !== '') {
-                        this.form.pincode = data.party.pincode;
-                    }
-                    if (data.party.address && data.party.address.trim() !== '') {
-                        this.form.address = data.party.address;
-                        if (this.addresses.length > 0) {
-                            this.addresses[0].address_line_1 = data.party.address;
-                            if (data.party.state) {
-                                this.addresses[0].state = data.party.state;
-                            }
-                            if (data.party.pincode) {
-                                this.addresses[0].pincode = data.party.pincode;
-                            }
-                            if (data.party.city) {
-                                this.addresses[0].city = data.party.city;
+                    // Safe assignment helper that preserves user values unless confirmed
+                    const assignField = (currentValue, newValue, fieldLabel) => {
+                        if (!newValue || !String(newValue).trim()) return currentValue;
+                        const cleanNew = String(newValue).trim();
+                        const cleanCur = (currentValue || '').trim();
+                        if (!cleanCur) {
+                            return cleanNew;
+                        }
+                        if (cleanCur.toLowerCase() !== cleanNew.toLowerCase()) {
+                            if (confirm(`Replace existing ${fieldLabel} "${cleanCur}" with verified "${cleanNew}"?`)) {
+                                return cleanNew;
                             }
                         }
+                        return currentValue;
+                    };
+
+                    // Populate Party Name (prefer registered trade name, fallback legal name)
+                    this.form.name = assignField(this.form.name, data.party.name, 'Party Name');
+
+                    // Populate PAN
+                    this.form.pan = assignField(this.form.pan, data.party.pan, 'PAN');
+
+                    // Populate State
+                    this.form.state = assignField(this.form.state, data.party.state, 'State');
+
+                    // Populate Pincode and Address
+                    if (data.party.pincode && (!this.form.pincode || !this.form.pincode.trim())) {
+                        this.form.pincode = data.party.pincode.trim();
+                    }
+                    if (data.party.address && (!this.form.address || !this.form.address.trim())) {
+                        this.form.address = data.party.address.trim();
                     }
 
-                    if (data.is_live) {
-                        this.gstFeedback = {
-                            type: 'success',
-                            message: data.message || 'GSTIN verified successfully from official records.',
-                            note: 'Contact Phone and Email are not published in public GST records and should be entered manually.'
-                        };
-                    } else {
-                        this.gstFeedback = {
-                            type: 'warning',
-                            message: data.message || 'PAN and State deduced from GSTIN format.',
-                            note: 'Party Name, Contact and Address must be entered manually.'
-                        };
+                    // Populate default address in address list if present
+                    if (this.addresses && this.addresses.length > 0) {
+                        const primary = this.addresses.find(a => a.is_default_billing) || this.addresses[0];
+                        if (primary) {
+                            const line1 = data.party.address_line_1 || data.party.address || '';
+                            if (line1) {
+                                primary.address_line_1 = assignField(primary.address_line_1, line1, 'Address Line 1');
+                            }
+                            if (data.party.address_line_2 && (!primary.address_line_2 || !primary.address_line_2.trim())) {
+                                primary.address_line_2 = data.party.address_line_2.trim();
+                            }
+                            if (data.party.city) {
+                                primary.city = assignField(primary.city, data.party.city, 'City');
+                            }
+                            if (data.party.state) {
+                                primary.state = assignField(primary.state, data.party.state, 'State');
+                            }
+                            if (data.party.pincode) {
+                                primary.pincode = assignField(primary.pincode, data.party.pincode, 'Pincode');
+                            }
+                        }
+                        this.syncPrimaryAddress();
                     }
+
+                    // Status and user feedback
+                    const statusText = data.party.status ? ` (Status: ${data.party.status})` : '';
+                    const isInactive = data.party.status && data.party.status.toLowerCase() !== 'active';
+                    this.gstFeedback = {
+                        type: isInactive ? 'warning' : 'success',
+                        message: (data.message || 'GSTIN verified successfully from official records.') + statusText,
+                        note: isInactive
+                            ? `Warning: GST registration status is reported as ${data.party.status}. Please review carefully before saving.`
+                            : 'Party details populated. Phone and Email are not published in public tax records and can be entered manually.'
+                    };
                 } else {
+                    const note = data.is_configured === false
+                        ? 'GST verification credentials need to be configured in .env (e.g. GST_API_KEY, GST_API_SECRET). You may enter details manually.'
+                        : 'All manually entered values have been preserved. You can enter details manually.';
                     this.gstFeedback = {
                         type: 'error',
-                        message: data.message || 'GSTIN details not found.',
-                        note: ''
+                        message: data.message || 'GSTIN details not found or verification failed.',
+                        note: note
                     };
                 }
             } catch (err) {
                 this.gstFeedback = {
                     type: 'error',
                     message: 'An error occurred while connecting to GST lookup service.',
-                    note: 'Please verify the GSTIN and try again.'
+                    note: 'Please verify network connection and try again.'
                 };
             } finally {
                 this.searchingGst = false;

@@ -11,7 +11,7 @@
     <x-ui.table-toolbar
         placeholder="Search ledger by description, type..."
         :searchValue="request('search')"
-        :resetUrl="route('payments.outstanding')"
+        :resetUrl="route('outstanding.index')"
     >
         <x-slot name="filters">
             <select name="customer_id" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>

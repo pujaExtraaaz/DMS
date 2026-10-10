@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Master;
 
+use App\Domains\Crm\Models\Lead;
+use App\Domains\Crm\Models\LeadActivity;
+use App\Domains\Crm\Models\LeadConversion;
 use App\Domains\Master\Models\Area;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\CustomerType;
@@ -9,6 +12,7 @@ use App\Domains\Master\Models\Route;
 use App\Domains\Master\Services\GstLookupService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\AuditLogService;
 use App\Support\CodeGenerator;
 use App\Support\IndianCities;
 use App\Support\IndianStates;
@@ -26,7 +30,8 @@ class CustomerController extends Controller
     use SortableAndSearchable;
 
     public function __construct(
-        protected GstLookupService $gstLookupService
+        protected GstLookupService $gstLookupService,
+        protected AuditLogService $auditLogService
     ) {}
 
     /**
@@ -140,10 +145,27 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View|RedirectResponse
     {
         $companyId = auth()->user()?->company_id;
         $code = CodeGenerator::forParty($companyId);
+        $lead = null;
+
+        $leadId = $request->query('lead_id', old('lead_id'));
+        if ($leadId) {
+            $lead = Lead::forUserBranch()->find($leadId);
+            if (! $lead) {
+                return redirect()->route('crm.leads.index')->with('error', 'The requested lead was not found or you do not have permission to access it.');
+            }
+
+            if ($lead->status === 'converted' || $lead->converted_customer_id) {
+                return redirect()->route('crm.leads.index')->with('error', 'This lead has already been converted to a customer.');
+            }
+
+            if ($lead->status !== 'qualified') {
+                return redirect()->route('crm.leads.index')->with('error', 'Only leads with Qualified status can be converted to a customer.');
+            }
+        }
 
         $customer = new Customer([
             'code' => $code,
@@ -151,17 +173,27 @@ class CustomerController extends Controller
             'is_active' => true,
         ]);
 
+        if ($lead) {
+            $customer->name = $lead->company_name ?: ($lead->organization ?: $lead->name);
+            $customer->phone = $lead->mobile ?: $lead->phone;
+            $customer->email = $lead->email ?: $lead->secondary_email;
+            $customer->state = $lead->state;
+            $customer->pincode = $lead->zip;
+            $customer->address = $lead->street ?: (trim(($lead->city ?? '').' '.($lead->state ?? '')) ?: null);
+            $customer->salesperson_id = $lead->assigned_to;
+        }
+
         $initialAddresses = [
             [
                 'id' => null,
-                'label' => 'Head Office / Billing',
-                'contact_person' => '',
-                'contact_phone' => '',
-                'address_line_1' => '',
+                'label' => $lead ? 'Primary Office' : 'Head Office / Billing',
+                'contact_person' => $lead ? ($lead->name ?? '') : '',
+                'contact_phone' => $lead ? ($lead->mobile ?: $lead->phone ?: '') : '',
+                'address_line_1' => $lead ? ($lead->street ?: ($lead->city ?? '')) : '',
                 'address_line_2' => '',
-                'city' => '',
-                'state' => '',
-                'pincode' => '',
+                'city' => $lead ? ($lead->city ?? '') : '',
+                'state' => $lead ? ($lead->state ?? '') : '',
+                'pincode' => $lead ? ($lead->zip ?? '') : '',
                 'type' => 'both',
                 'is_default_billing' => true,
                 'is_default_delivery' => true,
@@ -171,15 +203,32 @@ class CustomerController extends Controller
         return view('masters.customers.form', [
             'item' => $customer,
             'initialAddresses' => $initialAddresses,
+            'lead' => $lead,
             ...$this->formData(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $lead = null;
+        if ($request->filled('lead_id')) {
+            $lead = Lead::forUserBranch()->find($request->input('lead_id'));
+            if (! $lead) {
+                return redirect()->route('crm.leads.index')->with('error', 'The referenced lead was not found or you do not have permission to access it.');
+            }
+
+            if ($lead->status === 'converted' || $lead->converted_customer_id) {
+                return redirect()->route('crm.leads.index')->with('error', 'This lead has already been converted to a customer.');
+            }
+
+            if ($lead->status !== 'qualified') {
+                return redirect()->route('crm.leads.index')->with('error', 'Only leads with Qualified status can be converted to a customer.');
+            }
+        }
+
         $data = $this->validated($request);
 
-        $customer = DB::transaction(function () use ($data, $request) {
+        $customer = DB::transaction(function () use ($data, $request, $lead) {
             $companyId = $data['company_id'] ?? auth()->user()?->company_id;
 
             if (blank($data['code'] ?? null) || Customer::where('code', $data['code'])->exists()) {
@@ -192,8 +241,50 @@ class CustomerController extends Controller
             $customer = Customer::create($data);
             $this->syncChildRows($request, $customer);
 
+            if ($lead) {
+                // If no contact rows were entered in form, create primary contact from lead
+                if ($customer->contacts()->count() === 0 && filled($lead->name)) {
+                    $customer->contacts()->create([
+                        'name' => $lead->name,
+                        'role' => $lead->title ?: 'Primary Contact',
+                        'phone' => $lead->mobile ?: $lead->phone,
+                        'alternate_phone' => $lead->secondary_mobile ?: $lead->landline,
+                        'email' => $lead->email ?: $lead->secondary_email,
+                        'is_primary' => true,
+                        'is_active' => true,
+                    ]);
+                }
+
+                LeadConversion::create([
+                    'lead_id' => $lead->id,
+                    'customer_id' => $customer->id,
+                    'converted_by' => auth()->id(),
+                    'converted_at' => now(),
+                    'notes' => 'Converted via Add Customer form.',
+                ]);
+
+                $lead->update([
+                    'status' => 'converted',
+                    'converted_customer_id' => $customer->id,
+                    'converted_at' => now(),
+                ]);
+
+                LeadActivity::create([
+                    'lead_id' => $lead->id,
+                    'user_id' => auth()->id(),
+                    'activity_type' => 'status_change',
+                    'body' => "Converted to customer {$customer->name} (#{$customer->code})",
+                ]);
+
+                $this->auditLogService->record($lead, 'converted');
+            }
+
             return $customer;
         });
+
+        if ($lead) {
+            return $this->flashSuccess("Lead '{$lead->name}' converted to Customer '{$customer->name}' ({$customer->code}) successfully.", 'masters.customers.index');
+        }
 
         return $this->flashSuccess('Party created successfully.', 'masters.customers.index');
     }
@@ -287,8 +378,9 @@ class CustomerController extends Controller
         }
 
         $result = $this->gstLookupService->search((string) $gstin);
+        $status = ! empty($result['success']) ? 200 : ($result['status_code'] ?? 422);
 
-        return response()->json($result);
+        return response()->json($result, $status);
     }
 
     /**
@@ -381,6 +473,7 @@ class CustomerController extends Controller
     protected function validated(Request $request, ?Customer $customer = null): array
     {
         $rules = [
+            'lead_id' => 'nullable|integer|exists:leads,id',
             'name' => 'required|string|max:255',
             'code' => 'nullable|string|max:30|unique:customers,code'.($customer ? ','.$customer->id : ''),
             'party_type' => 'required|in:sundry_debtors,sundry_creditors,both,dealer,customer,supplier',
@@ -507,7 +600,14 @@ class CustomerController extends Controller
         $data['company_id'] = $customer?->company_id ?? auth()->user()?->company_id;
         $data['branch_id'] = $customer?->branch_id ?? auth()->user()?->branch_id;
 
-        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['credit_cheques'], $data['pan']);
+        if ($request->filled('lead_id') && empty($data['branch_id'])) {
+            $leadBranchId = Lead::where('id', $request->lead_id)->value('branch_id');
+            if ($leadBranchId) {
+                $data['branch_id'] = $leadBranchId;
+            }
+        }
+
+        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['credit_cheques'], $data['pan'], $data['lead_id']);
 
         return $data;
     }

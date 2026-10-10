@@ -7,6 +7,7 @@ use App\Domains\Master\Models\CustomerType;
 use App\Domains\Organization\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -175,6 +176,32 @@ class QuickAddCustomerInOrderTest extends TestCase
 
     public function test_gst_lookup_returns_party_details(): void
     {
+        config([
+            'services.gst.api_key' => 'fake-test-key',
+            'services.gst.api_secret' => 'fake-test-secret',
+        ]);
+        Http::fake([
+            '*/authenticate' => Http::response(['access_token' => 'fake-jwt-token'], 200),
+            '*' => Http::response([
+                'access_token' => 'fake-jwt-token',
+                'data' => [
+                    'gstin' => '27AAACA1234A1Z5',
+                    'trade_name' => 'Acme Supplies',
+                    'legal_name' => 'Acme Supplies Private Limited',
+                    'status' => 'Active',
+                    'principal_place_of_business' => [
+                        'address' => [
+                            'building_number' => '101',
+                            'street' => 'MG Road',
+                            'city' => 'Mumbai',
+                            'state' => 'Maharashtra',
+                            'pincode' => '400001',
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
         $response = $this->actingAs($this->salesUser)
             ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAACA1234A1Z5']));
 
@@ -182,7 +209,8 @@ class QuickAddCustomerInOrderTest extends TestCase
         $response->assertJson([
             'success' => true,
         ]);
-        $this->assertNotEmpty($response->json('party.state'));
+        $this->assertEquals('Maharashtra', $response->json('party.state'));
+        $this->assertEquals('Acme Supplies', $response->json('party.name'));
     }
 
     public function test_quick_add_with_classification_and_fetches_addresses(): void

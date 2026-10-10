@@ -19,6 +19,8 @@ Route::prefix('crm')->name('crm.')->middleware('role_or_permission:super-admin|c
     Route::get('leads/{lead}', [LeadController::class, 'show'])->name('leads.show');
     Route::get('leads/{lead}/edit', [LeadController::class, 'edit'])->name('leads.edit');
     Route::put('leads/{lead}', [LeadController::class, 'update'])->name('leads.update');
+    Route::delete('leads/{lead}', [LeadController::class, 'destroy'])->name('leads.destroy');
+    Route::match(['patch', 'post'], 'leads/{lead}/status', [LeadController::class, 'updateStatus'])->name('leads.update-status');
     Route::post('leads/{lead}/assign', [LeadController::class, 'assign'])->name('leads.assign');
     Route::post('leads/{lead}/followup', [LeadController::class, 'followup'])->name('leads.followup');
     Route::post('leads/{lead}/convert', [LeadController::class, 'convert'])->name('leads.convert');

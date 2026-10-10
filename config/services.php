@@ -89,13 +89,13 @@ return [
         'fallback_to_stub' => filter_var(env('MASTERSINDIA_FALLBACK_TO_STUB', true), FILTER_VALIDATE_BOOLEAN),
     ],
 
-    // GSTIN verification & taxpayer lookup service
+    // GSTIN verification & taxpayer lookup service (sandbox, cleartax, mastersindia, or custom)
     'gst' => [
-        'provider' => env('GST_PROVIDER', 'mastersindia'),
+        'provider' => env('GST_PROVIDER', 'sandbox'),
         'api_url' => env('GST_API_URL'),
         'api_key' => env('GST_API_KEY'),
+        'api_secret' => env('GST_API_SECRET'),
         'timeout' => (int) env('GST_API_TIMEOUT', 15),
         'verify_ssl' => filter_var(env('GST_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN),
     ],
-
 ];
