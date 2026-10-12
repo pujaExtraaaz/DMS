@@ -162,6 +162,16 @@ class Customer extends Model
         return $this->hasMany(PartyCreditCheque::class);
     }
 
+    public function orders(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Order\Models\Order::class);
+    }
+
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Sales\Models\Invoice::class);
+    }
+
     public function defaultAddress(): ?PartyAddress
     {
         return $this->defaultBillingAddress() ?? $this->defaultDeliveryAddress() ?? $this->addresses()->first();

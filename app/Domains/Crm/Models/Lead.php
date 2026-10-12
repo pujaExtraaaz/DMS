@@ -16,11 +16,21 @@ class Lead extends Model
 {
     use ScopeByBranch;
 
+    public const CATEGORY_PROSPECT = 'prospect';
+    public const CATEGORY_CUSTOMER = 'customer';
+    public const CATEGORY_PARTNER = 'partner';
+
+    public const CATEGORIES = [
+        self::CATEGORY_PROSPECT => 'Prospect',
+        self::CATEGORY_CUSTOMER => 'Customer',
+        self::CATEGORY_PARTNER => 'Partner',
+    ];
+
     protected $fillable = [
         'company_id', 'branch_id', 'lead_source_id', 'lead_campaign_id', 'meta_lead_form_id',
         'external_lead_id', 'name', 'title', 'company_name', 'organization', 'mobile', 'secondary_mobile',
         'phone', 'landline', 'email', 'secondary_email', 'street', 'city', 'state', 'zip',
-        'tag', 'sub_category_id', 'sub_category',
+        'tag', 'industry', 'category', 'sub_category_id', 'sub_category',
         'interested_product', 'priority', 'status', 'assigned_to', 'last_contacted_at',
         'next_followup_at', 'lead_score', 'lost_reason', 'converted_customer_id',
         'converted_at', 'meta_payload', 'notes',
@@ -61,6 +71,12 @@ class Lead extends Model
     public function getOrganizationAttribute(): ?string
     {
         return $this->attributes['organization'] ?? $this->attributes['company_name'] ?? null;
+    }
+
+    public function getCategoryLabelAttribute(): string
+    {
+        $cat = strtolower((string) ($this->attributes['category'] ?? ''));
+        return self::CATEGORIES[$cat] ?? 'Uncategorized';
     }
 
     public function getContactNameAttribute(): ?string
@@ -146,4 +162,116 @@ class Lead extends Model
     public function assignments(): HasMany { return $this->hasMany(LeadAssignment::class); }
     public function followups(): HasMany { return $this->hasMany(LeadFollowup::class); }
     public function conversion(): HasOne { return $this->hasOne(LeadConversion::class); }
+
+    public function getPurchaseSummaryAttribute(): array
+    {
+        if (! $this->converted_customer_id) {
+            return [
+                'status' => 'unavailable',
+                'status_label' => 'Unavailable (Not Linked)',
+                'badge_variant' => 'neutral',
+                'orders_count' => 0,
+                'total_value' => 0.0,
+                'last_order_date' => null,
+            ];
+        }
+
+        $customer = $this->convertedCustomer;
+        if (! $customer) {
+            return [
+                'status' => 'unavailable',
+                'status_label' => 'Unavailable (Customer Deleted)',
+                'badge_variant' => 'neutral',
+                'orders_count' => 0,
+                'total_value' => 0.0,
+                'last_order_date' => null,
+            ];
+        }
+
+        $orders = $customer->orders()->where('status', '!=', 'cancelled');
+        $ordersCount = (int) (clone $orders)->count();
+        $totalValue = (float) (clone $orders)->sum('grand_total');
+        $lastOrderDate = (clone $orders)->max('order_date');
+
+        if ($ordersCount === 0) {
+            // Also check invoices as secondary check if orders is empty
+            $invoices = $customer->invoices()->where('status', '!=', 'cancelled');
+            $invoicesCount = (int) (clone $invoices)->count();
+            if ($invoicesCount > 0) {
+                $ordersCount = $invoicesCount;
+                $totalValue = (float) (clone $invoices)->sum('grand_total');
+                $lastOrderDate = (clone $invoices)->max('invoice_date');
+            }
+        }
+
+        if ($ordersCount > 0) {
+            return [
+                'status' => 'has_purchased',
+                'status_label' => $ordersCount . ($ordersCount === 1 ? ' Order' : ' Orders') . ' (₹' . number_format($totalValue, 2) . ')',
+                'badge_variant' => 'success',
+                'orders_count' => $ordersCount,
+                'total_value' => $totalValue,
+                'last_order_date' => $lastOrderDate,
+            ];
+        }
+
+        return [
+            'status' => 'never_purchased',
+            'status_label' => 'Never Purchased',
+            'badge_variant' => 'warning',
+            'orders_count' => 0,
+            'total_value' => 0.0,
+            'last_order_date' => null,
+        ];
+    }
+
+    public function getEngagementSummaryAttribute(): array
+    {
+        $followupsCount = $this->followups()->count();
+        $activitiesCount = $this->activities()->count();
+        $lastFollowup = $this->followups()->latest('created_at')->value('created_at');
+        $lastActivity = $this->activities()->latest('created_at')->value('created_at');
+
+        $latestDate = collect([$this->last_contacted_at, $lastFollowup, $lastActivity])
+            ->filter()
+            ->max();
+
+        $daysSince = $latestDate ? now()->diffInDays(\Illuminate\Support\Carbon::parse($latestDate)) : null;
+
+        if ($followupsCount === 0 && $activitiesCount === 0 && ! $this->last_contacted_at) {
+            return [
+                'level' => 'none',
+                'level_label' => 'No Activity Recorded',
+                'badge_variant' => 'neutral',
+                'followups_count' => 0,
+                'activities_count' => 0,
+                'last_activity_at' => null,
+                'days_since_last_activity' => null,
+            ];
+        }
+
+        if (($followupsCount + $activitiesCount >= 3) || ($daysSince !== null && $daysSince <= 14)) {
+            $level = 'high';
+            $levelLabel = 'Highly Engaged';
+            $badgeVariant = 'success';
+        } elseif (($followupsCount + $activitiesCount >= 1) || ($daysSince !== null && $daysSince <= 30)) {
+            $level = 'medium';
+            $levelLabel = 'Moderately Engaged';
+            $badgeVariant = 'primary';
+        } else {
+            $level = 'low';
+            $levelLabel = 'Low Engagement';
+            $badgeVariant = 'warning';
+        }
+
+        return [
+            'level' => $level,
+            'level_label' => $levelLabel,
+            'badge_variant' => $badgeVariant,
+            'followups_count' => $followupsCount,
+            'activities_count' => $activitiesCount,
+            'last_activity_at' => $latestDate,
+            'days_since_last_activity' => $daysSince,
+        ];
+    }
 }

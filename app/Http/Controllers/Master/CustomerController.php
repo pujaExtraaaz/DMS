@@ -265,6 +265,7 @@ class CustomerController extends Controller
 
                 $lead->update([
                     'status' => 'converted',
+                    'category' => Lead::CATEGORY_CUSTOMER,
                     'converted_customer_id' => $customer->id,
                     'converted_at' => now(),
                 ]);

@@ -9,6 +9,7 @@ use App\Domains\Crm\Models\LeadAssignment;
 use App\Domains\Crm\Models\LeadCampaign;
 use App\Domains\Crm\Models\LeadConversion;
 use App\Domains\Crm\Models\LeadFollowup;
+use App\Domains\Crm\Models\LeadSegment;
 use App\Domains\Crm\Models\LeadSource;
 use App\Domains\Crm\Services\LeadDuplicateChecker;
 use App\Domains\Master\Models\Customer;
@@ -49,6 +50,7 @@ class LeadController extends Controller
             'priorities' => ['low', 'normal', 'high', 'urgent'],
             'states' => IndianStates::all(),
             'subCategories' => SubCategory::where('is_active', true)->orderBy('name')->get(),
+            'categories' => Lead::CATEGORIES,
         ]);
     }
 
@@ -121,6 +123,7 @@ class LeadController extends Controller
             'priorities' => ['low', 'normal', 'high', 'urgent'],
             'states' => IndianStates::all(),
             'subCategories' => SubCategory::where('is_active', true)->orderBy('name')->get(),
+            'categories' => Lead::CATEGORIES,
         ]);
     }
 
@@ -297,6 +300,8 @@ class LeadController extends Controller
             'sales_person' => 'nullable|exists:users,id',
             'assigned_to' => 'nullable|exists:users,id',
             'tag' => 'nullable|string|max:255',
+            'industry' => 'nullable|string|max:100',
+            'category' => 'nullable|string|in:prospect,customer,partner,Prospect,Customer,Partner',
             'sub_category_id' => 'nullable|exists:sub_categories,id',
             'sub_category' => 'nullable|string|max:255',
             'street' => 'nullable|string|max:500',
@@ -317,6 +322,10 @@ class LeadController extends Controller
 
         if (in_array($data['status'] ?? null, ['followup', 'follow-up'], true)) {
             $data['status'] = 'follow_up';
+        }
+
+        if (! empty($data['category'])) {
+            $data['category'] = strtolower(trim($data['category']));
         }
 
         if (empty($data['name']) && !empty($data['contact_name'])) {
@@ -380,6 +389,23 @@ class LeadController extends Controller
                 } else {
                     $q->where('status', $stat);
                 }
+            })
+            ->when($request->filled('category'), function ($q) use ($request) {
+                $cat = strtolower(trim((string) $request->category));
+                if ($cat === 'uncategorized') {
+                    $q->where(function ($sub) {
+                        $sub->whereNull('category')->orWhere('category', '');
+                    });
+                } else {
+                    $q->where('category', $cat);
+                }
+            })
+            ->when($request->filled('segment_id'), function ($q) use ($request) {
+                $segment = LeadSegment::forUserBranch()->find($request->segment_id);
+                if ($segment) {
+                    $matchingIds = $segment->matchingLeadsQuery()->select('leads.id');
+                    $q->whereIn('leads.id', $matchingIds);
+                }
             });
 
         $this->applySearch($query, $request->input('search'), [
@@ -394,6 +420,8 @@ class LeadController extends Controller
             'landline',
             'title',
             'tag',
+            'industry',
+            'category',
             'sub_category',
             'city',
             'state',
@@ -430,8 +458,9 @@ class LeadController extends Controller
         );
 
         $items = $query->paginate(15)->withQueryString();
+        $segments = LeadSegment::forUserBranch()->orderBy('name')->get();
 
-        return view('crm.leads.index', compact('items', 'sort', 'direction'));
+        return view('crm.leads.index', compact('items', 'sort', 'direction', 'segments'));
     }
 
     public function show(Lead $lead): View
@@ -782,6 +811,7 @@ class LeadController extends Controller
 
                 $lead->update([
                     'status' => 'converted',
+                    'category' => Lead::CATEGORY_CUSTOMER,
                     'converted_customer_id' => $customer->id,
                     'converted_at' => now(),
                 ]);

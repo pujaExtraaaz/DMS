@@ -21,6 +21,25 @@
 <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Email</dt><dd class="font-medium text-slate-900">{{ $lead->email ?: '—' }}</dd></div>
 <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Secondary Email</dt><dd class="font-medium text-slate-900">{{ $lead->secondary_email ?: '—' }}</dd></div>
 <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Tag</dt><dd class="font-medium text-slate-900">{{ $lead->tag ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Industry</dt><dd class="font-medium text-slate-900">{{ $lead->industry ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Category</dt><dd class="font-medium text-slate-900 mt-0.5">
+    @php
+        $catKey = $lead->category;
+        $catLabel = match($catKey) {
+            'prospect' => 'Prospect',
+            'customer' => 'Customer',
+            'partner' => 'Partner',
+            default => 'Uncategorized',
+        };
+        $catVariant = match($catKey) {
+            'customer' => 'success',
+            'prospect' => 'info',
+            'partner' => 'primary',
+            default => 'neutral',
+        };
+    @endphp
+    <x-ui.badge :variant="$catVariant">{{ $catLabel }}</x-ui.badge>
+</dd></div>
 <div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Sub Category</dt><dd class="font-medium text-slate-900">{{ $lead->subCategory?->name ?: $lead->sub_category ?: '—' }}</dd></div>
 <div class="md:col-span-2">
     <dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mailing Address</dt>

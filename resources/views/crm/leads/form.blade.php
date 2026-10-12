@@ -162,6 +162,37 @@
             </div>
 
             <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Industry</label>
+                <input 
+                    type="text" 
+                    name="industry" 
+                    list="lead-industry-presets"
+                    value="{{ old('industry', $lead->industry) }}" 
+                    placeholder="e.g. Manufacturing, Retail, IT, Healthcare"
+                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                >
+                <datalist id="lead-industry-presets">
+                    <option value="Manufacturing">
+                    <option value="Retail & Wholesale">
+                    <option value="Information Technology">
+                    <option value="Healthcare & Pharma">
+                    <option value="Education">
+                    <option value="Construction & Real Estate">
+                    <option value="Finance & Banking">
+                    <option value="Hospitality & Tourism">
+                    <option value="Agriculture">
+                    <option value="Logistics & Supply Chain">
+                </datalist>
+            </div>
+
+            <x-ui.select name="category" label="Category">
+                <option value="">Select Category</option>
+                <option value="prospect" @selected(old('category', $lead->category) === 'prospect')>Prospect</option>
+                <option value="customer" @selected(old('category', $lead->category) === 'customer')>Customer</option>
+                <option value="partner" @selected(old('category', $lead->category) === 'partner')>Partner</option>
+            </x-ui.select>
+
+            <div>
                 <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Sub Category</label>
                 <select 
                     name="sub_category_id" 

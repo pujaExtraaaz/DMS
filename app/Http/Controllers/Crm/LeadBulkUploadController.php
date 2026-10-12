@@ -62,6 +62,7 @@ class LeadBulkUploadController extends Controller
             'Title',
             'SALES PERSON',
             'Tag',
+            'Category',
             'Mailing City',
             'Mailing Zip',
             'Mailing State',
@@ -87,6 +88,7 @@ class LeadBulkUploadController extends Controller
             'Managing Director',
             'Admin',
             'VIP, High Value',
+            'Prospect',
             'Mumbai',
             '400053',
             'Maharashtra',
@@ -429,6 +431,7 @@ class LeadBulkUploadController extends Controller
             $landline = (string) ($rowValues['landline'] ?? '');
             $title = $rowValues['title'] ?? null;
             $tag = $rowValues['tag'] ?? $rowValues['tags'] ?? null;
+            $categoryRaw = $rowValues['category'] ?? null;
             $city = $rowValues['mailingcity'] ?? $rowValues['city'] ?? null;
             $zip = $rowValues['mailingzip'] ?? $rowValues['zip'] ?? $rowValues['pincode'] ?? null;
             $state = $rowValues['mailingstate'] ?? $rowValues['state'] ?? null;
@@ -504,6 +507,17 @@ class LeadBulkUploadController extends Controller
             $priority = in_array($priorityRaw, ['low', 'normal', 'high', 'urgent'], true) ? $priorityRaw : 'normal';
             $status = in_array($statusRaw, ['new', 'contacted', 'qualified', 'unqualified', 'lost'], true) ? $statusRaw : 'new';
 
+            // Category validation
+            $category = null;
+            if (filled($categoryRaw)) {
+                $catLower = strtolower(trim((string) $categoryRaw));
+                if (in_array($catLower, ['prospect', 'customer', 'partner'], true)) {
+                    $category = $catLower;
+                } else {
+                    $errors[] = "Invalid Category: '{$categoryRaw}'. Allowed categories are Prospect, Customer, Partner.";
+                }
+            }
+
             // Duplicate checks
             $normalizedMobile = LeadDuplicateChecker::normalizeMobile($mobile);
             $normalizedEmail = LeadDuplicateChecker::normalizeEmail($email);
@@ -561,6 +575,7 @@ class LeadBulkUploadController extends Controller
                 'landline' => filled($landline) ? $landline : null,
                 'assigned_to' => $assignedTo,
                 'tag' => $tag,
+                'category' => $category,
                 'sub_category_id' => $subCategoryId,
                 'sub_category' => $subCategoryName,
                 'street' => $street,

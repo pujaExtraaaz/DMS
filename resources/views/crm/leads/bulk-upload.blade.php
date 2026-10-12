@@ -153,6 +153,10 @@
                             <span class="text-slate-400">e.g. VIP, Wholesale</span>
                         </div>
                         <div class="flex justify-between py-1 border-b border-slate-100">
+                            <span>Category</span>
+                            <span class="text-slate-400">Prospect, Customer, Partner</span>
+                        </div>
+                        <div class="flex justify-between py-1 border-b border-slate-100">
                             <span>SUB CATEGORY</span>
                             <span class="text-slate-400">Category name</span>
                         </div>
@@ -276,6 +280,13 @@
                                     </td>
                                     <td class="px-3 py-2 text-slate-700">
                                         {{ $r['data']['company_name'] ?: '—' }}
+                                        @if(!empty($r['data']['category']))
+                                            <div class="mt-0.5">
+                                                <span class="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-700 capitalize">
+                                                    {{ $r['data']['category'] }}
+                                                </span>
+                                            </div>
+                                        @endif
                                     </td>
                                     <td class="px-3 py-2 whitespace-nowrap">
                                         <div>{{ $r['data']['mobile'] ?: '—' }}</div>

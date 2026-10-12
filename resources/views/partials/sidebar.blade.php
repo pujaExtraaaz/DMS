@@ -256,7 +256,8 @@
                         <a href="{{ route('hrms.expense-claims.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.expense-claims.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Claims</span></a>
                     @endif
                     @if($can('crm.view', 'crm.manage'))
-                        <a href="{{ route('crm.leads.index') }}" class="{{ $itemClass }} {{ $linkClass(['crm.leads.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leads (CRM)</span></a>
+                        <a href="{{ route('crm.leads.index') }}" class="{{ $itemClass }} {{ $linkClass(['crm.leads.index', 'crm.leads.show', 'crm.leads.edit', 'crm.leads.create', 'crm.leads.bulk-upload*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leads (CRM)</span></a>
+                        <a href="{{ route('crm.leads.segments.index') }}" class="{{ $itemClass }} {{ $linkClass(['crm.leads.segments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Lead Segments</span></a>
                     @endif
                 </div>
             </div>

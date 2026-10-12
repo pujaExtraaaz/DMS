@@ -18,6 +18,10 @@
     <div id="listing-container" data-dynamic-container>
         <x-ui.page-header title="CRM Leads">
             <x-slot name="actions">
+                <x-ui.button :href="route('crm.leads.segments.index')" variant="secondary">
+                    <svg class="w-4 h-4 mr-1.5 -ml-0.5 inline-block text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    Segments
+                </x-ui.button>
                 <x-ui.button :href="route('crm.leads.bulk-upload')" variant="secondary">
                     <svg class="w-4 h-4 mr-1.5 -ml-0.5 inline-block text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
                     Bulk Upload
@@ -52,6 +56,18 @@
             >
                 <x-slot name="filters">
                     <select
+                        name="category"
+                        data-dynamic-filter
+                        class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                    >
+                        <option value="">Category: All</option>
+                        <option value="prospect" @selected(request('category') === 'prospect')>Prospects</option>
+                        <option value="customer" @selected(request('category') === 'customer')>Customers</option>
+                        <option value="partner" @selected(request('category') === 'partner')>Partners</option>
+                        <option value="uncategorized" @selected(request('category') === 'uncategorized')>Uncategorized</option>
+                    </select>
+
+                    <select
                         name="status"
                         data-dynamic-filter
                         class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
@@ -61,6 +77,18 @@
                             <option value="{{ $s }}" @selected(request('status') === $s)>{{ $s === 'follow_up' ? 'Follow-up' : ucfirst($s) }}</option>
                         @endforeach
                     </select>
+                    @if(isset($segments) && $segments->isNotEmpty())
+                        <select
+                            name="segment_id"
+                            data-dynamic-filter
+                            class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                        >
+                            <option value="">Segment: All</option>
+                            @foreach($segments as $seg)
+                                <option value="{{ $seg->id }}" @selected((string) request('segment_id') === (string) $seg->id)>{{ $seg->name }}</option>
+                            @endforeach
+                        </select>
+                    @endif
                 </x-slot>
             </x-ui.table-toolbar>
 
@@ -80,7 +108,27 @@
                         @forelse($items as $item)
                             <tr class="hover:bg-slate-50" id="lead-row-{{ $item->id }}">
                                 <td class="px-3 py-2 font-medium text-slate-900">
-                                    {{ $item->name }}
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span>{{ $item->name }}</span>
+                                        @php
+                                            $catKey = $item->category;
+                                            $catLabel = match($catKey) {
+                                                'prospect' => 'Prospect',
+                                                'customer' => 'Customer',
+                                                'partner' => 'Partner',
+                                                default => 'Uncategorized',
+                                            };
+                                            $catVariant = match($catKey) {
+                                                'customer' => 'success',
+                                                'prospect' => 'info',
+                                                'partner' => 'primary',
+                                                default => 'neutral',
+                                            };
+                                        @endphp
+                                        <x-ui.badge :variant="$catVariant" class="text-[10px] px-1.5 py-0.5 font-medium leading-none">
+                                            {{ $catLabel }}
+                                        </x-ui.badge>
+                                    </div>
                                     @if($item->company_name ?: $item->organization)
                                         <div class="text-xs text-slate-500">{{ $item->company_name ?: $item->organization }}</div>
                                     @endif
