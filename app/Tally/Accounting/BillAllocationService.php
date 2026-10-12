@@ -25,7 +25,12 @@ class BillAllocationService
      */
     public function sync(Voucher $voucher, array $rows): void
     {
-        if (! in_array($voucher->voucher_type, [VoucherType::Receipt, VoucherType::Payment], true)) {
+        if (! in_array($voucher->voucher_type, [
+            VoucherType::Receipt,
+            VoucherType::Payment,
+            VoucherType::Journal,
+            VoucherType::CreditNote,
+        ], true)) {
             return;
         }
 
@@ -43,6 +48,10 @@ class BillAllocationService
                 'ledger_id' => $row['ledger_id'],
                 'amount' => Money::format($row['amount']),
             ]);
+        }
+
+        if (! in_array($voucher->voucher_type, [VoucherType::Receipt, VoucherType::Payment], true)) {
+            return;
         }
 
         foreach ($available as $ledgerId => $cents) {
@@ -122,9 +131,14 @@ class BillAllocationService
                 continue;
             }
 
-            $cents = $voucher->voucher_type === VoucherType::Receipt
-                ? ($ledger->isCustomer() ? Money::cents((string) $entry->credit) : 0)
-                : ($ledger->isSupplier() ? Money::cents((string) $entry->debit) : 0);
+            $cents = match ($voucher->voucher_type) {
+                VoucherType::Receipt => $ledger->isCustomer() ? Money::cents((string) $entry->credit) : 0,
+                VoucherType::Payment => $ledger->isSupplier() ? Money::cents((string) $entry->debit) : 0,
+                VoucherType::Journal, VoucherType::CreditNote => $ledger->isCustomer()
+                    ? Money::cents((string) $entry->credit)
+                    : ($ledger->isSupplier() ? Money::cents((string) $entry->debit) : 0),
+                default => 0,
+            };
 
             if ($cents === 0) {
                 continue;
@@ -143,7 +157,7 @@ class BillAllocationService
      */
     private function parse(Voucher $voucher, array $rows, array $available): array
     {
-        $side = $voucher->voucher_type === VoucherType::Receipt
+        $side = in_array($voucher->voucher_type, [VoucherType::Receipt, VoucherType::Journal, VoucherType::CreditNote], true)
             ? OpeningBalanceType::Debit
             : OpeningBalanceType::Credit;
         $parsed = [];

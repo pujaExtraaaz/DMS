@@ -17,9 +17,13 @@ class VoucherEntry extends AccountingModel
         'voucher_id',
         'ledger_id',
         'cost_centre_id',
+        'business_unit_id',
+        'department_id',
         'line_number',
         'debit',
         'credit',
+        'base_debit',
+        'base_credit',
         'narration',
         'reference',
     ];
@@ -33,6 +37,8 @@ class VoucherEntry extends AccountingModel
             'line_number' => 'integer',
             'debit' => 'decimal:2',
             'credit' => 'decimal:2',
+            'base_debit' => 'decimal:2',
+            'base_credit' => 'decimal:2',
         ];
     }
 
@@ -49,6 +55,16 @@ class VoucherEntry extends AccountingModel
     public function costCentre(): BelongsTo
     {
         return $this->belongsTo(CostCentre::class);
+    }
+
+    public function businessUnit(): BelongsTo
+    {
+        return $this->belongsTo(BusinessUnit::class);
+    }
+
+    public function department(): BelongsTo
+    {
+        return $this->belongsTo(Department::class);
     }
 
     public function reconciliation(): HasOne

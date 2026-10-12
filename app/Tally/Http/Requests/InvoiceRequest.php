@@ -49,6 +49,15 @@ class InvoiceRequest extends FormRequest
             'lines' => $lines,
             'action' => $this->input('action') === 'post' ? 'post' : 'draft',
             'sales_order_id' => $this->input('sales_order_id') ?: null,
+            'against_invoice_id' => $this->input('against_invoice_id') ?: null,
+            'billing_address_id' => $this->input('billing_address_id') ?: null,
+            'shipping_address_id' => $this->input('shipping_address_id') ?: null,
+            'invoice_category' => $this->input('invoice_category') ?: 'tax_invoice',
+            'billing_mode' => $this->input('billing_mode') ?: 'goods',
+            'retention_percent' => $this->input('retention_percent') !== null && $this->input('retention_percent') !== ''
+                ? $this->input('retention_percent')
+                : null,
+            'project_milestone_id' => $this->input('project_milestone_id') ?: null,
             'reverse_charge' => $this->boolean('reverse_charge'),
         ]);
     }
@@ -66,6 +75,13 @@ class InvoiceRequest extends FormRequest
             'narration' => ['nullable', 'string', 'max:1000'],
             'action' => ['required', Rule::in(['draft', 'post'])],
             'sales_order_id' => ['nullable', 'integer'],
+            'against_invoice_id' => ['nullable', 'integer'],
+            'billing_address_id' => ['nullable', 'integer'],
+            'shipping_address_id' => ['nullable', 'integer'],
+            'invoice_category' => ['nullable', Rule::in(['tax_invoice', 'bill_of_supply'])],
+            'billing_mode' => ['nullable', Rule::in(['goods', 'advance', 'milestone'])],
+            'retention_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'project_milestone_id' => ['nullable', 'integer'],
             'reverse_charge' => ['nullable', 'boolean'],
             'lines' => ['required', 'array', 'min:1', 'max:100'],
             'lines.*.item_name' => ['nullable', 'string', 'max:200'],

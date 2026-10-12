@@ -8,5 +8,5 @@
                 <a class="btn" href="{{ tally_route('books.tally.ledgers.index') }}">Cancel</a>
             </div>
         </form>
-    </x-shell.page>
-</x-layouts.app>
+    </x-tally::shell.page>
+</x-tally::layouts.app>

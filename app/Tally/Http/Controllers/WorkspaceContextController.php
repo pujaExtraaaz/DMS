@@ -20,7 +20,7 @@ class WorkspaceContextController extends Controller
             'company_id' => [
                 'required',
                 'integer',
-                Rule::exists('companies', 'id')->where(fn ($query) => $query->where('is_active', true)),
+                Rule::exists((new Company)->getTable(), 'id')->where(fn ($query) => $query->where('is_active', true)),
             ],
         ]);
 
@@ -44,7 +44,7 @@ class WorkspaceContextController extends Controller
             'branch_id' => [
                 'required',
                 'integer',
-                Rule::exists('branches', 'id')->where(fn ($query) => $query
+                Rule::exists((new Branch)->getTable(), 'id')->where(fn ($query) => $query
                     ->where('company_id', $company->id)
                     ->where('is_active', true)),
             ],
@@ -70,7 +70,7 @@ class WorkspaceContextController extends Controller
             'financial_year_id' => [
                 'required',
                 'integer',
-                Rule::exists('financial_years', 'id')->where(fn ($query) => $query
+                Rule::exists((new FinancialYear)->getTable(), 'id')->where(fn ($query) => $query
                     ->where('company_id', $company->id)
                     ->where('is_active', true)),
             ],

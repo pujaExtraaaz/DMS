@@ -5,7 +5,9 @@
             <a class="btn" href="{{ tally_route('books.tally.sales-orders.pdf', $order) }}">PDF</a>
             <a class="btn" href="{{ tally_route('books.tally.sales-orders.edit', $order) }}">Alter</a>
             @if ($order->status === 'pending')
-                <a class="btn btn-primary" href="{{ tally_route('books.tally.invoices.sales.create', ['sales_order' => $order->id]) }}">Sales Invoice</a>
+                <a class="btn btn-primary" href="{{ tally_route('books.tally.invoices.sales.create', ['sales_order' => $order->id]) }}">Convert to invoice</a>
+                <a class="btn" href="{{ tally_route('books.tally.invoices.sales.create', ['sales_order' => $order->id, 'partial' => 1]) }}">Partial invoice</a>
+                <a class="btn" href="{{ tally_route('books.tally.invoices.proforma.create', ['sales_order' => $order->id]) }}">Pro forma</a>
             @endif
         </x-slot:actions>
         <dl class="kv">
@@ -23,7 +25,7 @@
                         <option value="{{ $status }}" @selected($order->status === $status)>{{ ucfirst($status) }}</option>
                     @endforeach
                 </select>
-            </x-form.field>
+            </x-tally::form.field>
             <button class="btn" type="submit">Update status</button>
         </form>
         <div class="table-wrap">
@@ -44,5 +46,5 @@
                 </tbody>
             </table>
         </div>
-    </x-shell.page>
-</x-layouts.app>
+    </x-tally::shell.page>
+</x-tally::layouts.app>

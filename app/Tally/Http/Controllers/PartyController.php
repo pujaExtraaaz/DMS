@@ -77,6 +77,8 @@ class PartyController extends Controller
     {
         $party->load('ledger');
 
+        $party->load(['ledger', 'addresses', 'priceLists.priceList']);
+
         return view('tally::parties.form', $this->formData($context, $party));
     }
 
@@ -114,10 +116,18 @@ class PartyController extends Controller
     {
         $company = $context->company() ?? $party->company;
 
+        $party->load('addresses');
+
         return [
             'company' => $company,
             'party' => $party,
             'branches' => $company->branches()->where('is_active', true)->orderBy('name')->get(),
+            'paymentTerms' => \Tally\Models\PaymentTerm::query()
+                ->where('company_id', $company->id)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(),
+            'priceLists' => $company->priceLists()->where('is_active', true)->orderBy('name')->get(),
             'types' => ['customer' => 'Customer', 'supplier' => 'Supplier'],
             'registrations' => GstRegistrationType::cases(),
             'balanceTypes' => OpeningBalanceType::cases(),
@@ -154,9 +164,13 @@ class PartyController extends Controller
             'gst_registration_type' => ['nullable', Rule::enum(GstRegistrationType::class)],
             'credit_limit' => ['nullable', 'numeric', 'min:0'],
             'credit_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
+            'payment_term_id' => ['nullable', 'integer', Rule::exists('acct_payment_terms', 'id')->where('company_id', $companyId)],
+            'default_discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'salesperson_name' => ['nullable', 'string', 'max:120'],
+            'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'opening_balance' => ['nullable', 'numeric', 'min:0'],
             'opening_balance_type' => ['required', Rule::enum(OpeningBalanceType::class)],
-            'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')->where('company_id', $companyId)],
+            'branch_id' => ['nullable', 'integer', Rule::exists('acct_branches', 'id')->where('company_id', $companyId)],
         ]);
         $data['is_active'] = $request->boolean('is_active');
 

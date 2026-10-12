@@ -9,7 +9,13 @@
                         <option value="{{ $branch->id }}" @selected((string) $filters['branch_id'] === (string) $branch->id)>{{ $branch->name }}</option>
                     @endforeach
                 </select>
-            </x-form.field>
+            </x-tally::form.field>
+            <x-tally::form.field name="cash_basis" label="Basis">
+                <select id="cash_basis" name="cash_basis" class="input">
+                    <option value="0" @selected(! ($cashBasis ?? false))>Accrual</option>
+                    <option value="1" @selected($cashBasis ?? false)>Cash</option>
+                </select>
+            </x-tally::form.field>
             <button class="btn btn-primary" type="submit">Apply</button>
         </form>
         <div class="sheet-grid">

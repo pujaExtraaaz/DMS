@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Tally;
 
 use App\Domains\Tally\Models\TallySyncQueue;
 use App\Domains\Tally\Services\TallyExportService;
+use App\Domains\TallySync\Support\ConnectorStatus;
+use App\Domains\TallySync\Support\SyncGate;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,13 +16,20 @@ class TallyConnectorController extends Controller
 {
     public function health(): JsonResponse
     {
+        $status = ConnectorStatus::snapshot();
+
         return response()->json([
-            'ok' => true,
+            'ok' => SyncGate::enabled(),
             'service' => 'dms-tally-connector',
-            'use_connector' => (bool) config('services.tally.use_connector'),
-            'company' => config('services.tally.company'),
-            'pending' => TallySyncQueue::query()->where('status', 'pending')->count(),
-        ]);
+            'enabled' => SyncGate::enabled(),
+            'use_connector' => (bool) config('tally_sync.use_connector', config('services.tally.use_connector')),
+            'company' => config('tally_sync.company', config('services.tally.company')),
+            'pending' => $status['pending'],
+            'failed' => $status['failed'],
+            'message' => SyncGate::enabled()
+                ? 'Connector ready'
+                : 'Native Books is live. Set TALLY_SYNC_ENABLED=true to activate this connector.',
+        ], SyncGate::enabled() ? 200 : 503);
     }
 
     /**

@@ -1,12 +1,18 @@
 @php
     $buttons = \Tally\Support\Shell\TallyPanel::buttons();
 @endphp
-<aside class="tally-keys" aria-label="Function keys">
+<aside class="books-keys" aria-label="Function keys">
     @foreach ($buttons as $button)
         @if ($button['href'])
-            <a @class(['is-current' => $button['current']]) href="{{ $button['href'] }}">{{ $button['key'] }}: {{ $button['label'] }}</a>
+            <a @class(['is-current' => $button['current']]) href="{{ $button['href'] }}">
+                <kbd>{{ $button['key'] }}</kbd>
+                <span>{{ $button['label'] }}</span>
+            </a>
         @else
-            <button type="button" data-function-{{ $button['action'] }}>{{ $button['key'] }}: {{ $button['label'] }}</button>
+            <button type="button" data-function-{{ $button['action'] }}>
+                <kbd>{{ $button['key'] }}</kbd>
+                <span>{{ $button['label'] }}</span>
+            </button>
         @endif
     @endforeach
 </aside>

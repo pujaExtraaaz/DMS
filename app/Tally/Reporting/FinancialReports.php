@@ -140,13 +140,14 @@ class FinancialReports
     /**
      * @return array{rows: list<array<string, string>>, debit: string, credit: string}
      */
-    public function trialBalance(Company $company, ?int $branchId, FinancialYear $year, string $to): array
+    public function trialBalance(Company $company, ?int $branchId, FinancialYear $year, string $to, ?bool $cashBasis = null): array
     {
         $debit = 0;
         $credit = 0;
         $rows = [];
+        $cashBasis ??= ($company->accounting_basis ?? 'accrual') === 'cash';
 
-        foreach ($this->balances->asOn($company, $branchId, $year, $to) as $row) {
+        foreach ($this->balances->asOn($company, $branchId, $year, $to, $cashBasis) as $row) {
             if ($row['debit'] === 0 && $row['credit'] === 0) {
                 continue;
             }
@@ -216,7 +217,7 @@ class FinancialReports
     /**
      * @return array<string, mixed>
      */
-    public function profitAndLoss(Company $company, ?int $branchId, FinancialYear $year, string $to): array
+    public function profitAndLoss(Company $company, ?int $branchId, FinancialYear $year, string $to, ?bool $cashBasis = null): array
     {
         $directIncome = [];
         $directExpense = [];
@@ -224,8 +225,9 @@ class FinancialReports
         $indirectIncome = [];
         $indirectExpense = [];
         $closingInventory = 0;
+        $cashBasis ??= ($company->accounting_basis ?? 'accrual') === 'cash';
 
-        foreach ($this->balances->asOn($company, $branchId, $year, $to) as $row) {
+        foreach ($this->balances->asOn($company, $branchId, $year, $to, $cashBasis) as $row) {
             if (in_array($row['ledger']->code, ['STOCK', 'RAW', 'FG'], true)) {
                 $closingInventory += $row['debit'] - $row['credit'];
             }
@@ -280,14 +282,15 @@ class FinancialReports
     /**
      * @return array<string, mixed>
      */
-    public function balanceSheet(Company $company, ?int $branchId, FinancialYear $year, string $to): array
+    public function balanceSheet(Company $company, ?int $branchId, FinancialYear $year, string $to, ?bool $cashBasis = null): array
     {
         $assets = [];
         $liabilities = [];
         $assetCents = 0;
         $liabilityCents = 0;
+        $cashBasis ??= ($company->accounting_basis ?? 'accrual') === 'cash';
 
-        foreach ($this->balances->asOn($company, $branchId, $year, $to) as $row) {
+        foreach ($this->balances->asOn($company, $branchId, $year, $to, $cashBasis) as $row) {
             if ($row['nature'] === AccountNature::Asset) {
                 $amount = $row['debit'] - $row['credit'];
             } elseif ($row['nature'] === AccountNature::Liability) {

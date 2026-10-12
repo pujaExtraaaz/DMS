@@ -324,14 +324,13 @@ return [
     ],
 
     'tally' => [
-        'title' => 'Tally Sync Queue',
-        'summary' => 'Posted docs become Tally XML. Use the Download Connector ZIP on the office PC to push into local Tally.',
+        'title' => 'Tally Sync (dormant)',
+        'summary' => 'Native Books is the live accounting path. TallyPrime sync templates are kept for a future re-enable (TALLY_SYNC_ENABLED).',
         'steps' => [
-            'Download tally-connector.zip from this screen.',
-            'On the Tally PC: unzip → install Node.js 18+ → run start.bat → set connector_token in config.json.',
-            'Keep Tally open with HTTP port 9000 enabled.',
-            'Pending items become Sent when the bridge posts successfully. Retry failed rows if needed.',
-            'Open SETUP-GUIDE.html inside the ZIP for the full walkthrough.',
+            'Use Books (sidebar · 10) for ledgers, vouchers, and reports.',
+            'Tally XML templates live under App\\Domains\\TallySync\\Templates.',
+            'To revive sync later: set TALLY_SYNC_ENABLED=true and register the connector routes.',
+            'Retry failed rows only after sync is re-enabled and ledger/item names match.',
         ],
     ],
 

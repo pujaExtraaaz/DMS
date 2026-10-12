@@ -25,9 +25,13 @@ class Invoice extends AccountingModel
         'branch_id',
         'financial_year_id',
         'kind',
+        'invoice_category',
+        'billing_mode',
         'invoice_number',
         'invoice_date',
         'party_ledger_id',
+        'billing_address_id',
+        'shipping_address_id',
         'account_ledger_id',
         'reference_number',
         'narration',
@@ -38,8 +42,13 @@ class Invoice extends AccountingModel
         'discount_total',
         'tax_total',
         'grand_total',
+        'retention_percent',
+        'retention_amount',
+        'project_milestone_id',
         'voucher_id',
         'sales_order_id',
+        'against_invoice_id',
+        'converted_from_invoice_id',
         'gst_registration_id',
         'reverse_charge',
         'created_by',
@@ -62,9 +71,36 @@ class Invoice extends AccountingModel
             'tax_total' => 'decimal:2',
             'grand_total' => 'decimal:2',
             'reverse_charge' => 'boolean',
+            'retention_percent' => 'decimal:2',
+            'retention_amount' => 'decimal:2',
             'posted_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];
+    }
+
+    public function againstInvoice(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'against_invoice_id');
+    }
+
+    public function billingAddress(): BelongsTo
+    {
+        return $this->belongsTo(PartyAddress::class, 'billing_address_id');
+    }
+
+    public function shippingAddress(): BelongsTo
+    {
+        return $this->belongsTo(PartyAddress::class, 'shipping_address_id');
+    }
+
+    public function isBillOfSupply(): bool
+    {
+        return ($this->invoice_category ?? 'tax_invoice') === 'bill_of_supply';
+    }
+
+    public function isProforma(): bool
+    {
+        return $this->kind === InvoiceKind::Proforma;
     }
 
     public function company(): BelongsTo

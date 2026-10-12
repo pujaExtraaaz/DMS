@@ -39,6 +39,8 @@ class VoucherController extends Controller
                 ['key' => 'F5', 'label' => 'Payment', 'url' => tally_route('vouchers.payment.create')],
                 ['key' => 'F6', 'label' => 'Receipt', 'url' => tally_route('vouchers.receipt.create')],
                 ['key' => 'F7', 'label' => 'Journal', 'url' => tally_route('vouchers.journal.create')],
+                ['key' => 'Ctrl+F4', 'label' => 'Transfer', 'url' => tally_route('vouchers.transfer.create')],
+                ['key' => 'Alt+F4', 'label' => 'Adjustment', 'url' => tally_route('vouchers.adjustment.create')],
                 ['key' => 'F8', 'label' => 'Sales', 'url' => tally_route('invoices.sales.create')],
                 ['key' => 'F9', 'label' => 'Purchase', 'url' => tally_route('invoices.purchase.create')],
                 ['key' => 'Alt+F5', 'label' => 'Stat Payment', 'url' => tally_route('vouchers.payment.create', ['stat' => 1])],
@@ -91,6 +93,8 @@ class VoucherController extends Controller
                 VoucherType::Payment->value,
                 VoucherType::Receipt->value,
                 VoucherType::Contra->value,
+                VoucherType::Transfer->value,
+                VoucherType::Adjustment->value,
             ])
             ->when($branchFilter !== 'all', fn ($query) => $query->where('branch_id', $branchFilter))
             ->when($search !== '', function ($query) use ($like) {
@@ -103,7 +107,7 @@ class VoucherController extends Controller
             ->when($number !== '', fn ($query) => $query->where('voucher_number', 'like', $numberLike))
             ->tap(fn ($query) => DateRange::apply($query, 'voucher_date', $this->dateFilter($request->input('from')), $this->dateFilter($request->input('to'))))
             ->when(
-                in_array($request->input('voucher_type'), ['journal', 'payment', 'receipt', 'contra'], true),
+                in_array($request->input('voucher_type'), ['journal', 'payment', 'receipt', 'contra', 'transfer', 'adjustment'], true),
                 fn ($query) => $query->where('voucher_type', $request->input('voucher_type'))
             )
             ->when(
@@ -156,7 +160,7 @@ class VoucherController extends Controller
             $otherLedgers = $duties->isNotEmpty() ? $duties : $otherLedgers;
         }
 
-        $double = in_array($type, [VoucherType::Journal, VoucherType::Receipt], true);
+        $double = in_array($type, [VoucherType::Journal, VoucherType::Receipt, VoucherType::Transfer, VoucherType::Adjustment], true);
 
         return view('tally::vouchers.create', [
             'company' => $company,
@@ -179,6 +183,8 @@ class VoucherController extends Controller
             ]),
             'nextNumber' => $numbers->peek($company, $branch, $year, $type),
             'costCentres' => $company->costCentres()->where('is_active', true)->orderBy('name')->get(),
+            'businessUnits' => \Tally\Models\BusinessUnit::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
+            'departments' => \Tally\Models\Department::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
             'openBills' => $this->openBills($bills, $company, $year),
             'balances' => $this->ledgerBalanceMap($company, $branch->id, $year),
         ] + $this->voucherMasters($company, $year));
@@ -202,6 +208,7 @@ class VoucherController extends Controller
         );
         $this->settlePaymentRequest($voucher);
         $this->reverseJournal($engine, $context->financialYear(), $request->user(), $voucher);
+        $this->applySettlementDifference($request, $context, $voucher);
 
         return redirect()
             ->route('books.tally.vouchers.show', $voucher)
@@ -262,14 +269,88 @@ class VoucherController extends Controller
                 'narration' => $entry->narration,
                 'reference' => $entry->reference,
                 'cost_centre_id' => $entry->cost_centre_id,
+                'business_unit_id' => $entry->business_unit_id,
+                'department_id' => $entry->department_id,
             ])->all()),
             'nextNumber' => $voucher->voucher_number,
             'costCentres' => $company->costCentres()->where('is_active', true)->orderBy('name')->get(),
+            'businessUnits' => \Tally\Models\BusinessUnit::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
+            'departments' => \Tally\Models\Department::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
             'openBills' => $this->openBills($bills, $company, $year, $voucher->id),
             'balances' => $this->ledgerBalanceMap($company, $voucher->branch_id, $year),
             'postOnly' => false,
             'back' => tally_route('vouchers.index', ['voucher_type' => $voucher->voucher_type->value]),
         ] + $this->voucherMasters($company, $year));
+    }
+
+    public function reverseNow(Request $request, WorkspaceContext $context, Voucher $voucher, VoucherEngine $engine): RedirectResponse
+    {
+        abort_unless($context->company() && $voucher->company_id === $context->company()->id, 404);
+        $reverse = $engine->reverse($voucher, $request->user());
+
+        return redirect()
+            ->route('books.tally.vouchers.show', $reverse)
+            ->with('status', 'Reversing voucher posted.');
+    }
+
+    public function correctForm(WorkspaceContext $context, Voucher $voucher, BillAllocationService $bills): View|RedirectResponse
+    {
+        if (! $voucher->isPosted()) {
+            return redirect()->route('books.tally.vouchers.show', $voucher)->with('error', 'Only posted vouchers can be corrected.');
+        }
+
+        $scope = $this->scope($context);
+        if ($scope instanceof View) {
+            return $scope;
+        }
+        [$company, $branch, $year] = $scope;
+        [$ledgers, $cashLedgers, $otherLedgers] = $this->ledgerSets($company);
+        $voucher->load('entries');
+
+        return view('tally::vouchers.correct', [
+            'company' => $company,
+            'branch' => $branch,
+            'year' => $year,
+            'ledgers' => $ledgers,
+            'cashLedgers' => $cashLedgers,
+            'otherLedgers' => $otherLedgers,
+            'original' => $voucher,
+            'voucher' => new Voucher([
+                'voucher_type' => $voucher->voucher_type,
+                'voucher_date' => $this->defaultDate($company, $year),
+                'status' => VoucherStatus::Draft,
+                'narration' => 'Correction of '.$voucher->voucher_number,
+                'reference_number' => $voucher->voucher_number,
+            ]),
+            'entries' => old('entries', [
+                ['ledger_id' => '', 'debit' => '', 'credit' => '', 'narration' => '', 'reference' => ''],
+                ['ledger_id' => '', 'debit' => '', 'credit' => '', 'narration' => '', 'reference' => ''],
+            ]),
+            'action' => tally_route('books.tally.vouchers.correct.store', $voucher),
+            'nextNumber' => 'Correction',
+            'costCentres' => $company->costCentres()->where('is_active', true)->orderBy('name')->get(),
+            'businessUnits' => \Tally\Models\BusinessUnit::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
+            'departments' => \Tally\Models\Department::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
+            'openBills' => $this->openBills($bills, $company, $year),
+            'balances' => $this->ledgerBalanceMap($company, $branch->id, $year),
+        ] + $this->voucherMasters($company, $year));
+    }
+
+    public function correctStore(StoreVoucherRequest $request, WorkspaceContext $context, Voucher $voucher, VoucherEngine $engine): RedirectResponse
+    {
+        abort_unless($context->company() && $voucher->company_id === $context->company()->id, 404);
+        $correction = $engine->correct(
+            $context->company(),
+            $context->branch(),
+            $context->financialYear(),
+            $request->user(),
+            $voucher,
+            $this->applyCurrency($request->validated()),
+        );
+
+        return redirect()
+            ->route('books.tally.vouchers.show', $correction)
+            ->with('status', 'Correcting entry posted.');
     }
 
     public function entry(Request $request, WorkspaceContext $context, Voucher $voucher, BillAllocationService $bills): View|RedirectResponse
@@ -660,30 +741,11 @@ class VoucherController extends Controller
 
     private function reverseJournal(VoucherEngine $engine, FinancialYear $year, \App\Models\User $user, Voucher $voucher): void
     {
-        if (! $voucher->isPosted() || $voucher->voucher_type !== VoucherType::Journal || $voucher->reversed_voucher_id || ! $voucher->reverses_on) {
+        if (! $voucher->isPosted() || $voucher->reversed_voucher_id || ! $voucher->reverses_on) {
             return;
         }
 
-        $voucher->load('entries');
-        $reverse = $engine->save(
-            $voucher->company,
-            $voucher->branch,
-            $year,
-            $user,
-            VoucherType::Journal,
-            [
-                'voucher_date' => $voucher->reverses_on->toDateString(),
-                'reference_number' => $voucher->voucher_number,
-                'narration' => 'Reversal of '.$voucher->voucher_number,
-                'entries' => $voucher->entries->map(fn ($entry) => [
-                    'ledger_id' => $entry->ledger_id,
-                    'debit' => $entry->credit,
-                    'credit' => $entry->debit,
-                ])->all(),
-            ],
-            true,
-        );
-        $voucher->update(['reversed_voucher_id' => $reverse->id]);
+        $engine->reverse($voucher, $user, $voucher->reverses_on->toDateString());
     }
 
     private function blockInvoiceVoucher(Voucher $voucher): void
@@ -750,6 +812,8 @@ class VoucherController extends Controller
             'vouchers.payment.create', 'vouchers.payment.store' => VoucherType::Payment,
             'vouchers.receipt.create', 'vouchers.receipt.store' => VoucherType::Receipt,
             'vouchers.contra.create', 'vouchers.contra.store' => VoucherType::Contra,
+            'vouchers.transfer.create', 'vouchers.transfer.store' => VoucherType::Transfer,
+            'vouchers.adjustment.create', 'vouchers.adjustment.store' => VoucherType::Adjustment,
             default => VoucherType::Journal,
         };
     }
@@ -765,6 +829,8 @@ class VoucherController extends Controller
             VoucherType::Payment => tally_route('vouchers.payment.store'),
             VoucherType::Receipt => tally_route('vouchers.receipt.store'),
             VoucherType::Contra => tally_route('vouchers.contra.store'),
+            VoucherType::Transfer => tally_route('vouchers.transfer.store'),
+            VoucherType::Adjustment => tally_route('vouchers.adjustment.store'),
             default => tally_route('vouchers.store'),
         };
     }
@@ -779,5 +845,44 @@ class VoucherController extends Controller
         $value = trim((string) $value);
 
         return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) ? $value : null;
+    }
+
+    private function applySettlementDifference(Request $request, WorkspaceContext $context, Voucher $voucher): void
+    {
+        if (! $voucher->isPosted() || ! in_array($voucher->voucher_type, [VoucherType::Receipt, VoucherType::Payment], true)) {
+            return;
+        }
+
+        $diff = $request->input('settlement_difference', []);
+        if (! is_array($diff)) {
+            return;
+        }
+
+        $billId = (int) ($diff['bill_id'] ?? 0);
+        $amount = trim((string) ($diff['amount'] ?? ''));
+        $ledgerId = (int) ($diff['ledger_id'] ?? 0);
+        if ($billId <= 0 || $ledgerId <= 0 || $amount === '' || $amount === '0' || $amount === '0.00') {
+            return;
+        }
+
+        $bill = \Tally\Models\Bill::query()
+            ->where('company_id', $context->company()->id)
+            ->whereKey($billId)
+            ->first();
+
+        if (! $bill) {
+            return;
+        }
+
+        app(\Tally\Receivables\SettlementDifferenceService::class)->clear(
+            $context->company(),
+            $context->financialYear(),
+            $request->user(),
+            $bill,
+            $amount,
+            $ledgerId,
+            $voucher->voucher_date->toDateString(),
+            ($diff['kind'] ?? 'discount') === 'write_off' ? 'write_off' : 'discount',
+        );
     }
 }

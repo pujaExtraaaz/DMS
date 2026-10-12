@@ -8,6 +8,8 @@
     'otherLedgers',
     'nextNumber',
     'costCentres' => [],
+    'businessUnits' => [],
+    'departments' => [],
     'openBills' => [],
     'currencies' => [],
     'paymentRequests' => [],
@@ -23,9 +25,9 @@
 @php
     use Tally\Accounting\VoucherType;
 
-    $blank = ['ledger_id' => '', 'debit' => '', 'credit' => '', 'narration' => '', 'reference' => '', 'cost_centre_id' => ''];
-    $doubleEntry = in_array($voucher->voucher_type, [VoucherType::Journal, VoucherType::Receipt], true);
-    $lineCentres = $voucher->voucher_type === VoucherType::Journal ? $costCentres : [];
+    $blank = ['ledger_id' => '', 'debit' => '', 'credit' => '', 'narration' => '', 'reference' => '', 'cost_centre_id' => '', 'business_unit_id' => '', 'department_id' => ''];
+    $doubleEntry = in_array($voucher->voucher_type, [VoucherType::Journal, VoucherType::Adjustment, VoucherType::Receipt, VoucherType::Transfer], true);
+    $lineCentres = in_array($voucher->voucher_type, [VoucherType::Journal, VoucherType::Adjustment, VoucherType::Transfer], true) ? $costCentres : [];
     $classOptions = collect($voucherClasses)->filter(fn ($class) => $class->voucher_type === $voucher->voucher_type->value);
     $dateLabel = 'Date';
     $openLedger = match (true) {
@@ -249,7 +251,7 @@
                             </thead>
                     <tbody data-section="journal">
                         @foreach ($entries as $index => $entry)
-                            @include('tally::vouchers._line', ['index' => $index, 'entry' => $entry, 'ledgers' => $ledgers, 'mode' => 'journal', 'costCentres' => $lineCentres, 'refLabel' => $voucher->voucher_type === VoucherType::Receipt ? 'Agst Ref' : 'New Ref'])
+                            @include('tally::vouchers._line', ['index' => $index, 'entry' => $entry, 'ledgers' => $ledgers, 'mode' => 'journal', 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'refLabel' => $voucher->voucher_type === VoucherType::Receipt ? 'Agst Ref' : 'New Ref'])
                         @endforeach
                     </tbody>
                 </table>
@@ -277,7 +279,7 @@
                             </thead>
                             <tbody data-section="{{ $section['side'] }}">
                                 @foreach ($section['rows'] as $row)
-                                    @include('tally::vouchers._line', ['index' => $row['index'], 'entry' => $row['entry'] + ['amount' => $row['amount']], 'ledgers' => $section['ledgers'], 'mode' => $section['side'], 'costCentres' => $lineCentres, 'account' => $section['title'] === 'Account', 'autofocus' => $loop->parent->first && $loop->first])
+                                    @include('tally::vouchers._line', ['index' => $row['index'], 'entry' => $row['entry'] + ['amount' => $row['amount']], 'ledgers' => $section['ledgers'], 'mode' => $section['side'], 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'account' => $section['title'] === 'Account', 'autofocus' => $loop->parent->first && $loop->first])
                                 @endforeach
                             </tbody>
                         </table>
@@ -324,6 +326,28 @@
                 </tbody>
             </table>
         </div>
+        <p class="form-note" style="margin-top:0.75rem">Settlement difference (under/over): post a discount or write-off journal against one bill.</p>
+        <div class="form-grid">
+            <label class="tally-co-row">
+                <span>Bill id</span><span>:</span>
+                <input class="input" name="settlement_difference[bill_id]" value="{{ old('settlement_difference.bill_id') }}" inputmode="numeric">
+            </label>
+            <label class="tally-co-row">
+                <span>Difference amount</span><span>:</span>
+                <input class="input money" name="settlement_difference[amount]" value="{{ old('settlement_difference.amount') }}" inputmode="decimal">
+            </label>
+            <label class="tally-co-row">
+                <span>Difference ledger id</span><span>:</span>
+                <input class="input" name="settlement_difference[ledger_id]" value="{{ old('settlement_difference.ledger_id') }}" inputmode="numeric">
+            </label>
+            <label class="tally-co-row">
+                <span>Kind</span><span>:</span>
+                <select class="input" name="settlement_difference[kind]">
+                    <option value="discount" @selected(old('settlement_difference.kind', 'discount') === 'discount')>Cash discount</option>
+                    <option value="write_off" @selected(old('settlement_difference.kind') === 'write_off')>Write-off</option>
+                </select>
+            </label>
+        </div>
         </details>
     @endif
 
@@ -369,12 +393,12 @@
 
 @if ($doubleEntry)
     <template id="line-journal">
-        @include('tally::vouchers._line', ['index' => '__INDEX__', 'entry' => $blank, 'ledgers' => $ledgers, 'mode' => 'journal', 'costCentres' => $lineCentres, 'refLabel' => $voucher->voucher_type === VoucherType::Receipt ? 'Agst Ref' : 'New Ref'])
+        @include('tally::vouchers._line', ['index' => '__INDEX__', 'entry' => $blank, 'ledgers' => $ledgers, 'mode' => 'journal', 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'refLabel' => $voucher->voucher_type === VoucherType::Receipt ? 'Agst Ref' : 'New Ref'])
     </template>
 @else
     @foreach ($sections as $section)
         <template id="line-{{ $section['side'] }}">
-            @include('tally::vouchers._line', ['index' => '__INDEX__', 'entry' => $blank, 'ledgers' => $section['ledgers'], 'mode' => $section['side'], 'costCentres' => $lineCentres, 'account' => false])
+            @include('tally::vouchers._line', ['index' => '__INDEX__', 'entry' => $blank, 'ledgers' => $section['ledgers'], 'mode' => $section['side'], 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'account' => false])
         </template>
     @endforeach
 @endif

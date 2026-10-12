@@ -270,7 +270,27 @@
                     <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                 </button>
                 <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    <a href="{{ route('books.tally.dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tally</span></a>
+                    <a href="{{ route('books.tally.dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.dashboard']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Dashboard</span></a>
+                    <a href="{{ route('books.tally.ledgers.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.ledgers.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Ledgers</span></a>
+                    <a href="{{ route('books.tally.parties.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.parties.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Parties</span></a>
+                    <a href="{{ route('books.tally.quotations.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.quotations.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Quotations</span></a>
+                    <a href="{{ route('books.tally.sales-orders.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.sales-orders.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Sales Orders</span></a>
+                    <a href="{{ route('books.tally.invoices.sales.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.invoices.sales.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Sales Invoices</span></a>
+                    <a href="{{ route('books.tally.invoices.proforma.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.invoices.proforma.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Pro Forma</span></a>
+                    <a href="{{ route('books.tally.recurring-invoices.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.recurring-invoices.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Recurring Invoices</span></a>
+                    <a href="{{ route('books.tally.reports.ageing') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.reports.ageing*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Ageing</span></a>
+                    <a href="{{ route('books.tally.reports.customer-statement') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.reports.customer-statement', 'books.tally.reports.account-confirmation']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Statements</span></a>
+                    <a href="{{ route('books.tally.projects.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.projects.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Projects</span></a>
+                    <a href="{{ route('books.tally.vouchers.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.vouchers.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Vouchers</span></a>
+                    <a href="{{ route('books.tally.periods.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.periods.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Period Locking</span></a>
+                    <a href="{{ route('books.tally.year-end.show') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.year-end.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Year-end Close</span></a>
+                    <a href="{{ route('books.tally.recurring.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.recurring.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Recurring</span></a>
+                    <a href="{{ route('books.tally.deferred-revenue.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.deferred-revenue.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Deferred Revenue</span></a>
+                    <a href="{{ route('books.tally.unbilled-revenue.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.unbilled-revenue.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Unbilled Revenue</span></a>
+                    <a href="{{ route('books.tally.payment-terms.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.payment-terms.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Payment Terms</span></a>
+                    <a href="{{ route('books.tally.intercompany.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.intercompany.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Intercompany</span></a>
+                    <a href="{{ route('books.tally.connector.show') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.connector.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tally Connector</span></a>
+                    <a href="{{ route('books.tally.companies.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.companies.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Companies</span></a>
                 </div>
             </div>
         @endif

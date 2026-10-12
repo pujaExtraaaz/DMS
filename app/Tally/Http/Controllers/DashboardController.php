@@ -2,6 +2,8 @@
 
 namespace Tally\Http\Controllers;
 
+use Illuminate\Contracts\View\View;
+use Illuminate\Http\Request;
 use Tally\Authorization\CompanyAccess;
 use Tally\Context\WorkingCalendar;
 use Tally\Context\WorkspaceContext;
@@ -9,8 +11,6 @@ use Tally\Models\Company;
 use Tally\Models\Invoice;
 use Tally\Models\Voucher;
 use Tally\Reporting\DashboardAnalytics;
-use Illuminate\Contracts\View\View;
-use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
@@ -19,13 +19,14 @@ class DashboardController extends Controller
         $company = $workspace->company();
         $year = $workspace->financialYear();
         $asOn = $request->string('as_on')->toString() ?: $calendar->date($company, $request->user(), $year);
-        $cards = ($company && $year && $request->user()?->can('reports.view'))
+        $cards = ($company && $year)
             ? $analytics->build($company, $workspace->branchId(), $year, $asOn)
             : null;
         $ids = CompanyAccess::ids($request->user());
         $companies = Company::query()->when($ids !== null, fn ($query) => $query->whereIn('id', $ids === [] ? [0] : $ids));
 
         $lastEntry = null;
+        $recentVouchers = collect();
 
         if ($company) {
             $dates = array_filter([
@@ -33,6 +34,14 @@ class DashboardController extends Controller
                 Invoice::query()->where('company_id', $company->id)->max('invoice_date'),
             ]);
             $lastEntry = $dates === [] ? null : max($dates);
+
+            $recentVouchers = Voucher::query()
+                ->where('company_id', $company->id)
+                ->when($workspace->branchId(), fn ($q, $branchId) => $q->where('branch_id', $branchId))
+                ->latest('voucher_date')
+                ->latest('id')
+                ->limit(8)
+                ->get(['id', 'voucher_number', 'voucher_type', 'voucher_date', 'status', 'narration']);
         }
 
         return view('tally::dashboard.index', [
@@ -41,8 +50,8 @@ class DashboardController extends Controller
             'workspace' => $workspace,
             'cards' => $cards,
             'asOn' => $asOn,
-            'screen' => $request->string('screen')->toString() === 'tiles' ? 'tiles' : 'gateway',
             'lastEntry' => $lastEntry,
+            'recentVouchers' => $recentVouchers,
         ]);
     }
 }

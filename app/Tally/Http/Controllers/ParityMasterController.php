@@ -466,6 +466,8 @@ class ParityMasterController extends Controller
             ['name' => 'registration_type', 'label' => 'Registration type', 'type' => 'select', 'options' => collect(GstRegistrationType::cases())->mapWithKeys(fn ($type) => [$type->value => $type->name])->all()],
             ['name' => 'state', 'label' => 'State', 'type' => 'text'],
             ['name' => 'branch_id', 'label' => 'Branch', 'type' => 'select', 'options' => $context->company()->branches()->orderBy('name')->pluck('name', 'id')->all(), 'optional' => true],
+            ['name' => 'location_id', 'label' => 'Location', 'type' => 'select', 'options' => \Tally\Models\Location::query()->where('company_id', $context->company()->id)->where('is_active', true)->orderBy('name')->pluck('name', 'id')->all(), 'optional' => true],
+            ['name' => 'is_default', 'label' => 'Default for company', 'type' => 'select', 'options' => ['0' => 'No', '1' => 'Yes'], 'optional' => true],
             ['name' => 'effective_from', 'label' => 'Effective from', 'type' => 'date'],
             ['name' => 'effective_to', 'label' => 'Effective to', 'type' => 'date', 'optional' => true],
         ];
@@ -481,11 +483,22 @@ class ParityMasterController extends Controller
             'registration_type' => ['required', Rule::in(array_column(GstRegistrationType::cases(), 'value'))],
             'state' => ['required', 'string', 'max:80'],
             'branch_id' => ['nullable', 'integer'],
+            'location_id' => ['nullable', 'integer', Rule::exists('acct_locations', 'id')->where('company_id', $companyId)],
+            'is_default' => ['nullable', 'boolean'],
             'effective_from' => ['required', 'date'],
             'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
         ]);
         $data['gstin'] = strtoupper($data['gstin']);
         $data['branch_id'] = ($data['branch_id'] ?? null) ?: null;
+        $data['location_id'] = ($data['location_id'] ?? null) ?: null;
+        $data['is_default'] = in_array((string) ($data['is_default'] ?? '0'), ['1', 'true', 'on', 'yes'], true);
+
+        if ($data['is_default']) {
+            \Tally\Models\GstRegistration::query()
+                ->where('company_id', $companyId)
+                ->when($ignore, fn ($q) => $q->whereKeyNot($ignore))
+                ->update(['is_default' => false]);
+        }
 
         return $data;
     }

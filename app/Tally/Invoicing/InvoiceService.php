@@ -64,6 +64,21 @@ class InvoiceService
                 $this->math->compile($this->linePrep->normalize($company, $input['lines'] ?? []), $post),
             );
 
+            $category = (string) ($input['invoice_category'] ?? 'tax_invoice');
+            if (! in_array($category, ['tax_invoice', 'bill_of_supply'], true)) {
+                $category = 'tax_invoice';
+            }
+            if ($category === 'bill_of_supply') {
+                $built['tax_total'] = '0.00';
+                $built['grand_total'] = Money::format(
+                    Money::cents($built['subtotal']) - Money::cents($built['discount_total'])
+                );
+                foreach ($built['lines'] as $i => $line) {
+                    $built['lines'][$i]['tax_amount'] = '0.00';
+                    $built['lines'][$i]['tax_rate'] = $built['lines'][$i]['tax_rate'] ?? 0;
+                }
+            }
+
             $attributes = [
                 'invoice_date' => $date,
                 'party_ledger_id' => $party->id,
@@ -76,10 +91,28 @@ class InvoiceService
                 'discount_total' => $built['discount_total'],
                 'tax_total' => $built['tax_total'],
                 'grand_total' => $built['grand_total'],
+                'invoice_category' => $category,
+                'billing_mode' => in_array(($input['billing_mode'] ?? 'goods'), ['goods', 'advance', 'milestone'], true)
+                    ? $input['billing_mode']
+                    : 'goods',
+                'billing_address_id' => ($input['billing_address_id'] ?? null) ?: null,
+                'shipping_address_id' => ($input['shipping_address_id'] ?? null) ?: null,
                 'sales_order_id' => ($input['sales_order_id'] ?? null) ?: null,
+                'against_invoice_id' => ($input['against_invoice_id'] ?? null) ?: null,
+                'converted_from_invoice_id' => ($input['converted_from_invoice_id'] ?? null) ?: null,
+                'retention_percent' => ($input['retention_percent'] ?? null) !== '' && ($input['retention_percent'] ?? null) !== null
+                    ? $input['retention_percent']
+                    : null,
+                'project_milestone_id' => ($input['project_milestone_id'] ?? null) ?: null,
                 'reverse_charge' => (bool) ($input['reverse_charge'] ?? false),
                 'gst_registration_id' => $this->registrationId($company, $branch, $date),
             ];
+
+            if ($attributes['retention_percent'] !== null) {
+                $attributes['retention_amount'] = Money::format(
+                    (int) round(Money::cents($built['grand_total']) * ((float) $attributes['retention_percent'] / 100))
+                );
+            }
 
             if ($invoice) {
                 $invoice->lines()->delete();
@@ -193,6 +226,12 @@ class InvoiceService
             ]);
         }
 
+        if (! $invoice->kind->postsToBooks()) {
+            throw ValidationException::withMessages([
+                'status' => 'Pro forma invoices do not post to books. Convert them to a tax invoice first.',
+            ]);
+        }
+
         $this->assertDraft($invoice);
         $invoice->loadMissing(['company', 'branch', 'financialYear', 'lines']);
         $this->assertContext($invoice->company, $invoice->branch, $invoice->financialYear);
@@ -262,6 +301,8 @@ class InvoiceService
         app(SalesOrderService::class)->fulfil($posted);
         $this->inventory->apply($posted);
         $this->inventoryPosting->syncInvoice($posted->fresh(), $user);
+        app(\Tally\Receivables\CommissionService::class)->accrueOnPostedInvoice($posted->fresh(), $user);
+        app(\Tally\Receivables\CreditNoteAllocation::class)->apply($posted->fresh(['voucher']));
 
         return $invoice;
     }

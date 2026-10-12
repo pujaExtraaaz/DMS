@@ -112,8 +112,48 @@ class PaymentSync
             SyncLinks::store(self::KEY, $payment, $voucher);
             if ($payment->status === 'completed') {
                 app(BooksPoster::class)->voucher($voucher, self::KEY);
+                $this->pushBillAllocation($voucher->fresh(), $payment, $party);
             }
         });
+    }
+
+    private function pushBillAllocation(Voucher $voucher, Payment $payment, Party $party): void
+    {
+        if (! $voucher->isPosted() || ! $payment->invoice) {
+            return;
+        }
+
+        $booksInvoice = \Tally\Models\Invoice::query()
+            ->where('company_id', $voucher->company_id)
+            ->where('invoice_number', $payment->invoice->invoice_no)
+            ->first();
+
+        if (! $booksInvoice) {
+            return;
+        }
+
+        $bill = \Tally\Models\Bill::query()
+            ->where('company_id', $voucher->company_id)
+            ->where('ledger_id', $party->ledger_id)
+            ->where('bill_number', $booksInvoice->invoice_number)
+            ->first();
+
+        if (! $bill) {
+            return;
+        }
+
+        $amount = number_format((float) $payment->amount, 2, '.', '');
+        \Tally\Models\BillAllocation::query()->updateOrCreate(
+            [
+                'voucher_id' => $voucher->id,
+                'bill_id' => $bill->id,
+            ],
+            [
+                'company_id' => $voucher->company_id,
+                'ledger_id' => $party->ledger_id,
+                'amount' => $amount,
+            ]
+        );
     }
 
     public function remove(Model $source): void

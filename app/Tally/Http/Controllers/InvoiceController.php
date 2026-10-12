@@ -165,6 +165,7 @@ class InvoiceController extends Controller
             'taxRates' => $company->taxRates()->where('is_active', true)->orderBy('name')->get(),
             'hsnSacs' => $company->hsnSacs()->where('is_active', true)->orderBy('code')->get(),
             'priceLists' => $this->priceLists($company),
+            'availableCredit' => $this->availableCreditFor($order?->customer_ledger_id ? \Tally\Models\Ledger::query()->find($order->customer_ledger_id) : null),
             'nextNumber' => $numbers->peek($company, $branch, $year, $kind),
         ]);
     }
@@ -297,6 +298,7 @@ class InvoiceController extends Controller
             'taxRates' => $company->taxRates()->where('is_active', true)->orderBy('name')->get(),
             'hsnSacs' => $company->hsnSacs()->where('is_active', true)->orderBy('code')->get(),
             'priceLists' => $this->priceLists($company),
+            'availableCredit' => $this->availableCreditFor($invoice->party),
             'nextNumber' => $invoice->invoice_number,
         ]);
     }
@@ -340,6 +342,51 @@ class InvoiceController extends Controller
         return redirect()
             ->route($invoice->kind->routeName('show'), $invoice)
             ->with('status', $invoice->kind->documentLabel().' cancelled.');
+    }
+
+    public function convertProforma(Request $request, InvoiceService $invoices, Invoice $invoice): RedirectResponse
+    {
+        abort_unless($invoice->kind === InvoiceKind::Proforma && $invoice->isDraft(), 404);
+        $invoice->load('lines');
+
+        $tax = $invoices->save(
+            $invoice->company,
+            $invoice->branch,
+            $invoice->financialYear,
+            $request->user(),
+            InvoiceKind::Sales,
+            [
+                'invoice_date' => $invoice->invoice_date->toDateString(),
+                'party_ledger_id' => $invoice->party_ledger_id,
+                'account_ledger_id' => $invoice->account_ledger_id,
+                'reference_number' => $invoice->invoice_number,
+                'narration' => $invoice->narration,
+                'invoice_category' => $invoice->invoice_category ?: 'tax_invoice',
+                'billing_mode' => $invoice->billing_mode ?: 'goods',
+                'billing_address_id' => $invoice->billing_address_id,
+                'shipping_address_id' => $invoice->shipping_address_id,
+                'converted_from_invoice_id' => $invoice->id,
+                'sales_order_id' => $invoice->sales_order_id,
+                'lines' => $invoice->lines->map(fn ($line) => [
+                    'item_name' => $line->item_name,
+                    'product_id' => $line->product_id,
+                    'godown_id' => $line->godown_id,
+                    'tax_rate_id' => $line->tax_rate_id,
+                    'hsn_sac_id' => $line->hsn_sac_id,
+                    'quantity' => $line->quantity,
+                    'rate' => $line->rate,
+                    'discount' => $line->discount,
+                    'tax_amount' => $line->tax_amount,
+                ])->all(),
+            ],
+            false
+        );
+
+        $invoice->update(['status' => \Tally\Accounting\VoucherStatus::Cancelled, 'cancelled_at' => now()]);
+
+        return redirect()
+            ->route(InvoiceKind::Sales->routeName('show'), $tax)
+            ->with('status', 'Pro forma converted to tax invoice '.$tax->invoice_number.'.');
     }
 
     private function kind(Request $request): InvoiceKind
@@ -421,6 +468,15 @@ class InvoiceController extends Controller
     private function priceLists(Company $company)
     {
         return PriceList::query()->with('lines')->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get();
+    }
+
+    private function availableCreditFor(?\Tally\Models\Ledger $ledger): ?string
+    {
+        if (! $ledger) {
+            return null;
+        }
+
+        return app(\Tally\Parties\PartyCredit::class)->availableCredit($ledger);
     }
 
     /**

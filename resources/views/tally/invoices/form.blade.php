@@ -13,6 +13,7 @@
             :tax-rates="$taxRates ?? []"
             :hsn-sacs="$hsnSacs ?? []"
             :price-lists="$priceLists ?? []"
+            :available-credit="$availableCredit ?? null"
             :next-number="$nextNumber"
         />
     </x-shell.page>

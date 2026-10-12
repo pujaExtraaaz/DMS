@@ -9,10 +9,19 @@
                         <option value="{{ $branch->id }}" @selected((string) $filters['branch_id'] === (string) $branch->id)>{{ $branch->name }}</option>
                     @endforeach
                 </select>
-            </x-form.field>
+            </x-tally::form.field>
+            <x-tally::form.field name="cash_basis" label="Basis">
+                <select id="cash_basis" name="cash_basis" class="input">
+                    <option value="0" @selected(! ($cashBasis ?? false))>Accrual</option>
+                    <option value="1" @selected($cashBasis ?? false)>Cash</option>
+                </select>
+            </x-tally::form.field>
             <button class="btn btn-primary" type="submit">Apply</button>
         </form>
-        <p class="form-note">Opening balances are the figures stored for this financial year. A branch filter includes only openings owned by that branch, plus that branch’s posted vouchers.</p>
+        <p class="form-note">
+            {{ ($cashBasis ?? false) ? 'Cash basis: cash vouchers plus income/expense recognized when bills are settled.' : 'Accrual basis: openings plus all posted vouchers.' }}
+            Branch filter limits openings and movements to that branch.
+        </p>
         <div class="table-wrap">
             <table class="data">
                 <thead>

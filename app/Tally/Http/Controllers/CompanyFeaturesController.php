@@ -62,9 +62,35 @@ class CompanyFeaturesController extends Controller
             $request->validate([
                 'sales_enforce_credit_limit' => ['required', 'boolean'],
                 'print_amount_in_words' => ['required', 'boolean'],
+                'accounting_basis' => ['nullable', 'in:accrual,cash'],
+                'retained_earnings_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
+                'customer_advance_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
+                'bad_debt_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
+                'doubtful_debt_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
+                'retention_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
+                'commission_expense_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
+                'commission_payable_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
+                'collection_reminder_days_before' => ['nullable', 'integer', 'min:0', 'max:365'],
+                'collection_reminder_days_after' => ['nullable', 'integer', 'min:0', 'max:365'],
             ]);
             $preferences->put($company, null, 'sales.enforce_credit_limit', $request->boolean('sales_enforce_credit_limit'));
             $preferences->put($company, null, 'print.amount_in_words', $request->boolean('print_amount_in_words'));
+            $company->update([
+                'accounting_basis' => $request->input('accounting_basis', $company->accounting_basis ?? 'accrual'),
+                'retained_earnings_ledger_id' => $request->input('retained_earnings_ledger_id') ?: null,
+                'customer_advance_ledger_id' => $request->input('customer_advance_ledger_id') ?: null,
+                'bad_debt_ledger_id' => $request->input('bad_debt_ledger_id') ?: null,
+                'doubtful_debt_ledger_id' => $request->input('doubtful_debt_ledger_id') ?: null,
+                'retention_ledger_id' => $request->input('retention_ledger_id') ?: null,
+                'commission_expense_ledger_id' => $request->input('commission_expense_ledger_id') ?: null,
+                'commission_payable_ledger_id' => $request->input('commission_payable_ledger_id') ?: null,
+                'collection_reminder_days_before' => $request->input('collection_reminder_days_before') !== null && $request->input('collection_reminder_days_before') !== ''
+                    ? (int) $request->input('collection_reminder_days_before')
+                    : null,
+                'collection_reminder_days_after' => $request->input('collection_reminder_days_after') !== null && $request->input('collection_reminder_days_after') !== ''
+                    ? (int) $request->input('collection_reminder_days_after')
+                    : null,
+            ]);
 
             return back()->with('status', 'Accounting features saved.');
         }

@@ -10,6 +10,7 @@ enum InvoiceKind: string
     case Purchase = 'purchase';
     case CreditNote = 'credit_note';
     case DebitNote = 'debit_note';
+    case Proforma = 'proforma';
 
     public function label(): string
     {
@@ -18,6 +19,7 @@ enum InvoiceKind: string
             self::Purchase => 'Purchase',
             self::CreditNote => 'Credit Note',
             self::DebitNote => 'Debit Note',
+            self::Proforma => 'Pro Forma',
         };
     }
 
@@ -28,38 +30,38 @@ enum InvoiceKind: string
             self::Purchase => 'Purchase invoice',
             self::CreditNote => 'Credit note',
             self::DebitNote => 'Debit note',
+            self::Proforma => 'Pro forma invoice',
         };
+    }
+
+    public function postsToBooks(): bool
+    {
+        return $this !== self::Proforma;
     }
 
     public function voucherType(): VoucherType
     {
         return match ($this) {
-            self::Sales => VoucherType::Sales,
+            self::Sales, self::Proforma => VoucherType::Sales,
             self::Purchase => VoucherType::Purchase,
             self::CreditNote => VoucherType::CreditNote,
             self::DebitNote => VoucherType::DebitNote,
         };
     }
 
-    /**
-     * Sales and debit notes debit the party. Credit notes and purchases credit the party.
-     */
     public function debitsParty(): bool
     {
-        return $this === self::Sales || $this === self::DebitNote;
+        return $this === self::Sales || $this === self::DebitNote || $this === self::Proforma;
     }
 
-    /**
-     * Sales and credit notes move value through cost of goods sold.
-     */
     public function usesCostOfGoods(): bool
     {
-        return $this === self::Sales || $this === self::CreditNote;
+        return $this === self::Sales || $this === self::CreditNote || $this === self::Proforma;
     }
 
     public function stockLeaves(): bool
     {
-        return $this->debitsParty();
+        return $this->debitsParty() && $this->postsToBooks();
     }
 
     public function slug(): string
@@ -74,6 +76,7 @@ enum InvoiceKind: string
             self::CreditNote => 'Sales Dr, Customer Cr',
             self::Purchase => 'Purchase Dr, Supplier Cr',
             self::DebitNote => 'Supplier Dr, Purchase Cr',
+            self::Proforma => 'Non-posting commercial document',
         };
     }
 

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Domains\Tally\Models\TallySyncQueue;
+use App\Domains\TallySync\Support\SyncGate;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Http;
@@ -22,8 +23,18 @@ class ProcessTallySyncJob implements ShouldQueue
             return;
         }
 
+        if (! SyncGate::enabled()) {
+            $item->update([
+                'status' => 'skipped',
+                'sent_at' => now(),
+                'last_error' => 'TallyPrime sync disabled (native Books is live). Set TALLY_SYNC_ENABLED=true to process.',
+            ]);
+
+            return;
+        }
+
         // Office bridge mode: leave items pending for the local Tally Connector to pull.
-        if (config('services.tally.use_connector')) {
+        if (config('services.tally.use_connector', config('tally_sync.use_connector'))) {
             return;
         }
 

@@ -51,6 +51,24 @@ use Tally\Http\Controllers\UnitController;
 use Tally\Http\Controllers\ProfileController;
 use Tally\Http\Controllers\VoucherClassController;
 use Tally\Http\Controllers\VoucherController;
+use Tally\Http\Controllers\AccountingPeriodController;
+use Tally\Http\Controllers\YearEndController;
+use Tally\Http\Controllers\RecurringVoucherController;
+use Tally\Http\Controllers\BusinessUnitController;
+use Tally\Http\Controllers\IntercompanyController;
+use Tally\Http\Controllers\TallyConnectorAdminController;
+use Tally\Http\Controllers\DepartmentController;
+use Tally\Http\Controllers\SubLedgerController;
+use Tally\Http\Controllers\LocationController;
+use Tally\Http\Controllers\ExchangeRateController;
+use Tally\Http\Controllers\FxRevaluationController;
+use Tally\Http\Controllers\LedgerMirrorController;
+use Tally\Http\Controllers\PaymentTermController;
+use Tally\Http\Controllers\PartyAddressController;
+use Tally\Http\Controllers\QuotationController;
+use Tally\Http\Controllers\RecurringInvoiceController;
+use Tally\Http\Controllers\ProjectController;
+use Tally\Http\Controllers\ReceivablesReportController;
 use Tally\Http\Controllers\Shell\PlaceholderController;
 use Tally\Http\Controllers\WorkspaceContextController;
 use Tally\Support\Shell\Navigation;
@@ -198,7 +216,7 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
 
     Route::get('/transactions/stock-movements', [StockMovementController::class, 'index'])->name('stock-movements.index');
 
-    foreach (['sales', 'purchase', 'credit-note', 'debit-note'] as $invoiceKind) {
+    foreach (['sales', 'purchase', 'credit-note', 'debit-note', 'proforma'] as $invoiceKind) {
         Route::get("/transactions/{$invoiceKind}", [InvoiceController::class, 'index'])->name("invoices.{$invoiceKind}.index");
         Route::get("/transactions/{$invoiceKind}/create", [InvoiceController::class, 'create'])->name("invoices.{$invoiceKind}.create");
         Route::post("/transactions/{$invoiceKind}", [InvoiceController::class, 'store'])->name("invoices.{$invoiceKind}.store");
@@ -212,6 +230,7 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
         Route::post("/transactions/{$invoiceKind}/{invoice}/post", [InvoiceController::class, 'post'])->name("invoices.{$invoiceKind}.post");
         Route::post("/transactions/{$invoiceKind}/{invoice}/cancel", [InvoiceController::class, 'cancel'])->name("invoices.{$invoiceKind}.cancel");
     }
+    Route::post('/transactions/proforma/{invoice}/convert', [InvoiceController::class, 'convertProforma'])->name('invoices.proforma.convert');
 
     Route::get('/vouchers/classes', [VoucherClassController::class, 'index'])->name('vouchers.classes.index');
     Route::post('/vouchers/classes', [VoucherClassController::class, 'store'])->name('vouchers.classes.store');
@@ -223,13 +242,20 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
     Route::get('/vouchers/payment/create', [VoucherController::class, 'create'])->name('vouchers.payment.create');
     Route::get('/vouchers/receipt/create', [VoucherController::class, 'create'])->name('vouchers.receipt.create');
     Route::get('/vouchers/contra/create', [VoucherController::class, 'create'])->name('vouchers.contra.create');
+    Route::get('/vouchers/transfer/create', [VoucherController::class, 'create'])->name('vouchers.transfer.create');
+    Route::get('/vouchers/adjustment/create', [VoucherController::class, 'create'])->name('vouchers.adjustment.create');
     Route::post('/vouchers', [VoucherController::class, 'store'])->name('vouchers.store');
     Route::post('/vouchers/journal', [VoucherController::class, 'store'])->name('vouchers.journal.store');
     Route::post('/vouchers/payment', [VoucherController::class, 'store'])->name('vouchers.payment.store');
     Route::post('/vouchers/receipt', [VoucherController::class, 'store'])->name('vouchers.receipt.store');
     Route::post('/vouchers/contra', [VoucherController::class, 'store'])->name('vouchers.contra.store');
+    Route::post('/vouchers/transfer', [VoucherController::class, 'store'])->name('vouchers.transfer.store');
+    Route::post('/vouchers/adjustment', [VoucherController::class, 'store'])->name('vouchers.adjustment.store');
     Route::get('/vouchers/{voucher}/entry', [VoucherController::class, 'entry'])->name('vouchers.entry');
     Route::put('/vouchers/{voucher}/alter', [VoucherController::class, 'alter'])->name('vouchers.alter');
+    Route::post('/vouchers/{voucher}/reverse', [VoucherController::class, 'reverseNow'])->name('vouchers.reverse');
+    Route::get('/vouchers/{voucher}/correct', [VoucherController::class, 'correctForm'])->name('vouchers.correct');
+    Route::post('/vouchers/{voucher}/correct', [VoucherController::class, 'correctStore'])->name('vouchers.correct.store');
     Route::get('/vouchers/{voucher}', [VoucherController::class, 'show'])->name('vouchers.show');
     Route::get('/vouchers/{voucher}/print', [VoucherController::class, 'print'])->name('vouchers.print');
     Route::get('/vouchers/{voucher}/pdf', [VoucherController::class, 'pdf'])->name('vouchers.pdf');
@@ -325,6 +351,8 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
     Route::get('/reports/edit-log', [ParityReportController::class, 'editLog'])->name('reports.edit-log');
     Route::get('/reports/outstanding', [AccountingReportController::class, 'outstanding'])->name('reports.outstanding');
     Route::get('/reports/cost-centres', [AccountingReportController::class, 'costCentres'])->name('reports.cost-centres');
+    Route::get('/reports/business-units', [AccountingReportController::class, 'businessUnits'])->name('reports.business-units');
+    Route::get('/reports/departments', [AccountingReportController::class, 'departments'])->name('reports.departments');
     Route::get('/reports/interest', [AccountingReportController::class, 'interest'])->name('reports.interest');
 
     Route::get('/reports/stock-summary', [InventoryReportController::class, 'summary'])->name('reports.stock-summary');
@@ -364,6 +392,27 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
     Route::delete('/transactions/sales-orders/{salesOrder}', [SalesOrderController::class, 'destroy'])->name('sales-orders.destroy');
     Route::get('/transactions/sales-orders/{salesOrder}/print', [SalesOrderController::class, 'print'])->name('sales-orders.print');
     Route::get('/transactions/sales-orders/{salesOrder}/pdf', [SalesOrderController::class, 'pdf'])->name('sales-orders.pdf');
+
+    Route::get('/transactions/quotations', [QuotationController::class, 'index'])->name('quotations.index');
+    Route::get('/transactions/quotations/create', [QuotationController::class, 'create'])->name('quotations.create');
+    Route::post('/transactions/quotations', [QuotationController::class, 'store'])->name('quotations.store');
+    Route::get('/transactions/quotations/{quotation}', [QuotationController::class, 'show'])->name('quotations.show');
+    Route::get('/transactions/quotations/{quotation}/edit', [QuotationController::class, 'edit'])->name('quotations.edit');
+    Route::put('/transactions/quotations/{quotation}', [QuotationController::class, 'update'])->name('quotations.update');
+    Route::post('/transactions/quotations/{quotation}/convert', [QuotationController::class, 'convert'])->name('quotations.convert');
+
+    Route::get('/transactions/recurring-invoices', [RecurringInvoiceController::class, 'index'])->name('recurring-invoices.index');
+    Route::get('/transactions/recurring-invoices/create', [RecurringInvoiceController::class, 'create'])->name('recurring-invoices.create');
+    Route::post('/transactions/recurring-invoices', [RecurringInvoiceController::class, 'store'])->name('recurring-invoices.store');
+    Route::get('/transactions/recurring-invoices/{recurringInvoice}/edit', [RecurringInvoiceController::class, 'edit'])->name('recurring-invoices.edit');
+    Route::put('/transactions/recurring-invoices/{recurringInvoice}', [RecurringInvoiceController::class, 'update'])->name('recurring-invoices.update');
+    Route::post('/transactions/recurring-invoices/run', [RecurringInvoiceController::class, 'run'])->name('recurring-invoices.run');
+
+    Route::get('/masters/projects', [ProjectController::class, 'index'])->name('projects.index');
+    Route::post('/masters/projects', [ProjectController::class, 'store'])->name('projects.store');
+    Route::get('/masters/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
+    Route::post('/masters/projects/{project}/milestones', [ProjectController::class, 'storeMilestone'])->name('projects.milestones.store');
+    Route::get('/masters/projects/{project}/milestones/{milestone}/bill', [ProjectController::class, 'billMilestone'])->name('projects.milestones.bill');
 
     Route::get('/transactions/payroll/attendance', [PayrollController::class, 'attendance'])->name('payroll.attendance');
     Route::post('/transactions/payroll/attendance', [PayrollController::class, 'storeAttendance'])->name('payroll.attendance.store');
@@ -428,6 +477,72 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
     Route::post('/utilities/import/tally', [ImportController::class, 'tally'])->name('utilities.import.tally');
     Route::get('/utilities/import/{dataset}/template', [ImportController::class, 'template'])->name('utilities.import.template');
     Route::post('/utilities/import/{dataset}', [ImportController::class, 'store'])->name('utilities.import.store');
+
+    Route::get('/utilities/periods', [AccountingPeriodController::class, 'index'])->name('periods.index');
+    Route::post('/utilities/periods/lock-through', [AccountingPeriodController::class, 'lockThrough'])->name('periods.lock-through');
+    Route::post('/utilities/periods/{period}/lock', [AccountingPeriodController::class, 'lock'])->name('periods.lock');
+    Route::post('/utilities/periods/{period}/unlock', [AccountingPeriodController::class, 'unlock'])->name('periods.unlock');
+
+    Route::get('/utilities/year-end', [YearEndController::class, 'show'])->name('year-end.show');
+    Route::post('/utilities/year-end', [YearEndController::class, 'close'])->name('year-end.close');
+
+    Route::get('/utilities/recurring', [RecurringVoucherController::class, 'index'])->name('recurring.index');
+    Route::get('/utilities/recurring/create', [RecurringVoucherController::class, 'create'])->name('recurring.create');
+    Route::post('/utilities/recurring', [RecurringVoucherController::class, 'store'])->name('recurring.store');
+    Route::get('/utilities/recurring/{recurring}/edit', [RecurringVoucherController::class, 'edit'])->name('recurring.edit');
+    Route::put('/utilities/recurring/{recurring}', [RecurringVoucherController::class, 'update'])->name('recurring.update');
+    Route::post('/utilities/recurring/{recurring}/run', [RecurringVoucherController::class, 'run'])->name('recurring.run');
+
+    Route::get('/utilities/intercompany', [IntercompanyController::class, 'index'])->name('intercompany.index');
+    Route::post('/utilities/intercompany', [IntercompanyController::class, 'store'])->name('intercompany.store');
+    Route::post('/utilities/intercompany/eliminate', [IntercompanyController::class, 'eliminate'])->name('intercompany.eliminate');
+
+    Route::get('/utilities/tally-connector', [TallyConnectorAdminController::class, 'show'])->name('connector.show');
+
+    Route::get('/reports/sub-ledgers', [SubLedgerController::class, 'index'])->name('reports.sub-ledgers');
+    Route::get('/reports/sub-ledgers/{ledger}', [SubLedgerController::class, 'show'])->name('reports.sub-ledgers.show');
+
+    Route::get('/masters/business-units', [BusinessUnitController::class, 'index'])->name('business-units.index');
+    Route::post('/masters/business-units', [BusinessUnitController::class, 'store'])->name('business-units.store');
+    Route::put('/masters/business-units/{businessUnit}', [BusinessUnitController::class, 'update'])->name('business-units.update');
+
+    Route::get('/masters/departments', [DepartmentController::class, 'index'])->name('departments.index');
+    Route::post('/masters/departments', [DepartmentController::class, 'store'])->name('departments.store');
+    Route::put('/masters/departments/{department}', [DepartmentController::class, 'update'])->name('departments.update');
+
+    Route::get('/masters/locations', [LocationController::class, 'index'])->name('locations.index');
+    Route::post('/masters/locations', [LocationController::class, 'store'])->name('locations.store');
+    Route::put('/masters/locations/{location}', [LocationController::class, 'update'])->name('locations.update');
+
+    Route::get('/masters/payment-terms', [PaymentTermController::class, 'index'])->name('payment-terms.index');
+    Route::post('/masters/payment-terms', [PaymentTermController::class, 'store'])->name('payment-terms.store');
+    Route::put('/masters/payment-terms/{paymentTerm}', [PaymentTermController::class, 'update'])->name('payment-terms.update');
+
+    Route::post('/masters/parties/{party}/addresses', [PartyAddressController::class, 'store'])->name('parties.addresses.store');
+    Route::delete('/masters/parties/{party}/addresses/{address}', [PartyAddressController::class, 'destroy'])->name('parties.addresses.destroy');
+    Route::post('/masters/parties/{party}/price-lists', [PartyAddressController::class, 'storePriceList'])->name('parties.price-lists.store');
+
+    Route::get('/reports/ageing', [ReceivablesReportController::class, 'ageing'])->name('reports.ageing');
+    Route::get('/reports/customer-statement', [ReceivablesReportController::class, 'statement'])->name('reports.customer-statement');
+    Route::get('/reports/account-confirmation', [ReceivablesReportController::class, 'confirmation'])->name('reports.account-confirmation');
+    Route::post('/reports/ageing/provision', [ReceivablesReportController::class, 'provision'])->name('reports.ageing.provision');
+    Route::post('/reports/ageing/write-off', [ReceivablesReportController::class, 'writeOff'])->name('reports.ageing.write-off');
+    Route::post('/reports/collection-reminders/run', [ReceivablesReportController::class, 'runReminders'])->name('reports.collection-reminders.run');
+    Route::get('/utilities/deferred-revenue', [ReceivablesReportController::class, 'deferred'])->name('deferred-revenue.index');
+    Route::post('/utilities/deferred-revenue', [ReceivablesReportController::class, 'storeDeferred'])->name('deferred-revenue.store');
+    Route::post('/utilities/deferred-revenue/recognize', [ReceivablesReportController::class, 'recognizeDeferred'])->name('deferred-revenue.recognize');
+    Route::get('/utilities/unbilled-revenue', [ReceivablesReportController::class, 'unbilled'])->name('unbilled-revenue.index');
+    Route::post('/utilities/unbilled-revenue', [ReceivablesReportController::class, 'storeUnbilled'])->name('unbilled-revenue.store');
+
+    Route::get('/masters/exchange-rates', [ExchangeRateController::class, 'index'])->name('exchange-rates.index');
+    Route::post('/masters/exchange-rates', [ExchangeRateController::class, 'store'])->name('exchange-rates.store');
+
+    Route::get('/utilities/fx-revaluation', [FxRevaluationController::class, 'show'])->name('fx-revaluation.show');
+    Route::post('/utilities/fx-revaluation', [FxRevaluationController::class, 'store'])->name('fx-revaluation.store');
+
+    Route::get('/utilities/ledger-mirrors', [LedgerMirrorController::class, 'index'])->name('ledger-mirrors.index');
+    Route::post('/utilities/ledger-mirrors', [LedgerMirrorController::class, 'store'])->name('ledger-mirrors.store');
+    Route::delete('/utilities/ledger-mirrors/{ledgerMirror}', [LedgerMirrorController::class, 'destroy'])->name('ledger-mirrors.destroy');
 
     Route::get('/utilities/export', [ExportController::class, 'index'])->name('utilities.export');
     Route::get('/utilities/export/{dataset}', [ExportController::class, 'download'])->name('utilities.export.download');

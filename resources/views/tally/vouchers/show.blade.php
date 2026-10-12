@@ -15,6 +15,13 @@
                     </form>
                 @elseif ($voucher->isPosted())
                     <a class="btn" href="{{ tally_route('books.tally.vouchers.entry', $voucher) }}">Alter</a>
+                    @unless ($voucher->reversed_voucher_id)
+                        <form method="POST" action="{{ tally_route('books.tally.vouchers.reverse', $voucher) }}" onsubmit="return confirm('Post a reversing voucher with swapped debit/credit?');">
+                            @csrf
+                            <button class="btn" type="submit">Reverse</button>
+                        </form>
+                    @endunless
+                    <a class="btn" href="{{ tally_route('books.tally.vouchers.correct', $voucher) }}">Correcting entry</a>
                     <form method="POST" action="{{ tally_route('books.tally.vouchers.cancel', $voucher) }}" onsubmit="return confirm('Cancel this voucher? It will stay in the books as cancelled.');">
                         @csrf
                         <button class="btn" type="submit">Cancel voucher</button>
@@ -78,6 +85,12 @@
             <div><dt>Created</dt><dd>{{ $voucher->created_at?->format('d M Y H:i') }}</dd></div>
             <div><dt>Posted</dt><dd>{{ $voucher->posted_at?->format('d M Y H:i') ?? '—' }}</dd></div>
             <div><dt>Cancelled</dt><dd>{{ $voucher->cancelled_at?->format('d M Y H:i') ?? '—' }}</dd></div>
+            @if ($voucher->reversed_voucher_id)
+                <div><dt>Reversed by</dt><dd><a href="{{ tally_route('books.tally.vouchers.show', $voucher->reversed_voucher_id) }}">#{{ $voucher->reversed_voucher_id }}</a></dd></div>
+            @endif
+            @if ($voucher->corrected_voucher_id)
+                <div><dt>Corrects</dt><dd><a href="{{ tally_route('books.tally.vouchers.show', $voucher->corrected_voucher_id) }}">#{{ $voucher->corrected_voucher_id }}</a></dd></div>
+            @endif
         </dl>
     </x-shell.page>
 </x-layouts.app>

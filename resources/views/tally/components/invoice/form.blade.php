@@ -12,6 +12,7 @@
     'taxRates' => [],
     'hsnSacs' => [],
     'priceLists' => [],
+    'availableCredit' => null,
 ])
 <form class="tally-voucher tally-vch tally-co" method="POST" action="{{ $action }}" id="invoice-form" data-company-state="{{ app(\Tally\Context\WorkspaceContext::class)->company()?->state }}">
     @csrf
@@ -23,7 +24,7 @@
     @endif
     <div class="tally-co-sheet">
     <div class="tally-co-title">{{ $kind->label() }}</div>
-    @if (in_array($kind->value, ['sales', 'purchase'], true))
+    @if (in_array($kind->value, ['sales', 'purchase', 'proforma'], true))
         @include('tally::companies._yesno', [
             'name' => 'reverse_charge',
             'label' => 'Reverse charge',
@@ -31,6 +32,38 @@
             'options' => ['No', 'Yes'],
             'values' => ['0', '1'],
         ])
+        <label class="tally-co-row">
+            <span>Invoice category</span>
+            <span>:</span>
+            <select class="input" name="invoice_category">
+                <option value="tax_invoice" @selected(old('invoice_category', $invoice->invoice_category ?? 'tax_invoice') === 'tax_invoice')>Tax invoice</option>
+                <option value="bill_of_supply" @selected(old('invoice_category', $invoice->invoice_category ?? '') === 'bill_of_supply')>Bill of supply</option>
+            </select>
+        </label>
+        <label class="tally-co-row">
+            <span>Billing mode</span>
+            <span>:</span>
+            <select class="input" name="billing_mode">
+                @foreach (['goods' => 'Goods', 'advance' => 'Advance', 'milestone' => 'Milestone'] as $value => $label)
+                    <option value="{{ $value }}" @selected(old('billing_mode', $invoice->billing_mode ?? 'goods') === $value)>{{ $label }}</option>
+                @endforeach
+            </select>
+        </label>
+        <label class="tally-co-row">
+            <span>Retention %</span>
+            <span>:</span>
+            <input class="input" name="retention_percent" value="{{ old('retention_percent', $invoice->retention_percent) }}" inputmode="decimal">
+        </label>
+    @endif
+    @if ($kind->value === 'credit_note')
+        <label class="tally-co-row">
+            <span>Against invoice ID</span>
+            <span>:</span>
+            <input class="input" name="against_invoice_id" value="{{ old('against_invoice_id', $invoice->against_invoice_id) }}">
+        </label>
+    @endif
+    @if (! empty($availableCredit))
+        <p class="form-note">Available credit: {{ $availableCredit }}</p>
     @endif
     <x-tally::invoice.header :kind="$kind" :invoice="$invoice" :next-number="$nextNumber" />
     <x-tally::invoice.party :kind="$kind" :invoice="$invoice" :party-ledgers="$partyLedgers" :account-ledgers="$accountLedgers" />

@@ -47,6 +47,7 @@ class PartyService
             'pan' => ($data['pan'] ?? null) ?: null,
                 'credit_limit' => ($data['credit_limit'] ?? null) !== '' && ($data['credit_limit'] ?? null) !== null ? $data['credit_limit'] : null,
                 'credit_days' => ($data['credit_days'] ?? null) !== '' && ($data['credit_days'] ?? null) !== null ? $data['credit_days'] : null,
+                'payment_term_id' => ($data['payment_term_id'] ?? null) ?: null,
                 'is_active' => (bool) ($data['is_active'] ?? true),
                 'is_system' => false,
             ];
@@ -83,6 +84,14 @@ class PartyService
                 'gst_registration_type' => $ledgerData['gst_registration_type'],
                 'credit_limit' => $ledgerData['credit_limit'],
                 'credit_days' => $ledgerData['credit_days'],
+                'payment_term_id' => $ledgerData['payment_term_id'],
+                'default_discount_percent' => ($data['default_discount_percent'] ?? null) !== '' && ($data['default_discount_percent'] ?? null) !== null
+                    ? $data['default_discount_percent']
+                    : null,
+                'salesperson_name' => ($data['salesperson_name'] ?? null) ?: null,
+                'commission_percent' => ($data['commission_percent'] ?? null) !== '' && ($data['commission_percent'] ?? null) !== null
+                    ? $data['commission_percent']
+                    : null,
                 'is_active' => $ledgerData['is_active'],
             ];
 

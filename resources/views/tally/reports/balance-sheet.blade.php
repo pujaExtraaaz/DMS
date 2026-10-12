@@ -1,5 +1,23 @@
 <x-tally::layouts.app title="Balance Sheet">
     <x-tally::shell.page title="Balance Sheet" section="Reports" :description="$company->name.' as at '.\Illuminate\Support\Carbon::parse($filters['to'])->format('d-M-y')">
+        <form class="filters" method="GET">
+            <x-tally::form.field name="to" label="As on"><x-tally::form.input name="to" type="date" value="{{ $filters['to'] }}" /></x-tally::form.field>
+            <x-tally::form.field name="branch_id" label="Branch">
+                <select id="branch_id" name="branch_id" class="input">
+                    <option value="all" @selected($filters['branch_id'] === null)>All branches</option>
+                    @foreach ($branches as $branch)
+                        <option value="{{ $branch->id }}" @selected((string) $filters['branch_id'] === (string) $branch->id)>{{ $branch->name }}</option>
+                    @endforeach
+                </select>
+            </x-tally::form.field>
+            <x-tally::form.field name="cash_basis" label="Basis">
+                <select id="cash_basis" name="cash_basis" class="input">
+                    <option value="0" @selected(! ($cashBasis ?? false))>Accrual</option>
+                    <option value="1" @selected($cashBasis ?? false)>Cash</option>
+                </select>
+            </x-tally::form.field>
+            <button class="btn btn-primary" type="submit">Apply</button>
+        </form>
         <a class="esc-back" data-esc href="{{ $group ? tally_route('books.tally.reports.balance-sheet', request()->except('group')) : tally_route('books.tally.dashboard') }}">Quit</a>
         @php
             $collect = function (array $rows, array $order) use ($group): array {

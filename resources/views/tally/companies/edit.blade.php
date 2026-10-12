@@ -1,13 +1,13 @@
-<x-tally::layouts.app :title="'Company Alteration'">
-    <x-tally::shell.page title="Company Alteration" section="Settings">
-        <form class="tally-co" method="POST" action="{{ tally_route('books.tally.companies.update', $company) }}">
+<x-tally::layouts.app title="Edit company">
+    <x-tally::shell.page title="Edit company" section="Settings" :description="$company->name">
+        <form class="panel stack" method="POST" action="{{ tally_route('books.tally.companies.update', $company) }}">
             @csrf
             @method('PUT')
             @include('tally::companies._form')
-            <div class="tally-co-actions">
-                <a class="btn" href="{{ tally_route('books.tally.companies.show', $company) }}">Q: Quit</a>
-                <button class="btn btn-primary" type="submit">A: Accept</button>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Save company</button>
+                <a class="btn" href="{{ tally_route('books.tally.companies.show', $company) }}">Cancel</a>
             </div>
         </form>
-    </x-shell.page>
-</x-layouts.app>
+    </x-tally::shell.page>
+</x-tally::layouts.app>

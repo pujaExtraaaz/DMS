@@ -27,9 +27,11 @@ class Company extends AccountingModel
     public static function provision(array $attributes): self
     {
         return DB::transaction(function () use ($attributes) {
+            $attributes['accounting_basis'] = $attributes['accounting_basis'] ?? 'accrual';
+
             $company = static::query()->create($attributes);
 
-            $company->financialYears()->create([
+            $year = $company->financialYears()->create([
                 'name' => FinancialYear::labelForPeriod(
                     $company->financial_year_start,
                     $company->financial_year_end,
@@ -39,7 +41,46 @@ class Company extends AccountingModel
                 'is_active' => true,
             ]);
 
-            return $company->load('financialYears');
+            $company->branches()->create([
+                'name' => 'Head Office',
+                'code' => 'HO',
+                'address' => $company->address,
+                'city' => $company->city,
+                'state' => $company->state,
+                'country' => $company->country ?: 'India',
+                'pincode' => $company->pincode,
+                'phone' => $company->phone,
+                'email' => $company->email,
+                'is_active' => true,
+            ]);
+
+            if (Schema::hasTable('acct_currencies')) {
+                Currency::query()->firstOrCreate(
+                    ['company_id' => $company->id, 'code' => 'INR'],
+                    [
+                        'name' => $company->currency_formal_name ?: 'Indian Rupee',
+                        'symbol' => $company->currency_symbol ?: '₹',
+                        'decimal_places' => 2,
+                        'exchange_rate' => 1,
+                        'is_base' => true,
+                    ],
+                );
+            }
+
+            if (filled($company->gstin) && Schema::hasTable('acct_gst_registrations')) {
+                GstRegistration::query()->firstOrCreate(
+                    ['company_id' => $company->id, 'gstin' => $company->gstin],
+                    [
+                        'registration_type' => $company->gst_registration_type?->value ?? 'regular',
+                        'state' => $company->state,
+                        'effective_from' => $company->books_beginning_from ?: $company->financial_year_start,
+                    ],
+                );
+            }
+
+            app(\Tally\Accounting\PeriodLockService::class)->ensureMonthlyPeriods($company, $year);
+
+            return $company->load(['financialYears', 'branches']);
         });
     }
 
@@ -79,6 +120,16 @@ class Company extends AccountingModel
         'financial_year_start',
         'financial_year_end',
         'books_beginning_from',
+        'accounting_basis',
+        'retained_earnings_ledger_id',
+        'customer_advance_ledger_id',
+        'bad_debt_ledger_id',
+        'doubtful_debt_ledger_id',
+        'retention_ledger_id',
+        'commission_expense_ledger_id',
+        'commission_payable_ledger_id',
+        'collection_reminder_days_before',
+        'collection_reminder_days_after',
         'currency_symbol',
         'currency_formal_name',
         'is_active',
@@ -124,6 +175,11 @@ class Company extends AccountingModel
     public function ledgers(): HasMany
     {
         return $this->hasMany(Ledger::class);
+    }
+
+    public function priceLists(): HasMany
+    {
+        return $this->hasMany(PriceList::class);
     }
 
     public function parties(): HasMany

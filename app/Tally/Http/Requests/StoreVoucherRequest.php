@@ -33,6 +33,8 @@ class StoreVoucherRequest extends FormRequest
                 'narration' => $entry['narration'] ?? null,
                 'reference' => $entry['reference'] ?? null,
                 'cost_centre_id' => $entry['cost_centre_id'] ?? null,
+                'business_unit_id' => $entry['business_unit_id'] ?? null,
+                'department_id' => $entry['department_id'] ?? null,
             ];
         }
 
@@ -89,6 +91,8 @@ class StoreVoucherRequest extends FormRequest
             'entries.*.narration' => ['nullable', 'string', 'max:500'],
             'entries.*.reference' => ['nullable', 'string', 'max:50'],
             'entries.*.cost_centre_id' => ['nullable', 'integer'],
+            'entries.*.business_unit_id' => ['nullable', 'integer'],
+            'entries.*.department_id' => ['nullable', 'integer'],
             'allocations' => ['nullable', 'array'],
             'allocations.*.bill_id' => ['nullable', 'integer'],
             'allocations.*.amount' => ['nullable', 'numeric', 'min:0'],

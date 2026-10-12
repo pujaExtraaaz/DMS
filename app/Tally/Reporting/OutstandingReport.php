@@ -94,6 +94,7 @@ class OutstandingReport
                 'original' => $bill->original_amount,
                 'paid' => Money::format($paid),
                 'outstanding' => Money::format($outstanding),
+                'overdue' => ($bill->due_date && $bill->due_date->toDateString() < $asOf) ? '1' : '0',
                 'side' => $bill->side->label(),
             ];
         }

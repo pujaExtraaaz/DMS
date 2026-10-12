@@ -20,136 +20,93 @@
         }
     };
 @endphp
-<div class="tally-co-sheet">
-    <div class="tally-co-title">{{ $record ? 'Company Alteration' : 'Company Creation' }}</div>
-    <div class="tally-co-split">
-        <div>
-            <label class="tally-co-row">
-                <span>Company Name</span>
-                <span>:</span>
-                <input class="input" name="name" value="{{ old('name', $record?->name ?? '') }}" required maxlength="160" autofocus>
-            </label>
-            <label class="tally-co-row">
-                <span>Mailing Name</span>
-                <span>:</span>
-                <input class="input" name="mailing_name" value="{{ old('mailing_name', $record?->mailing_name ?? $record?->name ?? '') }}" maxlength="200">
-            </label>
-        </div>
-        <div>
-            <label class="tally-co-row">
-                <span>Financial year beginning from</span>
-                <span>:</span>
-                <input class="input" name="financial_year_start" data-fy-start value="{{ $showDate($startRaw) }}" required autocomplete="off">
-            </label>
-            <label class="tally-co-row">
-                <span>Books beginning from</span>
-                <span>:</span>
-                <input class="input" name="books_beginning_from" data-books-from value="{{ $showDate($booksRaw) }}" required autocomplete="off">
-            </label>
-        </div>
-    </div>
-    <label class="tally-co-row is-address">
-        <span>Address</span>
-        <span>:</span>
-        <textarea class="input" name="address" rows="3" maxlength="500">{{ old('address', $record?->address ?? '') }}</textarea>
-    </label>
-    <label class="tally-co-row">
-        <span>State</span>
-        <span>:</span>
-        <input class="input" name="state" value="{{ old('state', $record?->state ?? '') }}" maxlength="80" list="indian-states">
-    </label>
-    <label class="tally-co-row">
-        <span>Country</span>
-        <span>:</span>
-        <input class="input" name="country" value="{{ old('country', $record?->country ?? 'India') }}" required maxlength="80">
-    </label>
-    <label class="tally-co-row">
-        <span>Pincode</span>
-        <span>:</span>
-        <input class="input" name="pincode" value="{{ old('pincode', $record?->pincode ?? '') }}" maxlength="12">
-    </label>
-    <label class="tally-co-row">
-        <span>Telephone</span>
-        <span>:</span>
-        <input class="input" name="phone" value="{{ old('phone', $record?->phone ?? '') }}" maxlength="30">
-    </label>
-    <label class="tally-co-row">
-        <span>Mobile</span>
-        <span>:</span>
-        <input class="input" name="mobile" value="{{ old('mobile', $record?->mobile ?? '') }}" maxlength="30">
-    </label>
-    <label class="tally-co-row">
-        <span>Fax</span>
-        <span>:</span>
-        <input class="input" name="fax" value="{{ old('fax', $record?->fax ?? '') }}" maxlength="30">
-    </label>
-    <label class="tally-co-row">
-        <span>E-mail</span>
-        <span>:</span>
-        <input class="input" name="email" type="email" value="{{ old('email', $record?->email ?? '') }}" maxlength="160">
-    </label>
-    <label class="tally-co-row">
-        <span>Website</span>
-        <span>:</span>
-        <input class="input" name="website" value="{{ old('website', $record?->website ?? '') }}" maxlength="255">
-    </label>
-    <div class="tally-co-rule"></div>
-    <label class="tally-co-row">
-        <span>Base Currency symbol</span>
-        <span>:</span>
-        <input class="input" name="currency_symbol" value="{{ old('currency_symbol', $record?->currency_symbol ?? '₹') }}" maxlength="8">
-    </label>
-    <label class="tally-co-row">
-        <span>Formal name</span>
-        <span>:</span>
-        <input class="input" name="currency_formal_name" value="{{ old('currency_formal_name', $record?->currency_formal_name ?? 'INR') }}" maxlength="20">
-    </label>
-    <input type="hidden" name="financial_year_end" data-fy-end value="{{ $isoDate($endRaw) }}">
-    <input type="hidden" name="is_active" value="{{ old('is_active', ($record?->is_active ?? true) ? '1' : '0') }}">
-    <input type="hidden" name="allow_negative_stock" value="{{ old('allow_negative_stock', $record?->allow_negative_stock ? '1' : '0') }}">
-    <input type="hidden" name="tax_pricing" value="{{ old('tax_pricing', $record?->tax_pricing?->value ?? 'exclusive') }}">
-    <input type="hidden" name="tax_rounding" value="{{ old('tax_rounding', $record?->tax_rounding?->value ?? 'paisa') }}">
-    <input type="hidden" name="sales_terms" value="{{ old('sales_terms', $record?->sales_terms ?? '') }}">
-    <input type="hidden" name="purchase_terms" value="{{ old('purchase_terms', $record?->purchase_terms ?? '') }}">
+<div class="form-grid">
+    <x-tally::form.field name="name" label="Company name" required>
+        <input class="input" id="name" name="name" value="{{ old('name', $record?->name ?? '') }}" required maxlength="160" autofocus>
+    </x-tally::form.field>
+    <x-tally::form.field name="mailing_name" label="Mailing name">
+        <input class="input" id="mailing_name" name="mailing_name" value="{{ old('mailing_name', $record?->mailing_name ?? $record?->name ?? '') }}" maxlength="200">
+    </x-tally::form.field>
+    <x-tally::form.field name="legal_name" label="Legal name">
+        <input class="input" id="legal_name" name="legal_name" value="{{ old('legal_name', $record?->legal_name ?? '') }}" maxlength="200">
+    </x-tally::form.field>
 
-    <details class="tally-co-more">
-        <summary>Statutory</summary>
-        <label class="tally-co-row">
-            <span>GSTIN</span>
-            <span>:</span>
-            <span class="gstin-fetch">
-                <input class="input" name="gstin" data-gstin value="{{ old('gstin', $record?->gstin ?? '') }}" maxlength="15">
-                <button class="btn" type="button" data-gstin-fetch="{{ tally_route('books.tally.gstin.lookup') }}">Fetch</button>
-            </span>
-        </label>
+    <x-tally::form.field name="financial_year_start" label="FY beginning from" required>
+        <input class="input" id="financial_year_start" name="financial_year_start" data-fy-start value="{{ $showDate($startRaw) }}" required autocomplete="off">
+    </x-tally::form.field>
+    <x-tally::form.field name="books_beginning_from" label="Books beginning from" required>
+        <input class="input" id="books_beginning_from" name="books_beginning_from" data-books-from value="{{ $showDate($booksRaw) }}" required autocomplete="off">
+    </x-tally::form.field>
+    <x-tally::form.field name="country" label="Country" required>
+        <input class="input" id="country" name="country" value="{{ old('country', $record?->country ?? 'India') }}" required maxlength="80">
+    </x-tally::form.field>
+
+    <x-tally::form.field name="address" label="Address" class="span-full">
+        <textarea class="input" id="address" name="address" rows="2" maxlength="500">{{ old('address', $record?->address ?? '') }}</textarea>
+    </x-tally::form.field>
+
+    <x-tally::form.field name="city" label="City">
+        <input class="input" id="city" name="city" value="{{ old('city', $record?->city ?? '') }}" maxlength="80">
+    </x-tally::form.field>
+    <x-tally::form.field name="state" label="State">
+        <input class="input" id="state" name="state" value="{{ old('state', $record?->state ?? '') }}" maxlength="80" list="indian-states">
+    </x-tally::form.field>
+    <x-tally::form.field name="pincode" label="Pincode">
+        <input class="input" id="pincode" name="pincode" value="{{ old('pincode', $record?->pincode ?? '') }}" maxlength="12">
+    </x-tally::form.field>
+
+    <x-tally::form.field name="phone" label="Telephone">
+        <input class="input" id="phone" name="phone" value="{{ old('phone', $record?->phone ?? '') }}" maxlength="30">
+    </x-tally::form.field>
+    <x-tally::form.field name="mobile" label="Mobile">
+        <input class="input" id="mobile" name="mobile" value="{{ old('mobile', $record?->mobile ?? '') }}" maxlength="30">
+    </x-tally::form.field>
+    <x-tally::form.field name="email" label="E-mail">
+        <input class="input" id="email" name="email" type="email" value="{{ old('email', $record?->email ?? '') }}" maxlength="160">
+    </x-tally::form.field>
+
+    <x-tally::form.field name="fax" label="Fax">
+        <input class="input" id="fax" name="fax" value="{{ old('fax', $record?->fax ?? '') }}" maxlength="30">
+    </x-tally::form.field>
+    <x-tally::form.field name="website" label="Website">
+        <input class="input" id="website" name="website" value="{{ old('website', $record?->website ?? '') }}" maxlength="255">
+    </x-tally::form.field>
+    <x-tally::form.field name="currency_symbol" label="Currency symbol">
+        <input class="input" id="currency_symbol" name="currency_symbol" value="{{ old('currency_symbol', $record?->currency_symbol ?? '₹') }}" maxlength="8">
+    </x-tally::form.field>
+
+    <x-tally::form.field name="currency_formal_name" label="Currency formal name">
+        <input class="input" id="currency_formal_name" name="currency_formal_name" value="{{ old('currency_formal_name', $record?->currency_formal_name ?? 'INR') }}" maxlength="20">
+    </x-tally::form.field>
+    <x-tally::form.field name="gstin" label="GSTIN">
+        <div class="gstin-fetch">
+            <input class="input" id="gstin" name="gstin" data-gstin value="{{ old('gstin', $record?->gstin ?? '') }}" maxlength="15">
+            <button class="btn" type="button" data-gstin-fetch="{{ tally_route('books.tally.gstin.lookup') }}">Fetch</button>
+        </div>
         <p class="form-note" data-gstin-note></p>
-        <label class="tally-co-row">
-            <span>PAN</span>
-            <span>:</span>
-            <input class="input" name="pan" value="{{ old('pan', $record?->pan ?? '') }}" maxlength="10">
-        </label>
-        <label class="tally-co-row">
-            <span>Legal name</span>
-            <span>:</span>
-            <input class="input" name="legal_name" value="{{ old('legal_name', $record?->legal_name ?? '') }}" maxlength="200">
-        </label>
-        <label class="tally-co-row">
-            <span>City</span>
-            <span>:</span>
-            <input class="input" name="city" value="{{ old('city', $record?->city ?? '') }}" maxlength="80">
-        </label>
-        <label class="tally-co-row">
-            <span>GST registration</span>
-            <span>:</span>
-            <select class="input" name="gst_registration_type">
-                <option value="">Not set</option>
-                @foreach (\Tally\Tax\GstRegistrationType::cases() as $registration)
-                    <option value="{{ $registration->value }}" @selected(old('gst_registration_type', $record?->gst_registration_type?->value) === $registration->value)>{{ $registration->label() }}</option>
-                @endforeach
-            </select>
-        </label>
-    </details>
+    </x-tally::form.field>
+    <x-tally::form.field name="pan" label="PAN">
+        <input class="input" id="pan" name="pan" value="{{ old('pan', $record?->pan ?? '') }}" maxlength="10">
+    </x-tally::form.field>
+
+    <x-tally::form.field name="gst_registration_type" label="GST registration">
+        <select class="input" id="gst_registration_type" name="gst_registration_type">
+            <option value="">Not set</option>
+            @foreach (\Tally\Tax\GstRegistrationType::cases() as $registration)
+                <option value="{{ $registration->value }}" @selected(old('gst_registration_type', $record?->gst_registration_type?->value) === $registration->value)>{{ $registration->label() }}</option>
+            @endforeach
+        </select>
+    </x-tally::form.field>
 </div>
+
+<input type="hidden" name="financial_year_end" data-fy-end value="{{ $isoDate($endRaw) }}">
+<input type="hidden" name="is_active" value="{{ old('is_active', ($record?->is_active ?? true) ? '1' : '0') }}">
+<input type="hidden" name="allow_negative_stock" value="{{ old('allow_negative_stock', $record?->allow_negative_stock ? '1' : '0') }}">
+<input type="hidden" name="tax_pricing" value="{{ old('tax_pricing', $record?->tax_pricing?->value ?? 'exclusive') }}">
+<input type="hidden" name="tax_rounding" value="{{ old('tax_rounding', $record?->tax_rounding?->value ?? 'paisa') }}">
+<input type="hidden" name="sales_terms" value="{{ old('sales_terms', $record?->sales_terms ?? '') }}">
+<input type="hidden" name="purchase_terms" value="{{ old('purchase_terms', $record?->purchase_terms ?? '') }}">
+
 <datalist id="indian-states">
     @foreach (config('states') as $state)
         <option value="{{ $state }}"></option>
@@ -192,6 +149,9 @@
         end.value = closing.getFullYear() + '-' + String(closing.getMonth() + 1).padStart(2, '0') + '-' + String(closing.getDate()).padStart(2, '0');
     }
 
+    if (!start || !books || !end) {
+        return;
+    }
     let previous = start.value;
     start.addEventListener('change', function () {
         sync(previous);

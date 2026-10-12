@@ -52,6 +52,7 @@ class LedgerController extends Controller
             'company' => $company,
             'groups' => AccountGroup::flatten($company->accountGroups()->where('is_active', true)->get()),
             'bankGroupIds' => app(BankAccountService::class)->bankGroupIds($company),
+            'controlLedgers' => $company->ledgers()->where('is_control_account', true)->where('is_active', true)->orderBy('name')->get(),
             'ledger' => new Ledger([
                 'opening_balance' => 0,
                 'opening_balance_type' => 'debit',
@@ -100,6 +101,12 @@ class LedgerController extends Controller
             'company' => $company,
             'ledger' => $ledger->load('bankAccount'),
             'bankGroupIds' => app(BankAccountService::class)->bankGroupIds($company),
+            'controlLedgers' => $company->ledgers()
+                ->where('is_control_account', true)
+                ->where('is_active', true)
+                ->whereKeyNot($ledger->id)
+                ->orderBy('name')
+                ->get(),
             'groups' => AccountGroup::flatten(
                 $company->accountGroups()
                     ->where(function ($query) use ($ledger) {

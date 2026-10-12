@@ -35,8 +35,8 @@
             </p>
         </div>
     @endif
-    <nav class="gateway-menu" data-key-menu aria-label="Gateway of Tally">
-        <h2>Gateway of Tally</h2>
+    <nav class="gateway-menu" data-key-menu aria-label="Books menu">
+        <h2>Books</h2>
         <p class="gateway-group">Masters</p>
         <a class="is-current" href="{{ tally_route('books.tally.masters.create-menu') }}">Create</a>
         <a href="{{ tally_route('books.tally.masters.menu') }}">Alter</a>

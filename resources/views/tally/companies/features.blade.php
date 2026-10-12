@@ -20,6 +20,40 @@
                     <p class="gateway-group">Accounting Features</p>
                     @include('tally::companies._yesno', ['name' => 'sales_enforce_credit_limit', 'label' => 'Enforce credit limit', 'value' => $creditLimit, 'options' => ['No', 'Yes'], 'values' => ['0', '1'], 'autofocus' => true])
                     @include('tally::companies._yesno', ['name' => 'print_amount_in_words', 'label' => 'Print amount in words', 'value' => $amountInWords, 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    @include('tally::companies._yesno', [
+                        'name' => 'accounting_basis',
+                        'label' => 'Reporting basis',
+                        'value' => $company->accounting_basis ?? 'accrual',
+                        'options' => ['Accrual', 'Cash'],
+                        'values' => ['accrual', 'cash'],
+                    ])
+                    <x-tally::form.field name="retained_earnings_ledger_id" label="Retained earnings ledger id">
+                        <input class="input" name="retained_earnings_ledger_id" value="{{ old('retained_earnings_ledger_id', $company->retained_earnings_ledger_id) }}" inputmode="numeric">
+                    </x-tally::form.field>
+                    <x-tally::form.field name="customer_advance_ledger_id" label="Customer advance ledger id">
+                        <input class="input" name="customer_advance_ledger_id" value="{{ old('customer_advance_ledger_id', $company->customer_advance_ledger_id) }}" inputmode="numeric">
+                    </x-tally::form.field>
+                    <x-tally::form.field name="bad_debt_ledger_id" label="Bad debt ledger id">
+                        <input class="input" name="bad_debt_ledger_id" value="{{ old('bad_debt_ledger_id', $company->bad_debt_ledger_id) }}" inputmode="numeric">
+                    </x-tally::form.field>
+                    <x-tally::form.field name="doubtful_debt_ledger_id" label="Doubtful debt provision ledger id">
+                        <input class="input" name="doubtful_debt_ledger_id" value="{{ old('doubtful_debt_ledger_id', $company->doubtful_debt_ledger_id) }}" inputmode="numeric">
+                    </x-tally::form.field>
+                    <x-tally::form.field name="retention_ledger_id" label="Retention ledger id">
+                        <input class="input" name="retention_ledger_id" value="{{ old('retention_ledger_id', $company->retention_ledger_id) }}" inputmode="numeric">
+                    </x-tally::form.field>
+                    <x-tally::form.field name="commission_expense_ledger_id" label="Commission expense ledger id">
+                        <input class="input" name="commission_expense_ledger_id" value="{{ old('commission_expense_ledger_id', $company->commission_expense_ledger_id) }}" inputmode="numeric">
+                    </x-tally::form.field>
+                    <x-tally::form.field name="commission_payable_ledger_id" label="Commission payable ledger id">
+                        <input class="input" name="commission_payable_ledger_id" value="{{ old('commission_payable_ledger_id', $company->commission_payable_ledger_id) }}" inputmode="numeric">
+                    </x-tally::form.field>
+                    <x-tally::form.field name="collection_reminder_days_before" label="Reminder days before due">
+                        <input class="input" name="collection_reminder_days_before" value="{{ old('collection_reminder_days_before', $company->collection_reminder_days_before) }}" inputmode="numeric">
+                    </x-tally::form.field>
+                    <x-tally::form.field name="collection_reminder_days_after" label="Reminder days after due">
+                        <input class="input" name="collection_reminder_days_after" value="{{ old('collection_reminder_days_after', $company->collection_reminder_days_after) }}" inputmode="numeric">
+                    </x-tally::form.field>
                 @elseif ($section === 'inventory')
                     <p class="gateway-group">Inventory Features</p>
                     @include('tally::companies._yesno', ['name' => 'allow_negative_stock', 'label' => 'Allow negative stock', 'value' => $company->allow_negative_stock, 'options' => ['No', 'Yes'], 'values' => ['0', '1'], 'autofocus' => true])

@@ -28,6 +28,8 @@
             <input type="hidden" name="entries[{{ $index }}][reference]" value="">
             <input type="hidden" name="entries[{{ $index }}][narration]" value="">
             <input type="hidden" name="entries[{{ $index }}][cost_centre_id]" value="">
+            <input type="hidden" name="entries[{{ $index }}][business_unit_id]" value="">
+            <input type="hidden" name="entries[{{ $index }}][department_id]" value="">
         @else
             <label class="ref-line">{{ $refLabel }}
                 <input class="input" name="entries[{{ $index }}][reference]" maxlength="50" value="{{ $entry['reference'] ?? '' }}">
@@ -38,6 +40,7 @@
             @else
                 <input type="hidden" name="entries[{{ $index }}][cost_centre_id]" value="">
             @endif
+            @include('tally::vouchers._dimensions', ['index' => $index, 'entry' => $entry, 'businessUnits' => $businessUnits ?? [], 'departments' => $departments ?? []])
         @endif
     </td>
     @if (($mode ?? '') === 'journal')

@@ -4,9 +4,12 @@ namespace Tally\Http\Controllers;
 
 use Tally\Accounting\CostCentreReport;
 use Tally\Accounting\InterestCalculator;
+use Tally\Accounting\Money;
 use Tally\Context\WorkspaceContext;
 use Tally\Models\Bill;
-use Tally\Accounting\Money;
+use Tally\Models\BusinessUnit;
+use Tally\Models\Department;
+use Tally\Reporting\DimensionReport;
 use Tally\Reporting\FinancialReports;
 use Tally\Reporting\LedgerBalances;
 use Tally\Reporting\OutstandingReport;
@@ -90,13 +93,15 @@ class AccountingReportController extends Controller
         }
 
         [$company, $year, $from, $to, $branchId] = $scope;
+        $cashBasis = $this->cashBasis($request, $company);
 
         return view('tally::reports.trial-balance', [
             'company' => $company,
             'year' => $year,
-            'filters' => ['from' => $from, 'to' => $to, 'branch_id' => $branchId],
+            'filters' => ['from' => $from, 'to' => $to, 'branch_id' => $branchId, 'cash_basis' => $cashBasis],
             'branches' => $company->branches()->where('is_active', true)->orderBy('name')->get(),
-            'report' => $reports->trialBalance($company, $branchId, $year, $to),
+            'report' => $reports->trialBalance($company, $branchId, $year, $to, $cashBasis),
+            'cashBasis' => $cashBasis,
         ]);
     }
 
@@ -109,13 +114,15 @@ class AccountingReportController extends Controller
         }
 
         [$company, $year, $from, $to, $branchId] = $scope;
+        $cashBasis = $this->cashBasis($request, $company);
 
         return view('tally::reports.profit-and-loss', [
             'company' => $company,
             'year' => $year,
-            'filters' => ['from' => $from, 'to' => $to, 'branch_id' => $branchId],
+            'filters' => ['from' => $from, 'to' => $to, 'branch_id' => $branchId, 'cash_basis' => $cashBasis],
             'branches' => $company->branches()->where('is_active', true)->orderBy('name')->get(),
-            'report' => $reports->profitAndLoss($company, $branchId, $year, $to),
+            'report' => $reports->profitAndLoss($company, $branchId, $year, $to, $cashBasis),
+            'cashBasis' => $cashBasis,
         ]);
     }
 
@@ -236,14 +243,60 @@ class AccountingReportController extends Controller
         }
 
         [$company, $year, $from, $to, $branchId] = $scope;
+        $cashBasis = $this->cashBasis($request, $company);
 
         return view('tally::reports.balance-sheet', [
             'company' => $company,
             'year' => $year,
+            'filters' => ['from' => $from, 'to' => $to, 'branch_id' => $branchId, 'cash_basis' => $cashBasis],
+            'branches' => $company->branches()->where('is_active', true)->orderBy('name')->get(),
+            'report' => $reports->balanceSheet($company, $branchId, $year, $to, $cashBasis),
+            'group' => $request->string('group')->toString(),
+            'cashBasis' => $cashBasis,
+        ]);
+    }
+
+    public function businessUnits(Request $request, WorkspaceContext $context, DimensionReport $report): View
+    {
+        $scope = $this->scope($context, 'Business units');
+
+        if ($scope instanceof View) {
+            return $scope;
+        }
+
+        [$company, $year, $from, $to, $branchId] = $scope;
+
+        return view('tally::reports.dimensions', [
+            'company' => $company,
+            'year' => $year,
+            'title' => 'Business units',
+            'dimensionLabel' => 'Business unit',
             'filters' => ['from' => $from, 'to' => $to, 'branch_id' => $branchId],
             'branches' => $company->branches()->where('is_active', true)->orderBy('name')->get(),
-            'report' => $reports->balanceSheet($company, $branchId, $year, $to),
-            'group' => $request->string('group')->toString(),
+            'rows' => $report->rows($company, $from, $to, $branchId, 'business_unit_id'),
+            'masters' => BusinessUnit::query()->where('company_id', $company->id)->where('is_active', true)->count(),
+        ]);
+    }
+
+    public function departments(Request $request, WorkspaceContext $context, DimensionReport $report): View
+    {
+        $scope = $this->scope($context, 'Departments');
+
+        if ($scope instanceof View) {
+            return $scope;
+        }
+
+        [$company, $year, $from, $to, $branchId] = $scope;
+
+        return view('tally::reports.dimensions', [
+            'company' => $company,
+            'year' => $year,
+            'title' => 'Departments',
+            'dimensionLabel' => 'Department',
+            'filters' => ['from' => $from, 'to' => $to, 'branch_id' => $branchId],
+            'branches' => $company->branches()->where('is_active', true)->orderBy('name')->get(),
+            'rows' => $report->rows($company, $from, $to, $branchId, 'department_id'),
+            'masters' => Department::query()->where('company_id', $company->id)->where('is_active', true)->count(),
         ]);
     }
 
@@ -345,6 +398,15 @@ class AccountingReportController extends Controller
     /**
      * @return array{0: \Tally\Models\Company, 1: \Tally\Models\FinancialYear, 2: string, 3: string, 4: ?int}|View
      */
+    private function cashBasis(Request $request, \Tally\Models\Company $company): bool
+    {
+        if ($request->has('cash_basis')) {
+            return $request->boolean('cash_basis');
+        }
+
+        return ($company->accounting_basis ?? 'accrual') === 'cash';
+    }
+
     private function scope(WorkspaceContext $context, string $title): array|View
     {
         if (! $context->company() || ! $context->financialYear()) {

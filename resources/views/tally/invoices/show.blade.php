@@ -7,15 +7,25 @@
             <a class="btn" href="{{ tally_route($kind->routeName('eway'), $invoice) }}">E-way bill JSON</a>
             @if ($invoice->isDraft())
                 <a class="btn" href="{{ tally_route($kind->routeName('edit'), $invoice) }}">Edit</a>
-                <form method="POST" action="{{ tally_route($kind->routeName('post'), $invoice) }}">
-                    @csrf
-                    <button class="btn btn-primary" type="submit">Post</button>
-                </form>
+                @if ($kind->value === 'proforma')
+                    <form method="POST" action="{{ tally_route('books.tally.invoices.proforma.convert', $invoice) }}">
+                        @csrf
+                        <button class="btn btn-primary" type="submit">Convert to tax invoice</button>
+                    </form>
+                @elseif ($kind->postsToBooks())
+                    <form method="POST" action="{{ tally_route($kind->routeName('post'), $invoice) }}">
+                        @csrf
+                        <button class="btn btn-primary" type="submit">Post</button>
+                    </form>
+                @endif
             @elseif ($invoice->isPosted())
                 <form method="POST" action="{{ tally_route($kind->routeName('cancel'), $invoice) }}" onsubmit="return confirm('Cancel this invoice? The accounting entry stays in the books as cancelled.');">
                     @csrf
                     <button class="btn" type="submit">Cancel</button>
                 </form>
+                @if ($kind->value === 'credit_note')
+                    <a class="btn" href="{{ tally_route('books.tally.vouchers.payment.create', ['party_ledger_id' => $invoice->party_ledger_id, 'amount' => $invoice->grand_total, 'reference' => $invoice->invoice_number]) }}">Refund</a>
+                @endif
             @endif
             <a class="btn" href="{{ tally_route($kind->routeName('index')) }}">Back</a>
         </x-slot:actions>

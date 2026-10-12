@@ -10,6 +10,8 @@
             :other-ledgers="$otherLedgers"
             :next-number="$nextNumber"
             :cost-centres="$costCentres"
+            :business-units="$businessUnits ?? []"
+            :departments="$departments ?? []"
             :open-bills="$openBills"
             :currencies="$currencies ?? []"
             :payment-requests="$paymentRequests ?? []"

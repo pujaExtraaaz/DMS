@@ -13,6 +13,11 @@ Route::get('/', function () {
 require __DIR__.'/modules/payment-public.php';
 require __DIR__.'/modules/crm-public.php';
 
+// TallyPrime office connector API — only when sync is intentionally enabled.
+if (config('tally_sync.enabled') && config('tally_sync.expose_connector_api', true)) {
+    require __DIR__.'/modules/tally-connector-public.php';
+}
+
 Route::get('/invoice/qr/{type}/{token}', [
     \App\Http\Controllers\InvoiceQrController::class,
     'show',

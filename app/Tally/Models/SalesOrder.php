@@ -12,8 +12,10 @@ class SalesOrder extends AccountingModel
 {
     protected $fillable = [
         'company_id', 'branch_id', 'financial_year_id', 'number', 'order_date',
-        'customer_ledger_id', 'reference_number', 'narration', 'subtotal',
+        'customer_ledger_id', 'billing_address_id', 'shipping_address_id',
+        'reference_number', 'narration', 'subtotal',
         'discount_total', 'tax_total', 'grand_total', 'status', 'created_by',
+        'quotation_id',
     ];
 
     protected function casts(): array

@@ -6,6 +6,7 @@ use Tally\Models\Bill;
 use Tally\Models\Company;
 use Tally\Models\FinancialYear;
 use Tally\Models\Ledger;
+use Tally\Models\Party;
 use Tally\Models\Voucher;
 use Tally\Models\VoucherEntry;
 
@@ -81,7 +82,7 @@ class BillService
         ]);
 
         $amountText = Money::format($amount);
-        $due = $this->dueDate($date, (int) ($ledger->credit_days ?? 0));
+        $due = $this->dueDate($date, $this->creditDaysFor($ledger));
 
         if ($bill->exists
             && (string) $bill->original_amount === $amountText
@@ -133,11 +134,28 @@ class BillService
             'voucher_entry_id' => $entry->id,
             'bill_number' => $number,
             'bill_date' => $voucher->voucher_date->toDateString(),
-            'due_date' => $this->dueDate($voucher->voucher_date->toDateString(), (int) ($ledger->credit_days ?? 0)),
+            'due_date' => $this->dueDate($voucher->voucher_date->toDateString(), $this->creditDaysFor($ledger)),
             'original_amount' => Money::format($amount),
             'side' => $side,
             'is_opening' => false,
         ]);
+    }
+
+    private function creditDaysFor(Ledger $ledger): int
+    {
+        $ledger->loadMissing('paymentTerm');
+
+        if ($ledger->paymentTerm) {
+            return $ledger->paymentTerm->daysForDue();
+        }
+
+        $party = Party::query()->where('ledger_id', $ledger->id)->with('paymentTerm')->first();
+
+        if ($party?->paymentTerm) {
+            return $party->paymentTerm->daysForDue();
+        }
+
+        return (int) ($ledger->credit_days ?? $party?->credit_days ?? 0);
     }
 
     private function dueDate(string $date, int $days): string

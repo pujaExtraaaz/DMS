@@ -26,6 +26,10 @@ class FinancialYear extends AccountingModel
         'start_date',
         'end_date',
         'is_active',
+        'is_closed',
+        'closed_at',
+        'closed_by',
+        'closing_voucher_id',
         'opening_profit',
     ];
 
@@ -38,6 +42,8 @@ class FinancialYear extends AccountingModel
             'start_date' => 'date',
             'end_date' => 'date',
             'is_active' => 'boolean',
+            'is_closed' => 'boolean',
+            'closed_at' => 'datetime',
             'opening_profit' => 'decimal:2',
         ];
     }

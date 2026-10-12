@@ -24,4 +24,9 @@ class Currency extends AccountingModel
     {
         return $this->belongsTo(Company::class);
     }
+
+    public function exchangeRates(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ExchangeRate::class);
+    }
 }

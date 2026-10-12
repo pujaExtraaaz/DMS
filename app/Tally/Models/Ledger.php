@@ -25,6 +25,7 @@ class Ledger extends AccountingModel
     protected $fillable = [
         'company_id',
         'account_group_id',
+        'parent_ledger_id',
         'name',
         'code',
         'opening_balance',
@@ -38,9 +39,13 @@ class Ledger extends AccountingModel
         'pan',
         'credit_limit',
         'credit_days',
+        'payment_term_id',
         'deduction_section_id',
         'is_active',
         'is_system',
+        'is_control_account',
+        'is_intercompany',
+        'intercompany_company_id',
         'cash_flow_class',
     ];
 
@@ -57,6 +62,8 @@ class Ledger extends AccountingModel
             'gst_registration_type' => GstRegistrationType::class,
             'is_active' => 'boolean',
             'is_system' => 'boolean',
+            'is_control_account' => 'boolean',
+            'is_intercompany' => 'boolean',
         ];
     }
 
@@ -68,6 +75,16 @@ class Ledger extends AccountingModel
     public function accountGroup(): BelongsTo
     {
         return $this->belongsTo(AccountGroup::class);
+    }
+
+    public function parentLedger(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_ledger_id');
+    }
+
+    public function subLedgers(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(self::class, 'parent_ledger_id');
     }
 
     public function bankAccount(): HasOne
@@ -83,6 +100,11 @@ class Ledger extends AccountingModel
     public function deductionSection(): BelongsTo
     {
         return $this->belongsTo(DeductionSection::class);
+    }
+
+    public function paymentTerm(): BelongsTo
+    {
+        return $this->belongsTo(PaymentTerm::class);
     }
 
     public function openingBalanceLabel(): string

@@ -1,0 +1,977 @@
+/* Books module — DMS visual language (overrides legacy Tally chrome) */
+body.books-shell {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 0.875rem !important;
+}
+body.books-shell .content.books-dms {
+  padding: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
+}
+.books-dms {
+  --books-accent: #4f46e5;
+  --books-accent-hover: #4338ca;
+  --accent: #4f46e5;
+  --focus: #6366f1;
+  --ok: #15803d;
+  --danger: #dc2626;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --surface: #fff;
+  --surface-2: #f8fafc;
+  color: #0f172a;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* Kill yellow Tally focus / blue command chrome inside Books */
+.books-dms input:focus,
+.books-dms select:focus,
+.books-dms textarea:focus,
+.books-dms .input:focus,
+.books-dms .data .input:focus,
+.books-dms .data .input:focus-visible,
+.books-dms .picker-query:focus,
+.books-dms .tally-co-row .input:focus,
+.books-dms .tally-co-row textarea:focus,
+.books-dms .tally-co-row select:focus,
+.books-dms .voucher-lines .input:focus,
+.books-dms .invoice-lines .input:focus {
+  background: #fff !important;
+  outline: none !important;
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 0.15) !important;
+}
+.books-keys {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  width: 100% !important;
+  flex-direction: row !important;
+  flex-wrap: wrap;
+  background: #fff !important;
+  border-top: 1px solid #e2e8f0 !important;
+  border-left: 0 !important;
+  padding: 0.5rem 0.75rem !important;
+}
+.books-keys a,
+.books-keys button {
+  width: auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.35rem;
+  background: #f8fafc !important;
+  color: #334155 !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.375rem !important;
+  min-height: 0 !important;
+  padding: 0.3rem 0.55rem !important;
+  font-size: 0.75rem !important;
+}
+.books-keys a.is-current,
+.books-keys a:hover,
+.books-keys button:hover {
+  background: #eef2ff !important;
+  border-color: #c7d2fe !important;
+  color: #4338ca !important;
+}
+.books-keys kbd {
+  font-family: inherit;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #6366f1;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.books-dms .page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.books-dms .page-head h1 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+.books-dms .kicker {
+  margin: 0 0 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.books-dms .page-desc {
+  margin: 0.25rem 0 0;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+.books-dms .page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.books-dms .page-body {
+  display: grid;
+  gap: 1rem;
+}
+
+.books-dms .btn,
+.books-dms .icon-btn,
+.books-dms .search-btn,
+.books-dms .row-actions button,
+.books-dms .menu summary,
+.books-dms .menu-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  transition: background .15s, border-color .15s, color .15s;
+}
+.books-dms .btn:hover,
+.books-dms .icon-btn:hover,
+.books-dms .menu-link:hover,
+.books-dms .row-actions button:hover {
+  background: #f8fafc;
+  text-decoration: none;
+}
+.books-dms .btn-primary,
+.books-dms .search-btn {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #fff;
+}
+.books-dms .btn-primary:hover,
+.books-dms .search-btn:hover {
+  background: #4338ca;
+  border-color: #4338ca;
+  color: #fff;
+}
+
+.books-dms .flash {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+.books-dms .flash.is-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.books-dms .table-wrap,
+.books-dms .panel,
+.books-dms .empty,
+.books-dms .page-body > form:not(.filters):not(.inline),
+.books-dms form.stack,
+.books-dms form.tally-master,
+.books-dms form.panel {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+  overflow: hidden;
+}
+.books-dms .panel,
+.books-dms .empty,
+.books-dms form.stack,
+.books-dms form.tally-master,
+.books-dms form.panel,
+.books-dms .page-body > form:not(.filters):not(.inline) {
+  padding: 1.25rem 1.5rem;
+}
+.books-dms .table-wrap {
+  padding: 0;
+}
+.books-dms .data {
+  width: 100%;
+  border-collapse: collapse;
+}
+.books-dms .data th,
+.books-dms .data td {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  text-align: left;
+  vertical-align: middle;
+  font-size: 0.875rem;
+}
+.books-dms .data th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.books-dms .data tbody tr:hover td {
+  background: #f8fafc;
+}
+.books-dms .data .money {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.books-dms .row-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+.books-dms .row-actions button,
+.books-dms .row-actions .btn {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #4f46e5;
+  min-height: 0;
+  padding: 0.15rem 0.35rem;
+}
+
+.books-dms .filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.65rem;
+  align-items: flex-end;
+  margin-bottom: 0;
+  padding: 0.65rem 0.85rem;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.65rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+.books-dms .filters .field {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.books-dms .stack {
+  display: grid;
+  gap: 0.75rem;
+}
+/* 2–3 fields per row — beat tally-books `.page-body form .form-grid { display:block }` */
+.books-dms .form-grid,
+.books-dms .form-row,
+.books-dms .grid-2,
+.books-dms .grid-3,
+.books-dms .page-body form:not(.filters) .form-grid,
+.books-dms .page-body form:not(.filters) .form-row,
+.books-dms .page-body form:not(.filters) .grid-2,
+.books-dms .page-body form:not(.filters) .grid-3,
+.books-dms form.panel .form-grid,
+.books-dms form.tally-master .form-grid,
+.books-dms form.stack .form-grid,
+.books-dms form.tally-co .form-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0.65rem 0.85rem !important;
+  align-items: start;
+}
+.books-dms .grid-2,
+.books-dms .page-body form:not(.filters) .grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+.books-dms .span-2 { grid-column: span 2; }
+.books-dms .span-3,
+.books-dms .span-full { grid-column: 1 / -1; }
+@media (max-width: 900px) {
+  .books-dms .form-grid,
+  .books-dms .form-row,
+  .books-dms .grid-3,
+  .books-dms .page-body form:not(.filters) .form-grid,
+  .books-dms .page-body form:not(.filters) .form-row,
+  .books-dms .page-body form:not(.filters) .grid-3,
+  .books-dms form.panel .form-grid,
+  .books-dms form.tally-master .form-grid,
+  .books-dms form.stack .form-grid,
+  .books-dms form.tally-co .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .books-dms .span-2 { grid-column: span 1; }
+}
+@media (max-width: 640px) {
+  .books-dms .form-grid,
+  .books-dms .form-row,
+  .books-dms .grid-2,
+  .books-dms .grid-3,
+  .books-dms .page-body form:not(.filters) .form-grid,
+  .books-dms .page-body form:not(.filters) .form-row,
+  .books-dms .page-body form:not(.filters) .grid-2,
+  .books-dms .page-body form:not(.filters) .grid-3,
+  .books-dms form.panel .form-grid,
+  .books-dms form.tally-master .form-grid,
+  .books-dms form.stack .form-grid,
+  .books-dms form.tally-co .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .books-dms .span-2,
+  .books-dms .span-3,
+  .books-dms .span-full { grid-column: 1 / -1; }
+}
+.books-dms .form-actions {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  margin-top: 0.35rem;
+}
+.books-dms .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.books-dms .field label,
+.books-dms .field.tally-co-row > label {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.books-dms .field.tally-co-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0;
+}
+.books-dms .field.tally-co-row > span:nth-child(2) {
+  display: none;
+}
+.books-dms .field-control {
+  min-width: 0;
+  width: 100%;
+}
+.books-dms .field-hint {
+  margin: 0.15rem 0 0;
+  color: #94a3b8;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
+/* Compact controls — readable Inter text */
+.books-dms .input,
+.books-dms textarea.input,
+.books-dms select.input,
+.books-dms .field .input,
+.books-dms .field select,
+.books-dms .field textarea,
+.books-dms .filters .input,
+.books-dms .filters select,
+.books-dms .data .input,
+.books-dms .data select {
+  width: 100%;
+  max-width: 100%;
+  min-height: 2rem;
+  height: 2rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #0f172a;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: normal;
+  -webkit-font-smoothing: antialiased;
+  box-shadow: none;
+}
+.books-dms .input::placeholder,
+.books-dms textarea.input::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
+  opacity: 1;
+}
+.books-dms textarea.input,
+.books-dms .field textarea {
+  height: auto;
+  min-height: 3.5rem;
+  padding: 0.45rem 0.55rem;
+  resize: vertical;
+}
+.books-dms select.input,
+.books-dms .field select,
+.books-dms .filters select {
+  padding-right: 1.75rem;
+}
+
+/* Inside form grids: fill the cell (2–3 per row) */
+.books-dms .form-grid .field,
+.books-dms .form-row .field,
+.books-dms .grid-2 .field,
+.books-dms .grid-3 .field {
+  width: 100%;
+  max-width: none;
+}
+.books-dms .form-grid .input,
+.books-dms .form-grid select,
+.books-dms .form-grid textarea,
+.books-dms .form-row .input,
+.books-dms .form-row select,
+.books-dms .form-row textarea,
+.books-dms .grid-2 .input,
+.books-dms .grid-2 select,
+.books-dms .grid-3 .input,
+.books-dms .grid-3 select {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Width presets — for filter bars / inline add forms only */
+.books-dms .filters .field--xs,
+.books-dms .filters .input--xs { max-width: 5.5rem; width: 5.5rem; }
+.books-dms .filters .field--sm,
+.books-dms .filters .input--sm { max-width: 9rem; width: 9rem; }
+.books-dms .filters .field--md,
+.books-dms .filters .input--md { max-width: 14rem; width: 14rem; }
+.books-dms .filters .field--lg,
+.books-dms .filters .input--lg { max-width: 18rem; width: 18rem; }
+.books-dms .field--full,
+.books-dms .field--full .input,
+.books-dms .field--full select,
+.books-dms .field--full textarea,
+.books-dms .input--full,
+.books-dms .span-2 .input,
+.books-dms .span-2 select,
+.books-dms .span-2 textarea,
+.books-dms .span-3 .input,
+.books-dms .span-3 select,
+.books-dms .span-3 textarea,
+.books-dms .span-full .input,
+.books-dms .span-full select,
+.books-dms .span-full textarea {
+  max-width: 100%;
+  width: 100%;
+}
+.books-dms .filters .field--xs .input,
+.books-dms .filters .field--xs select,
+.books-dms .filters .field--sm .input,
+.books-dms .filters .field--sm select,
+.books-dms .filters .field--md .input,
+.books-dms .filters .field--md select,
+.books-dms .filters .field--lg .input,
+.books-dms .filters .field--lg select {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Filter bar: compact auto widths by field type */
+.books-dms .filters input.input[type="date"],
+.books-dms .filters input.input[type="month"],
+.books-dms .filters input.input[type="number"],
+.books-dms .filters input.input[name="code"],
+.books-dms .filters input.input[name$="_code"],
+.books-dms .filters input.input[name="amount"],
+.books-dms .filters input.input[name="from"],
+.books-dms .filters input.input[name="to"],
+.books-dms .filters input.input[name="as_on"],
+.books-dms .filters input.input[name$="_date"],
+.books-dms .filters select.input[name="side"],
+.books-dms .filters select.input[name="cash_basis"],
+.books-dms .filters select.input[name="status"],
+.books-dms .filters select.input[name="kind"] {
+  width: 9rem;
+  max-width: 9rem;
+}
+.books-dms .filters input.input[name="name"],
+.books-dms .filters input.input[name="email"],
+.books-dms .filters input.input[name="phone"],
+.books-dms .filters select.input[name$="_id"] {
+  width: 14rem;
+  max-width: 14rem;
+}
+.books-dms .filters .field--full,
+.books-dms .filters .span-2 {
+  flex: 1 1 14rem;
+}
+.books-dms .filters .btn,
+.books-dms .form-actions .btn {
+  min-height: 2rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.books-dms .input:focus,
+.books-dms textarea.input:focus,
+.books-dms select.input:focus,
+.books-dms .field .input:focus,
+.books-dms .field select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.12);
+  background: #fff;
+}
+.books-dms .field-error {
+  margin: 0.1rem 0 0;
+  color: #dc2626;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.books-dms .check-field .field-label-spacer {
+  display: block;
+  height: 1.05rem;
+}
+.books-dms .check,
+.books-dms .check-field .check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2rem;
+  color: #334155;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+.books-dms .muted,
+.books-dms .form-note {
+  color: #64748b;
+}
+.books-dms .tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #eef2ff;
+  color: #4338ca;
+}
+.books-dms .tag.is-bad {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.books-dms .status.is-on { color: #15803d; }
+.books-dms .status.is-off { color: #b91c1c; }
+.books-dms .empty {
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+}
+.books-dms .empty h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.books-dms .empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.books-dms .audit {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.books-dms .audit dt { color: #64748b; font-size: 0.75rem; }
+.books-dms .audit dd { margin: 0.15rem 0 0; font-weight: 500; }
+
+/* Context switcher — click to switch company / branch / FY */
+.books-context {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  align-items: center;
+  max-width: 100%;
+}
+@media (max-width: 1100px) {
+  .books-context {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
+.books-context .menu {
+  position: relative;
+}
+.books-context .menu-trigger {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 8.25rem;
+  max-width: 12rem;
+  padding: 0.3rem 0.55rem 0.3rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.books-context .menu-trigger:hover,
+.books-context .menu.is-open .menu-trigger {
+  border-color: #c7d2fe;
+  background: #f8fafc;
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 0.12);
+}
+.books-context .menu-trigger::-webkit-details-marker { display: none; }
+.books-context .menu-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+}
+.books-context .menu-kicker {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.books-context .menu-value {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.books-context .menu-caret {
+  flex-shrink: 0;
+  width: 0.85rem;
+  height: 0.85rem;
+  color: #94a3b8;
+}
+.books-context .menu-panel {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  min-width: 15rem;
+  max-width: 20rem;
+  max-height: 18rem;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 28px rgb(15 23 42 / 0.14);
+  padding: 0.35rem;
+}
+.books-context .menu-panel form { margin: 0; }
+.books-context .menu-panel button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  text-align: left;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  cursor: pointer;
+  font: inherit;
+  color: #0f172a;
+}
+.books-context .menu-panel button strong {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.books-context .menu-panel button small {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+.books-context .menu-panel button:hover,
+.books-context .menu-panel .is-current {
+  background: #eef2ff;
+  color: #4338ca;
+}
+.books-context .menu-panel .is-current small { color: #6366f1; }
+.books-context .menu-link {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.5rem;
+  border-top: 1px solid #f1f5f9;
+  color: #4f46e5;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.books-context .menu-link:hover {
+  background: #eef2ff;
+  text-decoration: none;
+}
+.books-context .menu-empty {
+  margin: 0.5rem;
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+/* Keyboard toolbar */
+.books-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff;
+  border-top: 1px solid #e2e8f0;
+}
+.books-keys a,
+.books-keys button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 0.375rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+.books-keys a:hover,
+.books-keys button:hover,
+.books-keys a.is-current {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4338ca;
+  text-decoration: none;
+}
+.books-keys kbd {
+  font-family: inherit;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #6366f1;
+}
+
+/* Voucher / form focus still keyboard-friendly but DMS colored */
+.books-dms .picker-list {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 25px rgb(15 23 42 / 0.12);
+}
+.books-dms .picker-list button,
+.books-dms .picker-list a {
+  color: #334155;
+  padding: 0.4rem 0.75rem;
+}
+.books-dms .picker-list .is-current,
+.books-dms .picker-list button:hover,
+.books-dms .picker-list a:hover {
+  background: #eef2ff;
+  color: #4338ca;
+}
+.books-dms .tally-vch,
+.books-dms .tally-co,
+.books-dms #voucher-form,
+.books-dms #invoice-form {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+.books-dms .tally-co-title {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  border-bottom: 1px solid #e2e8f0;
+  font-weight: 600 !important;
+  padding: 0.65rem 1rem !important;
+}
+body.books-shell .content:has(form.panel) .page-head,
+body.books-shell .content:has(form.tally-master) .page-head,
+body.books-shell .content:has(form.stack) .page-head,
+.books-dms:has(form.panel) .page-head,
+.books-dms:has(form.tally-master) .page-head,
+.books-dms:has(form.stack) .page-head {
+  background: transparent !important;
+  color: #0f172a !important;
+  justify-content: flex-start !important;
+  padding: 0 !important;
+  margin-bottom: 0.75rem !important;
+}
+body.books-shell .content:has(form.panel) .page-head h1,
+body.books-shell .content:has(form.tally-master) .page-head h1,
+body.books-shell .content:has(form.stack) .page-head h1 {
+  color: #0f172a !important;
+  text-align: left !important;
+  font-size: 1.125rem !important;
+}
+body.books-shell .content:has(form.panel) .kicker,
+body.books-shell .content:has(form.tally-master) .kicker,
+body.books-shell .content:has(form.stack) .kicker,
+body.books-shell .content:has(form.panel) .page-desc,
+body.books-shell .content:has(form.tally-master) .page-desc,
+body.books-shell .content:has(form.stack) .page-desc {
+  display: block !important;
+}
+.books-dms .tally-co-sheet {
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #fff;
+}
+.books-dms .tally-co-row .input,
+.books-dms .tally-co-row textarea,
+.books-dms .tally-co-row select {
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 0.375rem !important;
+  background: #fff !important;
+  min-height: 2rem !important;
+  height: 2rem !important;
+  padding: 0.25rem 0.55rem !important;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 400 !important;
+  color: #0f172a !important;
+  width: min(100%, 16rem) !important;
+  max-width: 16rem !important;
+}
+.books-dms .tally-co-row textarea {
+  height: auto !important;
+  min-height: 3rem !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+.books-dms .tally-co-row.is-address textarea,
+.books-dms .tally-co-row .input[name="narration"],
+.books-dms .tally-co-row textarea[name="address"] {
+  width: 100% !important;
+  max-width: 28rem !important;
+}
+.books-dms .page-body form.panel,
+.books-dms .page-body form.tally-master,
+.books-dms .page-body form.stack,
+.books-dms .page-body > form:not(.filters):not(.tally-co):not(.tally-vch) {
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.65rem !important;
+  background: #fff !important;
+  padding: 0.85rem 1rem !important;
+}
+.books-dms .voucher-lines .input,
+.books-dms .invoice-lines .input,
+.books-dms .tally-voucher .input {
+  min-height: 2rem !important;
+  height: 2rem !important;
+  padding: 0.25rem 0.5rem !important;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 400 !important;
+  color: #0f172a !important;
+  border-radius: 0.375rem !important;
+}
+.books-dms .gateway {
+  background: #fff !important;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 1.25rem !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+.books-dms .gateway-menu {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.75rem;
+  width: auto !important;
+}
+.books-dms .gateway-menu h2 {
+  background: #4f46e5 !important;
+  border-radius: 0.75rem 0.75rem 0 0;
+}
+.books-dms .gateway-menu a {
+  color: #334155 !important;
+  padding: 0.45rem 1rem !important;
+  border-radius: 0.375rem;
+}
+.books-dms .gateway-menu a:hover,
+.books-dms .gateway-menu a.is-current,
+.books-dms .gateway-menu a:focus,
+.books-dms .tally-type-list a:hover,
+.books-dms .tally-type-list a.is-current,
+.books-dms .tally-goto-list a:hover,
+.books-dms .tally-goto-list a:focus {
+  background: #eef2ff !important;
+  color: #4338ca !important;
+}
+.books-dms .tally-type-list {
+  background: #fff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 0.75rem;
+  padding: 0.5rem !important;
+}
+.books-dms .tally-type-list a {
+  border-radius: 0.375rem;
+}
+.books-dms .tally-type-list kbd,
+.books-dms .tally-dash section {
+  border-color: #e2e8f0 !important;
+}
+.books-dms .tally-dash section {
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+.books-dms .trend polyline {
+  stroke: #4f46e5 !important;
+}
+.books-dms .gateway-link,
+.books-dms button.gateway-link {
+  color: #4f46e5 !important;
+  font-weight: 600;
+  text-decoration: none;
+}
+.books-dms .gateway-link:hover {
+  color: #4338ca !important;
+  text-decoration: underline;
+}
+.books-dms .gateway-company-row strong {
+  font-size: 1.05rem !important;
+  text-transform: none !important;
+}
+body.books-shell .dialog-card {
+  border-radius: 0.75rem !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 20px 40px rgb(15 23 42 / 0.18) !important;
+  background: #fff !important;
+  padding: 1.25rem !important;
+}
+body.books-shell .tally-goto-list a {
+  color: #334155 !important;
+  border-radius: 0.375rem;
+  padding: 0.4rem 0.65rem !important;
+}
+body.books-shell .tally-goto-list a:hover,
+body.books-shell .tally-goto-list a:focus {
+  background: #eef2ff !important;
+  color: #4338ca !important;
+}
+body.books-shell .tally-keys { display: none !important; }
+
+@media (max-width: 800px) {
+  .books-dms .audit { grid-template-columns: 1fr; }
+  .books-context .menu-trigger { min-width: 7rem; max-width: 9.5rem; }
+  .books-keys { display: none; }
+}
+[x-cloak] { display: none !important; }

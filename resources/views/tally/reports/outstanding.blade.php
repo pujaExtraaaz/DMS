@@ -20,10 +20,10 @@
         @endif
         @foreach (['Receivables' => $receivables, 'Payables' => $payables] as $title => $report)
             <h2>{{ $title }}</h2>
-            <p>Open bills {{ $report['total'] }}. Advances {{ $report['advances'] }}. Net {{ $report['net'] }}.</p>
+            <p>Open bills {{ $report['total'] }}. Overdue {{ $report['overdue'] ?? '0.00' }}. Advances {{ $report['advances'] }}. Net {{ $report['net'] }}.</p>
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Party</th><th>Bill</th><th>Date</th><th>Due</th><th class="money">Original</th><th class="money">Paid</th><th class="money">Outstanding</th></tr></thead>
+                    <thead><tr><th>Party</th><th>Bill</th><th>Date</th><th>Due</th><th class="money">Original</th><th class="money">Paid</th><th class="money">Outstanding</th><th>Overdue</th></tr></thead>
                     <tbody>
                         @forelse ($report['rows'] as $row)
                             <tr>
@@ -34,9 +34,10 @@
                                 <td class="money">{{ $row['original'] }}</td>
                                 <td class="money">{{ $row['paid'] }}</td>
                                 <td class="money">{{ $row['outstanding'] }}</td>
+                                <td>{{ ($row['overdue'] ?? '0') === '1' ? 'Yes' : '—' }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="7">Nothing outstanding.</td></tr>
+                            <tr><td colspan="8">Nothing outstanding.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

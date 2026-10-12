@@ -12,9 +12,13 @@ use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Tally\Models\TallySyncQueue;
+use App\Domains\TallySync\Support\SyncGate;
+use App\Domains\TallySync\Templates\XmlEnvelope;
+use App\Domains\TallySync\Templates\XmlHelpers;
 use App\Jobs\ProcessTallySyncJob;
 use Illuminate\Database\Eloquent\Model;
 use InvalidArgumentException;
+use RuntimeException;
 
 
 class TallyExportService
@@ -48,6 +52,10 @@ class TallyExportService
 
     public function enqueue(string $documentType, Model $document, bool $dispatch = true): TallySyncQueue
     {
+        if (! SyncGate::enabled()) {
+            throw new RuntimeException('TallyPrime sync is disabled. Native Books is the live accounting path. Set TALLY_SYNC_ENABLED=true to re-enable.');
+        }
+
         if ($this->hasDependencies($documentType)) {
             $this->enqueueMissingMasters($document, $dispatch);
         }
@@ -761,29 +769,12 @@ XML;
         string $billAllocation = '',
         string $tag = 'LEDGERENTRIES.LIST'
     ): string {
-        $name = $this->xml($ledger);
-        $deemed = $signedAmount < 0 ? 'Yes' : 'No';
-        $partyFlag = $isParty ? 'Yes' : 'No';
-        $amount = $this->money($signedAmount);
-
-        return <<<XML
- <{$tag}>
-  <LEDGERNAME>{$name}</LEDGERNAME>
-  <ISDEEMEDPOSITIVE>{$deemed}</ISDEEMEDPOSITIVE>
-  <ISPARTYLEDGER>{$partyFlag}</ISPARTYLEDGER>
-  <AMOUNT>{$amount}</AMOUNT>
-  {$billAllocation}
- </{$tag}>
-
-XML;
+        return XmlHelpers::ledgerEntry($ledger, $signedAmount, $isParty, $billAllocation, $tag);
     }
 
     protected function billAllocation(string $name, string $type, float $signedAmount): string
     {
-        $billName = $this->xml($name);
-        $amount = $this->money($signedAmount);
-
-        return "<BILLALLOCATIONS.LIST><NAME>{$billName}</NAME><BILLTYPE>{$type}</BILLTYPE><AMOUNT>{$amount}</AMOUNT></BILLALLOCATIONS.LIST>";
+        return XmlHelpers::billAllocation($name, $type, $signedAmount);
     }
 
     protected function inventoryEntry(
@@ -796,39 +787,7 @@ XML;
         string $ledger,
         string $batch = 'Primary Batch'
     ): string {
-        $item = $this->xml($stockItem);
-        $deemed = $signedAmount < 0 ? 'Yes' : 'No';
-        $amount = $this->money($signedAmount);
-        $unitXml = $this->xml($unit);
-        $qtyText = trim($this->quantity($qty).' '.$unitXml);
-        $rateText = number_format($rate, 2, '.', '').($unitXml !== '' ? '/'.$unitXml : '');
-        $godownXml = $this->xml($godown);
-        $batchXml = $this->xml($batch);
-        $ledgerXml = $this->xml($ledger);
-
-        return <<<XML
- <ALLINVENTORYENTRIES.LIST>
-  <STOCKITEMNAME>{$item}</STOCKITEMNAME>
-  <ISDEEMEDPOSITIVE>{$deemed}</ISDEEMEDPOSITIVE>
-  <RATE>{$rateText}</RATE>
-  <AMOUNT>{$amount}</AMOUNT>
-  <ACTUALQTY>{$qtyText}</ACTUALQTY>
-  <BILLEDQTY>{$qtyText}</BILLEDQTY>
-  <BATCHALLOCATIONS.LIST>
-   <GODOWNNAME>{$godownXml}</GODOWNNAME>
-   <BATCHNAME>{$batchXml}</BATCHNAME>
-   <AMOUNT>{$amount}</AMOUNT>
-   <ACTUALQTY>{$qtyText}</ACTUALQTY>
-   <BILLEDQTY>{$qtyText}</BILLEDQTY>
-  </BATCHALLOCATIONS.LIST>
-  <ACCOUNTINGALLOCATIONS.LIST>
-   <LEDGERNAME>{$ledgerXml}</LEDGERNAME>
-   <ISDEEMEDPOSITIVE>{$deemed}</ISDEEMEDPOSITIVE>
-   <AMOUNT>{$amount}</AMOUNT>
-  </ACCOUNTINGALLOCATIONS.LIST>
- </ALLINVENTORYENTRIES.LIST>
-
-XML;
+        return XmlHelpers::inventoryEntry($stockItem, $qty, $unit, $rate, $signedAmount, $godown, $ledger, $batch);
     }
 
     /**
@@ -930,83 +889,26 @@ XML;
 
     protected function money(float $value): string
     {
-        return number_format(round($value, 2), 2, '.', '');
+        return XmlHelpers::money($value);
     }
 
     protected function quantity(float $value): string
     {
-        return rtrim(rtrim(number_format($value, 4, '.', ''), '0'), '.');
+        return XmlHelpers::quantity($value);
     }
 
     protected function xml(?string $value): string
     {
-        return htmlspecialchars((string) $value, ENT_XML1 | ENT_QUOTES);
+        return XmlHelpers::xml($value);
     }
 
-    /**
-     * Wraps master data (Stock Item / Ledger / UOM) in the correct
-     * Tally "All Masters" import envelope instead of the Vouchers one.
-     */
     protected function wrapMaster(string $type, string $inner): string
     {
-        $inner   = trim($inner);
-        $company = htmlspecialchars((string) config('services.tally.company', ''), ENT_XML1);
-
-        return <<<XML
-<?xml version="1.0" encoding="UTF-8"?>
-<ENVELOPE>
- <HEADER>
-  <TALLYREQUEST>Import Data</TALLYREQUEST>
- </HEADER>
- <BODY>
-  <IMPORTDATA>
-   <REQUESTDESC>
-    <REPORTNAME>All Masters</REPORTNAME>
-    <STATICVARIABLES>
-     <SVCURRENTCOMPANY>{$company}</SVCURRENTCOMPANY>
-    </STATICVARIABLES>
-   </REQUESTDESC>
-   <REQUESTDATA>
-    <TALLYMESSAGE xmlns:UDF="TallyUDF">
-     <!-- DMS master type: {$type} -->
-     {$inner}
-    </TALLYMESSAGE>
-   </REQUESTDATA>
-  </IMPORTDATA>
- </BODY>
-</ENVELOPE>
-XML;
+        return XmlEnvelope::masters($type, $inner);
     }
 
     protected function wrap(string $type, string $inner): string
     {
-        $inner = trim($inner);
-        $company = htmlspecialchars((string) config('services.tally.company', ''), ENT_XML1);
-
-        // Tally Prime / ERP 9 compatible Import Data envelope.
-        return <<<XML
-<?xml version="1.0" encoding="UTF-8"?>
-<ENVELOPE>
- <HEADER>
-  <TALLYREQUEST>Import Data</TALLYREQUEST>
- </HEADER>
- <BODY>
-  <IMPORTDATA>
-   <REQUESTDESC>
-    <REPORTNAME>Vouchers</REPORTNAME>
-    <STATICVARIABLES>
-     <SVCURRENTCOMPANY>{$company}</SVCURRENTCOMPANY>
-    </STATICVARIABLES>
-   </REQUESTDESC>
-   <REQUESTDATA>
-    <TALLYMESSAGE xmlns:UDF="TallyUDF">
-     <!-- DMS document type: {$type} -->
-     {$inner}
-    </TALLYMESSAGE>
-   </REQUESTDATA>
-  </IMPORTDATA>
- </BODY>
-</ENVELOPE>
-XML;
+        return XmlEnvelope::vouchers($type, $inner);
     }
 }

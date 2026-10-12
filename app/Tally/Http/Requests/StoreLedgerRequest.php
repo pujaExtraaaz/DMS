@@ -25,12 +25,15 @@ class StoreLedgerRequest extends FormRequest
         $code = strtoupper(trim((string) $this->input('code')));
         $balance = trim((string) $this->input('opening_balance'));
 
+        $parent = $this->input('parent_ledger_id');
         $cleaned = [
             'name' => trim((string) $this->input('name')),
             'code' => $code === '' ? null : $code,
             'opening_balance' => $balance === '' ? '0' : $balance,
             'opening_balance_type' => $this->input('opening_balance_type') ?: OpeningBalanceType::Debit->value,
             'is_active' => $this->exists('is_active') ? $this->boolean('is_active') : true,
+            'is_control_account' => $this->boolean('is_control_account'),
+            'parent_ledger_id' => $parent === '' || $parent === null ? null : (int) $parent,
         ];
 
         if ($this->exists('deduction_section_id')) {
@@ -144,6 +147,16 @@ class StoreLedgerRequest extends FormRequest
             ],
             'cash_flow_class' => ['nullable', Rule::in(['Operating', 'Investing', 'Financing'])],
             'is_active' => ['required', 'boolean'],
+            'is_control_account' => ['nullable', 'boolean'],
+            'parent_ledger_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('acct_ledgers', 'id')->where(function ($query) use ($company, $ledger) {
+                    $query->where('company_id', $company->id)
+                        ->where('is_control_account', true)
+                        ->when($ledger, fn ($q) => $q->whereKeyNot($ledger->id));
+                }),
+            ],
             'bank_name' => [$this->bankRule(), 'string', 'max:120'],
             'account_number' => [
                 $this->bankRule(),

@@ -11,6 +11,7 @@ use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Tally\Services\TallyExportService;
+use App\Domains\TallySync\Support\SyncGate;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 
@@ -48,7 +49,7 @@ class TallyAutoEnqueueObserver
 
     public function created(Model $model): void
     {
-        if (static::$muted) {
+        if (static::$muted || ! SyncGate::enabled()) {
             return;
         }
 
@@ -68,7 +69,7 @@ class TallyAutoEnqueueObserver
 
     public function updated(Model $model): void
     {
-        if (static::$muted) {
+        if (static::$muted || ! SyncGate::enabled()) {
             return;
         }
 

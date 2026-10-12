@@ -2,19 +2,25 @@
 
 namespace Tally\Parties;
 
+use Tally\Accounting\BillAllocationService;
+use Tally\Accounting\BillService;
 use Tally\Accounting\Money;
 use Tally\Accounting\OpeningBalanceType;
-use Tally\Accounting\VoucherStatus;
 use Tally\Invoicing\InvoiceKind;
+use Tally\Models\Bill;
 use Tally\Models\Invoice;
 use Tally\Models\Ledger;
-use Tally\Models\VoucherEntry;
 use Tally\Preferences\PreferenceStore;
+use Tally\Support\Queries\DateRange;
 use Illuminate\Validation\ValidationException;
 
 class PartyCredit
 {
-    public function __construct(private readonly PreferenceStore $preferences) {}
+    public function __construct(
+        private readonly PreferenceStore $preferences,
+        private readonly BillService $bills,
+        private readonly BillAllocationService $allocations,
+    ) {}
 
     public function assertWithinLimit(Invoice $invoice, Ledger $party): void
     {
@@ -28,45 +34,50 @@ class PartyCredit
             return;
         }
 
-        $opening = Money::cents((string) $party->opening_balance);
-        if ($party->opening_balance_type === OpeningBalanceType::Credit) {
-            $opening = -$opening;
-        }
+        $exposure = $this->billWiseExposureCents($party) + Money::cents((string) $invoice->grand_total);
 
-        $movement = (int) VoucherEntry::query()
-            ->where('ledger_id', $party->id)
-            ->whereHas('voucher', function ($query) use ($invoice): void {
-                $query->where('company_id', $invoice->company_id)
-                    ->where('financial_year_id', $invoice->financial_year_id)
-                    ->where('status', VoucherStatus::Posted);
-            })
-            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
-            ->value('balance');
-
-        $next = $opening + $this->cents($movement) + Money::cents((string) $invoice->grand_total);
-
-        if ($next > $limit) {
+        if ($exposure > $limit) {
             throw ValidationException::withMessages([
-                'party_ledger_id' => 'This invoice would take '.$party->name.' over the credit limit of '.Money::format($limit).'.',
+                'party_ledger_id' => 'This invoice would take '.$party->name.' over the credit limit of '.Money::format($limit)
+                    .' (bill-wise exposure '.Money::format($exposure - Money::cents((string) $invoice->grand_total)).').',
             ]);
         }
     }
 
-    private function cents(mixed $value): int
+    /**
+     * Open bills outstanding minus unallocated advances for the party.
+     */
+    public function billWiseExposureCents(Ledger $party, ?string $asOf = null): int
     {
-        $raw = trim((string) $value);
+        $asOf ??= now()->toDateString();
+        $this->bills->ensureOpening($party);
 
-        if ($raw === '') {
-            return 0;
+        $open = 0;
+        $bills = Bill::query()
+            ->where('company_id', $party->company_id)
+            ->where('ledger_id', $party->id)
+            ->where('side', OpeningBalanceType::Debit)
+            ->tap(fn ($query) => DateRange::apply($query, 'bill_date', null, $asOf))
+            ->get();
+
+        foreach ($bills as $bill) {
+            if (! $bill->isActive()) {
+                continue;
+            }
+            $open += max(0, $this->allocations->outstandingCents($bill, $asOf));
         }
 
-        if (! str_contains($raw, '.')) {
-            $raw .= '.00';
+        return max(0, $open);
+    }
+
+    public function availableCredit(Ledger $party): ?string
+    {
+        $limit = Money::cents((string) ($party->credit_limit ?? '0'));
+
+        if ($limit <= 0) {
+            return null;
         }
 
-        [$whole, $fraction] = explode('.', $raw, 2);
-        $fraction = substr(str_pad($fraction, 2, '0'), 0, 2);
-
-        return Money::cents(((int) $whole).'.'.$fraction);
+        return Money::format(max(0, $limit - $this->billWiseExposureCents($party)));
     }
 }
