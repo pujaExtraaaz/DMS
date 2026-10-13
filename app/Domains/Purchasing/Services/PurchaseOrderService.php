@@ -110,8 +110,37 @@ class PurchaseOrderService
                 ? $data['shipping_address']
                 : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $supplier->address));
 
+            $isFreightApplicable = !empty($data['is_freight_applicable']);
+            $freightAmount = 0.0;
+            $freightTaxRate = 0.0;
+            $freightTaxAmount = 0.0;
+            $freightTotal = 0.0;
+            $freightNotes = null;
+
+            if ($isFreightApplicable) {
+                $freightAmount = round((float) ($data['freight_amount'] ?? 0), 2);
+                $freightTaxRate = round((float) ($data['freight_tax_rate'] ?? 0), 2);
+                if ($freightAmount > 0) {
+                    $freightTaxAmount = round($freightAmount * ($freightTaxRate / 100), 2);
+                    $freightTotal = round($freightAmount + $freightTaxAmount, 2);
+                }
+                $freightNotes = !empty($data['freight_notes']) ? trim($data['freight_notes']) : null;
+            }
+
+            $grandTotal = round($subtotal + $taxAmount + $freightTotal, 2);
+
+            $creditDaysOverride = (isset($data['credit_days']) && $data['credit_days'] !== '' && $data['credit_days'] !== null)
+                ? max(0, (int) $data['credit_days'])
+                : null;
+
+            $due = $this->dueDateService->forPurchaseOrder(
+                $supplier,
+                $data['po_date'],
+                $creditDaysOverride,
+            );
+
             $po = PurchaseOrder::create([
-                'company_id' => $data['company_id'] ?? $actor->company_id,
+                'company_id' => $data['company_id'] ?? $actor->company_id ?? \App\Domains\Organization\Models\Company::defaultCompanyId(),
                 'branch_id' => $data['branch_id'] ?? $actor->branch_id,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'supplier_id' => $supplier->id,
@@ -122,10 +151,18 @@ class PurchaseOrderService
                 'po_no' => $this->documentNumberService->next('PO'),
                 'po_date' => $data['po_date'],
                 'expected_date' => $data['expected_date'] ?? null,
+                'credit_days' => $due['credit_days'],
+                'due_date' => $due['due_date'],
                 'status' => ! empty($data['submit_for_approval']) ? 'pending_approval' : 'draft',
+                'is_freight_applicable' => $isFreightApplicable,
+                'freight_amount' => $freightAmount,
+                'freight_tax_rate' => $freightTaxRate,
+                'freight_tax_amount' => $freightTaxAmount,
+                'freight_total' => $freightTotal,
+                'freight_notes' => $freightNotes,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
-                'grand_total' => $subtotal + $taxAmount,
+                'grand_total' => $grandTotal,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $actor->id,
             ]);
@@ -195,6 +232,197 @@ class PurchaseOrderService
         $order->update(['status' => 'cancelled']);
 
         return $order->fresh();
+    }
+
+    public function update(PurchaseOrder $order, array $data, User $actor): PurchaseOrder
+    {
+        return DB::transaction(function () use ($order, $data, $actor) {
+            if (! in_array($order->status, ['draft', 'pending_approval'], true)) {
+                throw new InvalidArgumentException("Cannot edit purchase order in '{$order->status}' status.");
+            }
+
+            if ($order->inwards()->exists()) {
+                throw new InvalidArgumentException('Cannot edit purchase order because goods receipts exist for it.');
+            }
+
+            if ($order->invoices()->exists()) {
+                throw new InvalidArgumentException('Cannot edit purchase order because purchase invoices exist for it.');
+            }
+
+            $supplier = Customer::query()->findOrFail($data['supplier_id']);
+            $items = $this->normalizeItems($data['items'] ?? []);
+
+            $subtotal = 0;
+            $taxAmount = 0;
+
+            foreach ($items as &$item) {
+                $line = $item['quantity'] * $item['unit_cost'];
+                $taxPercent = (float) ($item['tax_percent'] ?? 0);
+
+                $cgstPercent = array_key_exists('cgst_percent', $item)
+                    ? (float) $item['cgst_percent']
+                    : ($taxPercent / 2);
+
+                $sgstPercent = array_key_exists('sgst_percent', $item)
+                    ? (float) $item['sgst_percent']
+                    : ($taxPercent / 2);
+
+                if (abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
+                    throw ValidationException::withMessages([
+                        'items' => 'CGST % and SGST % must add up to the total Tax % for every item.',
+                    ]);
+                }
+
+                $cgstAmount = $line * ($cgstPercent / 100);
+                $sgstAmount = $line * ($sgstPercent / 100);
+                $tax = $cgstAmount + $sgstAmount;
+
+                $item['cgst_percent'] = $cgstPercent;
+                $item['sgst_percent'] = $sgstPercent;
+                $item['cgst_amount'] = $cgstAmount;
+                $item['sgst_amount'] = $sgstAmount;
+
+                $subtotal += $line;
+                $taxAmount += $tax;
+            }
+
+            unset($item);
+
+            $billingAddress = null;
+            if (!empty($data['billing_address_id'])) {
+                $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['billing_address_id'])
+                    ->where('customer_id', $supplier->id)
+                    ->first();
+                if (!$billingAddress) {
+                    throw ValidationException::withMessages([
+                        'billing_address_id' => 'The selected billing address does not belong to the selected supplier.',
+                    ]);
+                }
+            }
+            $shippingAddress = null;
+            if (!empty($data['shipping_address_id'])) {
+                $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['shipping_address_id'])
+                    ->where('customer_id', $supplier->id)
+                    ->first();
+                if (!$shippingAddress) {
+                    throw ValidationException::withMessages([
+                        'shipping_address_id' => 'The selected delivery address does not belong to the selected supplier.',
+                    ]);
+                }
+            }
+
+            if (!$billingAddress && empty($data['billing_address'])) {
+                $billingAddress = $supplier->defaultBillingAddress();
+            }
+            if (!$shippingAddress && empty($data['shipping_address'])) {
+                $shippingAddress = $supplier->defaultDeliveryAddress() ?? $billingAddress;
+            }
+
+            $billingSnapshot = !empty($data['billing_address'])
+                ? $data['billing_address']
+                : ($billingAddress ? $billingAddress->formatSnapshot() : ($order->billing_address ?: $supplier->address));
+
+            $shippingSnapshot = !empty($data['shipping_address'])
+                ? $data['shipping_address']
+                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($order->shipping_address ?: ($billingSnapshot ?: $supplier->address)));
+
+            $newStatus = $order->status;
+            if (! empty($data['submit_for_approval'])) {
+                $newStatus = 'pending_approval';
+            }
+
+            $isFreightApplicable = !empty($data['is_freight_applicable']);
+            $freightAmount = 0.0;
+            $freightTaxRate = 0.0;
+            $freightTaxAmount = 0.0;
+            $freightTotal = 0.0;
+            $freightNotes = null;
+
+            if ($isFreightApplicable) {
+                $freightAmount = round((float) ($data['freight_amount'] ?? 0), 2);
+                $freightTaxRate = round((float) ($data['freight_tax_rate'] ?? 0), 2);
+                if ($freightAmount > 0) {
+                    $freightTaxAmount = round($freightAmount * ($freightTaxRate / 100), 2);
+                    $freightTotal = round($freightAmount + $freightTaxAmount, 2);
+                }
+                $freightNotes = !empty($data['freight_notes']) ? trim($data['freight_notes']) : null;
+            }
+
+            $grandTotal = round($subtotal + $taxAmount + $freightTotal, 2);
+
+            $creditDaysOverride = (isset($data['credit_days']) && $data['credit_days'] !== '' && $data['credit_days'] !== null)
+                ? max(0, (int) $data['credit_days'])
+                : null;
+
+            $due = $this->dueDateService->forPurchaseOrder(
+                $supplier,
+                $data['po_date'],
+                $creditDaysOverride,
+            );
+
+            $order->update([
+                'warehouse_id' => $data['warehouse_id'] ?? null,
+                'supplier_id' => $supplier->id,
+                'billing_address_id' => $billingAddress?->id ?? $order->billing_address_id,
+                'shipping_address_id' => $shippingAddress?->id ?? $order->shipping_address_id,
+                'billing_address' => $billingSnapshot,
+                'shipping_address' => $shippingSnapshot,
+                'po_date' => $data['po_date'],
+                'expected_date' => $data['expected_date'] ?? null,
+                'credit_days' => $due['credit_days'],
+                'due_date' => $due['due_date'],
+                'status' => $newStatus,
+                'is_freight_applicable' => $isFreightApplicable,
+                'freight_amount' => $freightAmount,
+                'freight_tax_rate' => $freightTaxRate,
+                'freight_tax_amount' => $freightTaxAmount,
+                'freight_total' => $freightTotal,
+                'freight_notes' => $freightNotes,
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'grand_total' => $grandTotal,
+                'notes' => $data['notes'] ?? null,
+            ]);
+
+            $order->items()->delete();
+
+            foreach ($items as $item) {
+                $line = $item['quantity'] * $item['unit_cost'];
+                $tax = $line * ($item['tax_percent'] / 100);
+
+                PurchaseOrderItem::create([
+                    'purchase_order_id' => $order->id,
+                    'product_id' => $item['product_id'],
+                    'uom_id' => $item['uom_id'],
+                    'quantity' => $item['quantity'],
+                    'received_qty' => 0,
+                    'unit_cost' => $item['unit_cost'],
+                    'tax_percent' => $item['tax_percent'],
+                    'cgst_percent' => $item['cgst_percent'],
+                    'sgst_percent' => $item['sgst_percent'],
+                    'cgst_amount' => $item['cgst_amount'],
+                    'sgst_amount' => $item['sgst_amount'],
+                    'line_total' => $line + $tax,
+                    'weight' => $item['weight'] ?? null,
+                    'batch_no' => $item['batch_no'] ?? null,
+                ]);
+            }
+
+            return $order->fresh(['items.product', 'items.uom', 'supplier']);
+        });
+    }
+
+    public function delete(PurchaseOrder $order, User $actor): void
+    {
+        DB::transaction(function () use ($order) {
+            $blockReason = $order->getDeleteBlockReason();
+            if ($blockReason) {
+                throw new InvalidArgumentException($blockReason);
+            }
+
+            $order->items()->delete();
+            $order->delete();
+        });
     }
 
     public function receive(PurchaseOrder $order, array $data, User $actor): PurchaseInward
@@ -446,6 +674,8 @@ class PurchaseOrderService
                 'invoice_no' => $this->documentNumberService->next('PI'),
                 'supplier_invoice_no' => $data['supplier_invoice_no'] ?? $data['supplier_invoice_number'] ?? null,
                 'invoice_date' => $data['invoice_date'],
+                'purchase_receive_date' => $data['purchase_receive_date'] ?? null,
+                'payment_order_date' => $data['payment_order_date'] ?? null,
                 'due_date' => $data['due_date'] ?? $due['due_date'],
                 'credit_days' => $data['credit_days'] ?? null,
                 'due_date_basis' => $due['due_date_basis'],

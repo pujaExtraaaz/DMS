@@ -58,8 +58,10 @@ class FinancialYearController extends Controller
 
     public function create(): View
     {
+        $defaultCompanyId = auth()->user()?->company_id ?? Company::defaultCompanyId();
+
         return view('organization.financial-years.form', [
-            'item' => new FinancialYear,
+            'item' => new FinancialYear(['company_id' => $defaultCompanyId]),
             'companies' => Company::where('is_active', true)->orderBy('name')->get(),
         ]);
     }

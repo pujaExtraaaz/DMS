@@ -400,6 +400,12 @@
                     <td class="font-bold text-right">PO Date:</td>
                     <td class="text-right">{{ $order->po_date?->format('d/m/Y') }}</td>
                 </tr>
+                @if($order->due_date)
+                <tr>
+                    <td class="font-bold text-right">Payment Due Date:</td>
+                    <td class="text-right">{{ $order->due_date->format('d/m/Y') }} @if($order->credit_days)<span style="color:#64748b; font-size:10px;">({{ $order->credit_days }} days)</span>@endif</td>
+                </tr>
+                @endif
                 @if($order->expected_date)
                 <tr>
                     <td class="font-bold text-right">Expected Date:</td>
@@ -517,6 +523,13 @@
                 <div class="font-bold" style="color: #1e293b; font-size: 11px;">{{ $amountWords }}</div>
             </div>
 
+            @if($order->freight_notes)
+                <div class="info-card">
+                    <div class="box-title">Freight / Transporter Notes</div>
+                    <div style="white-space: pre-line;">{{ $order->freight_notes }}</div>
+                </div>
+            @endif
+
             @if($order->notes)
                 <div class="info-card">
                     <div class="box-title">Notes / Instructions</div>
@@ -554,6 +567,18 @@
                     <td style="color: #475569;">Total Tax (GST):</td>
                     <td class="text-right font-mono">₹{{ number_format($order->tax_amount, 2) }}</td>
                 </tr>
+                @if($order->is_freight_applicable || (float) $order->freight_amount > 0)
+                <tr>
+                    <td style="color: #475569;">Freight Charges:</td>
+                    <td class="text-right font-mono">₹{{ number_format((float) $order->freight_amount, 2) }}</td>
+                </tr>
+                @if((float) $order->freight_tax_amount > 0)
+                <tr>
+                    <td style="color: #475569;">Freight Tax (GST {{ number_format((float) $order->freight_tax_rate, 1) }}%):</td>
+                    <td class="text-right font-mono">₹{{ number_format((float) $order->freight_tax_amount, 2) }}</td>
+                </tr>
+                @endif
+                @endif
                 <tr class="grand-total-row">
                     <td>Grand Total:</td>
                     <td class="text-right font-mono">₹{{ number_format($order->grand_total, 2) }}</td>

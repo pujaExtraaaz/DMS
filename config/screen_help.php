@@ -134,14 +134,14 @@ return [
             'Link inward / PO and enter supplier invoice no/date.',
             'Review vendor price comparison before saving higher rates.',
             'Due date follows company due-date basis + supplier credit days.',
-            'Next: Freight Bill → Landed Cost if freight applies.',
+            'Next: Record Freight Bill if freight applies.',
         ],
     ],
 
     'purchasing.freight-bills' => [
         'title' => 'Freight Bills',
         'summary' => 'Record freight bill number, vendor and amount for allocation.',
-        'steps' => ['Enter freight bill no, vendor, date, amount', 'Link purchase/inward invoices', 'Allocate in Landed Cost'],
+        'steps' => ['Enter freight bill no, vendor, date, amount', 'Link purchase/inward invoices', 'Save and track freight expenses'],
     ],
 
     'purchasing.landed-costs' => [

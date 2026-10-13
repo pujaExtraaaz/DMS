@@ -15,6 +15,7 @@ use App\Support\CodeGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 use App\Support\Traits\SortableAndSearchable;
@@ -128,6 +129,13 @@ class ProductController extends Controller
 
     protected function validated(Request $request, ?Product $product = null): array
     {
+        if ($request->has('name')) {
+            $rawName = trim((string) $request->input('name'));
+            $request->merge([
+                'name' => Str::ucfirst($rawName),
+            ]);
+        }
+
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'required|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
@@ -213,7 +221,7 @@ class ProductController extends Controller
 
         $data['min_stock'] = $data['min_stock'] ?? 0;
         $data['reorder_level'] = $data['reorder_level'] ?? 0;
-        $data['company_id'] = auth()->user()?->company_id ?? Company::query()->value('id');
+        $data['company_id'] = auth()->user()?->company_id ?? Company::defaultCompanyId() ?? Company::query()->value('id');
 
         unset($data['image'], $data['remove_image'], $data['product_uoms']);
 

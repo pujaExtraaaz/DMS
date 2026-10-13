@@ -342,6 +342,7 @@ class DocumentExporter
             'Supplier GSTIN' => $order->supplier?->gstin ?? '—',
             'PO Number' => $order->po_no,
             'PO Date' => $order->po_date?->format('d/m/Y') ?? '—',
+            'Payment Due Date' => $order->due_date ? ($order->due_date->format('d/m/Y') . ($order->credit_days ? " ({$order->credit_days} days)" : '')) : '—',
             'Expected Date' => $order->expected_date?->format('d/m/Y') ?? '—',
             'Status' => ucfirst(str_replace('_', ' ', $order->status)),
             'Billing Address' => preg_replace('/\s+/', ' ', trim($order->billing_address ?: ($order->supplier?->address ?: '—'))),
@@ -351,9 +352,18 @@ class DocumentExporter
         $totals = [
             'Subtotal (Taxable)' => '₹ ' . number_format((float) $order->subtotal, 2),
             'Tax Amount' => '₹ ' . number_format((float) $order->tax_amount, 2),
-            'Grand Total' => '₹ ' . number_format((float) $order->grand_total, 2),
-            'Amount in Words' => self::numberToIndianWords($order->grand_total),
         ];
+
+        if ($order->is_freight_applicable || (float) $order->freight_amount > 0) {
+            $totals['Freight Charges'] = '₹ ' . number_format((float) $order->freight_amount, 2);
+            if ((float) $order->freight_tax_amount > 0) {
+                $totals['Freight Tax (' . number_format((float) $order->freight_tax_rate, 1) . '%)'] = '₹ ' . number_format((float) $order->freight_tax_amount, 2);
+            }
+            $totals['Freight Total'] = '₹ ' . number_format((float) $order->freight_total, 2);
+        }
+
+        $totals['Grand Total'] = '₹ ' . number_format((float) $order->grand_total, 2);
+        $totals['Amount in Words'] = self::numberToIndianWords($order->grand_total);
 
         if ($format === 'csv') {
             return self::exportCsv($filename, $headers, $rows, $meta, $totals);
@@ -411,6 +421,8 @@ class DocumentExporter
             'Invoice No' => $invoice->invoice_no,
             'Supplier Inv No' => $invoice->supplier_invoice_no ?? '—',
             'Invoice Date' => $invoice->invoice_date?->format('d/m/Y') ?? '—',
+            'Purchase Receive Date' => $invoice->purchase_receive_date?->format('d/m/Y') ?? '—',
+            'Payment Order Date' => $invoice->payment_order_date?->format('d/m/Y') ?? '—',
             'Due Date' => $invoice->due_date?->format('d/m/Y') ?? '—',
             'PO Reference' => $invoice->purchaseOrder?->po_no ?? '—',
             'Status' => ucfirst($invoice->status),

@@ -16,7 +16,7 @@ class CompanyProfileController extends Controller
     public function show(Request $request): View
     {
         $user = $request->user();
-        $company = Company::find($user?->company_id) ?? Company::first();
+        $company = Company::find($user?->company_id) ?? Company::defaultCompany() ?? Company::first();
 
         if (! $company) {
             $company = new Company;
@@ -31,7 +31,7 @@ class CompanyProfileController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $user = $request->user();
-        $company = Company::find($user?->company_id) ?? Company::first();
+        $company = Company::find($user?->company_id) ?? Company::defaultCompany() ?? Company::first();
 
         if (! $company) {
             $company = new Company;
@@ -227,7 +227,7 @@ class CompanyProfileController extends Controller
     public function logo(Request $request): \Symfony\Component\HttpFoundation\Response
     {
         $user = $request->user();
-        $company = Company::find($user?->company_id) ?? Company::first();
+        $company = Company::find($user?->company_id) ?? Company::defaultCompany() ?? Company::first();
 
         $cleanPath = $company?->getCleanLogoPath();
 

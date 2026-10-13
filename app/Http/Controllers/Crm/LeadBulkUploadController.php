@@ -228,7 +228,7 @@ class LeadBulkUploadController extends Controller
         }
 
         $skipDuplicates = $request->boolean('skip_duplicates', true);
-        $companyId = auth()->user()?->company_id ?? Company::query()->value('id');
+        $companyId = auth()->user()?->company_id ?? Company::defaultCompanyId() ?? Company::query()->value('id');
         $branchId = auth()->user()?->branch_id;
         $actorId = auth()->id();
 
@@ -393,7 +393,7 @@ class LeadBulkUploadController extends Controller
         $campaigns = LeadCampaign::all();
         $campaignsByName = $campaigns->keyBy(fn ($c) => strtolower(trim($c->name)));
 
-        $companyId = auth()->user()?->company_id ?? Company::query()->value('id');
+        $companyId = auth()->user()?->company_id ?? Company::defaultCompanyId() ?? Company::query()->value('id');
 
         $seenMobiles = [];
         $seenEmails = [];

@@ -235,7 +235,7 @@ class OdReportController extends Controller
     {
         $user = $request->user();
 
-        return Company::find($user?->company_id) ?? Company::first();
+        return Company::find($user?->company_id) ?? Company::defaultCompany() ?? Company::first();
     }
 }
 

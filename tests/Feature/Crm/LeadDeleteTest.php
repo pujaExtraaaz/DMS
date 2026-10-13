@@ -65,13 +65,13 @@ class LeadDeleteTest extends TestCase
         $response->assertOk();
         $response->assertSee('data-delete-lead="' . $lead->id . '"', false);
         $response->assertSee('data-lead-name="John Doe"', false);
-        $response->assertSee('title="View Lead"', false);
-        $response->assertSee('aria-label="View Lead"', false);
+        $response->assertDontSee('title="View Lead"', false);
+        $response->assertDontSee('aria-label="View Lead"', false);
+        $response->assertDontSee('href="' . route('crm.leads.show', $lead) . '"', false);
         $response->assertSee('title="Edit Lead"', false);
         $response->assertSee('aria-label="Edit Lead"', false);
         $response->assertSee('title="Delete Lead"', false);
         $response->assertSee('aria-label="Delete Lead"', false);
-        $response->assertSee(route('crm.leads.show', $lead), false);
         $response->assertSee(route('crm.leads.edit', $lead), false);
         $response->assertSee(route('crm.leads.destroy', $lead), false);
         $response->assertSee('Are you sure you want to delete this lead? This action cannot be undone.');

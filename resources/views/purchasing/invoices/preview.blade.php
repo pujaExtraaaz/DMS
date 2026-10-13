@@ -337,6 +337,20 @@
                     <td class="right">{{ optional($invoice->invoice_date)->format('d/m/Y') }}</td>
                 </tr>
 
+                @if($invoice->purchase_receive_date)
+                    <tr>
+                        <td class="bold right">Receive Date:</td>
+                        <td class="right">{{ optional($invoice->purchase_receive_date)->format('d/m/Y') }}</td>
+                    </tr>
+                @endif
+
+                @if($invoice->payment_order_date)
+                    <tr>
+                        <td class="bold right">Payment Order Date:</td>
+                        <td class="right">{{ optional($invoice->payment_order_date)->format('d/m/Y') }}</td>
+                    </tr>
+                @endif
+
                 @if($invoice->due_date)
                     <tr>
                         <td class="bold right">Due Date:</td>

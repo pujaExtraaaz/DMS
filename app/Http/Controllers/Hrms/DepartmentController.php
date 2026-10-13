@@ -56,8 +56,10 @@ class DepartmentController extends Controller
 
     public function create(): View
     {
+        $defaultCompanyId = auth()->user()?->company_id ?? Company::defaultCompanyId();
+
         return view('hrms.departments.form', [
-            'item' => new Department(['is_active' => true]),
+            'item' => new Department(['is_active' => true, 'company_id' => $defaultCompanyId]),
             'companies' => Company::orderBy('name')->get(),
         ]);
     }
