@@ -5,6 +5,9 @@
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('purchasing.orders.index')">Back</x-ui.button>
         <x-ui.button variant="secondary" :href="route('purchasing.orders.preview', $order)">Print Preview</x-ui.button>
+        @if($order->isEditable())
+            <x-ui.button variant="secondary" :href="route('purchasing.orders.edit', $order)">Edit</x-ui.button>
+        @endif
         @if($order->status==='draft')
             <form method="POST" action="{{ route('purchasing.orders.submit', $order) }}">@csrf<x-ui.button type="submit" variant="secondary">Submit</x-ui.button></form>
             <form method="POST" action="{{ route('purchasing.orders.approve', $order) }}">@csrf<x-ui.button type="submit" variant="primary">Approve</x-ui.button></form>
@@ -20,9 +23,11 @@
         @endif
     </x-slot>
 </x-ui.page-header>
-<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+<div class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-4">
     <x-ui.card><p class="text-xs text-slate-500">Supplier</p><p class="font-medium">{{ $order->supplier?->name }}</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Status</p><p class="font-medium">{{ str_replace('_',' ', $order->status) }}</p></x-ui.card>
+    <x-ui.card><p class="text-xs text-slate-500">PO Date</p><p class="font-medium">{{ $order->po_date?->format('d M Y') ?? '—' }}</p></x-ui.card>
+    <x-ui.card><p class="text-xs text-slate-500">Due Date</p><p class="font-medium">{{ $order->due_date?->format('d M Y') ?? '—' }} @if($order->credit_days) <span class="text-xs text-slate-400">({{ $order->credit_days }} days)</span> @endif</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Warehouse</p><p class="font-medium">{{ $order->warehouse?->name ?? '—' }}</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Grand Total</p><p class="font-medium">₹{{ number_format($order->grand_total, 2) }}</p></x-ui.card>
 </div>
@@ -58,4 +63,67 @@
 @endforeach
 </tbody></table></div>
 </x-ui.card>
+
+<div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+    <x-ui.card>
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Freight &amp; Order Notes</h4>
+        <div class="space-y-3 text-sm">
+            <div>
+                <span class="text-xs text-slate-500 block">Freight Applicable</span>
+                <span class="font-medium inline-flex items-center px-2 py-0.5 rounded text-xs {{ $order->is_freight_applicable ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
+                    {{ $order->is_freight_applicable ? 'Yes' : 'No' }}
+                </span>
+            </div>
+            @if($order->freight_notes)
+                <div>
+                    <span class="text-xs text-slate-500 block">Freight Notes / Transporter Details</span>
+                    <p class="font-medium text-slate-800 whitespace-pre-line mt-0.5">{{ $order->freight_notes }}</p>
+                </div>
+            @endif
+            @if($order->notes)
+                <div>
+                    <span class="text-xs text-slate-500 block">Order Notes / Instructions</span>
+                    <p class="font-medium text-slate-800 whitespace-pre-line mt-0.5">{{ $order->notes }}</p>
+                </div>
+            @endif
+            @if(!$order->freight_notes && !$order->notes)
+                <p class="text-xs text-slate-400">No additional notes provided.</p>
+            @endif
+        </div>
+    </x-ui.card>
+
+    <x-ui.card>
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Order Total Summary</h4>
+        <div class="space-y-2 text-sm">
+            <div class="flex justify-between text-slate-600">
+                <span>Items Subtotal (Taxable):</span>
+                <span class="font-mono font-medium">₹{{ number_format($order->subtotal, 2) }}</span>
+            </div>
+            <div class="flex justify-between text-slate-600">
+                <span>Items Tax (GST):</span>
+                <span class="font-mono font-medium">₹{{ number_format($order->tax_amount, 2) }}</span>
+            </div>
+            @if($order->is_freight_applicable || (float) $order->freight_amount > 0)
+                <div class="flex justify-between text-slate-600">
+                    <span>Freight Charges:</span>
+                    <span class="font-mono font-medium">₹{{ number_format((float) $order->freight_amount, 2) }}</span>
+                </div>
+                @if((float) $order->freight_tax_amount > 0)
+                    <div class="flex justify-between text-slate-600">
+                        <span>Freight Tax ({{ number_format((float) $order->freight_tax_rate, 1) }}%):</span>
+                        <span class="font-mono font-medium">₹{{ number_format((float) $order->freight_tax_amount, 2) }}</span>
+                    </div>
+                @endif
+                <div class="flex justify-between text-slate-600 font-semibold border-t border-slate-100 pt-1">
+                    <span>Freight Total:</span>
+                    <span class="font-mono">₹{{ number_format((float) $order->freight_total, 2) }}</span>
+                </div>
+            @endif
+            <div class="pt-2 border-t border-slate-200 flex justify-between text-base font-bold text-slate-900">
+                <span>Grand Total:</span>
+                <span class="font-mono text-indigo-600">₹{{ number_format($order->grand_total, 2) }}</span>
+            </div>
+        </div>
+    </x-ui.card>
+</div>
 @endsection

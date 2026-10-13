@@ -56,8 +56,10 @@ class DesignationController extends Controller
 
     public function create(): View
     {
+        $defaultCompanyId = auth()->user()?->company_id ?? Company::defaultCompanyId();
+
         return view('hrms.designations.form', [
-            'item' => new Designation(['is_active' => true]),
+            'item' => new Designation(['is_active' => true, 'company_id' => $defaultCompanyId]),
             'companies' => Company::orderBy('name')->get(),
         ]);
     }

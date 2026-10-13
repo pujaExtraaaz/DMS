@@ -92,56 +92,160 @@
                 </x-slot>
             </x-ui.table-toolbar>
 
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-200 text-sm">
+            <div class="overflow-x-auto border border-slate-200 rounded-lg">
+                <table class="min-w-max w-full divide-y divide-slate-200 text-xs md:text-sm">
                     <thead class="bg-slate-50">
                         <tr>
-                            <x-ui.sortable-th column="name" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Lead</x-ui.sortable-th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Contact</th>
-                            <x-ui.sortable-th column="source" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Source</x-ui.sortable-th>
-                            <x-ui.sortable-th column="assignee" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Assignee</x-ui.sortable-th>
+                            <x-ui.sortable-th column="name" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Lead / Contact</x-ui.sortable-th>
+                            <x-ui.sortable-th column="company" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Company</x-ui.sortable-th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Title</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Mobile</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Sec. Mobile</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Phone</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Landline</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Email</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Sec. Email</th>
+                            <x-ui.sortable-th column="assignee" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Sales Person</x-ui.sortable-th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Tag</th>
+                            <x-ui.sortable-th column="category" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Category</x-ui.sortable-th>
+                            <x-ui.sortable-th column="industry" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Industry</x-ui.sortable-th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Subcategory</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Mailing Address</th>
                             <x-ui.sortable-th column="status" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Status</x-ui.sortable-th>
-                            <th class="px-3 py-2"></th>
+                            <x-ui.sortable-th column="priority" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Priority</x-ui.sortable-th>
+                            <x-ui.sortable-th column="source" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Source</x-ui.sortable-th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Campaign</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Notes</th>
+                            <x-ui.sortable-th column="followup" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Follow-up Date</x-ui.sortable-th>
+                            <th class="sticky right-0 bg-slate-50 px-3 py-2.5 text-right text-xs font-semibold uppercase text-slate-500 whitespace-nowrap shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] z-10">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse($items as $item)
-                            <tr class="hover:bg-slate-50" id="lead-row-{{ $item->id }}">
-                                <td class="px-3 py-2 font-medium text-slate-900">
-                                    <div class="flex items-center gap-1.5 flex-wrap">
-                                        <span>{{ $item->name }}</span>
-                                        @php
-                                            $catKey = $item->category;
-                                            $catLabel = match($catKey) {
-                                                'prospect' => 'Prospect',
-                                                'customer' => 'Customer',
-                                                'partner' => 'Partner',
-                                                default => 'Uncategorized',
-                                            };
-                                            $catVariant = match($catKey) {
-                                                'customer' => 'success',
-                                                'prospect' => 'info',
-                                                'partner' => 'primary',
-                                                default => 'neutral',
-                                            };
-                                        @endphp
-                                        <x-ui.badge :variant="$catVariant" class="text-[10px] px-1.5 py-0.5 font-medium leading-none">
-                                            {{ $catLabel }}
-                                        </x-ui.badge>
-                                    </div>
-                                    @if($item->company_name ?: $item->organization)
-                                        <div class="text-xs text-slate-500">{{ $item->company_name ?: $item->organization }}</div>
+                            <tr class="hover:bg-slate-50 group" id="lead-row-{{ $item->id }}">
+                                {{-- 1. Lead / Contact Name --}}
+                                <td class="px-3 py-2.5 font-medium text-slate-900 whitespace-nowrap">
+                                    <div class="font-semibold text-slate-900">{{ $item->name }}</div>
+                                    <div class="text-[11px] text-slate-400 font-mono">Lead #{{ $item->id }}</div>
+                                </td>
+
+                                {{-- 2. Company Name --}}
+                                <td class="px-3 py-2.5 text-slate-700 whitespace-nowrap">
+                                    {{ $item->company_name ?: $item->organization ?: '—' }}
+                                </td>
+
+                                {{-- 3. Title --}}
+                                <td class="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                                    {{ $item->title ?: '—' }}
+                                </td>
+
+                                {{-- 4. Mobile --}}
+                                <td class="px-3 py-2.5 text-slate-700 whitespace-nowrap">
+                                    @if($item->mobile)
+                                        <a href="tel:{{ $item->mobile }}" class="hover:text-indigo-600 font-medium">{{ $item->mobile }}</a>
+                                    @else
+                                        <span class="text-slate-400">—</span>
                                     @endif
                                 </td>
-                                <td class="px-3 py-2 text-slate-600">
-                                    {{ $item->mobile ?? '—' }}
+
+                                {{-- 5. Secondary Mobile --}}
+                                <td class="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                                    @if($item->secondary_mobile)
+                                        <a href="tel:{{ $item->secondary_mobile }}" class="hover:text-indigo-600">{{ $item->secondary_mobile }}</a>
+                                    @else
+                                        <span class="text-slate-400">—</span>
+                                    @endif
+                                </td>
+
+                                {{-- 6. Phone --}}
+                                <td class="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                                    {{ $item->phone ?: '—' }}
+                                </td>
+
+                                {{-- 7. Landline --}}
+                                <td class="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                                    {{ $item->landline ?: '—' }}
+                                </td>
+
+                                {{-- 8. Email --}}
+                                <td class="px-3 py-2.5 text-slate-700 whitespace-nowrap">
                                     @if($item->email)
-                                        <div class="text-xs text-slate-400">{{ $item->email }}</div>
+                                        <a href="mailto:{{ $item->email }}" class="text-indigo-600 hover:underline block max-w-[180px] truncate" title="{{ $item->email }}">{{ $item->email }}</a>
+                                    @else
+                                        <span class="text-slate-400">—</span>
                                     @endif
                                 </td>
-                                <td class="px-3 py-2 text-slate-600">{{ $item->source?->name ?: 'Meta' }}</td>
-                                <td class="px-3 py-2 text-slate-600">{{ $item->assignee?->name ?: '—' }}</td>
-                                <td class="px-3 py-2">
+
+                                {{-- 9. Secondary Email --}}
+                                <td class="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                                    @if($item->secondary_email)
+                                        <a href="mailto:{{ $item->secondary_email }}" class="text-indigo-600 hover:underline block max-w-[180px] truncate" title="{{ $item->secondary_email }}">{{ $item->secondary_email }}</a>
+                                    @else
+                                        <span class="text-slate-400">—</span>
+                                    @endif
+                                </td>
+
+                                {{-- 10. Sales Person --}}
+                                <td class="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                                    {{ $item->assignee?->name ?: '—' }}
+                                </td>
+
+                                {{-- 11. Tag --}}
+                                <td class="px-3 py-2.5 whitespace-nowrap">
+                                    @if($item->tag)
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                                            {{ $item->tag }}
+                                        </span>
+                                    @else
+                                        <span class="text-slate-400">—</span>
+                                    @endif
+                                </td>
+
+                                {{-- 12. Category --}}
+                                <td class="px-3 py-2.5 whitespace-nowrap">
+                                    @php
+                                        $catKey = $item->category;
+                                        $catLabel = match($catKey) {
+                                            'prospect' => 'Prospect',
+                                            'customer' => 'Customer',
+                                            'partner' => 'Partner',
+                                            default => 'Uncategorized',
+                                        };
+                                        $catVariant = match($catKey) {
+                                            'customer' => 'success',
+                                            'prospect' => 'info',
+                                            'partner' => 'primary',
+                                            default => 'neutral',
+                                        };
+                                    @endphp
+                                    <x-ui.badge :variant="$catVariant">{{ $catLabel }}</x-ui.badge>
+                                </td>
+
+                                {{-- 13. Industry --}}
+                                <td class="px-3 py-2.5 text-slate-700 whitespace-nowrap">
+                                    {{ $item->industry ?: '—' }}
+                                </td>
+
+                                {{-- 14. Subcategory --}}
+                                <td class="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                                    {{ $item->subCategory?->name ?: $item->sub_category ?: '—' }}
+                                </td>
+
+                                {{-- 15. Mailing Address --}}
+                                <td class="px-3 py-2.5 text-slate-600">
+                                    @php
+                                        $addrParts = array_filter([$item->street, $item->city, $item->state, $item->zip]);
+                                        $fullAddr = implode(', ', $addrParts);
+                                    @endphp
+                                    @if(!empty($fullAddr))
+                                        <span class="max-w-[220px] truncate block text-xs" title="{{ $fullAddr }}">{{ $fullAddr }}</span>
+                                    @else
+                                        <span class="text-slate-400">—</span>
+                                    @endif
+                                </td>
+
+                                {{-- 16. Status --}}
+                                <td class="px-3 py-2.5 whitespace-nowrap">
                                     @php
                                         $statusKey = in_array($item->status, ['followup', 'follow-up'], true) ? 'follow_up' : $item->status;
                                         $badgeVariant = match($statusKey) {
@@ -202,7 +306,58 @@
                                         </button>
                                     </div>
                                 </td>
-                                <td class="px-3 py-2 text-right whitespace-nowrap space-x-1">
+
+                                {{-- 17. Priority --}}
+                                <td class="px-3 py-2.5 whitespace-nowrap">
+                                    @php
+                                        $prioKey = strtolower($item->priority ?? 'normal');
+                                        $prioVariant = match($prioKey) {
+                                            'urgent' => 'danger',
+                                            'high' => 'warning',
+                                            'normal' => 'neutral',
+                                            'low' => 'info',
+                                            default => 'neutral',
+                                        };
+                                    @endphp
+                                    <x-ui.badge :variant="$prioVariant">{{ ucfirst($prioKey) }}</x-ui.badge>
+                                </td>
+
+                                {{-- 18. Source --}}
+                                <td class="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                                    {{ $item->source?->name ?: '—' }}
+                                </td>
+
+                                {{-- 19. Campaign --}}
+                                <td class="px-3 py-2.5 text-slate-600 whitespace-nowrap">
+                                    {{ $item->campaign?->name ?: '—' }}
+                                </td>
+
+                                {{-- 20. Notes --}}
+                                <td class="px-3 py-2.5 text-slate-600">
+                                    @if($item->notes)
+                                        <span class="max-w-[200px] truncate block text-xs" title="{{ $item->notes }}">{{ $item->notes }}</span>
+                                    @else
+                                        <span class="text-slate-400">—</span>
+                                    @endif
+                                </td>
+
+                                {{-- 21. Follow-up Date --}}
+                                <td class="px-3 py-2.5 whitespace-nowrap">
+                                    @php
+                                        $fDate = $item->next_followup_at ?? $item->latestFollowup?->due_at;
+                                    @endphp
+                                    @if($fDate)
+                                        <span class="text-xs text-slate-700 font-medium" title="{{ $fDate->format('d M Y, h:i A') }}">
+                                            {{ $fDate->format('d M Y') }}
+                                            <span class="text-[10px] text-slate-400 block">{{ $fDate->format('h:i A') }}</span>
+                                        </span>
+                                    @else
+                                        <span class="text-slate-400">—</span>
+                                    @endif
+                                </td>
+
+                                {{-- 22. Actions (Sticky Column - View button removed) --}}
+                                <td class="sticky right-0 bg-white group-hover:bg-slate-50 px-3 py-2.5 text-right whitespace-nowrap space-x-1 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] z-10">
                                     @php
                                         $isQualified = ($item->status === 'qualified');
                                         $isConverted = ($item->status === 'converted' || (bool) $item->converted_customer_id);
@@ -233,12 +388,6 @@
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
                                         </button>
                                     @endif
-                                    <x-ui.button size="sm" variant="secondary" :href="route('crm.leads.show', $item)" class="!px-2.5 !py-1.5" title="View Lead" aria-label="View Lead">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                        </svg>
-                                    </x-ui.button>
                                     <x-ui.button size="sm" variant="secondary" :href="route('crm.leads.edit', $item)" class="!px-2.5 !py-1.5" title="Edit Lead" aria-label="Edit Lead">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -262,7 +411,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-3 py-8 text-center text-slate-500" data-empty="true">
+                                <td colspan="22" class="px-3 py-8 text-center text-slate-500" data-empty="true">
                                     <x-ui.empty-state title="No leads found" description="Try adjusting your search or filters." />
                                 </td>
                             </tr>

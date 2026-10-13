@@ -161,6 +161,7 @@ class Lead extends Model
     public function activities(): HasMany { return $this->hasMany(LeadActivity::class); }
     public function assignments(): HasMany { return $this->hasMany(LeadAssignment::class); }
     public function followups(): HasMany { return $this->hasMany(LeadFollowup::class); }
+    public function latestFollowup(): HasOne { return $this->hasOne(LeadFollowup::class)->latestOfMany(); }
     public function conversion(): HasOne { return $this->hasOne(LeadConversion::class); }
 
     public function getPurchaseSummaryAttribute(): array

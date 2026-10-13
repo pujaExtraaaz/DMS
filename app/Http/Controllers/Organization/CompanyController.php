@@ -6,6 +6,7 @@ use App\Domains\Organization\Models\BusinessGroup;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
 use App\Support\CodeGenerator;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -68,6 +69,15 @@ class CompanyController extends Controller
         return $this->flashSuccess('Company created successfully.', 'organization.companies.index');
     }
 
+    public function show(Company $company): View
+    {
+        $company->load(['businessGroup', 'branches', 'warehouses', 'financialYears']);
+
+        return view('organization.companies.show', [
+            'company' => $company,
+        ]);
+    }
+
     public function edit(Company $company): View
     {
         return view('organization.companies.form', [
@@ -78,16 +88,106 @@ class CompanyController extends Controller
 
     public function update(Request $request, Company $company): RedirectResponse
     {
-        $company->update($this->validated($request, $company));
+        $data = $this->validated($request, $company);
+
+        if ($company->is_default && empty($data['is_active'])) {
+            return back()->withInput()->with('error', 'Cannot deactivate the default company. Please set another active company as default before deactivating this one.');
+        }
+
+        $company->update($data);
 
         return $this->flashSuccess('Company updated successfully.', 'organization.companies.index');
     }
 
-    public function destroy(Company $company): RedirectResponse
+    public function setDefault(Request $request, Company $company): RedirectResponse|JsonResponse
     {
+        $user = $request->user();
+        if ($user && ! $user->hasRole('super-admin') && ! $user->can('organization.manage')) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to change the default company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized to change the default company.');
+        }
+
+        if (! $company->is_active) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot set an inactive company as the default company.',
+                ], 422);
+            }
+
+            return back()->with('error', 'Cannot set an inactive company as the default company.');
+        }
+
+        $company->setAsDefault();
+
+        \Illuminate\Support\Facades\Log::info("Default company changed to ID {$company->id} ({$company->name}) by user ID " . ($user?->id ?? 'system'));
+
+        if (class_exists(\Tally\Audit\AuditLogger::class)) {
+            try {
+                app(\Tally\Audit\AuditLogger::class)->record('default_company_changed', 'organization', $company, "Default company changed to {$company->name}.");
+            } catch (\Throwable) {}
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Company '{$company->name}' is now set as the default company.",
+            ]);
+        }
+
+        return $this->flashSuccess("Company '{$company->name}' is now set as the default company.", 'organization.companies.index');
+    }
+
+    public function destroy(Request $request, Company $company): RedirectResponse|JsonResponse
+    {
+        $user = $request->user();
+        if ($user && ! $user->hasRole('super-admin') && ! $user->can('organization.manage')) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to delete company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized to delete company.');
+        }
+
+        $blockReason = $company->getDeleteBlockReason();
+        if ($blockReason) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $blockReason,
+                ], 422);
+            }
+
+            return back()->with('error', $blockReason);
+        }
+
+        if ($company->logo_path) {
+            $cleanPath = $company->getCleanLogoPath();
+            if ($cleanPath && Storage::disk('public')->exists($cleanPath)) {
+                Storage::disk('public')->delete($cleanPath);
+            }
+        }
+
+        $companyName = $company->name;
         $company->delete();
 
-        return $this->flashSuccess('Company deleted successfully.', 'organization.companies.index');
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Company '{$companyName}' deleted successfully.",
+            ]);
+        }
+
+        return $this->flashSuccess("Company '{$companyName}' deleted successfully.", 'organization.companies.index');
     }
 
     protected function validated(Request $request, ?Company $company = null): array

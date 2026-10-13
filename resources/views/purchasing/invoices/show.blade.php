@@ -14,20 +14,16 @@
             >
                 Preview Invoice
             </x-ui.button>
-
-            <x-ui.button
-                variant="primary"
-                :href="route('purchasing.landed-costs.create', ['purchase_invoice_id' => $invoice->id])"
-            >
-                Allocate Landed Cost
-            </x-ui.button>
         </div>
     </x-slot>
 </x-ui.page-header>
-<div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-    <x-ui.card><p class="text-xs text-slate-500">Supplier</p><p class="font-medium">{{ $invoice->supplier?->name }}</p></x-ui.card>
+<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-4">
+    <x-ui.card><p class="text-xs text-slate-500">Supplier</p><p class="font-medium truncate" title="{{ $invoice->supplier?->name }}">{{ $invoice->supplier?->name }}</p></x-ui.card>
+    <x-ui.card><p class="text-xs text-slate-500">Purchase Order</p><p class="font-medium truncate">@if($invoice->purchaseOrder)<a href="{{ route('purchasing.orders.show', $invoice->purchaseOrder) }}" class="text-indigo-600 hover:underline font-mono">{{ $invoice->purchaseOrder->po_no }}</a>@else—@endif</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Supplier Inv</p><p class="font-medium">{{ $invoice->supplier_invoice_no ?? '—' }}</p></x-ui.card>
-    <x-ui.card><p class="text-xs text-slate-500">Date</p><p class="font-medium">{{ $invoice->invoice_date?->format('d M Y') }}</p></x-ui.card>
+    <x-ui.card><p class="text-xs text-slate-500">Purchase Invoice Date</p><p class="font-medium">{{ $invoice->invoice_date?->format('d M Y') ?? '—' }}</p></x-ui.card>
+    <x-ui.card><p class="text-xs text-slate-500">Receive Date</p><p class="font-medium">{{ $invoice->purchase_receive_date?->format('d M Y') ?? '—' }}</p></x-ui.card>
+    <x-ui.card><p class="text-xs text-slate-500">Payment Order Date</p><p class="font-medium">{{ $invoice->payment_order_date?->format('d M Y') ?? '—' }}</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Due Date</p><p class="font-medium">{{ $invoice->due_date?->format('d M Y') ?? '—' }} @if($invoice->credit_days) <span class="text-xs text-slate-400">({{ $invoice->credit_days }} days)</span> @endif</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Total</p><p class="font-medium">₹{{ number_format($invoice->grand_total, 2) }}</p></x-ui.card>
 </div>
