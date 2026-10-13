@@ -12,6 +12,7 @@ use Tally\Models\FinancialYear;
 use Tally\Models\GstRegistration;
 use Tally\Models\Invoice;
 use App\Models\User;
+use Tally\Payables\DuplicateBillDetector;
 use Tally\Selling\SalesOrderService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -29,6 +30,7 @@ class InvoiceService
         private readonly InvoiceLinePrep $linePrep,
         private readonly InvoiceTax $invoiceTax,
         private readonly InventoryPosting $inventoryPosting,
+        private readonly DuplicateBillDetector $duplicateBills,
     ) {}
 
     /**
@@ -93,11 +95,12 @@ class InvoiceService
                 'grand_total' => $built['grand_total'],
                 'invoice_category' => $category,
                 'billing_mode' => in_array(($input['billing_mode'] ?? 'goods'), ['goods', 'advance', 'milestone'], true)
-                    ? $input['billing_mode']
+                    ? ($input['billing_mode'] ?? 'goods')
                     : 'goods',
                 'billing_address_id' => ($input['billing_address_id'] ?? null) ?: null,
                 'shipping_address_id' => ($input['shipping_address_id'] ?? null) ?: null,
                 'sales_order_id' => ($input['sales_order_id'] ?? null) ?: null,
+                'goods_receipt_id' => ($input['goods_receipt_id'] ?? null) ?: null,
                 'against_invoice_id' => ($input['against_invoice_id'] ?? null) ?: null,
                 'converted_from_invoice_id' => ($input['converted_from_invoice_id'] ?? null) ?: null,
                 'retention_percent' => ($input['retention_percent'] ?? null) !== '' && ($input['retention_percent'] ?? null) !== null
@@ -132,7 +135,11 @@ class InvoiceService
             $invoice->lines()->createMany($built['lines']);
 
             if ($post) {
-                $invoice = $this->postLocked($invoice->fresh(['lines', 'company', 'branch', 'financialYear']), $user);
+                $invoice = $this->postLocked(
+                    $invoice->fresh(['lines', 'company', 'branch', 'financialYear']),
+                    $user,
+                    (bool) ($input['force_duplicate'] ?? false),
+                );
             }
 
             return $invoice->fresh(['lines.invoice', 'party', 'account', 'voucher.entries.ledger', 'creator']);
@@ -178,12 +185,12 @@ class InvoiceService
         });
     }
 
-    public function post(Invoice $invoice, User $user): Invoice
+    public function post(Invoice $invoice, User $user, bool $forceDuplicate = false): Invoice
     {
-        return DB::transaction(function () use ($invoice, $user) {
+        return DB::transaction(function () use ($invoice, $user, $forceDuplicate) {
             $invoice = $this->lock($invoice)->load(['lines', 'company', 'branch', 'financialYear']);
 
-            return $this->postLocked($invoice, $user)->fresh(['lines', 'party', 'account', 'voucher.entries.ledger', 'creator']);
+            return $this->postLocked($invoice, $user, $forceDuplicate)->fresh(['lines', 'party', 'account', 'voucher.entries.ledger', 'creator']);
         });
     }
 
@@ -218,7 +225,7 @@ class InvoiceService
         });
     }
 
-    private function postLocked(Invoice $invoice, User $user): Invoice
+    private function postLocked(Invoice $invoice, User $user, bool $forceDuplicate = false): Invoice
     {
         if ($invoice->isCancelled()) {
             throw ValidationException::withMessages([
@@ -236,6 +243,7 @@ class InvoiceService
         $invoice->loadMissing(['company', 'branch', 'financialYear', 'lines']);
         $this->assertContext($invoice->company, $invoice->branch, $invoice->financialYear);
         $this->date($invoice->financialYear, $invoice->invoice_date->toDateString());
+        $this->assertNoDuplicatePurchaseBill($invoice, $forceDuplicate);
 
         $kind = $invoice->kind;
         $party = $this->parties->find($invoice->company, $kind, $invoice->party_ledger_id);
@@ -390,6 +398,42 @@ class InvoiceService
                 'status' => 'Posted and cancelled invoices cannot be changed.',
             ]);
         }
+    }
+
+    private function assertNoDuplicatePurchaseBill(Invoice $invoice, bool $forceDuplicate): void
+    {
+        if ($invoice->kind !== InvoiceKind::Purchase || $forceDuplicate) {
+            return;
+        }
+
+        $billNumber = trim((string) ($invoice->reference_number ?: $invoice->invoice_number));
+        $matches = $this->duplicateBills->matches(
+            $invoice->company,
+            (int) $invoice->party_ledger_id,
+            $billNumber,
+            (string) $invoice->grand_total,
+            $invoice->id,
+        );
+
+        if ($matches->isEmpty()) {
+            return;
+        }
+
+        $this->duplicateBills->flag(
+            $invoice->company,
+            (int) $invoice->party_ledger_id,
+            $billNumber,
+            (string) $invoice->grand_total,
+            $invoice->invoice_date?->toDateString(),
+            $invoice->id,
+        );
+
+        $numbers = $matches->pluck('invoice_number')->filter()->unique()->values()->all();
+
+        throw ValidationException::withMessages([
+            'reference_number' => 'Possible duplicate bill. Matching invoices: '.implode(', ', $numbers)
+                .'. Resubmit with force_duplicate=1 to post anyway.',
+        ]);
     }
 
     private function blank(mixed $value): ?string

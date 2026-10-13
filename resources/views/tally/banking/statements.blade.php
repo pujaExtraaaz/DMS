@@ -10,11 +10,11 @@
                         @endforeach
                     </select>
                 </x-form.field>
-                <x-tally::form.field name="file" label="CSV file" required>
-                    <input id="file" class="input" type="file" name="file" accept=".csv,text/csv" required>
+                <x-tally::form.field name="file" label="Statement file" required>
+                    <input id="file" class="input" type="file" name="file" accept=".csv,.ofx,.qfx,.xlsx,.xls,text/csv" required>
                 </x-form.field>
             </div>
-            <p class="form-note">Columns: Date, Narration, Debit, Credit. Optional: Value Date, Reference. A repeated line for the same account is skipped.</p>
+            <p class="form-note">CSV/XLSX columns: Date, Narration, Debit, Credit (or Amount). Optional: Value Date, Reference, Transaction ID. OFX/QFX also supported. Duplicates for the same account are skipped.</p>
             <button class="btn btn-primary" type="submit">Import</button>
             <a class="btn" href="{{ tally_route('books.tally.banking.reconciliation') }}">Bank reconciliation</a>
         </form>

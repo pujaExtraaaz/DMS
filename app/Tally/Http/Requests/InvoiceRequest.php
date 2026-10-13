@@ -59,6 +59,7 @@ class InvoiceRequest extends FormRequest
                 : null,
             'project_milestone_id' => $this->input('project_milestone_id') ?: null,
             'reverse_charge' => $this->boolean('reverse_charge'),
+            'force_duplicate' => $this->boolean('force_duplicate'),
         ]);
     }
 
@@ -83,6 +84,7 @@ class InvoiceRequest extends FormRequest
             'retention_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'project_milestone_id' => ['nullable', 'integer'],
             'reverse_charge' => ['nullable', 'boolean'],
+            'force_duplicate' => ['nullable', 'boolean'],
             'lines' => ['required', 'array', 'min:1', 'max:100'],
             'lines.*.item_name' => ['nullable', 'string', 'max:200'],
             'lines.*.product_id' => ['nullable', 'integer'],

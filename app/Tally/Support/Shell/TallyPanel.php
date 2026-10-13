@@ -158,7 +158,7 @@ class TallyPanel
         $groups = self::groups($section, $mode);
         $chosen = request()->string('group')->toString();
 
-        if ($route === 'reports.menu' && $chosen === '') {
+        if (in_array($route, ['reports.menu', 'transactions.menu', 'utilities.menu'], true) && $chosen === '') {
             return view('tally::shell.catalogue', [
                 'title' => $title,
                 'groups' => $groups,
@@ -207,24 +207,31 @@ class TallyPanel
                 'Exception' => [],
             ];
             $priority = [
-                'Accounting' => ['trial-balance', 'day-book', 'cash-flow', 'funds-flow', 'account-books', 'statements-of-accounts', 'ledger-report', 'profit-and-loss', 'balance-sheet', 'ratio-analysis'],
-                'Inventory' => ['inventory-books', 'statements-of-inventory', 'stock-summary', 'stock-ledger'],
+                'Accounting' => [
+                    'trial-balance', 'day-book', 'cash-flow', 'funds-flow', 'account-books', 'statements-of-accounts',
+                    'ledger-report', 'profit-and-loss', 'balance-sheet', 'ratio-analysis', 'budget-variance',
+                    'comparative', 'profitability', 'kpi-dashboard', 'ageing', 'supplier-ageing',
+                    'customer-statement', 'supplier-statement', 'outstanding', 'sub-ledgers',
+                    'payment-due-calendar', 'msme-payables', 'cost-centre-report', 'business-unit-report',
+                    'department-report', 'interest', 'sales-order-report',
+                ],
+                'Inventory' => [
+                    'inventory-books', 'statements-of-inventory', 'stock-summary', 'stock-ledger',
+                    'godown-stock', 'stock-movement-report', 'stock-valuation', 'inventory-ageing',
+                    'low-stock', 'expiry', 'stock-limits', 'batch-history', 'production', 'consumption',
+                ],
+                'Statutory' => [
+                    'gst', 'gstr-1', 'gstr-3b', 'gstr-2b', 'itc', 'gst-challans',
+                    'tds-return', 'tds-compliance', 'statutory-calendar',
+                ],
                 'Exception' => ['exceptions', 'analysis', 'edit-log'],
-            ];
-
-            $shown = [
-                'trial-balance', 'day-book', 'cash-flow', 'funds-flow', 'account-books', 'statements-of-accounts',
-                'ledger-report', 'profit-and-loss', 'balance-sheet', 'ratio-analysis',
-                'inventory-books', 'statements-of-inventory', 'stock-summary', 'stock-ledger',
-                'gst', 'gstr-1', 'gstr-3b',
-                'payroll-report',
-                'exceptions', 'analysis', 'edit-log',
             ];
 
             foreach ($children as $child) {
                 $key = $child['key'] ?? '';
+                $routeName = (string) ($child['route'] ?? '');
 
-                if (! in_array($key, $shown, true)) {
+                if ($routeName === '' || ! tally_route_has($routeName)) {
                     continue;
                 }
 
@@ -262,10 +269,60 @@ class TallyPanel
             return array_filter($groups);
         }
 
+        if ($sectionKey === 'transactions') {
+            $labels = [
+                'sales' => 'Sales',
+                'purchase' => 'Purchase / Payables',
+                'inventory' => 'Inventory',
+                'accounting' => 'Accounting',
+                'tax' => 'Statutory',
+            ];
+            $groups = [];
+
+            foreach ($children as $child) {
+                $routeName = (string) ($child['route'] ?? '');
+
+                if ($routeName === '' || ! tally_route_has($routeName)) {
+                    continue;
+                }
+
+                $heading = $labels[$child['domain'] ?? ''] ?? 'Other';
+                $groups[$heading][] = $child;
+            }
+
+            return array_filter($groups);
+        }
+
+        if ($sectionKey === 'utilities') {
+            $labels = [
+                'accounting' => 'Accounting',
+                'purchase' => 'Payables',
+                'sales' => 'Receivables',
+                'integrations' => 'Integrations',
+                'tax' => 'Statutory',
+            ];
+            $groups = [];
+
+            foreach ($children as $child) {
+                $routeName = (string) ($child['route'] ?? '');
+
+                if ($routeName === '' || ! tally_route_has($routeName)) {
+                    continue;
+                }
+
+                $heading = $labels[$child['domain'] ?? ''] ?? 'Other';
+                $groups[$heading][] = $child;
+            }
+
+            return array_filter($groups);
+        }
+
         $labels = [
             'accounting' => 'Accounting Masters',
             'inventory' => 'Inventory Masters',
             'tax' => 'Statutory Masters',
+            'sales' => 'Sales Masters',
+            'platform' => 'Company Masters',
         ];
         $groups = [];
 

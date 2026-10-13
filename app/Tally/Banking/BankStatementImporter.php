@@ -15,7 +15,35 @@ class BankStatementImporter
      */
     public function import(BankAccount $account, UploadedFile $file): array
     {
-        $table = $this->table($file);
+        $path = $file->getRealPath();
+        if ($path === false) {
+            throw ValidationException::withMessages(['file' => 'The statement file could not be read.']);
+        }
+
+        return $this->importPath($account, $path, strtolower($file->getClientOriginalExtension()));
+    }
+
+    /**
+     * @return array{imported: int, duplicates: int, errors: list<string>}
+     */
+    public function importPath(BankAccount $account, string $path, ?string $extension = null): array
+    {
+        if (! is_file($path) || ! is_readable($path)) {
+            throw ValidationException::withMessages(['file' => 'The statement file could not be read.']);
+        }
+
+        $extension ??= strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $table = $this->tableFromPath($path, $extension);
+
+        return $this->importRows($account, $table);
+    }
+
+    /**
+     * @param  list<list<string>>  $table
+     * @return array{imported: int, duplicates: int, errors: list<string>}
+     */
+    public function importRows(BankAccount $account, array $table): array
+    {
         $header = array_shift($table) ?: [];
         $map = $this->map($header);
         $imported = 0;
@@ -82,24 +110,23 @@ class BankStatementImporter
     /**
      * @return list<list<string>>
      */
-    private function table(UploadedFile $file): array
+    private function tableFromPath(string $path, string $extension): array
     {
-        $extension = strtolower($file->getClientOriginalExtension());
-
         return match ($extension) {
-            'csv', 'txt' => $this->csv($file),
-            'xlsx' => $this->xlsx($file),
-            'xls' => $this->xls($file),
-            default => throw ValidationException::withMessages(['file' => 'Import a CSV, XLS, or XLSX statement.']),
+            'csv', 'txt' => $this->csvPath($path),
+            'xlsx' => $this->xlsxPath($path),
+            'xls' => $this->xlsPath($path),
+            'ofx', 'qfx' => $this->ofxPath($path),
+            default => throw ValidationException::withMessages(['file' => 'Import a CSV, OFX, QFX, XLS, or XLSX statement.']),
         };
     }
 
     /**
      * @return list<list<string>>
      */
-    private function csv(UploadedFile $file): array
+    private function csvPath(string $path): array
     {
-        $handle = fopen($file->getRealPath(), 'r');
+        $handle = fopen($path, 'r');
 
         if ($handle === false) {
             throw ValidationException::withMessages(['file' => 'The statement file could not be read.']);
@@ -119,11 +146,11 @@ class BankStatementImporter
     /**
      * @return list<list<string>>
      */
-    private function xlsx(UploadedFile $file): array
+    private function xlsxPath(string $path): array
     {
         $zip = new \ZipArchive;
 
-        if ($zip->open($file->getRealPath()) !== true) {
+        if ($zip->open($path) !== true) {
             throw ValidationException::withMessages(['file' => 'The XLSX file could not be opened.']);
         }
 
@@ -191,18 +218,77 @@ class BankStatementImporter
     /**
      * @return list<list<string>>
      */
-    private function xls(UploadedFile $file): array
+    private function xlsPath(string $path): array
     {
         try {
-            return Spreadsheet::sheet($file->getRealPath());
+            return Spreadsheet::sheet($path);
         } catch (\Throwable $exception) {
             throw ValidationException::withMessages(['file' => $exception->getMessage()]);
         }
     }
 
     /**
+     * Minimal OFX/QFX SGML parser for bank statement transactions.
+     *
+     * @return list<list<string>>
+     */
+    private function ofxPath(string $path): array
+    {
+        $raw = file_get_contents($path);
+        if ($raw === false || trim($raw) === '') {
+            throw ValidationException::withMessages(['file' => 'The OFX file could not be read.']);
+        }
+
+        if (! preg_match_all('/<STMTTRN>(.*?)<\/STMTTRN>/si', $raw, $matches)) {
+            throw ValidationException::withMessages(['file' => 'No OFX transactions were found.']);
+        }
+
+        $rows = [['Date', 'Narration', 'Amount', 'Reference', 'Transaction ID']];
+
+        foreach ($matches[1] as $block) {
+            $posted = $this->ofxTag($block, 'DTPOSTED');
+            $amount = $this->ofxTag($block, 'TRNAMT');
+            $memo = $this->ofxTag($block, 'MEMO') ?: $this->ofxTag($block, 'NAME') ?: 'OFX transaction';
+            $fitid = $this->ofxTag($block, 'FITID');
+            $ref = $this->ofxTag($block, 'CHECKNUM') ?: $this->ofxTag($block, 'REFNUM');
+
+            if ($posted === '' || $amount === '') {
+                continue;
+            }
+
+            $date = $this->ofxDate($posted);
+            $rows[] = [$date, $memo, $amount, $ref, $fitid];
+        }
+
+        if (count($rows) < 2) {
+            throw ValidationException::withMessages(['file' => 'No OFX transactions were found.']);
+        }
+
+        return $rows;
+    }
+
+    private function ofxTag(string $block, string $tag): string
+    {
+        if (preg_match('/<'.$tag.'>([^<\r\n]+)/i', $block, $match)) {
+            return trim($match[1]);
+        }
+
+        return '';
+    }
+
+    private function ofxDate(string $value): string
+    {
+        $digits = preg_replace('/\D+/', '', $value) ?? '';
+        if (strlen($digits) < 8) {
+            throw new \InvalidArgumentException('OFX date "'.$value.'" is not valid.');
+        }
+
+        return substr($digits, 0, 4).'-'.substr($digits, 4, 2).'-'.substr($digits, 6, 2);
+    }
+
+    /**
      * @param  list<string|null>  $header
-     * @return array<string, int>
+     * @return array<string, int|null>
      */
     private function map(array $header): array
     {

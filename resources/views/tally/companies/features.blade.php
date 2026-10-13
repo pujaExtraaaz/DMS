@@ -58,6 +58,13 @@
                     <p class="gateway-group">Inventory Features</p>
                     @include('tally::companies._yesno', ['name' => 'allow_negative_stock', 'label' => 'Allow negative stock', 'value' => $company->allow_negative_stock, 'options' => ['No', 'Yes'], 'values' => ['0', '1'], 'autofocus' => true])
                     @include('tally::companies._yesno', ['name' => 'inventory_repeat_scan_increments', 'label' => 'Repeat barcode scan increases quantity', 'value' => $repeatScan, 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    @include('tally::companies._yesno', [
+                        'name' => 'inventory_valuation_method',
+                        'label' => 'Stock valuation method',
+                        'value' => $company->inventory_valuation_method ?? 'weighted_average',
+                        'options' => ['Weighted average', 'FIFO'],
+                        'values' => ['weighted_average', 'fifo'],
+                    ])
                 @elseif ($section === 'statutory')
                     <p class="gateway-group">Statutory &amp; Taxation</p>
                     @include('tally::companies._yesno', [

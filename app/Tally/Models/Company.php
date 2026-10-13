@@ -121,6 +121,7 @@ class Company extends AccountingModel
         'financial_year_end',
         'books_beginning_from',
         'accounting_basis',
+        'inventory_valuation_method',
         'retained_earnings_ledger_id',
         'customer_advance_ledger_id',
         'bad_debt_ledger_id',

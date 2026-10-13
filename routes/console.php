@@ -17,3 +17,4 @@ Schedule::command('books:run-recurring')->dailyAt('02:00');
 Schedule::command('books:run-recurring-invoices')->dailyAt('02:10');
 Schedule::command('books:run-collection-reminders')->dailyAt('02:20');
 Schedule::command('books:recognize-deferred-revenue')->dailyAt('02:30');
+Schedule::command('accounting:pull-bank-feeds')->everyFifteenMinutes();

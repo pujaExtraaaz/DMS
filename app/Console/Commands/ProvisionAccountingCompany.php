@@ -87,36 +87,46 @@ class ProvisionAccountingCompany extends Command
                 $yearMap[(string) $year->id] = $created->id;
             }
 
+            // Company::provision already creates a default Head Office (HO) branch.
+            $defaultBranch = $books->branches()->orderBy('id')->first();
             $branches = OrganizationBranch::query()->where('company_id', $organization->id)->get();
+            $branchMap = [];
+            $acctBranch = $defaultBranch;
+
             if ($branches->isEmpty()) {
-                $acctBranch = Branch::query()->create([
-                    'company_id' => $books->id,
-                    'name' => 'Head Office',
-                    'code' => 'HO',
-                    'address' => $organization->address,
-                    'state' => $organization->state,
-                    'country' => 'India',
-                    'pincode' => $organization->pincode,
-                    'phone' => $organization->phone,
-                    'email' => $organization->email,
-                    'is_active' => true,
-                ]);
-                $branchMap = [];
+                $acctBranch = $defaultBranch;
             } else {
-                $branchMap = [];
-                $acctBranch = null;
                 foreach ($branches as $branch) {
-                    $created = Branch::query()->create([
-                        'company_id' => $books->id,
-                        'name' => $branch->name,
-                        'code' => $branch->code ?: ('B'.$branch->id),
-                        'address' => $branch->address,
-                        'state' => $branch->state,
-                        'country' => 'India',
-                        'pincode' => $branch->pincode,
-                        'phone' => $branch->phone,
-                        'is_active' => (bool) $branch->is_active,
-                    ]);
+                    $code = $branch->code ?: ('B'.$branch->id);
+                    $existing = $books->branches()
+                        ->where(function ($q) use ($code, $branch) {
+                            $q->where('code', $code)->orWhere('name', $branch->name);
+                        })
+                        ->first();
+
+                    if ($existing) {
+                        $existing->update([
+                            'name' => $branch->name ?: $existing->name,
+                            'address' => $branch->address ?: $existing->address,
+                            'state' => $branch->state ?: $existing->state,
+                            'pincode' => $branch->pincode ?: $existing->pincode,
+                            'phone' => $branch->phone ?: $existing->phone,
+                            'is_active' => (bool) $branch->is_active,
+                        ]);
+                        $created = $existing;
+                    } else {
+                        $created = Branch::query()->create([
+                            'company_id' => $books->id,
+                            'name' => $branch->name,
+                            'code' => $code,
+                            'address' => $branch->address,
+                            'state' => $branch->state,
+                            'country' => 'India',
+                            'pincode' => $branch->pincode,
+                            'phone' => $branch->phone,
+                            'is_active' => (bool) $branch->is_active,
+                        ]);
+                    }
                     $branchMap[(string) $branch->id] = $created->id;
                     $acctBranch ??= $created;
                 }

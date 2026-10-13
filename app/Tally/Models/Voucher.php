@@ -44,6 +44,9 @@ class Voucher extends AccountingModel
         'payment_request_id',
         'merchant_profile_id',
         'status',
+        'approval_status',
+        'approved_by',
+        'approved_at',
         'total_debit',
         'total_credit',
         'created_by',
@@ -70,6 +73,7 @@ class Voucher extends AccountingModel
             'reverses_on' => 'date',
             'posted_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'approved_at' => 'datetime',
         ];
     }
 

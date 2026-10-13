@@ -27,6 +27,10 @@ class PurchaseOrder extends AccountingModel
         'grand_total',
         'status',
         'created_by',
+        'purchase_requisition_id',
+        'vendor_quotation_id',
+        'approved_by',
+        'approved_at',
     ];
 
     protected function casts(): array
@@ -38,6 +42,7 @@ class PurchaseOrder extends AccountingModel
             'delivery_charge' => 'decimal:2',
             'tax_total' => 'decimal:2',
             'grand_total' => 'decimal:2',
+            'approved_at' => 'datetime',
         ];
     }
 
@@ -74,5 +79,20 @@ class PurchaseOrder extends AccountingModel
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function purchaseRequisition(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseRequisition::class);
+    }
+
+    public function vendorQuotation(): BelongsTo
+    {
+        return $this->belongsTo(VendorQuotation::class);
+    }
+
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'approved_by');
     }
 }

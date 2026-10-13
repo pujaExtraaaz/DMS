@@ -10,6 +10,7 @@ use Tally\Invoicing\PartyDirectory;
 use Tally\Accounting\Money;
 use Tally\Models\PurchaseOrder;
 use Tally\Reporting\LedgerBalances;
+use Tally\Purchasing\GoodsReceiptService;
 use Tally\Purchasing\PurchaseOrderService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -94,6 +95,19 @@ class PurchaseOrderController extends Controller
         $purchaseOrder->load(['supplier', 'lines.product', 'lines.hsnSac', 'branch']);
 
         return view('tally::purchase-orders.show', ['order' => $purchaseOrder]);
+    }
+
+    public function receive(Request $request, WorkspaceContext $context, PurchaseOrder $purchaseOrder, GoodsReceiptService $receipts): RedirectResponse
+    {
+        $company = $context->company();
+        $branch = $context->branch();
+        $year = $context->financialYear();
+        abort_unless($company && $branch && $year && $purchaseOrder->company_id === $company->id, 404);
+
+        $receipt = $receipts->createFromPurchaseOrder($company, $branch, $year, $request->user(), $purchaseOrder);
+
+        return redirect()->to(tally_route('books.tally.goods-receipts.show', $receipt))
+            ->with('status', 'Draft goods receipt created from purchase order.');
     }
 
     public function print(PurchaseOrder $purchaseOrder, TradingDocument $documents): View

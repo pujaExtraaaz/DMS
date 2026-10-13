@@ -22,6 +22,11 @@ use Illuminate\Validation\ValidationException;
  */
 class StockMovementService
 {
+    public function __construct(
+        private readonly InventoryValuation $valuation,
+        private readonly FifoCostService $fifo,
+    ) {}
+
     public function move(
         Company $company,
         Branch $branch,
@@ -108,7 +113,46 @@ class StockMovementService
             $serial->update(['status' => $signedQuantity < 0 ? 'issued' : 'available']);
         }
 
-        return $movement;
+        $this->applyFifoCosting($company, $product, $godown, $movement, $date, $signedQuantity, $rate, $type);
+
+        return $movement->fresh();
+    }
+
+    private function applyFifoCosting(
+        Company $company,
+        Product $product,
+        Godown $godown,
+        StockMovement $movement,
+        string $date,
+        int $signedQuantity,
+        string $rate,
+        StockMovementType $type,
+    ): void {
+        if ($this->valuation->methodFor($company) !== InventoryValuation::METHOD_FIFO) {
+            return;
+        }
+
+        $absoluteQty = Quantity::format(abs($signedQuantity));
+
+        if ($type === StockMovementType::In || $type === StockMovementType::TransferIn) {
+            $this->fifo->addLayer($company, $product, $godown, $movement, $date, $absoluteQty, $rate);
+
+            return;
+        }
+
+        if ($type === StockMovementType::Out || $type === StockMovementType::TransferOut) {
+            $result = $this->fifo->consume($company, $product, $godown, $movement, $date, $absoluteQty);
+            $valueCents = Money::cents($result['value']);
+            $qtyScaled = abs($signedQuantity);
+            $rateCents = $qtyScaled > 0
+                ? intdiv(($valueCents * 10000) + intdiv($qtyScaled, 2), $qtyScaled)
+                : 0;
+
+            $movement->update([
+                'rate' => Money::format($rateCents),
+                'value' => Money::format(-$valueCents),
+            ]);
+        }
     }
 
     public function reverse(StockMovement $movement): StockMovement

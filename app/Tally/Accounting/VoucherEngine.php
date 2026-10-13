@@ -4,6 +4,8 @@ namespace Tally\Accounting;
 
 use Tally\Accounting\Events\VoucherWritten;
 use Tally\Audit\AuditLogger;
+use Tally\Models\ApprovalPolicy;
+use Tally\Models\ApprovalRequest;
 use Tally\Models\Bill;
 use Tally\Models\Branch;
 use Tally\Models\BusinessUnit;
@@ -50,7 +52,7 @@ class VoucherEngine
             ]);
         }
 
-        return DB::transaction(function () use ($company, $branch, $financialYear, $user, $type, $input, $post, $voucher, $assignedNumber) {
+        $outcome = DB::transaction(function () use ($company, $branch, $financialYear, $user, $type, $input, $post, $voucher, $assignedNumber) {
             $this->assertContext($company, $branch, $financialYear);
 
             if ($voucher) {
@@ -85,6 +87,7 @@ class VoucherEngine
                     'reference_number' => $this->blank($input['reference_number'] ?? null),
                     'narration' => $this->blank($input['narration'] ?? null),
                     'status' => VoucherStatus::Draft,
+                    'approval_status' => 'none',
                     'total_debit' => Money::format($debitCents),
                     'total_credit' => Money::format($creditCents),
                     'created_by' => $user->id,
@@ -94,21 +97,36 @@ class VoucherEngine
             $voucher->entries()->createMany($lines);
             $this->allocate($voucher, $type, $input['allocations'] ?? []);
 
+            $awaitingApproval = false;
             if ($post) {
-                $this->markPosted($voucher->fresh('entries'));
-                $this->bills->syncPostedVoucher($voucher->fresh(['entries.ledger.accountGroup', 'financialYear']));
+                $fresh = $voucher->fresh('entries');
+                $this->assertLinesReadyToPost($fresh);
+                if ($this->queueForApprovalIfRequired($fresh, $user)) {
+                    $awaitingApproval = true;
+                } else {
+                    $this->applyPostedStatus($fresh);
+                    $this->bills->syncPostedVoucher($fresh->fresh(['entries.ledger.accountGroup', 'financialYear']));
+                }
             }
 
             $voucher = $voucher->fresh(['entries.ledger', 'creator']);
             VoucherWritten::dispatch($voucher);
 
-            return $voucher;
+            return ['voucher' => $voucher, 'awaiting_approval' => $awaitingApproval];
         });
+
+        if ($outcome['awaiting_approval']) {
+            throw ValidationException::withMessages([
+                'status' => 'Awaiting approval',
+            ]);
+        }
+
+        return $outcome['voucher'];
     }
 
     public function post(Voucher $voucher): Voucher
     {
-        return DB::transaction(function () use ($voucher) {
+        $outcome = DB::transaction(function () use ($voucher) {
             $voucher = Voucher::query()->whereKey($voucher->id)->lockForUpdate()->firstOrFail();
 
             if ($voucher->isCancelled()) {
@@ -122,13 +140,28 @@ class VoucherEngine
             $date = $this->date($voucher->financialYear, $voucher->voucher_date->toDateString());
             $this->periods->assertDateOpen($voucher->company, $date, $voucher->financialYear);
 
-            $this->markPosted($voucher);
-            $this->bills->syncPostedVoucher($voucher->fresh(['entries.ledger.accountGroup', 'financialYear']));
+            $awaitingApproval = false;
+            $this->assertLinesReadyToPost($voucher);
+            if ($this->queueForApprovalIfRequired($voucher, $voucher->creator)) {
+                $awaitingApproval = true;
+            } else {
+                $this->applyPostedStatus($voucher);
+                $this->bills->syncPostedVoucher($voucher->fresh(['entries.ledger.accountGroup', 'financialYear']));
+            }
+
             $voucher = $voucher->fresh(['entries.ledger', 'creator']);
             VoucherWritten::dispatch($voucher);
 
-            return $voucher;
+            return ['voucher' => $voucher, 'awaiting_approval' => $awaitingApproval];
         });
+
+        if ($outcome['awaiting_approval']) {
+            throw ValidationException::withMessages([
+                'status' => 'Awaiting approval',
+            ]);
+        }
+
+        return $outcome['voucher'];
     }
 
     public function cancel(Voucher $voucher, bool $withDocument = false): Voucher
@@ -226,7 +259,20 @@ class VoucherEngine
 
     private function markPosted(Voucher $voucher): void
     {
-        $voucher->load('entries.ledger.accountGroup.parent');
+        $this->assertLinesReadyToPost($voucher);
+
+        if ($this->queueForApprovalIfRequired($voucher, $voucher->creator)) {
+            throw ValidationException::withMessages([
+                'status' => 'Awaiting approval',
+            ]);
+        }
+
+        $this->applyPostedStatus($voucher);
+    }
+
+    private function assertLinesReadyToPost(Voucher $voucher): void
+    {
+        $voucher->loadMissing(['company', 'entries.ledger.accountGroup.parent']);
         $stored = [];
 
         foreach ($voucher->entries as $entry) {
@@ -246,11 +292,72 @@ class VoucherEngine
             'currency_id' => $voucher->currency_id,
             'exchange_rate' => $voucher->exchange_rate,
         ]);
+    }
 
+    private function applyPostedStatus(Voucher $voucher): void
+    {
         $voucher->update([
             'status' => VoucherStatus::Posted,
             'posted_at' => now(),
         ]);
+    }
+
+    /**
+     * When an active voucher approval policy matches the amount and the voucher
+     * is not yet approved, keep it draft, mark pending, and queue a request.
+     *
+     * @return bool true when posting must wait for approval
+     */
+    private function queueForApprovalIfRequired(Voucher $voucher, ?User $user = null): bool
+    {
+        if (($voucher->approval_status ?? 'none') === 'approved') {
+            return false;
+        }
+
+        $amount = (string) $voucher->total_debit;
+        $policy = ApprovalPolicy::query()
+            ->where('company_id', $voucher->company_id)
+            ->where('document_type', 'voucher')
+            ->where('is_active', true)
+            ->where('min_amount', '<=', $amount)
+            ->where(function ($q) use ($amount) {
+                $q->whereNull('max_amount')->orWhere('max_amount', '>=', $amount);
+            })
+            ->orderByDesc('min_amount')
+            ->first();
+
+        if (! $policy) {
+            return false;
+        }
+
+        $voucher->update([
+            'status' => VoucherStatus::Draft,
+            'approval_status' => 'pending',
+            'posted_at' => null,
+        ]);
+
+        $exists = ApprovalRequest::query()
+            ->where('company_id', $voucher->company_id)
+            ->where('document_type', 'voucher')
+            ->where('document_id', $voucher->id)
+            ->where('status', 'pending')
+            ->exists();
+
+        if (! $exists) {
+            ApprovalRequest::query()->create([
+                'company_id' => $voucher->company_id,
+                'approval_policy_id' => $policy->id,
+                'document_type' => 'voucher',
+                'document_id' => $voucher->id,
+                'amount' => $amount,
+                'current_level' => 1,
+                'status' => 'pending',
+                'requested_by' => $user?->id ?? $voucher->created_by,
+                'remarks' => 'Auto-queued on post',
+            ]);
+        }
+
+        return true;
     }
 
     /**

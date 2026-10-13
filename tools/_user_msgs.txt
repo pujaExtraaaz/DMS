@@ -1,0 +1,281 @@
+===== line 1 len=12618 =====\n<timestamp>Tuesday, Oct 13, 2026, 11:15 AM (UTC+5:30)</timestamp>
+<user_query>
+ C. Procurement, expenses and accounts payable
+[ ] Vendor and supplier master
+[ ] Purchase requisitions
+[ ] Request for quotation and vendor comparison
+[ ] Purchase orders
+[ ] Goods receipt and service receipt
+[ ] Supplier bills and purchase invoices
+[ ] Purchase returns and debit notes
+[ ] Vendor advances and adjustments
+[ ] Expense bills and employee reimbursements
+[ ] Recurring expenses and expense categorization
+[ ] Payment vouchers and supplier payment allocation
+[ ] Bill-wise payables and ageing reports
+[ ] Payment due-date calendar
+[ ] Vendor statements and balance confirmation
+[ ] Purchase price and landed-cost allocation
+[ ] Freight, duty and other purchase charges
+[ ] Accrued expenses and uninvoiced receipts
+[ ] Prepaid expenses and amortization
+[ ] Employee advances and settlement
+[ ] Vendor credit limits and payment terms
+[ ] Payment approval and payment batch processing
+[ ] Withholding tax on vendor payments
+[ ] Supplier retention and security deposits
+[ ] Duplicate bill detection and expense policy controls
+D. Banking, cash and treasury
+[ ] Cash and petty-cash books
+[ ] Multiple bank accounts
+[ ] Bank statement import and bank feeds
+[ ] Automatic bank transaction categorization
+[ ] Bank reconciliation statement
+[ ] Unmatched transaction investigation
+[ ] Cheque issue, receipt, deposit and clearance tracking
+[ ] Cheque printing and cheque register
+[ ] UPI, card, gateway and payment processor reconciliation
+[ ] NEFT, RTGS and IMPS payment tracking
+[ ] Direct bank payment integration, where supported
+[ ] Cash transfer between accounts
+[ ] Bank charges and interest entries
+[ ] Foreign currency bank accounts
+[ ] Foreign exchange gains and losses
+[ ] Cash-flow reporting and cash position
+[ ] Daily cash and bank balance monitoring
+[ ] Payment forecasts and liquidity planning
+[ ] Cash-flow forecasting and scenario planning
+[ ] Bank loan and overdraft tracking
+[ ] Loan repayment schedules and interest allocation
+[ ] Treasury controls and bank signatory limits
+E. GST and Indian statutory compliance
+[ ] GSTIN and state-wise registration management
+[ ] CGST, SGST, IGST and UTGST calculation
+[ ] Place-of-supply rules
+[ ] HSN and SAC codes
+[ ] Tax-inclusive and tax-exclusive pricing
+[ ] Input tax credit tracking
+[ ] Eligible, ineligible, blocked and reversed ITC
+[ ] GST purchase and sales registers
+[ ] GSTR-1 data and return preparation
+[ ] GSTR-3B data and return preparation
+[ ] GSTR-2B reconciliation and purchase matching
+[ ] Credit/debit note and amendment reporting
+[ ] GST liability and input-credit reconciliation
+[ ] Reverse charge mechanism accounting
+[ ] Export, SEZ and zero-rated transaction handling
+[ ] Exempt, nil-rated and non-GST supplies
+[ ] E-invoice generation and IRN/QR handling
+[ ] E-way bill generation and cancellation workflows
+[ ] GST payment, challan and liability tracking
+[ ] GST audit trail and exception reports
+[ ] TDS and TCS calculations and reporting
+[ ] TDS certificates, deductions and challan tracking
+[ ] Advance tax and income-tax provision support
+[ ] MSME vendor identification and payable monitoring
+[ ] Tax audit schedules and accountant data exports
+[ ] Other jurisdiction-specific indirect taxes, if relevant
+[ ] Statutory due-date calendar and compliance alerts
+F. Inventory-linked accounting
+[ ] Stock item and service masters
+[ ] Units of measure and alternate units
+[ ] Warehouses, godowns and branch stock locations
+[ ] Opening stock and valuation
+[ ] Purchase and sales stock integration
+[ ] Real-time stock and ledger impact
+[ ] FIFO, weighted average and other supported valuation methods
+[ ] Batch, serial number and expiry tracking
+[ ] Stock transfers and transfer-in-transit
+[ ] Physical stock count and reconciliation
+[ ] Stock adjustment and write-off accounting
+[ ] Landed cost and freight allocation
+[ ] Inventory ageing and slow-moving stock
+[ ] Reorder levels and stock valuation reports
+[ ] Goods in transit and consignment accounting
+[ ] Raw material, work-in-progress and finished-goods valuation
+[ ] Manufacturing consumption and production accounting
+[ ] Bill of materials and production costing
+[ ] Job work and subcontracting
+[ ] Inventory impairment and obsolescence provisions
+[ ] Negative-stock controls and stock-to-ledger reconciliation
+G. Fixed assets and depreciation
+[ ] Fixed asset register
+[ ] Asset categories and capitalization rules
+[ ] Asset acquisition and capitalization
+[ ] Construction-in-progress accounting
+[ ] Asset location, department and custodian tracking
+[ ] Depreciation schedules and methods
+[ ] Useful life and residual value management
+[ ] Component accounting, where applicable
+[ ] Asset transfers and reclassification
+[ ] Asset disposal and sale accounting
+[ ] Gain/loss on disposal
+[ ] Impairment and revaluation workflows
+[ ] Lease accounting, where applicable
+[ ] Capital expenditure budget tracking
+[ ] Fixed-asset physical verification
+[ ] Depreciation and asset-ledger reconciliation
+H. Payroll and employee finance
+[ ] Employee financial master and salary structures
+[ ] Payroll journal posting
+[ ] Salary, allowances, bonuses and incentives
+[ ] Payroll deductions and recoveries
+[ ] Employee loans and salary advances
+[ ] Reimbursement and travel-expense settlement
+[ ] PF, ESI and professional tax calculations, as applicable
+[ ] Salary TDS and Form 16-related data support
+[ ] Payroll payable and bank payment reconciliation
+[ ] Leave encashment and bonus provisions
+[ ] Gratuity and leave-liability accounting
+[ ] Payroll cost allocation by branch, department and project
+[ ] Payroll-to-general-ledger reconciliation
+[ ] Payroll approval and payslip records
+I. Financial statements and core reporting
+[ ] Trial balance
+[ ] General ledger and account ledger
+[ ] Day book and voucher register
+[ ] Profit and loss statement
+[ ] Balance sheet
+[ ] Cash-flow statement
+[ ] Receipts and payments report
+[ ] Trading account, where applicable
+[ ] Income and expense summaries
+[ ] Sales and purchase registers
+[ ] Customer and vendor outstanding reports
+[ ] Receivable and payable ageing
+[ ] Bank reconciliation reports
+[ ] GST and other tax reports
+[ ] Inventory valuation and stock movement reports
+[ ] Fixed asset and depreciation reports
+[ ] Payroll summaries
+[ ] Cost-centre and department reports
+[ ] Budget-versus-actual statements
+[ ] Comparative period and year-on-year reports
+[ ] Branch-wise and consolidated financial reports
+[ ] Drill-down from summary report to source voucher
+[ ] Custom report builder and scheduled reports
+J. Cost accounting, budgeting and profitability
+[ ] Cost centres and cost categories
+[ ] Department, branch and project cost allocation
+[ ] Direct and indirect expense allocation
+[ ] Cost allocation rules and overhead absorption
+[ ] Product and service profitability
+[ ] Customer and customer-segment profitability
+[ ] Branch and business-unit profitability
+[ ] Job and project costing
+[ ] Standard cost and actual cost comparison
+[ ] Budget creation and revision controls
+[ ] Department-wise and branch-wise budgets
+[ ] Budget-versus-actual variance analysis
+[ ] Cost-volume-profit and break-even analysis
+[ ] Contribution margin analysis
+[ ] Activity-based costing, where required
+[ ] Manufacturing variance analysis
+[ ] Profitability dashboards and management accounts
+K. Loans, liabilities and equity
+[ ] Short- and long-term loan registers
+[ ] Loan disbursement and repayment accounting
+[ ] Interest accrual and amortization
+[ ] EMI schedules and principal/interest split
+[ ] Current and non-current liability classification
+[ ] Lease liabilities, where applicable
+[ ] Interest payable and accrued liabilities
+[ ] Share capital and capital contribution accounts
+[ ] Drawings, distributions and dividends
+[ ] Reserves and retained earnings
+[ ] Related-party balances and transactions
+[ ] Guarantees and contingent liability records
+[ ] Provisions and estimated liabilities
+[ ] Deferred tax accounting, where applicable
+L. Multi-entity and enterprise accounting
+[ ] Multi-company and multi-branch reporting
+[ ] Separate books and ledgers by entity
+[ ] Inter-branch transfers and reconciliations
+[ ] Intercompany sales, purchases and balances
+[ ] Due-to/due-from reconciliation
+[ ] Consolidated financial statements
+[ ] Intercompany elimination journals
+[ ] Group chart of accounts mapping
+[ ] Different fiscal years and local reporting calendars
+[ ] Foreign subsidiary and currency translation workflows
+[ ] Centralized finance controls with local access
+[ ] Entity-level and group-level approval policies
+[ ] Shared services and centralized accounts payable
+[ ] Management reporting by legal entity and business unit
+M. Audit, internal control and security
+[ ] User accounts and role-based permissions
+[ ] Segregation of duties
+[ ] Maker-checker and multi-level approvals
+[ ] Voucher numbering and sequence controls
+[ ] Edit history and audit trail
+[ ] Before-and-after transaction values
+[ ] Deletion and cancellation tracking
+[ ] Period locks and backdated-entry controls
+[ ] Approval logs and exception reporting
+[ ] Duplicate transaction detection
+[ ] Access logs and login controls
+[ ] Data encryption and secure transmission
+[ ] Backup and disaster recovery
+[ ] Data restoration testing
+[ ] Audit schedules and evidence attachments
+[ ] External auditor and read-only access
+[ ] Data export and audit data retention
+[ ] Fraud indicators and unusual transaction alerts
+[ ] Change control for account and tax masters
+[ ] Record retention and data privacy controls
+N. Workflow automation and integrations
+[ ] Recurring transaction automation
+[ ] Approval routing based on amount, role or department
+[ ] Automatic reminders and escalations
+[ ] Automatic posting from sales and purchasing
+[ ] Bank feed and payment gateway integrations
+[ ] CRM and order management integration
+[ ] Inventory, POS and e-commerce integration
+[ ] Payroll and HR integration
+[ ] Expense management integration
+[ ] API and webhook access
+[ ] Bulk import, export and migration tools
+[ ] Document scanning and OCR-based bill capture
+[ ] Automatic invoice matching and reconciliation
+[ ] Email and document attachments
+[ ] Custom fields and transaction templates
+[ ] Custom rules and automated notifications
+[ ] Integration error logs and retry handling
+[ ] Data synchronization monitoring
+O. Management intelligence and advanced finance
+[ ] Real-time financial dashboards
+[ ] Revenue, expense and margin KPIs
+[ ] Cash runway and working-capital indicators
+[ ] DSO, DPO and inventory turnover metrics
+[ ] Collection effectiveness and overdue trends
+[ ] Cash-flow projections
+[ ] Revenue and expense forecasts
+[ ] Budget scenario modeling
+[ ] Anomaly and duplicate-payment detection
+[ ] AI-assisted financial queries and summaries
+[ ] Financial close checklist and task tracking
+[ ] Period-end accrual and adjustment schedules
+[ ] Balance-sheet reconciliation workflow
+[ ] Intercompany reconciliation workflow
+[ ] Management pack generation
+[ ] Custom KPI formulas and drill-down analysis
+P. Industry-specific and optional capabilities
+[ ] Contractor and project retention accounting
+[ ] Construction work-in-progress and project cost control
+[ ] Service contracts and recurring revenue
+[ ] Subscription billing and deferred revenue
+[ ] Retail POS settlement and cash-up
+[ ] Distributor schemes, rebates and trade discounts
+[ ] Manufacturing standard costing and production variance
+[ ] Import/export costs and foreign exchange
+[ ] Hospitality settlement and service charges
+[ ] Non-profit fund and grant accounting
+[ ] Education fee and student-ledger integration
+[ ] Insurance, healthcare or other sector-specific billing integration
+[ ] Franchise royalty and partner commission accounting
+[ ] Revenue-share settlement and partner statements
+[ ] Multi-location and franchisee financial reporting
+Q. Period-end and year-end close
+[ ] Monthly closing calendar and task ownership
+[ ] Bank and cash reconciliations
+[ ] Customer and vendor balance confirmation\n...[truncated]...\n\n

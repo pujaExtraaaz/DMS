@@ -1,6 +1,10 @@
 <x-tally::layouts.app :title="$order->number">
     <x-tally::shell.page :title="$order->number" section="Transactions" :description="'Purchase order · '.$order->order_date->format('d M Y')">
         <x-slot:actions>
+            <form method="POST" action="{{ tally_route('books.tally.purchase-orders.receive', $order) }}" class="inline">
+                @csrf
+                <button class="btn btn-primary" type="submit">Receive</button>
+            </form>
             <a class="btn btn-primary" href="{{ tally_route('books.tally.purchase-orders.print', $order) }}" target="_blank">Print</a>
             <a class="btn" href="{{ tally_route('books.tally.purchase-orders.pdf', $order) }}">Download PDF</a>
             <a class="btn" href="{{ tally_route('books.tally.purchase-orders.index') }}">Back</a>
@@ -39,5 +43,5 @@
             </table>
         </div>
         <p class="form-note">A purchase order does not move stock and does not post to the accounts. Print uses the company purchase terms.</p>
-    </x-shell.page>
-</x-layouts.app>
+    </x-tally::shell.page>
+</x-tally::layouts.app>

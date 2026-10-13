@@ -32,6 +32,9 @@ class Party extends AccountingModel
         'salesperson_name',
         'commission_percent',
         'is_active',
+        'is_msme',
+        'msme_registration_number',
+        'msme_type',
     ];
 
     protected function casts(): array
@@ -43,6 +46,7 @@ class Party extends AccountingModel
             'commission_percent' => 'decimal:2',
             'gst_registration_type' => GstRegistrationType::class,
             'is_active' => 'boolean',
+            'is_msme' => 'boolean',
         ];
     }
 

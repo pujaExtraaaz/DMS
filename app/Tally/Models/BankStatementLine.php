@@ -12,6 +12,7 @@ class BankStatementLine extends AccountingModel
     protected $fillable = [
         'company_id', 'bank_account_id', 'statement_date', 'value_date', 'narration',
         'debit', 'credit', 'reference', 'transaction_id', 'fingerprint', 'voucher_entry_id',
+        'categorized_ledger_id', 'investigation_note',
     ];
 
     protected function casts(): array
@@ -32,5 +33,10 @@ class BankStatementLine extends AccountingModel
     public function voucherEntry(): BelongsTo
     {
         return $this->belongsTo(VoucherEntry::class);
+    }
+
+    public function categorizedLedger(): BelongsTo
+    {
+        return $this->belongsTo(Ledger::class, 'categorized_ledger_id');
     }
 }

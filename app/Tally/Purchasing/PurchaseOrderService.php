@@ -61,6 +61,8 @@ class PurchaseOrderService
                 'grand_total' => Money::format(Money::cents($built['grand_total']) + $delivery),
                 'status' => 'open',
                 'created_by' => $user->id,
+                'purchase_requisition_id' => ($input['purchase_requisition_id'] ?? null) ?: null,
+                'vendor_quotation_id' => ($input['vendor_quotation_id'] ?? null) ?: null,
             ]);
 
             $order->lines()->createMany(array_map(fn (array $line): array => [

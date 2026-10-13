@@ -23,6 +23,13 @@
                     @csrf
                     <button class="btn" type="submit">Cancel</button>
                 </form>
+                @if ($kind->value === 'purchase')
+                    <form method="POST" action="{{ tally_route('books.tally.payment-batches.from-bills') }}">
+                        @csrf
+                        <input type="hidden" name="invoice_ids[]" value="{{ $invoice->id }}">
+                        <button class="btn btn-primary" type="submit">Create payment batch</button>
+                    </form>
+                @endif
                 @if ($kind->value === 'credit_note')
                     <a class="btn" href="{{ tally_route('books.tally.vouchers.payment.create', ['party_ledger_id' => $invoice->party_ledger_id, 'amount' => $invoice->grand_total, 'reference' => $invoice->invoice_number]) }}">Refund</a>
                 @endif

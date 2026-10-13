@@ -327,7 +327,7 @@ class InvoiceController extends Controller
     public function post(Request $request, InvoiceService $invoices, Invoice $invoice): RedirectResponse
     {
         $this->guardKind($request, $invoice);
-        $invoice = $invoices->post($invoice, $request->user());
+        $invoice = $invoices->post($invoice, $request->user(), $request->boolean('force_duplicate'));
 
         return redirect()
             ->route($invoice->kind->routeName('show'), $invoice)

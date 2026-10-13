@@ -46,6 +46,15 @@ class AppServiceProvider extends ServiceProvider
     {
         Gate::policy(Order::class, OrderPolicy::class);
 
+        // Books + Spatie: Super Admin / Client Admin bypass every ability check.
+        Gate::before(function ($user, string $ability) {
+            if (function_exists('tally_super_admin') && tally_super_admin($user)) {
+                return true;
+            }
+
+            return null;
+        });
+
         // Automatically snapshot master pricing whenever it changes.
         Product::observe(ProductPriceObserver::class);
 

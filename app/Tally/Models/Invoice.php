@@ -47,6 +47,7 @@ class Invoice extends AccountingModel
         'project_milestone_id',
         'voucher_id',
         'sales_order_id',
+        'goods_receipt_id',
         'against_invoice_id',
         'converted_from_invoice_id',
         'gst_registration_id',

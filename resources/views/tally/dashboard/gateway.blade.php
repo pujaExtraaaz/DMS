@@ -44,8 +44,10 @@
         <p class="gateway-group">Transactions</p>
         <a href="{{ tally_route('books.tally.vouchers.other') }}">Vouchers</a>
         <a href="{{ tally_route('books.tally.reports.day-book') }}">Day Book</a>
+        <a href="{{ tally_route('books.tally.transactions.menu') }}">Display More Transactions</a>
         <p class="gateway-group">Utilities</p>
         <a href="{{ tally_route('books.tally.banking.menu') }}">Banking</a>
+        <a href="{{ tally_route('books.tally.utilities.menu') }}">Display More Utilities</a>
         <p class="gateway-group">Reports</p>
         <a href="{{ tally_route('books.tally.reports.balance-sheet') }}">Balance Sheet</a>
         <a href="{{ tally_route('books.tally.reports.profit-and-loss') }}">Profit &amp; Loss A/c</a>

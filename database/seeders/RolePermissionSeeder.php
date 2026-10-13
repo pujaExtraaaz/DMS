@@ -6,6 +6,7 @@ use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
+use Tally\Authorization\PermissionCatalog;
 
 class RolePermissionSeeder extends Seeder
 {
@@ -241,7 +242,8 @@ class RolePermissionSeeder extends Seeder
 
         $permissions = array_merge(
             $permissions,
-            $this->extraPermissions
+            $this->extraPermissions,
+            PermissionCatalog::all(),
         );
 
         $permissions = array_values(

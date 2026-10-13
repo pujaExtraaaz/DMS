@@ -45,7 +45,7 @@ class BankStatementController extends Controller
     {
         $company = $context->company();
         $data = $request->validate([
-            'bank_account_id' => ['required', Rule::exists('bank_accounts', 'id')->where('company_id', $company->id)],
+            'bank_account_id' => ['required', Rule::exists('acct_bank_accounts', 'id')->where('company_id', $company->id)],
             'file' => ['required', 'file', 'max:5120'],
         ]);
         $account = BankAccount::query()->where('company_id', $company->id)->findOrFail($data['bank_account_id']);

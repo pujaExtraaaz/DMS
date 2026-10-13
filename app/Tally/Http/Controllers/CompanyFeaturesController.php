@@ -99,8 +99,12 @@ class CompanyFeaturesController extends Controller
             $request->validate([
                 'allow_negative_stock' => ['required', 'boolean'],
                 'inventory_repeat_scan_increments' => ['required', 'boolean'],
+                'inventory_valuation_method' => ['nullable', 'in:weighted_average,fifo'],
             ]);
-            $company->update(['allow_negative_stock' => $request->boolean('allow_negative_stock')]);
+            $company->update([
+                'allow_negative_stock' => $request->boolean('allow_negative_stock'),
+                'inventory_valuation_method' => $request->input('inventory_valuation_method', $company->inventory_valuation_method ?? 'weighted_average'),
+            ]);
             $preferences->put($company, null, 'inventory.repeat_scan_increments', $request->boolean('inventory_repeat_scan_increments'));
 
             return back()->with('status', 'Inventory features saved.');

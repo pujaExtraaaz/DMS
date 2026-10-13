@@ -85,6 +85,12 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
     Route::get('/reports/menu', function () {
         return \Tally\Support\Shell\TallyPanel::catalogue('Display More Reports', 'reports.menu', 'reports');
     })->name('reports.menu');
+    Route::get('/transactions/menu', function () {
+        return \Tally\Support\Shell\TallyPanel::catalogue('Display More Transactions', 'transactions.menu', 'transactions');
+    })->name('transactions.menu');
+    Route::get('/utilities/menu', function () {
+        return \Tally\Support\Shell\TallyPanel::catalogue('Display More Utilities', 'utilities.menu', 'utilities');
+    })->name('utilities.menu');
     Route::get('/search/records', [ShellSearchController::class, 'records'])->name('search.records');
     Route::get('/masters/gstin', \Tally\Http\Controllers\GstinController::class)->name('gstin.lookup');
     Route::get('/masters/hsn-catalogue', [HsnCatalogueController::class, 'index'])->name('hsn-catalogue.index');
@@ -606,6 +612,8 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
 
     Route::get('/inventory/barcode', [BarcodeController::class, 'lookup'])->middleware('permission:inventory.view')->name('barcodes.lookup');
     Route::get('/masters/products/{product}/barcode', [BarcodeController::class, 'print'])->middleware('permission:inventory.view')->name('products.barcode');
+
+    require __DIR__.'/books_section_cq.php';
 
     foreach (app(Navigation::class)->placeholders() as $page) {
         Route::get($page['uri'], [PlaceholderController::class, 'show'])
