@@ -229,7 +229,7 @@ class CustomerController extends Controller
         $data = $this->validated($request);
 
         $customer = DB::transaction(function () use ($data, $request, $lead) {
-            $companyId = $data['company_id'] ?? auth()->user()?->company_id;
+            $companyId = $data['company_id'] ?? auth()->user()?->company_id ?? \App\Domains\Organization\Models\Company::defaultCompanyId();
 
             if (blank($data['code'] ?? null) || Customer::where('code', $data['code'])->exists()) {
                 $data['code'] = CodeGenerator::forParty($companyId);
@@ -418,7 +418,7 @@ class CustomerController extends Controller
                 'is_active' => true,
             ])->id;
         }
-        $companyId = auth()->user()?->company_id;
+        $companyId = auth()->user()?->company_id ?? \App\Domains\Organization\Models\Company::defaultCompanyId();
         $validated['customer_type_id'] = $validated['customer_type_id'] ?? $defaultTypeId;
         if (blank($validated['code'] ?? null) || Customer::where('code', $validated['code'])->exists()) {
             $validated['code'] = CodeGenerator::forParty($companyId);

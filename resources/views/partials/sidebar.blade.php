@@ -119,10 +119,8 @@
                 </button>
                 <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
                     <a href="{{ route('purchasing.orders.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.orders.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Orders</span></a>
-                    <a href="{{ route('purchasing.inwards.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.inwards.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Goods Receipts (GRN)</span></a>
                     <a href="{{ route('purchasing.invoices.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.invoices.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Invoices</span></a>
                     <a href="{{ route('purchasing.freight-bills.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.freight-bills.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Freight Bills</span></a>
-                    <a href="{{ route('purchasing.landed-costs.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.landed-costs.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Landed Cost</span></a>
                 </div>
             </div>
         @endif

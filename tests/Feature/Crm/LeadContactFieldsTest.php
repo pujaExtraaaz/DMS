@@ -316,5 +316,78 @@ class LeadContactFieldsTest extends TestCase
         $this->assertEquals('Maharashtra', $lead->state);
         $this->assertEquals('400078', $lead->zip);
     }
+
+    public function test_leads_index_table_displays_all_lead_details_and_no_view_button(): void
+    {
+        $user = $this->makeUser(['crm.view', 'crm.edit', 'crm.manage']);
+        $salesUser = User::factory()->create(['name' => 'Amit Verma', 'company_id' => $user->company_id]);
+        $source = LeadSource::create(['name' => 'Google Ads', 'code' => 'GADS', 'company_id' => $user->company_id, 'is_active' => true]);
+        $campaign = LeadCampaign::create(['name' => 'Q4 Tech Campaign', 'code' => 'Q4TECH', 'company_id' => $user->company_id, 'is_active' => true]);
+
+        $lead = Lead::create([
+            'company_id' => $user->company_id,
+            'name' => 'Rajesh Sharma',
+            'company_name' => 'Sharma Enterprises',
+            'title' => 'General Manager',
+            'mobile' => '9820012345',
+            'secondary_mobile' => '9820054321',
+            'phone' => '022-28001122',
+            'landline' => '022-28001133',
+            'email' => 'rajesh@sharma.com',
+            'secondary_email' => 'accounts@sharma.com',
+            'assigned_to' => $salesUser->id,
+            'tag' => 'Wholesale Dealer',
+            'category' => 'prospect',
+            'industry' => 'Manufacturing',
+            'sub_category' => 'Solar Panels',
+            'street' => '100 Industrial Area',
+            'city' => 'Mumbai',
+            'state' => 'Maharashtra',
+            'zip' => '400001',
+            'status' => 'qualified',
+            'priority' => 'high',
+            'lead_source_id' => $source->id,
+            'lead_campaign_id' => $campaign->id,
+            'notes' => 'Customer interested in bulk orders for upcoming manufacturing unit',
+            'next_followup_at' => now()->addDays(2),
+        ]);
+
+        $response = $this->actingAs($user)->get(route('crm.leads.index'));
+
+        $response->assertOk();
+
+        // 1. View button must NOT be present
+        $response->assertDontSee('title="View Lead"', false);
+        $response->assertDontSee('aria-label="View Lead"', false);
+        $response->assertDontSee('href="' . route('crm.leads.show', $lead) . '"', false);
+
+        // 2. Edit, Delete, Convert to Customer buttons MUST be present
+        $response->assertSee('title="Edit Lead"', false);
+        $response->assertSee('title="Delete Lead"', false);
+        $response->assertSee('data-convert-lead="' . $lead->id . '"', false);
+
+        // 3. All lead details must appear in table columns
+        $response->assertSee('Rajesh Sharma');
+        $response->assertSee('Lead #' . $lead->id);
+        $response->assertSee('Sharma Enterprises');
+        $response->assertSee('General Manager');
+        $response->assertSee('9820012345');
+        $response->assertSee('9820054321');
+        $response->assertSee('022-28001122');
+        $response->assertSee('022-28001133');
+        $response->assertSee('rajesh@sharma.com');
+        $response->assertSee('accounts@sharma.com');
+        $response->assertSee('Amit Verma');
+        $response->assertSee('Wholesale Dealer');
+        $response->assertSee('Prospect');
+        $response->assertSee('Manufacturing');
+        $response->assertSee('Solar Panels');
+        $response->assertSee('100 Industrial Area, Mumbai, Maharashtra, 400001');
+        $response->assertSee('Qualified');
+        $response->assertSee('High');
+        $response->assertSee('Google Ads');
+        $response->assertSee('Q4 Tech Campaign');
+        $response->assertSee('Customer interested in bulk orders for upcoming manufacturing unit');
+    }
 }
 

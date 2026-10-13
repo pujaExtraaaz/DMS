@@ -107,9 +107,7 @@ class InvoiceController extends Controller
 
     public function create(): View
     {
-        $company = Company::query()->find(
-            auth()->user()?->company_id
-        ) ?? Company::query()->first();
+        $company = Company::resolveCurrent() ?? Company::query()->first();
 
         return view('sales.invoices.create', [
             'customers' => Customer::with('customerType')
@@ -304,33 +302,33 @@ class InvoiceController extends Controller
     {
         $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice']);
 
-        $company = \App\Domains\Organization\Models\Company::query()->first();
+        $company = Company::resolveCurrent() ?? Company::query()->first();
 
         // Prefer the signed QR from Masters India (base64 → PNG QR). Fall back to
         // a deterministic invoice QR so the PDF always shows something scannable.
-       $invoiceUrl = route('invoice.qr', [
-            'type' => 'sales',
-            'token' => $invoice->qr_token,
-        ]);
+        $invoiceUrl = route('invoice.qr', [
+             'type' => 'sales',
+             'token' => $invoice->qr_token,
+         ]);
 
-        $invoiceQrDataUri = QrCodeRenderer::dataUri($invoiceUrl, 180);
+         $invoiceQrDataUri = QrCodeRenderer::dataUri($invoiceUrl, 180);
 
-        $upiQrDataUri = null;
-        if ($company && filled($company->upi_id)) {
-            $upiUri = QrCodeRenderer::upiIntent($company->upi_id, $company->name, (float) $invoice->grand_total, 'Inv '.$invoice->invoice_no, $invoice->invoice_no);
-            $upiQrDataUri = QrCodeRenderer::dataUri($upiUri, 160);
-        }
+         $upiQrDataUri = null;
+         if ($company && filled($company->upi_id)) {
+             $upiUri = QrCodeRenderer::upiIntent($company->upi_id, $company->name, (float) $invoice->grand_total, 'Inv '.$invoice->invoice_no, $invoice->invoice_no);
+             $upiQrDataUri = QrCodeRenderer::dataUri($upiUri, 160);
+         }
 
-        $pdf = Pdf::loadView('sales.invoices.pdf', [
-            'invoice' => $invoice,
-            'company' => $company,
-            'invoiceQrDataUri' => $invoiceQrDataUri,
-            'upiQrDataUri' => $upiQrDataUri,
-        ])->setPaper('a4');
+         $pdf = Pdf::loadView('sales.invoices.pdf', [
+             'invoice' => $invoice,
+             'company' => $company,
+             'invoiceQrDataUri' => $invoiceQrDataUri,
+             'upiQrDataUri' => $upiQrDataUri,
+         ])->setPaper('a4');
 
-        return $request->boolean('download')
-            ? $pdf->download($invoice->invoice_no.'.pdf')
-            : $pdf->stream($invoice->invoice_no.'.pdf');
+         return $request->boolean('download')
+             ? $pdf->download($invoice->invoice_no.'.pdf')
+             : $pdf->stream($invoice->invoice_no.'.pdf');
     }
 
     public function eInvoiceDocument(Invoice $invoice): View
@@ -350,7 +348,7 @@ class InvoiceController extends Controller
     {
         $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice']);
 
-        $company = \App\Domains\Organization\Models\Company::query()->first();
+        $company = Company::resolveCurrent() ?? Company::query()->first();
 
         $invoiceUrl = route('invoice.qr', [
             'type' => 'sales',
@@ -384,7 +382,7 @@ class InvoiceController extends Controller
     public function preview(Invoice $invoice): View
     {
         $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'eInvoice', 'eWayBill']);
-        $company = \App\Domains\Organization\Models\Company::query()->find(auth()->user()?->company_id) ?? \App\Domains\Organization\Models\Company::query()->first();
+        $company = Company::resolveCurrent() ?? Company::query()->first();
 
         $invoiceUrl = route('invoice.qr', [
             'type' => 'sales',

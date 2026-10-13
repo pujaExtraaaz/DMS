@@ -70,4 +70,24 @@ class DueDateService
             'credit_days' => $creditDays,
         ];
     }
+
+    /**
+     * @return array{due_date: string, credit_days: int}
+     */
+    public function forPurchaseOrder(
+        ?Customer $supplier,
+        $poDate,
+        ?int $creditDaysOverride = null,
+    ): array {
+        $creditDays = $creditDaysOverride !== null
+            ? max(0, (int) $creditDaysOverride)
+            : (int) ($supplier?->credit_days ?? 0);
+
+        $source = Carbon::parse($poDate);
+
+        return [
+            'due_date' => $source->copy()->addDays($creditDays)->toDateString(),
+            'credit_days' => $creditDays,
+        ];
+    }
 }

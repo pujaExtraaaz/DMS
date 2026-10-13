@@ -21,6 +21,10 @@ class LandedCostController extends Controller
 
     public function index(Request $request): View
     {
+        if (! $request->user()?->hasRole('super-admin')) {
+            abort(404);
+        }
+
         $query = LandedCost::query()
             ->with(['purchaseInvoice.supplier', 'freightBill', 'creator'])
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('landed_date', '>=', $request->date_from))
@@ -51,8 +55,12 @@ class LandedCostController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
+        if (! $request->user()?->hasRole('super-admin')) {
+            abort(404);
+        }
+
         return view('purchasing.landed-costs.create', [
             'invoices' => PurchaseInvoice::with('supplier')->where('status', 'posted')->latest()->limit(100)->get(),
             'freightBills' => FreightBill::whereIn('status', ['posted', 'draft'])->latest()->limit(100)->get(),
@@ -61,6 +69,10 @@ class LandedCostController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        if (! $request->user()?->hasRole('super-admin')) {
+            abort(404);
+        }
+
         $validated = $request->validate([
             'landed_date' => 'required|date',
             'purchase_invoice_id' => 'required|exists:purchase_invoices,id',
@@ -77,8 +89,12 @@ class LandedCostController extends Controller
         return $this->flashSuccess('Landed cost allocated.', 'purchasing.landed-costs.show', ['landedCost' => $landed]);
     }
 
-    public function show(LandedCost $landedCost): View
+    public function show(Request $request, LandedCost $landedCost): View
     {
+        if (! $request->user()?->hasRole('super-admin')) {
+            abort(404);
+        }
+
         $landedCost->load(['items.product', 'items.uom', 'purchaseInvoice.supplier', 'freightBill', 'creator']);
 
         return view('purchasing.landed-costs.show', compact('landedCost'));

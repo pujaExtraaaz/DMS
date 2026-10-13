@@ -53,8 +53,10 @@ class WarehouseController extends Controller
 
     public function create(): View
     {
+        $defaultCompanyId = auth()->user()?->company_id ?? Company::defaultCompanyId();
+
         return view('organization.warehouses.form', [
-            'item' => new Warehouse,
+            'item' => new Warehouse(['company_id' => $defaultCompanyId]),
             'companies' => Company::where('is_active', true)->orderBy('name')->get(),
             'branches' => Branch::where('is_active', true)->orderBy('name')->get(),
         ]);

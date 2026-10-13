@@ -380,7 +380,7 @@ class LeadController extends Controller
     public function index(Request $request): View
     {
         $query = Lead::query()
-            ->with(['source', 'assignee', 'campaign', 'subCategory', 'convertedCustomer'])
+            ->with(['source', 'assignee', 'campaign', 'subCategory', 'convertedCustomer', 'latestFollowup'])
             ->forUserBranch()
             ->when($request->filled('status'), function ($q) use ($request) {
                 $stat = $request->status;
@@ -440,8 +440,13 @@ class LeadController extends Controller
                 'created_at' => 'created_at',
                 'name' => 'name',
                 'lead' => 'name',
+                'company' => 'company_name',
+                'company_name' => 'company_name',
+                'category' => 'category',
+                'industry' => 'industry',
                 'status' => 'status',
                 'priority' => 'priority',
+                'followup' => 'next_followup_at',
                 'source' => function ($q, $dir) {
                     $q->leftJoin('lead_sources as ls', 'leads.lead_source_id', '=', 'ls.id')
                         ->orderBy('ls.name', $dir)

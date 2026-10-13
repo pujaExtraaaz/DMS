@@ -7,10 +7,12 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Organization\Models\Company;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Product extends Model
 {
@@ -74,6 +76,18 @@ class Product extends Model
             'reorder_level' => 'decimal:4',
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Standardize product name so the first character is always uppercase,
+     * preserving all internal casing, numbers, and punctuation.
+     */
+    protected function name(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value) => $value !== null ? Str::ucfirst(trim($value)) : null,
+            set: fn (?string $value) => $value !== null ? Str::ucfirst(trim($value)) : null,
+        );
     }
 
     public function company(): BelongsTo

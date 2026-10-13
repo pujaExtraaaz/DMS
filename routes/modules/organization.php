@@ -15,7 +15,8 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::get('company-profile', [CompanyProfileController::class, 'show'])->name('company-profile');
     Route::get('company-profile/logo', [CompanyProfileController::class, 'logo'])->name('company-profile.logo');
     Route::put('company-profile', [CompanyProfileController::class, 'update'])->name('company-profile.update');
-    Route::resource('companies', CompanyController::class)->except(['show']);
+    Route::resource('companies', CompanyController::class);
+    Route::post('companies/{company}/set-default', [CompanyController::class, 'setDefault'])->name('companies.set-default');
     Route::resource('branches', BranchController::class)->except(['show']);
     Route::resource('warehouses', WarehouseController::class)->except(['show']);
     Route::resource('financial-years', FinancialYearController::class)->except(['show']);

@@ -38,13 +38,15 @@ class Company extends Model
         'selling_terms_and_conditions',
         'due_date_basis',
         'logo_path',
-        'is_active',  
+        'is_active',
+        'is_default',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'is_default' => 'boolean',
             'od_limit' => 'decimal:2',
             'interest_rate' => 'decimal:2',
             'additional_details' => 'array',
@@ -74,6 +76,147 @@ class Company extends Model
     public function currentFinancialYear(): ?FinancialYear
     {
         return $this->financialYears()->where('is_current', true)->first();
+    }
+
+    public function purchaseOrders(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Purchasing\Models\PurchaseOrder::class);
+    }
+
+    public function customers(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Master\Models\Customer::class);
+    }
+
+    public function users(): HasMany
+    {
+        return $this->hasMany(\App\Models\User::class);
+    }
+
+    public function canBeDeleted(): bool
+    {
+        return $this->getDeleteBlockReason() === null;
+    }
+
+    public function getDeleteBlockReason(): ?string
+    {
+        if ($this->is_default) {
+            return 'Cannot delete the default company. Please set another company as default first.';
+        }
+
+        if ($this->branches()->exists()) {
+            return 'Cannot delete company because branches are linked to it.';
+        }
+
+        if ($this->warehouses()->exists()) {
+            return 'Cannot delete company because warehouses are linked to it.';
+        }
+
+        if ($this->financialYears()->exists()) {
+            return 'Cannot delete company because financial years are linked to it.';
+        }
+
+        if ($this->users()->exists()) {
+            return 'Cannot delete company because active users are associated with it.';
+        }
+
+        if ($this->customers()->exists()) {
+            return 'Cannot delete company because customers or vendors are linked to it.';
+        }
+
+        if ($this->purchaseOrders()->exists()) {
+            return 'Cannot delete company because purchase orders exist for it.';
+        }
+
+        if ($this->hasLinkedRecordsInTable('acct_sales_orders') || $this->hasLinkedRecordsInTable('sales_orders') || $this->hasLinkedRecordsInTable('orders')) {
+            return 'Cannot delete company because sales orders exist for it.';
+        }
+
+        if ($this->hasLinkedRecordsInTable('acct_invoices') || $this->hasLinkedRecordsInTable('invoices')) {
+            return 'Cannot delete company because sales invoices exist for it.';
+        }
+
+        if ($this->hasLinkedRecordsInTable('payments')) {
+            return 'Cannot delete company because payment transactions exist for it.';
+        }
+
+        if ($this->hasLinkedRecordsInTable('leads')) {
+            return 'Cannot delete company because CRM leads are linked to it.';
+        }
+
+        if ($this->hasLinkedRecordsInTable('acct_vouchers')) {
+            return 'Cannot delete company because accounting vouchers exist for it.';
+        }
+
+        if ($this->hasLinkedRecordsInTable('acct_ledgers')) {
+            return 'Cannot delete company because accounting ledgers exist for it.';
+        }
+
+        if ($this->hasLinkedRecordsInTable('employees')) {
+            return 'Cannot delete company because employees are associated with it.';
+        }
+
+        if ($this->hasLinkedRecordsInTable('departments')) {
+            return 'Cannot delete company because departments are linked to it.';
+        }
+
+        return null;
+    }
+
+    protected function hasLinkedRecordsInTable(string $table, string $column = 'company_id'): bool
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable($table)) {
+            return false;
+        }
+
+        if (! \Illuminate\Support\Facades\Schema::hasColumn($table, $column)) {
+            return false;
+        }
+
+        return \Illuminate\Support\Facades\DB::table($table)->where($column, $this->id)->exists();
+    }
+
+    public static function defaultCompany(): ?self
+    {
+        return static::query()
+            ->where('is_default', true)
+            ->where('is_active', true)
+            ->first();
+    }
+
+    public static function defaultCompanyId(): ?int
+    {
+        return static::defaultCompany()?->id;
+    }
+
+    public static function resolveCurrent(): ?self
+    {
+        $user = auth()->user();
+        if ($user && $user->company_id) {
+            $userCompany = static::query()->where('is_active', true)->find($user->company_id);
+            if ($userCompany) {
+                return $userCompany;
+            }
+        }
+
+        return static::defaultCompany();
+    }
+
+    public function setAsDefault(): void
+    {
+        if (! $this->is_active) {
+            throw new \DomainException('Cannot set an inactive company as the default company.');
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () {
+            static::query()
+                ->where('is_default', true)
+                ->where('id', '!=', $this->id)
+                ->lockForUpdate()
+                ->update(['is_default' => false]);
+
+            $this->update(['is_default' => true]);
+        });
     }
 
     public function getContactsAttribute(): array

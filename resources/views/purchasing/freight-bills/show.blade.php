@@ -4,7 +4,6 @@
 <x-ui.page-header :title="$freightBill->freight_no">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('purchasing.freight-bills.index')">Back</x-ui.button>
-        <x-ui.button variant="primary" :href="route('purchasing.landed-costs.create', ['freight_bill_id' => $freightBill->id])">Use in Landed Cost</x-ui.button>
     </x-slot>
 </x-ui.page-header>
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">

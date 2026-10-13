@@ -10,6 +10,7 @@ use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
 use App\Support\CodeGenerator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\Importable;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -52,6 +53,7 @@ class ProductsImport implements ToCollection, WithHeadingRow
                 $this->errors[] = ['row' => $rowNo, 'field' => 'name', 'message' => 'Name is required'];
                 continue;
             }
+            $name = Str::ucfirst($name);
 
             $uomCode = strtoupper((string) ($data['uom_code'] ?? $data['uom'] ?? ''));
             $uom = $uomsByCode[$uomCode] ?? null;

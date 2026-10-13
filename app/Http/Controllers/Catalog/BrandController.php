@@ -53,8 +53,10 @@ class BrandController extends Controller
 
     public function create(): View
     {
+        $defaultCompanyId = auth()->user()?->company_id ?? Company::defaultCompanyId();
+
         return view('masters.brands.form', [
-            'item' => new Brand,
+            'item' => new Brand(['company_id' => $defaultCompanyId]),
             'companies' => Company::where('is_active', true)->orderBy('name')->get(),
         ]);
     }

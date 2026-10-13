@@ -51,8 +51,10 @@ class LeaveTypeController extends Controller
 
     public function create(): View
     {
+        $defaultCompanyId = auth()->user()?->company_id ?? Company::defaultCompanyId();
+
         return view('hrms.leave-types.form', [
-            'item' => new LeaveType(['is_active' => true, 'is_paid' => true, 'default_days' => 0]),
+            'item' => new LeaveType(['is_active' => true, 'is_paid' => true, 'default_days' => 0, 'company_id' => $defaultCompanyId]),
             'companies' => Company::orderBy('name')->get(),
         ]);
     }

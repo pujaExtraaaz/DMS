@@ -28,6 +28,8 @@ class PurchaseInvoice extends Model
         'supplier_invoice_number',
         'supplier_invoice_no',
         'invoice_date',
+        'purchase_receive_date',
+        'payment_order_date',
         'status',
         'subtotal',
         'tax_amount',
@@ -55,6 +57,8 @@ class PurchaseInvoice extends Model
     {
         return [
             'invoice_date' => 'date',
+            'purchase_receive_date' => 'date',
+            'payment_order_date' => 'date',
             'due_date' => 'date',
             'posted_at' => 'datetime',
             'subtotal' => 'decimal:2',

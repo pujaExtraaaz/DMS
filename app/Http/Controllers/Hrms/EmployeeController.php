@@ -79,10 +79,11 @@ class EmployeeController extends Controller
 
     public function create(): View
     {
-        $companyId = auth()->user()?->company_id;
+        $companyId = auth()->user()?->company_id ?? Company::defaultCompanyId();
 
         return view('hrms.employees.form', [
             'item' => new Employee([
+                'company_id' => $companyId,
                 'status' => 'active',
                 'is_salesperson' => false,
                 'employee_code' => CodeGenerator::forEmployee($companyId),

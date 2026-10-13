@@ -9,12 +9,12 @@
 </x-ui.page-header>
 
 <form method="POST" action="{{ route('purchasing.invoices.store') }}"
-      x-data="purchaseInvoiceForm(@js($products), @js($order ?? null))"
+      x-data="purchaseInvoiceForm(@js($products), @js($order ?? null), @js($initialOrders ?? []))"
       class="space-y-6">
     @csrf
 
     <x-ui.card>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
                 <div class="flex items-center justify-between mb-1">
                     <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Supplier *</label>
@@ -30,6 +30,38 @@
                         <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', $order?->supplier_id)==$s->id)>{{ $s->name }}</option>
                     @endforeach
                 </select>
+            </div>
+
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Purchase Order</label>
+                    <span x-show="poLoading" class="text-[11px] text-indigo-600 animate-pulse font-medium inline-flex items-center gap-1" x-cloak>
+                        <svg class="animate-spin h-3 w-3 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Loading...
+                    </span>
+                </div>
+                <select name="purchase_order_id"
+                        x-model="purchaseOrderId"
+                        @change="onPurchaseOrderChange()"
+                        :disabled="!supplierId || poLoading"
+                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
+                    <option value="">Select Purchase Order</option>
+                    <template x-for="po in supplierOrders" :key="po.id">
+                        <option :value="po.id" x-text="po.label" :selected="String(po.id) === String(purchaseOrderId)"></option>
+                    </template>
+                </select>
+                <p x-show="supplierId && !poLoading && supplierOrders.length === 0" class="mt-1 text-[11px] text-amber-600 font-medium" x-cloak>
+                    No eligible purchase orders found for this supplier
+                </p>
+                <p x-show="!supplierId" class="mt-1 text-[11px] text-slate-400">
+                    Select a supplier first to load purchase orders
+                </p>
+                <p x-show="selectedOrderLabel && purchaseOrderId" class="mt-1 text-[11px] text-emerald-600 font-medium" x-cloak>
+                    Linked to <span x-text="selectedOrderLabel"></span>
+                </p>
             </div>
 
             <div>
@@ -52,10 +84,23 @@
             <div>
                 <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Supplier Inv No.</label>
                 <input type="text" name="supplier_invoice_number" value="{{ old('supplier_invoice_number') }}"
+                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                       placeholder="e.g. INV-10023">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Purchase Receive Date</label>
+                <input type="date" name="purchase_receive_date" x-model="purchaseReceiveDate"
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
             </div>
 
             <div>
+                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Payment Order Date</label>
+                <input type="date" name="payment_order_date" x-model="paymentOrderDate"
+                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+            </div>
+
+            <div class="sm:col-span-2 lg:col-span-1">
                 <div class="flex items-center justify-between mb-1">
                     <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Credit Days</label>
                     <span class="text-xs text-slate-500" x-show="dueDatePreview">
@@ -95,11 +140,6 @@
                 </p>
             </div>
         </div>
-
-        @if($order)
-            <input type="hidden" name="purchase_order_id" value="{{ $order->id }}">
-            <p class="mt-3 text-xs text-slate-500">Linked to PO: <span class="font-semibold text-slate-700">{{ $order->order_number }}</span></p>
-        @endif
     </x-ui.card>
 
     <!-- Supplier Billing & Delivery Addresses -->
@@ -289,11 +329,16 @@
 
 @push('scripts')
 <script>
-function purchaseInvoiceForm(products, initialOrder) {
+function purchaseInvoiceForm(products, initialOrder, initialOrders) {
     return {
         products: products || [],
-        supplierId: initialOrder ? initialOrder.supplier_id : '',
-        warehouseId: initialOrder ? initialOrder.warehouse_id : '',
+        supplierId: initialOrder ? initialOrder.supplier_id : '{{ old('supplier_id', '') }}',
+        warehouseId: initialOrder ? initialOrder.warehouse_id : '{{ old('warehouse_id', '') }}',
+        supplierOrders: initialOrders || [],
+        poLoading: false,
+        purchaseOrderId: '{{ old('purchase_order_id', $order?->id ?? '') }}',
+        selectedOrderLabel: initialOrder ? (initialOrder.po_no || initialOrder.order_number || '') : '',
+        linkedPoId: initialOrder ? initialOrder.id : ({{ old('purchase_order_id') ? (int)old('purchase_order_id') : 'null' }}),
         partyAddresses: [],
         addressesLoading: false,
         selectedBillingId: initialOrder ? (initialOrder.billing_address_id || '') : '',
@@ -302,10 +347,12 @@ function purchaseInvoiceForm(products, initialOrder) {
         shippingSnapshot: initialOrder ? (initialOrder.shipping_address || '') : '',
         sameAsBilling: !initialOrder || !initialOrder.shipping_address_id || (initialOrder.shipping_address_id === initialOrder.billing_address_id),
         invoiceDate: '{{ old('invoice_date', date('Y-m-d')) }}',
+        purchaseReceiveDate: '{{ old('purchase_receive_date', $defaultReceiveDate ?? '') }}',
+        paymentOrderDate: '{{ old('payment_order_date', $defaultPaymentOrderDate ?? '') }}',
         creditDays: {{ old('credit_days', $order?->credit_days ?? 0) }},
         dueDatePreview: '',
         dueDateFormattedYmd: '',
-        freightCharge: 0,
+        freightCharge: {{ old('freight_charge', (float)($order?->freight_total ?? 0)) }},
         otherCharges: 0,
         subtotal: 0,
         taxTotal: 0,
@@ -314,8 +361,19 @@ function purchaseInvoiceForm(products, initialOrder) {
 
         async init() {
             this.recalcDueDate();
+            if (initialOrder) {
+                this.purchaseOrderId = initialOrder.id;
+                this.selectedOrderLabel = initialOrder.po_no || initialOrder.order_number || '';
+                this.linkedPoId = initialOrder.id;
+                if (initialOrder.receive_date && !this.purchaseReceiveDate) {
+                    this.purchaseReceiveDate = initialOrder.receive_date;
+                }
+            }
             if (this.supplierId) {
                 await this.loadSupplierAddresses(this.supplierId);
+                if (!this.supplierOrders.length) {
+                    await this.loadSupplierOrders(this.supplierId, this.purchaseOrderId);
+                }
             }
             if (initialOrder && initialOrder.items && initialOrder.items.length) {
                 this.items = initialOrder.items.map(it => {
@@ -328,7 +386,7 @@ function purchaseInvoiceForm(products, initialOrder) {
                         unit_cost: Number(it.unit_cost) || 0,
                         cgst_percent: Number(it.cgst_percent) || 0,
                         sgst_percent: Number(it.sgst_percent) || 0,
-                        batch_number: '',
+                        batch_number: it.batch_number || it.batch_no || '',
                         batch_mrp: p ? (Number(p.mrp) || 0) : 0,
                         serial_numbers: [],
                         line_total: 0
@@ -412,6 +470,19 @@ function purchaseInvoiceForm(products, initialOrder) {
         },
 
         async onSupplierChange() {
+            const hadLinkedPo = !!this.linkedPoId;
+            this.purchaseOrderId = '';
+            this.selectedOrderLabel = '';
+            this.supplierOrders = [];
+
+            if (hadLinkedPo) {
+                this.items = [];
+                this.addItem();
+                this.freightCharge = 0;
+                this.linkedPoId = null;
+                this.recalc();
+            }
+
             if (!this.supplierId) {
                 this.partyAddresses = [];
                 this.selectedBillingId = '';
@@ -429,7 +500,120 @@ function purchaseInvoiceForm(products, initialOrder) {
                 }
             }
 
-            await this.loadSupplierAddresses(this.supplierId);
+            await Promise.all([
+                this.loadSupplierAddresses(this.supplierId),
+                this.loadSupplierOrders(this.supplierId)
+            ]);
+        },
+
+        async loadSupplierOrders(supId, preselectId = null) {
+            if (!supId) {
+                this.supplierOrders = [];
+                this.purchaseOrderId = '';
+                this.selectedOrderLabel = '';
+                return;
+            }
+
+            this.poLoading = true;
+            try {
+                const res = await fetch(`{{ url('/purchasing/invoices/suppliers') }}/${supId}/purchase-orders`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await res.json();
+                this.supplierOrders = data.orders || [];
+
+                if (preselectId) {
+                    const found = this.supplierOrders.find(o => String(o.id) === String(preselectId));
+                    if (found) {
+                        this.purchaseOrderId = found.id;
+                        this.selectedOrderLabel = found.po_no;
+                    }
+                } else if (this.purchaseOrderId) {
+                    const found = this.supplierOrders.find(o => String(o.id) === String(this.purchaseOrderId));
+                    if (!found) {
+                        this.purchaseOrderId = '';
+                        this.selectedOrderLabel = '';
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load supplier purchase orders:', e);
+                this.supplierOrders = [];
+            } finally {
+                this.poLoading = false;
+            }
+        },
+
+        async onPurchaseOrderChange() {
+            if (!this.purchaseOrderId) {
+                if (this.linkedPoId) {
+                    this.items = [];
+                    this.addItem();
+                    this.freightCharge = 0;
+                    this.linkedPoId = null;
+                    this.selectedOrderLabel = '';
+                    this.recalc();
+                }
+                return;
+            }
+
+            this.poLoading = true;
+            try {
+                const res = await fetch(`{{ url('/purchasing/invoices/purchase-order') }}/${this.purchaseOrderId}/data`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.order) {
+                    const ord = data.order;
+                    this.linkedPoId = ord.id;
+                    this.selectedOrderLabel = ord.po_no || ord.order_number;
+
+                    if (ord.warehouse_id) {
+                        this.warehouseId = ord.warehouse_id;
+                    }
+                    if (ord.credit_days !== null && ord.credit_days !== undefined) {
+                        this.setCreditDays(ord.credit_days);
+                    }
+                    if (ord.receive_date && !this.purchaseReceiveDate) {
+                        this.purchaseReceiveDate = ord.receive_date;
+                    }
+                    if (ord.freight_total !== undefined) {
+                        this.freightCharge = Number(ord.freight_total) || 0;
+                    }
+
+                    if (ord.billing_address_id && this.partyAddresses.some(a => String(a.id) === String(ord.billing_address_id))) {
+                        this.selectedBillingId = ord.billing_address_id;
+                        this.onBillingAddressChange();
+                    }
+                    if (ord.shipping_address_id && this.partyAddresses.some(a => String(a.id) === String(ord.shipping_address_id))) {
+                        this.selectedShippingId = ord.shipping_address_id;
+                        this.onShippingAddressChange();
+                    }
+
+                    if (ord.items && ord.items.length) {
+                        this.items = ord.items.map(it => {
+                            const p = this.products.find(prod => prod.id === it.product_id);
+                            return {
+                                product_id: it.product_id,
+                                unit: p ? (p.unit || 'PCS') : 'PCS',
+                                tracking_type: p ? (p.tracking_type || 'none') : 'none',
+                                quantity: Number(it.quantity) || 1,
+                                unit_cost: Number(it.unit_cost) || 0,
+                                cgst_percent: Number(it.cgst_percent) || 0,
+                                sgst_percent: Number(it.sgst_percent) || 0,
+                                batch_number: it.batch_number || '',
+                                batch_mrp: Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0),
+                                serial_numbers: [],
+                                line_total: Number(it.line_total) || 0
+                            };
+                        });
+                    }
+                    this.recalc();
+                }
+            } catch (e) {
+                console.error('Failed to load purchase order details:', e);
+            } finally {
+                this.poLoading = false;
+            }
         },
 
         async loadSupplierAddresses(supId) {

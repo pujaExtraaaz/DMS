@@ -13,6 +13,7 @@ use App\Support\CodeGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Small JSON endpoint used by "Quick add product" modals in the purchase / sales
@@ -23,6 +24,12 @@ class QuickAddProductController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
+        if ($request->has('name')) {
+            $request->merge([
+                'name' => Str::ucfirst(trim((string) $request->input('name'))),
+            ]);
+        }
+
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'nullable|string|max:50|unique:products,sku',
@@ -38,7 +45,7 @@ class QuickAddProductController extends Controller
         ]);
 
         $product = DB::transaction(function () use ($data) {
-            $companyId = auth()->user()?->company_id ?? Company::query()->value('id');
+            $companyId = auth()->user()?->company_id ?? Company::defaultCompanyId() ?? Company::query()->value('id');
 
             $product = Product::create([
                 'company_id' => $companyId,
