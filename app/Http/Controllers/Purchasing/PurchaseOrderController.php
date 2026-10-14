@@ -370,12 +370,27 @@ class PurchaseOrderController extends Controller
 
     public function preview(PurchaseOrder $order): View
     {
-        $order->load(['items.product.brand', 'items.uom', 'supplier.contacts', 'warehouse', 'branch', 'creator', 'approver']);
+        $order->load([
+            'items.product.brand',
+            'items.uom',
+            'supplier.contacts',
+            'warehouse.branch',
+            'warehouse.company',
+            'branch.company',
+            'company',
+            'creator',
+            'approver',
+        ]);
         $company = $order->company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first();
+
+        $consignee = $order->resolveConsigneeDetails($company);
+        $supplierDetails = $order->resolveSupplierDetails();
 
         return view('purchasing.orders.preview', [
             'order' => $order,
             'company' => $company,
+            'consignee' => $consignee,
+            'supplierDetails' => $supplierDetails,
         ]);
     }
 
@@ -478,7 +493,7 @@ class PurchaseOrderController extends Controller
                 ->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])
                 ->orderBy('name')
                 ->get(),
-            'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
+            'warehouses' => Warehouse::where('is_active', true)->with(['branch', 'company'])->orderBy('name')->get(),
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
             'products' => Product::where('is_active', true)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),

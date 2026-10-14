@@ -12,6 +12,7 @@ use App\Domains\Purchasing\Models\PurchaseInwardItem;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseInvoiceItem;
 use App\Domains\Purchasing\Models\PurchaseOrder;
+use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Purchasing\Models\PurchaseOrderItem;
 use App\Domains\Purchasing\Models\SupplierPayable;
 use App\Domains\Purchasing\Models\VendorPriceHistory;
@@ -99,17 +100,26 @@ class PurchaseOrderService
             if (!$billingAddress) {
                 $billingAddress = $supplier->defaultBillingAddress();
             }
-            if (!$shippingAddress) {
-                $shippingAddress = $supplier->defaultDeliveryAddress() ?? $billingAddress;
-            }
 
             $billingSnapshot = !empty($data['billing_address'])
                 ? $data['billing_address']
                 : ($billingAddress ? $billingAddress->formatSnapshot() : $supplier->address);
 
-            $shippingSnapshot = !empty($data['shipping_address'])
-                ? $data['shipping_address']
-                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $supplier->address));
+            $warehouse = !empty($data['warehouse_id'])
+                ? Warehouse::with(['branch', 'company'])->find($data['warehouse_id'])
+                : null;
+
+            $defaultDeliveryAddress = $warehouse?->address
+                ?: ($warehouse?->branch?->address
+                    ?: ($warehouse?->company?->address
+                        ?: ($actor->company?->address ?? null)));
+
+            $rawShipping = !empty($data['shipping_address']) ? trim($data['shipping_address']) : null;
+            if ($rawShipping && ($rawShipping === $billingSnapshot || $rawShipping === $supplier->address)) {
+                $shippingSnapshot = $defaultDeliveryAddress ?: $rawShipping;
+            } else {
+                $shippingSnapshot = $rawShipping ?: ($shippingAddress ? $shippingAddress->formatSnapshot() : $defaultDeliveryAddress);
+            }
 
             $isFreightApplicable = !empty($data['is_freight_applicable']);
             $freightAmount = 0.0;
@@ -315,17 +325,30 @@ class PurchaseOrderService
             if (!$billingAddress && empty($data['billing_address'])) {
                 $billingAddress = $supplier->defaultBillingAddress();
             }
-            if (!$shippingAddress && empty($data['shipping_address'])) {
-                $shippingAddress = $supplier->defaultDeliveryAddress() ?? $billingAddress;
-            }
 
             $billingSnapshot = !empty($data['billing_address'])
                 ? $data['billing_address']
                 : ($billingAddress ? $billingAddress->formatSnapshot() : ($order->billing_address ?: $supplier->address));
 
-            $shippingSnapshot = !empty($data['shipping_address'])
-                ? $data['shipping_address']
-                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($order->shipping_address ?: ($billingSnapshot ?: $supplier->address)));
+            $warehouse = !empty($data['warehouse_id'])
+                ? Warehouse::with(['branch', 'company'])->find($data['warehouse_id'])
+                : ($order->warehouse()->with(['branch', 'company'])->first());
+
+            $defaultDeliveryAddress = $warehouse?->address
+                ?: ($warehouse?->branch?->address
+                    ?: ($warehouse?->company?->address
+                        ?: ($order->company?->address ?? null)));
+
+            $rawShipping = !empty($data['shipping_address']) ? trim($data['shipping_address']) : null;
+            if ($rawShipping && ($rawShipping === $billingSnapshot || $rawShipping === $supplier->address)) {
+                $shippingSnapshot = $defaultDeliveryAddress ?: $rawShipping;
+            } else {
+                $existingShipping = $order->shipping_address;
+                if ($existingShipping && ($existingShipping === $order->billing_address || $existingShipping === $supplier->address)) {
+                    $existingShipping = null;
+                }
+                $shippingSnapshot = $rawShipping ?: ($shippingAddress ? $shippingAddress->formatSnapshot() : ($existingShipping ?: $defaultDeliveryAddress));
+            }
 
             $newStatus = $order->status;
             if (! empty($data['submit_for_approval'])) {

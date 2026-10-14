@@ -304,14 +304,29 @@ class DocumentExporter
      */
     public static function exportPurchaseOrder(PurchaseOrder $order, string $format): Response|StreamedResponse
     {
-        $order->load(['supplier.contacts', 'warehouse', 'branch', 'creator', 'approver', 'items.product.brand', 'items.uom']);
+        $order->load([
+            'supplier.contacts',
+            'warehouse.branch',
+            'warehouse.company',
+            'branch.company',
+            'company',
+            'creator',
+            'approver',
+            'items.product.brand',
+            'items.uom',
+        ]);
         $company = $order->company ?? Company::resolveCurrent() ?? Company::query()->find(auth()->user()?->company_id) ?? Company::query()->first();
         $filename = 'PO-' . $order->po_no . '.' . ($format === 'excel' ? 'xlsx' : $format);
 
         if ($format === 'pdf') {
+            $consignee = $order->resolveConsigneeDetails($company);
+            $supplierDetails = $order->resolveSupplierDetails();
+
             return self::exportPdf('purchasing.orders.preview', [
                 'order' => $order,
                 'company' => $company,
+                'consignee' => $consignee,
+                'supplierDetails' => $supplierDetails,
                 'isPdf' => true,
             ], $filename);
         }

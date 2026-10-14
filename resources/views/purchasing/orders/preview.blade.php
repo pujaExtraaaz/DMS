@@ -280,7 +280,9 @@
 <body>
 
 @php
-    // Resolve Company & Defaults (Client requirement: Avit Digital)
+    // Resolve Company & Defaults
+    $company = $company ?? $order->company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->find(auth()->user()?->company_id) ?? \App\Domains\Organization\Models\Company::query()->first();
+
     if (! $company || empty($company->gstin)) {
         $avitCompany = \App\Domains\Organization\Models\Company::where(function ($q) {
             $q->where('name', 'like', '%Avit%')->orWhere('code', 'AD');
@@ -291,15 +293,18 @@
         }
     }
 
-    $companyName = 'Avit Digital';
-    $companyLegalName = $company?->legal_name ?: $companyName;
-    $companyAddress = $company?->address ?: 'B-19/463 Sangat Road Civil Lines Ludhiana - 141001';
-    $companyPhone = $company?->phone ?: '9876120738';
-    $companyEmail = $company?->email ?: 'info@avitdigital.in';
-    $companyGstin = $company?->gstin ?: '03ABGPG1954N1ZN';
-    $companyPan = $company?->pan ?: 'ABGPG1954N';
-    $companyState = $company?->state ?: 'Punjab';
-    $companyStateCode = $companyGstin && strlen(trim($companyGstin)) >= 2 ? substr(trim($companyGstin), 0, 2) : '03';
+    $consignee = $consignee ?? $order->resolveConsigneeDetails($company);
+    $supplierDetails = $supplierDetails ?? $order->resolveSupplierDetails();
+
+    $companyName = $consignee['company_name'];
+    $companyLegalName = $consignee['company_legal_name'];
+    $companyAddress = $consignee['company_address'];
+    $companyPhone = $consignee['phone'] !== '—' ? $consignee['phone'] : ($company?->phone ?: '9876120738');
+    $companyEmail = $consignee['email'] !== '—' ? $consignee['email'] : ($company?->email ?: 'info@avitdigital.in');
+    $companyGstin = $consignee['gstin'] !== '—' ? $consignee['gstin'] : ($company?->gstin ?: '03ABGPG1954N1ZN');
+    $companyPan = $consignee['pan'] !== '—' ? $consignee['pan'] : ($company?->pan ?: 'ABGPG1954N');
+    $companyState = $consignee['state'] !== '—' ? $consignee['state'] : ($company?->state ?: 'Punjab');
+    $companyStateCode = $consignee['state_code'] ?: ($companyGstin && strlen(trim($companyGstin)) >= 2 ? substr(trim($companyGstin), 0, 2) : '03');
 
     $supplier = $order->supplier;
 
@@ -318,33 +323,14 @@
         $logoDataUri = $companyForLogo->logo_url;
     }
 
-    // Supplier state code lookups
-    $supplierState = $supplier?->state;
-    $supplierStateCode = $supplier?->gstin && strlen(trim($supplier->gstin)) >= 2
-        ? substr(trim($supplier->gstin), 0, 2)
-        : ($supplierState ? \App\Support\IndianStates::codeFromName($supplierState) : null);
-
+    $supplierStateCode = $supplierDetails['state_code'];
     $isInterstate = ($companyStateCode && $supplierStateCode && $companyStateCode !== $supplierStateCode);
 
-    // Primary contact for supplier
-    $supplierContact = $supplier?->contacts?->firstWhere('is_primary', true) ?? $supplier?->contacts?->first();
-    $supplierContactPerson = $supplierContact?->name ?: '—';
-    $supplierPhone = $supplierContact?->phone ?: ($supplier?->phone ?: '—');
-    $supplierEmail = $supplierContact?->email ?: ($supplier?->email ?: '—');
-
-    // Supplier PAN
-    $supplierPan = $supplier?->pan ?: ($supplier?->gstin && strlen($supplier->gstin) >= 12 ? substr($supplier->gstin, 2, 10) : '—');
-
-    // Consignee delivery details
-    $destWarehouse = $order->warehouse;
-    $destBranch = $order->branch;
-    $deliveryAddress = $order->shipping_address
-        ?: ($destWarehouse?->address
-            ?: ($destBranch?->address
-                ?: ($order->billing_address ?: $companyAddress)));
-
-    $consigneeGstin = $companyGstin ?: ($destBranch?->gstin ?: '—');
-    $consigneePan = $companyPan ?: ($consigneeGstin && strlen($consigneeGstin) >= 12 ? substr($consigneeGstin, 2, 10) : '—');
+    $destWarehouse = $consignee['warehouse'];
+    $destBranch = $consignee['branch'];
+    $deliveryAddress = $consignee['delivery_address'];
+    $consigneeGstin = $consignee['gstin'];
+    $consigneePan = $consignee['pan'];
 
     // Tax Breakdowns
     $cgstTotal = 0.0;
@@ -499,7 +485,7 @@
                     <tr>
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 700; color: #334155;">Destination:</td>
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 600;">
-                            {{ $destWarehouse?->name ?: ($destBranch?->name ?: 'Avit Digital Central') }}
+                            {{ $consignee['warehouse_name'] ?: ($consignee['branch_name'] ?: $consignee['company_name']) }}
                         </td>
                     </tr>
                     <tr>
@@ -521,35 +507,35 @@
                 <div class="section-header">Supplier / Vendor (Order Placed To)</div>
                 <div style="padding: 6px 8px; font-size: 8.5px; line-height: 1.45;">
                     <div style="font-size: 11px; font-weight: 800; color: #0f172a; margin-bottom: 2px;">
-                        {{ $supplier?->name ?: '—' }}
+                        {{ $supplierDetails['name'] }}
                     </div>
-                    @if($supplier?->code)
-                        <div style="color: #64748b; font-size: 8px; margin-bottom: 2px;">Supplier Code: <strong>{{ $supplier->code }}</strong></div>
+                    @if($supplierDetails['code'])
+                        <div style="color: #64748b; font-size: 8px; margin-bottom: 2px;">Supplier Code: <strong>{{ $supplierDetails['code'] }}</strong></div>
                     @endif
                     <div style="margin-bottom: 3px; color: #334155;">
                         <strong>Billing Address:</strong><br>
-                        <span style="white-space: pre-line;">{{ $order->billing_address ?: ($supplier?->address ?: '—') }}</span>
+                        <span style="white-space: pre-line;">{{ $supplierDetails['billing_address'] }}</span>
                     </div>
                     <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; margin-top: 3px;">
                         <tr>
                             <td style="border: none; padding: 1px 0; width: 50%;">
-                                <strong>GSTIN/UIN:</strong> {{ $supplier?->gstin ?: '—' }}
+                                <strong>GSTIN/UIN:</strong> {{ $supplierDetails['gstin'] }}
                             </td>
                             <td style="border: none; padding: 1px 0; width: 50%;">
-                                <strong>PAN:</strong> {{ $supplierPan }}
+                                <strong>PAN:</strong> {{ $supplierDetails['pan'] }}
                             </td>
                         </tr>
                         <tr>
                             <td style="border: none; padding: 1px 0;" colspan="2">
-                                <strong>State:</strong> {{ $supplierState ?: ($supplierStateCode ? (\App\Support\IndianStates::all()[$supplierStateCode] ?? '—') : '—') }}
-                                @if($supplierStateCode)(Code: {{ $supplierStateCode }})@endif
+                                <strong>State:</strong> {{ $supplierDetails['state'] }}
+                                @if($supplierDetails['state_code'])(Code: {{ $supplierDetails['state_code'] }})@endif
                             </td>
                         </tr>
                         <tr>
                             <td style="border: none; padding: 1px 0;" colspan="2">
-                                <strong>Contact:</strong> {{ $supplierContactPerson }}
-                                @if($supplierPhone !== '—') | Tel: {{ $supplierPhone }}@endif
-                                @if($supplierEmail !== '—') | Email: {{ $supplierEmail }}@endif
+                                <strong>Contact:</strong> {{ $supplierDetails['contact_person'] }}
+                                @if($supplierDetails['phone'] !== '—') | Tel: {{ $supplierDetails['phone'] }}@endif
+                                @if($supplierDetails['email'] !== '—') | Email: {{ $supplierDetails['email'] }}@endif
                             </td>
                         </tr>
                     </table>
@@ -561,38 +547,38 @@
                 <div class="section-header">Consignee / Delivery Destination</div>
                 <div style="padding: 6px 8px; font-size: 8.5px; line-height: 1.45;">
                     <div style="font-size: 11px; font-weight: 800; color: #0f172a; margin-bottom: 2px;">
-                        Avit Digital
+                        {{ $consignee['company_name'] }}
                     </div>
-                    @if($destWarehouse)
+                    @if($consignee['warehouse_name'])
                         <div style="font-weight: 700; color: #1e293b; font-size: 9px; margin-bottom: 2px;">
-                            Warehouse: {{ $destWarehouse->name }}
+                            Warehouse: {{ $consignee['warehouse_name'] }}
                         </div>
-                    @elseif($destBranch)
+                    @elseif($consignee['branch_name'])
                         <div style="font-weight: 700; color: #1e293b; font-size: 9px; margin-bottom: 2px;">
-                            Branch: {{ $destBranch->name }}
+                            Branch: {{ $consignee['branch_name'] }}
                         </div>
                     @endif
                     <div style="margin-bottom: 3px; color: #334155;">
                         <strong>Dispatch / Delivery Address:</strong><br>
-                        <span style="white-space: pre-line;">{{ $deliveryAddress }}</span>
+                        <span style="white-space: pre-line;">{{ $consignee['delivery_address'] }}</span>
                     </div>
                     <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; margin-top: 3px;">
                         <tr>
                             <td style="border: none; padding: 1px 0; width: 50%;">
-                                <strong>GSTIN/UIN:</strong> {{ $consigneeGstin ?: '—' }}
+                                <strong>GSTIN/UIN:</strong> {{ $consignee['gstin'] }}
                             </td>
                             <td style="border: none; padding: 1px 0; width: 50%;">
-                                <strong>PAN:</strong> {{ $consigneePan ?: '—' }}
+                                <strong>PAN:</strong> {{ $consignee['pan'] }}
                             </td>
                         </tr>
                         <tr>
                             <td style="border: none; padding: 1px 0;" colspan="2">
-                                <strong>State:</strong> {{ $companyState }} @if($companyStateCode)(Code: {{ $companyStateCode }})@endif
+                                <strong>State:</strong> {{ $consignee['state'] }} @if($consignee['state_code'])(Code: {{ $consignee['state_code'] }})@endif
                             </td>
                         </tr>
                         <tr>
                             <td style="border: none; padding: 1px 0;" colspan="2">
-                                <strong>Dispatch Phone:</strong> {{ $destWarehouse?->phone ?: ($destBranch?->phone ?: $companyPhone) }}
+                                <strong>Dispatch Phone:</strong> {{ $consignee['phone'] }}
                             </td>
                         </tr>
                     </table>
