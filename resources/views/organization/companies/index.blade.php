@@ -71,9 +71,17 @@
                             <td class="px-4 py-3 text-slate-600 font-mono text-xs">{{ $item->code }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->gstin ?: '—' }} · {{ $item->businessGroup?->name ?: '—' }}</td>
                             <td class="px-4 py-3">
-                                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {{ $item->is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
-                                    {{ $item->is_active ? 'Active' : 'Inactive' }}
-                                </span>
+                                @if($item->is_active)
+                                    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-600"></span>
+                                        Active
+                                    </span>
+                                @else
+                                    <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                        <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                                        Inactive
+                                    </span>
+                                @endif
                             </td>
                             <td class="px-4 py-3 text-right whitespace-nowrap space-x-1">
                                 <x-ui.button variant="secondary" size="sm" :href="route('organization.companies.show', $item)" title="View Company" aria-label="View Company">View</x-ui.button>

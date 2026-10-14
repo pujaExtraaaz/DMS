@@ -6,6 +6,7 @@ use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\FinancialYear;
 use App\Http\Controllers\Controller;
 use App\Support\Traits\SortableAndSearchable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -98,10 +99,98 @@ class FinancialYearController extends Controller
         return $this->flashSuccess('Financial year updated successfully.', 'organization.financial-years.index');
     }
 
-    public function destroy(FinancialYear $financial_year): RedirectResponse
+    public function destroy(Request $request, FinancialYear $financial_year): RedirectResponse|JsonResponse
     {
-        $financial_year->delete();
-        return $this->flashSuccess('Financial year deleted successfully.', 'organization.financial-years.index');
+        $user = $request->user();
+
+        // Check user permissions before deleting
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) && ! $user->can('organization.manage') && ! $user->can('organization.edit')) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to delete financial year.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized to delete financial year.');
+        }
+
+        // Prevent deleting a financial year if it belongs to another company or unauthorized tenant
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && (int) $financial_year->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This financial year belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This financial year belongs to another company.');
+        }
+
+        // Check for protected accounting records or dependency block reasons
+        $blockReason = $financial_year->getDeleteBlockReason();
+        if ($blockReason) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $blockReason,
+                ], 422);
+            }
+
+            return back()->with('error', $blockReason);
+        }
+
+        $fyName = $financial_year->name;
+        $companyId = $financial_year->company_id;
+        $wasCurrent = $financial_year->is_current;
+
+        DB::transaction(function () use ($financial_year, $companyId, $wasCurrent) {
+            // Nullify unused document sequence and stock valuation references
+            if (\Illuminate\Support\Facades\Schema::hasTable('document_sequences')) {
+                DB::table('document_sequences')
+                    ->where('financial_year_id', $financial_year->id)
+                    ->update(['financial_year_id' => null]);
+            }
+            if (\Illuminate\Support\Facades\Schema::hasTable('stock_valuation_settings')) {
+                DB::table('stock_valuation_settings')
+                    ->where('financial_year_id', $financial_year->id)
+                    ->update(['financial_year_id' => null]);
+            }
+
+            // If the deleted FY was current, transition current to the most recent open FY (or any recent FY) for the company
+            if ($wasCurrent) {
+                $nextCurrent = FinancialYear::where('company_id', $companyId)
+                    ->where('id', '!=', $financial_year->id)
+                    ->where('is_closed', false)
+                    ->orderByDesc('starts_on')
+                    ->first();
+
+                if (! $nextCurrent) {
+                    $nextCurrent = FinancialYear::where('company_id', $companyId)
+                        ->where('id', '!=', $financial_year->id)
+                        ->orderByDesc('starts_on')
+                        ->first();
+                }
+
+                if ($nextCurrent) {
+                    $nextCurrent->update(['is_current' => true]);
+                }
+            }
+
+            $financial_year->delete();
+        });
+
+        Cache::forget('current_fy_pill');
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Financial year '{$fyName}' deleted successfully.",
+            ]);
+        }
+
+        return $this->flashSuccess("Financial year '{$fyName}' deleted successfully.", 'organization.financial-years.index')
+            ->with('success', "Financial year '{$fyName}' deleted successfully.");
     }
 
     public function setCurrent(FinancialYear $financial_year): RedirectResponse

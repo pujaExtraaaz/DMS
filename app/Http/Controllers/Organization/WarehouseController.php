@@ -6,6 +6,7 @@ use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\Warehouse;
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -83,10 +84,52 @@ class WarehouseController extends Controller
         return $this->flashSuccess('Warehouse updated successfully.', 'organization.warehouses.index');
     }
 
-    public function destroy(Warehouse $warehouse): RedirectResponse
+    public function destroy(Request $request, Warehouse $warehouse): RedirectResponse|JsonResponse
     {
-        $warehouse->delete();
-        return $this->flashSuccess('Warehouse deleted successfully.', 'organization.warehouses.index');
+        $user = $request->user();
+
+        // Check user permissions before deleting
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) && ! $user->can('organization.manage') && ! $user->can('organization.edit')) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to delete warehouse.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized to delete warehouse.');
+        }
+
+        // Prevent deleting a warehouse if it belongs to another company or unauthorized tenant
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && (int) $warehouse->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This warehouse belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This warehouse belongs to another company.');
+        }
+
+        $warehouseName = $warehouse->getRawOriginal('name') ?: $warehouse->name;
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($warehouse) {
+            $warehouse->is_default = false;
+            $warehouse->is_active = false;
+            $warehouse->save();
+            $warehouse->delete();
+        });
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Warehouse '{$warehouseName}' deleted successfully.",
+            ]);
+        }
+
+        return $this->flashSuccess("Warehouse '{$warehouseName}' deleted successfully.", 'organization.warehouses.index')
+            ->with('success', "Warehouse '{$warehouseName}' deleted successfully.");
     }
 
     protected function validated(Request $request, ?Warehouse $warehouse = null): array

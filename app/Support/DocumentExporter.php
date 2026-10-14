@@ -304,8 +304,8 @@ class DocumentExporter
      */
     public static function exportPurchaseOrder(PurchaseOrder $order, string $format): Response|StreamedResponse
     {
-        $order->load(['supplier', 'warehouse', 'creator', 'approver', 'items.product', 'items.uom']);
-        $company = $order->company ?? Company::query()->find(auth()->user()?->company_id) ?? Company::query()->first();
+        $order->load(['supplier.contacts', 'warehouse', 'branch', 'creator', 'approver', 'items.product.brand', 'items.uom']);
+        $company = $order->company ?? Company::resolveCurrent() ?? Company::query()->find(auth()->user()?->company_id) ?? Company::query()->first();
         $filename = 'PO-' . $order->po_no . '.' . ($format === 'excel' ? 'xlsx' : $format);
 
         if ($format === 'pdf') {
@@ -316,33 +316,64 @@ class DocumentExporter
             ], $filename);
         }
 
-        $headers = ['#', 'Product', 'Batch Name', 'UOM', 'Ordered Qty', 'Unit Cost (₹)', 'Tax %', 'CGST %', 'SGST %', 'Line Total (₹)'];
+        $headers = ['#', 'Product', 'Brand', 'Batch Name', 'HSN/SAC', 'UOM', 'Ordered Qty', 'Unit Cost (₹)', 'Tax %', 'CGST %', 'SGST %', 'IGST %', 'Line Total (₹)'];
         $rows = [];
         $i = 1;
+        $cgstTotal = 0.0;
+        $sgstTotal = 0.0;
+        $igstTotal = 0.0;
+
         foreach ($order->items as $item) {
+            $taxP = (float) $item->tax_percent;
+            $cgstP = (float) ($item->cgst_percent ?? 0);
+            $sgstP = (float) ($item->sgst_percent ?? 0);
+            $igstP = ($cgstP == 0 && $sgstP == 0 && $taxP > 0) ? $taxP : 0.0;
+
+            $lineTaxable = (float) $item->quantity * (float) $item->unit_cost;
+            if ($cgstP > 0 || $sgstP > 0) {
+                $cgstTotal += (float) ($item->cgst_amount > 0 ? $item->cgst_amount : ($lineTaxable * $cgstP / 100));
+                $sgstTotal += (float) ($item->sgst_amount > 0 ? $item->sgst_amount : ($lineTaxable * $sgstP / 100));
+            } elseif ($igstP > 0) {
+                $igstTotal += ($lineTaxable * $igstP / 100);
+            }
+
             $rows[] = [
                 $i++,
                 $item->product?->name ?? '—',
+                $item->product?->brand?->name ?? '—',
                 $item->batch_no ?? $item->batch_name ?? '—',
+                $item->product?->hsn_code ?? '—',
                 $item->uom?->code ?? '—',
                 number_format((float) $item->quantity, 2, '.', ''),
                 number_format((float) $item->unit_cost, 2, '.', ''),
                 number_format((float) $item->tax_percent, 2, '.', ''),
-                number_format((float) $item->cgst_percent, 2, '.', ''),
-                number_format((float) $item->sgst_percent, 2, '.', ''),
+                number_format($cgstP, 2, '.', ''),
+                number_format($sgstP, 2, '.', ''),
+                number_format($igstP, 2, '.', ''),
                 number_format((float) $item->line_total, 2, '.', ''),
             ];
         }
 
+        $computedTax = $cgstTotal + $sgstTotal + $igstTotal;
+        if ($computedTax == 0 && (float) $order->tax_amount > 0) {
+            $igstTotal = (float) $order->tax_amount;
+        }
+
         $meta = [
             '_title' => 'PURCHASE ORDER - ' . $order->po_no,
-            'Company' => $company?->name ?? config('app.name'),
+            'Company' => $company?->name ?? 'Avit Digital',
             'Company GSTIN' => $company?->gstin ?? '—',
+            'Company PAN' => $company?->pan ?? '—',
             'Supplier' => $order->supplier?->name ?? '—',
+            'Supplier Code' => $order->supplier?->code ?? '—',
             'Supplier GSTIN' => $order->supplier?->gstin ?? '—',
+            'Supplier PAN' => $order->supplier?->pan ?? '—',
             'PO Number' => $order->po_no,
             'PO Date' => $order->po_date?->format('d/m/Y') ?? '—',
-            'Payment Due Date' => $order->due_date ? ($order->due_date->format('d/m/Y') . ($order->credit_days ? " ({$order->credit_days} days)" : '')) : '—',
+            'Payment Terms' => $order->credit_days ? "{$order->credit_days} Days" : ($order->due_date ? $order->due_date->format('d/m/Y') : '—'),
+            'Payment Due Date' => $order->due_date ? ($order->credit_days ? "{$order->due_date->format('d/m/Y')} ({$order->credit_days} days)" : $order->due_date->format('d/m/Y')) : '—',
+            'Reference Number' => $order->reference_no ?? $order->ref_no ?? $order->reference_number ?? '—',
+            'Destination / Warehouse' => $order->warehouse?->name ?? ($order->branch?->name ?? 'Avit Digital Central'),
             'Expected Date' => $order->expected_date?->format('d/m/Y') ?? '—',
             'Status' => ucfirst(str_replace('_', ' ', $order->status)),
             'Billing Address' => preg_replace('/\s+/', ' ', trim($order->billing_address ?: ($order->supplier?->address ?: '—'))),
@@ -351,8 +382,19 @@ class DocumentExporter
 
         $totals = [
             'Subtotal (Taxable)' => '₹ ' . number_format((float) $order->subtotal, 2),
-            'Tax Amount' => '₹ ' . number_format((float) $order->tax_amount, 2),
         ];
+
+        if ($cgstTotal > 0) {
+            $totals['CGST Amount'] = '₹ ' . number_format($cgstTotal, 2);
+        }
+        if ($sgstTotal > 0) {
+            $totals['SGST Amount'] = '₹ ' . number_format($sgstTotal, 2);
+        }
+        if ($igstTotal > 0) {
+            $totals['IGST Amount'] = '₹ ' . number_format($igstTotal, 2);
+        }
+
+        $totals['Total Tax (GST)'] = '₹ ' . number_format((float) $order->tax_amount, 2);
 
         if ($order->is_freight_applicable || (float) $order->freight_amount > 0) {
             $totals['Freight Charges'] = '₹ ' . number_format((float) $order->freight_amount, 2);
