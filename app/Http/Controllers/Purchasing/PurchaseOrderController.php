@@ -370,7 +370,7 @@ class PurchaseOrderController extends Controller
 
     public function preview(PurchaseOrder $order): View
     {
-        $order->load(['items.product', 'items.uom', 'supplier', 'warehouse', 'creator', 'approver']);
+        $order->load(['items.product.brand', 'items.uom', 'supplier.contacts', 'warehouse', 'branch', 'creator', 'approver']);
         $company = $order->company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first();
 
         return view('purchasing.orders.preview', [

@@ -85,6 +85,31 @@ class PurchaseInvoice extends Model
         return (float) ($this->attributes['grand_total'] ?? 0);
     }
 
+    public function setTotalAmountAttribute($value): void
+    {
+        $this->attributes['grand_total'] = $value;
+    }
+
+    public function getInvoiceNumberAttribute(): ?string
+    {
+        return $this->attributes['invoice_no'] ?? null;
+    }
+
+    public function setInvoiceNumberAttribute(?string $value): void
+    {
+        $this->attributes['invoice_no'] = $value;
+    }
+
+    public function getSupplierInvoiceNumberAttribute(): ?string
+    {
+        return $this->attributes['supplier_invoice_no'] ?? null;
+    }
+
+    public function setSupplierInvoiceNumberAttribute(?string $value): void
+    {
+        $this->attributes['supplier_invoice_no'] = $value;
+    }
+
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
@@ -92,12 +117,12 @@ class PurchaseInvoice extends Model
 
     public function branch(): BelongsTo
     {
-        return $this->belongsTo(Branch::class);
+        return $this->belongsTo(Branch::class)->withTrashed();
     }
 
     public function warehouse(): BelongsTo
     {
-        return $this->belongsTo(Warehouse::class);
+        return $this->belongsTo(Warehouse::class)->withTrashed();
     }
 
     public function supplier(): BelongsTo
@@ -133,5 +158,33 @@ class PurchaseInvoice extends Model
     public function shippingAddress(): BelongsTo
     {
         return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'shipping_address_id');
+    }
+
+    public function landedCosts(): HasMany
+    {
+        return $this->hasMany(LandedCost::class);
+    }
+
+    public function isEditable(): bool
+    {
+        return ! in_array($this->status, ['paid', 'cancelled'], true);
+    }
+
+    public function getDeleteBlockReason(): ?string
+    {
+        if ($this->status === 'paid') {
+            return 'Paid purchase invoices cannot be deleted. Please reverse the payment first.';
+        }
+
+        if ($this->landedCosts()->where('status', 'posted')->exists()) {
+            return 'Cannot delete purchase invoice linked to posted landed costs. Please cancel the landed cost first.';
+        }
+
+        return null;
+    }
+
+    public function canBeDeleted(): bool
+    {
+        return $this->getDeleteBlockReason() === null;
     }
 }

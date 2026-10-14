@@ -31,7 +31,7 @@ class Employee extends Model
     }
 
     public function company(): BelongsTo { return $this->belongsTo(Company::class); }
-    public function branch(): BelongsTo { return $this->belongsTo(Branch::class); }
+    public function branch(): BelongsTo { return $this->belongsTo(Branch::class)->withTrashed(); }
     public function user(): BelongsTo { return $this->belongsTo(User::class); }
     public function department(): BelongsTo { return $this->belongsTo(Department::class); }
     public function designation(): BelongsTo { return $this->belongsTo(Designation::class); }

@@ -345,6 +345,14 @@
     @endif
     </tbody></table></div>
 
+    <!-- Section 3: Add Line Button directly below line items table -->
+    <div class="mt-3 flex items-center justify-between">
+        <x-ui.button type="button" variant="secondary" onclick="addPoRow()" class="inline-flex items-center gap-1.5 shadow-xs">
+            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span>Add Line</span>
+        </x-ui.button>
+    </div>
+
     <!-- Freight Charges Section -->
     <div class="mt-6 border border-slate-200 rounded-xl bg-slate-50/70 p-4 space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
@@ -433,10 +441,13 @@
         </div>
     </div>
 
-    <div class="flex flex-wrap gap-3 items-center pt-2">
-    <x-ui.button type="button" variant="secondary" onclick="addPoRow()">Add Line</x-ui.button>
-    <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="submit_for_approval" value="1" class="rounded border-gray-300"> Submit for approval</label>
-    <x-ui.button type="submit" variant="primary">Save PO</x-ui.button>
+    <!-- Section 7: Action bar with Submit for Approval and Save PO -->
+    <div class="flex flex-wrap gap-3 items-center justify-end pt-4 border-t border-slate-200">
+        <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input type="checkbox" name="submit_for_approval" value="1" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+            <span>Submit for approval</span>
+        </label>
+        <x-ui.button type="submit" variant="primary">Save PO</x-ui.button>
     </div>
     </form></x-ui.card>
     <x-quick-add-supplier targetSelect="supplier_id" />

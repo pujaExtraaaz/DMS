@@ -206,78 +206,167 @@
             </button>
         </div>
 
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs border-collapse">
-                <thead class="bg-slate-50 text-slate-600 uppercase tracking-wider border-b">
+        <div class="overflow-x-auto border-t border-slate-200">
+            <table class="w-full min-w-[1360px] text-left text-xs border-collapse">
+                <thead class="bg-slate-50 text-slate-600 uppercase tracking-wider border-b border-slate-200 font-semibold text-[11px]">
                     <tr>
-                        <th class="p-3">Product</th>
-                        <th class="p-3 w-16">Unit</th>
-                        <th class="p-3 w-24">Qty</th>
-                        <th class="p-3 w-28">Unit Cost</th>
-                        <th class="p-3 w-20">CGST %</th>
-                        <th class="p-3 w-20">SGST %</th>
-                        <th class="p-3 w-24">Total Tax %</th>
-                        <th class="p-3 w-28">Batch</th>
-                        <th class="p-3 w-28">Batch MRP</th>
-                        <th class="p-3 w-32 text-right">Line Total</th>
-                        <th class="p-3 w-10"></th>
+                        <th class="p-3 min-w-[340px] lg:min-w-[380px]">Product / Description</th>
+                        <th class="p-3 min-w-[70px] w-20 text-center">Unit</th>
+                        <th class="p-3 min-w-[110px] w-28 text-right">Qty *</th>
+                        <th class="p-3 min-w-[130px] w-36 text-right">Unit Cost (₹) *</th>
+                        <th class="p-3 min-w-[95px] w-24 text-right">CGST %</th>
+                        <th class="p-3 min-w-[95px] w-24 text-right">SGST %</th>
+                        <th class="p-3 min-w-[100px] w-28 text-center">Tax Rate</th>
+                        <th class="p-3 min-w-[130px] w-36">Batch No</th>
+                        <th class="p-3 min-w-[125px] w-32 text-right">Batch MRP (₹)</th>
+                        <th class="p-3 min-w-[140px] w-36 text-right">Line Total (₹)</th>
+                        <th class="p-3 min-w-[50px] w-14 text-center"></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     <template x-for="(row, i) in items" :key="i">
-                        <tr class="align-top hover:bg-slate-50/50">
-                            <td class="p-3">
-                                <select :name="`items[${i}][product_id]`" x-model="row.product_id" @change="onProductChange(i)" required
-                                        class="block w-full rounded border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                                    <option value="">Select product</option>
+                        <tr class="align-top hover:bg-slate-50/50 transition-colors">
+                            <td class="p-3 min-w-[340px] lg:min-w-[380px]">
+                                <select :name="`items[${i}][product_id]`"
+                                        x-model="row.product_id"
+                                        @change="onProductChange(i)"
+                                        required
+                                        class="block w-full rounded-md border-gray-300 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-h-[38px] px-3 py-2 bg-white">
+                                    <option value="">Select product...</option>
                                     <template x-for="p in products" :key="p.id">
                                         <option :value="p.id" x-text="p.name"></option>
                                     </template>
                                 </select>
 
-                                <template x-if="row.tracking_type === 'serial' || row.tracking_type === 'all'">
-                                    <div class="mt-2 p-2 bg-slate-50 rounded border border-slate-200">
-                                        <label class="block text-[10px] font-semibold text-slate-600 uppercase mb-1">Serial Numbers</label>
-                                        <template x-for="(sNo, sIdx) in row.serial_numbers" :key="sIdx">
-                                            <div class="flex gap-1 mb-1">
-                                                <input type="text" :name="`items[${i}][serial_numbers][${sIdx}]`" x-model="row.serial_numbers[sIdx]" placeholder="Serial No."
-                                                       class="block w-full rounded border-gray-300 text-xs font-mono focus:border-indigo-500">
-                                                <button type="button" @click="removeSerial(i, sIdx)" class="text-rose-500 hover:text-rose-700 px-1">&times;</button>
+                                <template x-if="isSerialTracked(row)">
+                                    <div class="mt-2.5 p-3 bg-slate-50 rounded-lg border border-slate-200/90 shadow-2xs space-y-2">
+                                        <div class="flex items-center justify-between">
+                                            <div class="flex items-center gap-1.5">
+                                                <svg class="w-3.5 h-3.5 text-indigo-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
+                                                </svg>
+                                                <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Serial Numbers</span>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700"
+                                                      x-text="(row.serial_numbers ? row.serial_numbers.length : 0) + ' entered'"></span>
                                             </div>
-                                        </template>
-                                        <button type="button" @click="addSerial(i)" class="text-[10px] text-indigo-600 font-semibold hover:underline">+ Add Serial</button>
+                                            <span class="text-[11px] text-slate-500 font-medium"
+                                                  x-text="'Target Qty: ' + (row.quantity || 1)"></span>
+                                        </div>
+
+                                        <div class="flex flex-wrap items-center gap-2 pt-0.5">
+                                            <template x-for="(sNo, sIdx) in (row.serial_numbers || [])" :key="sIdx">
+                                                <div class="inline-flex items-center rounded-md border border-slate-300 bg-white shadow-2xs focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 overflow-hidden min-w-[130px] sm:min-w-[140px] max-w-[220px] h-9 transition">
+                                                    <input type="text"
+                                                           :name="`items[${i}][serial_numbers][${sIdx}]`"
+                                                           x-model="row.serial_numbers[sIdx]"
+                                                           :placeholder="`Serial #${sIdx + 1}`"
+                                                           class="block w-full h-full px-2.5 py-1.5 text-xs font-mono font-medium text-slate-800 placeholder-slate-400 border-0 focus:ring-0 focus:outline-none bg-transparent">
+                                                    <button type="button"
+                                                            @click="removeSerial(i, sIdx)"
+                                                            class="h-full px-2 bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border-l border-slate-200 transition-colors flex items-center justify-center shrink-0 cursor-pointer"
+                                                            title="Remove Serial">
+                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </template>
+
+                                            <button type="button"
+                                                    @click="addSerial(i)"
+                                                    class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition shadow-2xs h-9 shrink-0 cursor-pointer"
+                                                    title="Add Serial Number">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                                </svg>
+                                                <span>+ Add Serial</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </template>
                             </td>
-                            <td class="p-3 text-slate-500" x-text="row.unit || '-'"></td>
-                            <td class="p-3">
-                                <input type="number" step="0.0001" min="0.0001" :name="`items[${i}][quantity]`" x-model.number="row.quantity" @input="recalc()" required
-                                       class="block w-full rounded border-gray-300 text-xs focus:border-indigo-500">
+
+                            <td class="p-3 align-top min-w-[70px] w-20 text-center text-xs font-semibold text-slate-600 pt-5"
+                                x-text="row.unit || '—'"></td>
+
+                            <td class="p-3 align-top min-w-[110px] w-28">
+                                <input type="number"
+                                       step="0.0001"
+                                       min="0.0001"
+                                       :name="`items[${i}][quantity]`"
+                                       x-model.number="row.quantity"
+                                       @input="recalc()"
+                                       required
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
-                            <td class="p-3">
-                                <input type="number" step="0.01" min="0" :name="`items[${i}][unit_cost]`" x-model.number="row.unit_cost" @input="recalc()" required
-                                       class="block w-full rounded border-gray-300 text-xs focus:border-indigo-500">
+
+                            <td class="p-3 align-top min-w-[130px] w-36">
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       :name="`items[${i}][unit_cost]`"
+                                       x-model.number="row.unit_cost"
+                                       @input="recalc()"
+                                       required
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
-                            <td class="p-3">
-                                <input type="number" step="0.01" min="0" max="100" :name="`items[${i}][cgst_percent]`" x-model.number="row.cgst_percent" @input="recalc()"
-                                       class="block w-full rounded border-gray-300 text-xs focus:border-indigo-500">
+
+                            <td class="p-3 align-top min-w-[95px] w-24">
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       max="100"
+                                       :name="`items[${i}][cgst_percent]`"
+                                       x-model.number="row.cgst_percent"
+                                       @input="recalc()"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
-                            <td class="p-3">
-                                <input type="number" step="0.01" min="0" max="100" :name="`items[${i}][sgst_percent]`" x-model.number="row.sgst_percent" @input="recalc()"
-                                       class="block w-full rounded border-gray-300 text-xs focus:border-indigo-500">
+
+                            <td class="p-3 align-top min-w-[95px] w-24">
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       max="100"
+                                       :name="`items[${i}][sgst_percent]`"
+                                       x-model.number="row.sgst_percent"
+                                       @input="recalc()"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
-                            <td class="p-3 font-semibold text-slate-700" x-text="((row.cgst_percent || 0) + (row.sgst_percent || 0)).toFixed(2) + '%'"></td>
-                            <td class="p-3">
-                                <input type="text" :name="`items[${i}][batch_number]`" x-model="row.batch_number" placeholder="Batch No"
-                                       class="block w-full rounded border-gray-300 text-xs focus:border-indigo-500">
+
+                            <td class="p-3 align-top min-w-[100px] w-28 text-center pt-5 font-semibold text-xs text-slate-700"
+                                x-text="((row.cgst_percent || 0) + (row.sgst_percent || 0)).toFixed(2) + '%'"></td>
+
+                            <td class="p-3 align-top min-w-[130px] w-36">
+                                <input type="text"
+                                       :name="`items[${i}][batch_number]`"
+                                       x-model="row.batch_number"
+                                       placeholder="Batch No"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
-                            <td class="p-3">
-                                <input type="number" step="0.01" min="0" :name="`items[${i}][batch_mrp]`" x-model.number="row.batch_mrp" placeholder="MRP"
-                                       class="block w-full rounded border-gray-300 text-xs focus:border-indigo-500">
+
+                            <td class="p-3 align-top min-w-[125px] w-32">
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       :name="`items[${i}][batch_mrp]`"
+                                       x-model.number="row.batch_mrp"
+                                       placeholder="MRP"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
-                            <td class="p-3 text-right font-semibold text-slate-800" x-text="formatCurrency(row.line_total)"></td>
-                            <td class="p-3 text-center">
-                                <button type="button" @click="removeItem(i)" x-show="items.length > 1" class="text-rose-500 hover:text-rose-700 font-bold">&times;</button>
+
+                            <td class="p-3 align-top min-w-[140px] w-36 text-right pt-5 font-bold font-mono text-slate-900 text-sm whitespace-nowrap"
+                                x-text="formatCurrency(row.line_total)"></td>
+
+                            <td class="p-3 align-top min-w-[50px] w-14 text-center pt-4">
+                                <button type="button"
+                                        @click="removeItem(i)"
+                                        x-show="items.length > 1"
+                                        class="inline-flex items-center justify-center w-8 h-8 rounded-md text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
+                                        title="Remove row">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
                             </td>
                         </tr>
                     </template>
@@ -285,35 +374,35 @@
             </table>
         </div>
 
-        <div class="p-4 bg-slate-50/50 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="p-4 bg-slate-50/50 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             <div>
                 <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Notes / Remarks</label>
-                <textarea name="notes" rows="3" placeholder="Additional delivery or invoice remarks..."
-                          class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('notes') }}</textarea>
+                <textarea name="notes" rows="4" placeholder="Additional delivery or invoice remarks..."
+                          class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 shadow-sm">{{ old('notes') }}</textarea>
             </div>
 
-            <div class="space-y-2 text-xs">
-                <div class="flex justify-between text-slate-600">
-                    <span>Taxable Subtotal:</span>
-                    <span class="font-mono font-medium" x-text="formatCurrency(subtotal)"></span>
+            <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2.5 text-xs">
+                <div class="flex justify-between items-center text-slate-600">
+                    <span class="font-medium">Taxable Subtotal:</span>
+                    <span class="font-mono font-semibold text-slate-800 text-sm" x-text="formatCurrency(subtotal)"></span>
                 </div>
-                <div class="flex justify-between text-slate-600">
-                    <span>Total Tax (CGST + SGST):</span>
-                    <span class="font-mono font-medium" x-text="formatCurrency(taxTotal)"></span>
+                <div class="flex justify-between items-center text-slate-600">
+                    <span class="font-medium">Total Tax (CGST + SGST):</span>
+                    <span class="font-mono font-semibold text-slate-800 text-sm" x-text="formatCurrency(taxTotal)"></span>
                 </div>
                 <div class="flex items-center justify-between text-slate-600">
-                    <span>Freight / Landed Charge (₹):</span>
+                    <span class="font-medium">Freight / Landed Charge (₹):</span>
                     <input type="number" step="0.01" min="0" name="freight_charge" x-model.number="freightCharge" @input="recalc()"
-                           class="w-28 rounded border-gray-300 text-xs text-right focus:border-indigo-500">
+                           class="w-32 min-h-[34px] px-2.5 py-1.5 rounded-md border-gray-300 text-xs font-mono text-right shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                 </div>
                 <div class="flex items-center justify-between text-slate-600">
-                    <span>Other Charges (₹):</span>
+                    <span class="font-medium">Other Charges (₹):</span>
                     <input type="number" step="0.01" min="0" name="other_charges" x-model.number="otherCharges" @input="recalc()"
-                           class="w-28 rounded border-gray-300 text-xs text-right focus:border-indigo-500">
+                           class="w-32 min-h-[34px] px-2.5 py-1.5 rounded-md border-gray-300 text-xs font-mono text-right shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                 </div>
-                <div class="flex justify-between text-base font-bold text-slate-900 pt-2 border-t border-slate-200">
+                <div class="flex justify-between items-center font-bold text-base text-slate-900 border-t border-slate-200 pt-3 mt-1">
                     <span>Grand Total:</span>
-                    <span class="font-mono text-indigo-600" x-text="formatCurrency(grandTotal)"></span>
+                    <span class="font-mono text-indigo-700 text-lg" x-text="formatCurrency(grandTotal)"></span>
                 </div>
             </div>
         </div>
@@ -422,6 +511,16 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders) {
             }
         },
 
+        isSerialTracked(row) {
+            if (!row || !row.tracking_type) return false;
+            const tt = row.tracking_type;
+            if (Array.isArray(tt)) {
+                return tt.includes('serial');
+            }
+            const str = String(tt).toLowerCase();
+            return str === 'serial' || str === 'all' || str.includes('serial');
+        },
+
         onProductChange(index) {
             const row = this.items[index];
             const p = this.products.find(item => item.id == row.product_id);
@@ -432,16 +531,24 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders) {
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.batch_mrp = Number(p.mrp) || 0;
+                if (this.isSerialTracked(row) && (!row.serial_numbers || row.serial_numbers.length === 0)) {
+                    row.serial_numbers = [''];
+                }
             }
             this.recalc();
         },
 
         addSerial(itemIndex) {
+            if (!this.items[itemIndex].serial_numbers) {
+                this.items[itemIndex].serial_numbers = [];
+            }
             this.items[itemIndex].serial_numbers.push('');
         },
 
         removeSerial(itemIndex, serialIndex) {
-            this.items[itemIndex].serial_numbers.splice(serialIndex, 1);
+            if (this.items[itemIndex].serial_numbers) {
+                this.items[itemIndex].serial_numbers.splice(serialIndex, 1);
+            }
         },
 
         recalc() {
