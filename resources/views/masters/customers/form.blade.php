@@ -145,6 +145,25 @@
                             <p x-show="gstFeedback.note" x-text="gstFeedback.note" class="text-[11px] opacity-90"></p>
                         </div>
                     </div>
+
+                    <div x-show="gstLookupInfo && Object.keys(gstLookupInfo).length"
+                         x-cloak
+                         class="mt-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-[11px] text-slate-700 space-y-1">
+                        <p class="font-semibold text-slate-800 uppercase tracking-wider text-[10px]">GST registration details (for review)</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5">
+                            <p x-show="gstLookupInfo.legal_name"><span class="text-slate-500">Legal name:</span> <span x-text="gstLookupInfo.legal_name"></span></p>
+                            <p x-show="gstLookupInfo.trade_name"><span class="text-slate-500">Trade name:</span> <span x-text="gstLookupInfo.trade_name"></span></p>
+                            <p x-show="gstLookupInfo.status"><span class="text-slate-500">Status:</span> <span x-text="gstLookupInfo.status"></span></p>
+                            <p x-show="gstLookupInfo.taxpayer_type"><span class="text-slate-500">Taxpayer type:</span> <span x-text="gstLookupInfo.taxpayer_type"></span></p>
+                            <p x-show="gstLookupInfo.constitution_of_business"><span class="text-slate-500">Constitution:</span> <span x-text="gstLookupInfo.constitution_of_business"></span></p>
+                            <p x-show="gstLookupInfo.registration_date"><span class="text-slate-500">Registration date:</span> <span x-text="gstLookupInfo.registration_date"></span></p>
+                            <p x-show="gstLookupInfo.cancellation_date"><span class="text-slate-500">Cancellation date:</span> <span x-text="gstLookupInfo.cancellation_date"></span></p>
+                            <p x-show="gstLookupInfo.state_jurisdiction"><span class="text-slate-500">State jurisdiction:</span> <span x-text="gstLookupInfo.state_jurisdiction"></span></p>
+                            <p x-show="gstLookupInfo.center_jurisdiction"><span class="text-slate-500">Center jurisdiction:</span> <span x-text="gstLookupInfo.center_jurisdiction"></span></p>
+                            <p x-show="gstLookupInfo.nature_of_business" class="sm:col-span-2"><span class="text-slate-500">Nature of business:</span> <span x-text="gstLookupInfo.nature_of_business"></span></p>
+                        </div>
+                        <p class="text-slate-500">These details are shown from GST records and are not saved as separate party fields.</p>
+                    </div>
                 </div>
 
                 <div>
@@ -767,6 +786,8 @@ function partyFormController() {
             message: '',
             note: ''
         },
+        gstLookupInfo: null,
+        gstLookupAppliedKey: '',
         selectedCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
         previousCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
         customClassifications: [],
@@ -986,14 +1007,125 @@ function partyFormController() {
                 cheque_type: 'regular'
             });
         },
+        applyExtractedGstinFields(extracted = null, gstin = '') {
+            const source = extracted || {};
+            const derivedPan = (source.pan || (gstin.length >= 12 ? gstin.substring(2, 12) : '') || '').trim();
+            const stateCode = (source.state_code || (gstin.length >= 2 ? gstin.substring(0, 2) : '') || '').toString();
+            const stateMatch = (this.statesList || []).find(s => String(s.code) === stateCode);
+            const derivedState = (source.state || (stateMatch ? stateMatch.name : '') || '').trim();
+
+            if (derivedPan && (!this.form.pan || !this.form.pan.trim())) {
+                this.form.pan = derivedPan;
+            }
+            if (derivedState && (!this.form.state || !this.form.state.trim())) {
+                this.form.state = derivedState;
+            }
+            if (this.addresses && this.addresses.length > 0) {
+                const primary = this.addresses.find(a => a.is_default_billing) || this.addresses[0];
+                if (primary && derivedState && (!primary.state || !primary.state.trim())) {
+                    primary.state = derivedState;
+                }
+            }
+        },
+
+        addressFingerprint(addr) {
+            const norm = (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            return [norm(addr.address_line_1), norm(addr.city), norm(addr.pincode)].join('|');
+        },
+
+        isAddressEmpty(addr) {
+            if (!addr) return true;
+            return !String(addr.address_line_1 || '').trim()
+                && !String(addr.address_line_2 || '').trim()
+                && !String(addr.city || '').trim()
+                && !String(addr.pincode || '').trim();
+        },
+
+        applyGstAddresses(party) {
+            if (!this.addresses) this.addresses = [];
+            const returned = Array.isArray(party.addresses) && party.addresses.length
+                ? party.addresses
+                : [{
+                    label: party.address_label || 'Principal Place of Business',
+                    address_line_1: party.address_line_1 || party.address || '',
+                    address_line_2: party.address_line_2 || '',
+                    city: party.city || '',
+                    state: party.state || '',
+                    pincode: party.pincode || '',
+                }];
+
+            const take = (value) => {
+                const clean = String(value || '').trim();
+                return clean || null;
+            };
+
+            // Always refresh the principal / default billing address from the latest GST fetch.
+            const principal = returned[0] || null;
+            if (principal) {
+                let primary = this.addresses.find(a => a.is_default_billing) || this.addresses[0];
+                if (!primary) {
+                    this.addAddress();
+                    primary = this.addresses[0];
+                }
+
+                const label = take(principal.label) || 'Principal Place of Business';
+                if (!String(primary.label || '').trim()
+                    || ['Head Office', 'Branch / Warehouse', 'Principal Place of Business'].includes(primary.label)
+                    || String(primary.label || '').startsWith('Additional Place of Business')) {
+                    primary.label = label;
+                }
+
+                if (take(principal.address_line_1)) primary.address_line_1 = take(principal.address_line_1);
+                if (take(principal.address_line_2) !== null) primary.address_line_2 = take(principal.address_line_2) || '';
+                if (take(principal.city)) primary.city = take(principal.city);
+                if (take(principal.state) || take(party.state)) primary.state = take(principal.state) || take(party.state);
+                if (take(principal.pincode)) primary.pincode = take(principal.pincode);
+            }
+
+            // Add only new additional places of business (never duplicate).
+            const existingKeys = new Set(this.addresses.map(a => this.addressFingerprint(a)));
+            returned.slice(1).forEach((src, index) => {
+                const mapped = {
+                    label: take(src.label) || `Additional Place of Business ${index + 1}`,
+                    address_line_1: take(src.address_line_1) || '',
+                    address_line_2: take(src.address_line_2) || '',
+                    city: take(src.city) || '',
+                    state: take(src.state) || take(party.state) || '',
+                    pincode: take(src.pincode) || '',
+                };
+                const key = this.addressFingerprint(mapped);
+                if (!mapped.address_line_1 && !mapped.city && !mapped.pincode) return;
+                if (existingKeys.has(key)) return;
+
+                this.addresses.push({
+                    id: null,
+                    label: mapped.label,
+                    contact_person: '',
+                    contact_phone: '',
+                    address_line_1: mapped.address_line_1,
+                    address_line_2: mapped.address_line_2,
+                    city: mapped.city,
+                    state: mapped.state,
+                    pincode: mapped.pincode,
+                    type: 'both',
+                    is_default_billing: false,
+                    is_default_delivery: false,
+                });
+                existingKeys.add(key);
+            });
+
+            this.syncPrimaryAddress();
+        },
+
         async fetchGstDetails() {
             const gstin = (this.form.gstin || '').trim().toUpperCase();
             this.form.gstin = gstin;
+            this.gstLookupInfo = null;
 
             if (gstin.length !== 15) {
                 this.gstFeedback = {
                     type: 'error',
-                    message: 'Please enter a valid 15-character GSTIN (e.g. 27AAAAA0000A1Z5).',
+                    message: 'Please enter a valid 15-character GSTIN (e.g. 27AACCN0053F1ZW).',
                     note: ''
                 };
                 return;
@@ -1003,91 +1135,73 @@ function partyFormController() {
             if (!gstinPattern.test(gstin)) {
                 this.gstFeedback = {
                     type: 'error',
-                    message: 'Invalid GSTIN format. Expected 2-digit state code, 10-character PAN, entity code, and checksum (e.g. 27AAAAA0000A1Z5).',
+                    message: 'Invalid GSTIN format. Expected 2-digit state code, 10-character PAN, entity code, and checksum.',
                     note: ''
                 };
+                this.applyExtractedGstinFields(null, gstin);
                 return;
             }
 
             this.searchingGst = true;
             this.gstFeedback = { type: '', message: '', note: '' };
+            this.applyExtractedGstinFields(null, gstin);
 
             try {
                 const response = await fetch(`{{ route('masters.customers.gst-lookup') }}?gstin=${encodeURIComponent(gstin)}`);
                 const data = await response.json();
 
+                if (data.extracted) {
+                    this.applyExtractedGstinFields(data.extracted, gstin);
+                }
+
                 if (data.success && data.party) {
-                    // Safe assignment helper that preserves user values unless confirmed
-                    const assignField = (currentValue, newValue, fieldLabel) => {
-                        if (!newValue || !String(newValue).trim()) return currentValue;
-                        const cleanNew = String(newValue).trim();
-                        const cleanCur = (currentValue || '').trim();
-                        if (!cleanCur) {
-                            return cleanNew;
-                        }
-                        if (cleanCur.toLowerCase() !== cleanNew.toLowerCase()) {
-                            if (confirm(`Replace existing ${fieldLabel} "${cleanCur}" with verified "${cleanNew}"?`)) {
-                                return cleanNew;
-                            }
-                        }
-                        return currentValue;
+                    // Auto-overwrite GST identity/address fields — no confirmation popups.
+                    if (data.party.name) this.form.name = String(data.party.name).trim();
+                    if (data.party.pan) this.form.pan = String(data.party.pan).trim();
+                    if (data.party.state) this.form.state = String(data.party.state).trim();
+                    if (data.party.pincode) this.form.pincode = String(data.party.pincode).trim();
+                    if (data.party.address || data.party.address_line_1) {
+                        this.form.address = String(data.party.address || data.party.address_line_1).trim();
+                    }
+
+                    this.applyGstAddresses(data.party);
+                    this.gstLookupAppliedKey = [
+                        gstin,
+                        data.party.address_line_1 || '',
+                        data.party.pincode || '',
+                        (data.party.addresses || []).length
+                    ].join('::');
+
+                    this.gstLookupInfo = {
+                        legal_name: data.party.legal_name || '',
+                        trade_name: data.party.trade_name || '',
+                        status: data.party.status || '',
+                        taxpayer_type: data.party.taxpayer_type || '',
+                        constitution_of_business: data.party.constitution_of_business || '',
+                        registration_date: data.party.registration_date || '',
+                        cancellation_date: data.party.cancellation_date || '',
+                        state_jurisdiction: data.party.state_jurisdiction || '',
+                        center_jurisdiction: data.party.center_jurisdiction || '',
+                        nature_of_business: Array.isArray(data.party.nature_of_business)
+                            ? data.party.nature_of_business.join(', ')
+                            : (data.party.nature_of_business || ''),
                     };
 
-                    // Populate Party Name (prefer registered trade name, fallback legal name)
-                    this.form.name = assignField(this.form.name, data.party.name, 'Party Name');
-
-                    // Populate PAN
-                    this.form.pan = assignField(this.form.pan, data.party.pan, 'PAN');
-
-                    // Populate State
-                    this.form.state = assignField(this.form.state, data.party.state, 'State');
-
-                    // Populate Pincode and Address
-                    if (data.party.pincode && (!this.form.pincode || !this.form.pincode.trim())) {
-                        this.form.pincode = data.party.pincode.trim();
-                    }
-                    if (data.party.address && (!this.form.address || !this.form.address.trim())) {
-                        this.form.address = data.party.address.trim();
-                    }
-
-                    // Populate default address in address list if present
-                    if (this.addresses && this.addresses.length > 0) {
-                        const primary = this.addresses.find(a => a.is_default_billing) || this.addresses[0];
-                        if (primary) {
-                            const line1 = data.party.address_line_1 || data.party.address || '';
-                            if (line1) {
-                                primary.address_line_1 = assignField(primary.address_line_1, line1, 'Address Line 1');
-                            }
-                            if (data.party.address_line_2 && (!primary.address_line_2 || !primary.address_line_2.trim())) {
-                                primary.address_line_2 = data.party.address_line_2.trim();
-                            }
-                            if (data.party.city) {
-                                primary.city = assignField(primary.city, data.party.city, 'City');
-                            }
-                            if (data.party.state) {
-                                primary.state = assignField(primary.state, data.party.state, 'State');
-                            }
-                            if (data.party.pincode) {
-                                primary.pincode = assignField(primary.pincode, data.party.pincode, 'Pincode');
-                            }
-                        }
-                        this.syncPrimaryAddress();
-                    }
-
-                    // Status and user feedback
                     const statusText = data.party.status ? ` (Status: ${data.party.status})` : '';
-                    const isInactive = data.party.status && data.party.status.toLowerCase() !== 'active';
+                    const isInactive = !!data.party.is_inactive
+                        || (data.party.status && !['active', 'provisional'].includes(String(data.party.status).toLowerCase()));
                     this.gstFeedback = {
                         type: isInactive ? 'warning' : 'success',
                         message: (data.message || 'GSTIN verified successfully from official records.') + statusText,
                         note: isInactive
                             ? `Warning: GST registration status is reported as ${data.party.status}. Please review carefully before saving.`
-                            : 'Party details populated. Phone and Email are not published in public tax records and can be entered manually.'
+                            : 'Details updated from GST records. Phone, email, party type, credit, and bank details remain manual.'
                     };
                 } else {
+                    this.gstLookupInfo = null;
                     const note = data.is_configured === false
-                        ? 'GST verification credentials need to be configured in .env (e.g. GST_API_KEY, GST_API_SECRET). You may enter details manually.'
-                        : 'All manually entered values have been preserved. You can enter details manually.';
+                        ? 'Add GST_API_KEY and GST_API_SECRET to .env, then run php artisan config:clear. PAN and State were filled from the GSTIN where possible.'
+                        : 'PAN and State were filled from the GSTIN where possible (structural extraction, not provider-verified). You can enter remaining details manually.';
                     this.gstFeedback = {
                         type: 'error',
                         message: data.message || 'GSTIN details not found or verification failed.',
@@ -1095,10 +1209,12 @@ function partyFormController() {
                     };
                 }
             } catch (err) {
+                this.gstLookupInfo = null;
+                this.applyExtractedGstinFields(null, gstin);
                 this.gstFeedback = {
                     type: 'error',
                     message: 'An error occurred while connecting to GST lookup service.',
-                    note: 'Please verify network connection and try again.'
+                    note: 'PAN and State were filled from the GSTIN where possible. Please verify network connection and try again.'
                 };
             } finally {
                 this.searchingGst = false;

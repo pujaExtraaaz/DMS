@@ -137,11 +137,15 @@ function quickAddSupplierModal(targetSelectName) {
             try {
                 const response = await fetch(`{{ route('masters.customers.gst-lookup') }}?gstin=${encodeURIComponent(gstin)}`);
                 const data = await response.json();
+                const extracted = data.extracted || {};
+                if (!this.form.state && extracted.state) {
+                    this.form.state = extracted.state;
+                }
                 if (data.success && data.party) {
                     this.form.name = data.party.name || this.form.name;
                     this.form.state = data.party.state || this.form.state;
                     this.form.pincode = data.party.pincode || this.form.pincode;
-                    this.form.address = data.party.address || this.form.address;
+                    this.form.address = data.party.address || data.party.address_line_1 || this.form.address;
                 } else {
                     this.errorMessage = data.message || 'GST details not found.';
                 }

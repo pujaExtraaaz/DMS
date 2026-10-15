@@ -177,25 +177,28 @@ class QuickAddCustomerInOrderTest extends TestCase
     public function test_gst_lookup_returns_party_details(): void
     {
         config([
+            'services.gst.provider' => 'sandbox',
             'services.gst.api_key' => 'fake-test-key',
             'services.gst.api_secret' => 'fake-test-secret',
+            'services.gst.api_url' => 'https://api.sandbox.co.in',
         ]);
         Http::fake([
             '*/authenticate' => Http::response(['access_token' => 'fake-jwt-token'], 200),
-            '*' => Http::response([
-                'access_token' => 'fake-jwt-token',
+            '*/gst/compliance/public/gstin/search' => Http::response([
                 'data' => [
-                    'gstin' => '27AAACA1234A1Z5',
-                    'trade_name' => 'Acme Supplies',
-                    'legal_name' => 'Acme Supplies Private Limited',
-                    'status' => 'Active',
-                    'principal_place_of_business' => [
-                        'address' => [
-                            'building_number' => '101',
-                            'street' => 'MG Road',
-                            'city' => 'Mumbai',
-                            'state' => 'Maharashtra',
-                            'pincode' => '400001',
+                    'data' => [
+                        'gstin' => '27AAAAA0000A1Z2',
+                        'tradeNam' => 'Acme Supplies',
+                        'lgnm' => 'Acme Supplies Private Limited',
+                        'sts' => 'Active',
+                        'pradr' => [
+                            'addr' => [
+                                'bno' => '101',
+                                'st' => 'MG Road',
+                                'city' => 'Mumbai',
+                                'stcd' => 'Maharashtra',
+                                'pncd' => '400001',
+                            ],
                         ],
                     ],
                 ],
@@ -203,14 +206,15 @@ class QuickAddCustomerInOrderTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->salesUser)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAACA1234A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
         ]);
         $this->assertEquals('Maharashtra', $response->json('party.state'));
-        $this->assertEquals('Acme Supplies', $response->json('party.name'));
+        $this->assertEquals('Acme Supplies Private Limited', $response->json('party.name'));
+        $this->assertEquals('Acme Supplies', $response->json('party.trade_name'));
     }
 
     public function test_quick_add_with_classification_and_fetches_addresses(): void

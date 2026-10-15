@@ -261,19 +261,24 @@ function quickAddCustomerModal(targetSelectName, statesList, stateCitiesMap) {
             try {
                 const response = await fetch(`{{ route('masters.customers.gst-lookup') }}?gstin=${encodeURIComponent(gstin)}`);
                 const data = await response.json();
+                const extracted = data.extracted || {};
+                if (!this.form.pan) {
+                    this.form.pan = extracted.pan || (gstin.length >= 12 ? gstin.substring(2, 12) : '');
+                }
+                if (!this.form.state && (extracted.state || data.party?.state)) {
+                    this.form.state = data.party?.state || extracted.state;
+                    this.onStateChanged();
+                }
                 if (data.success && data.party) {
                     this.form.name = data.party.name || this.form.name;
-                    if (data.party.pan) {
-                        this.form.pan = data.party.pan;
-                    } else if (gstin.length >= 12) {
-                        this.form.pan = gstin.substring(2, 12);
-                    }
+                    if (data.party.pan) this.form.pan = data.party.pan;
                     if (data.party.state) {
                         this.form.state = data.party.state;
                         this.onStateChanged();
                     }
+                    if (data.party.city && !this.form.city) this.form.city = data.party.city;
                     this.form.pincode = data.party.pincode || this.form.pincode;
-                    this.form.address = data.party.address || this.form.address;
+                    this.form.address = data.party.address || data.party.address_line_1 || this.form.address;
                 } else {
                     this.errorMessage = data.message || 'GST details not found.';
                 }

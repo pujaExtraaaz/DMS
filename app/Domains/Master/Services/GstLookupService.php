@@ -32,6 +32,34 @@ class GstLookupService
     }
 
     /**
+     * Validate GSTIN check-digit (mod-36 algorithm used by GSTN / Sandbox).
+     */
+    public static function hasValidChecksum(?string $gstin): bool
+    {
+        if (! self::isValidGstin($gstin)) {
+            return false;
+        }
+
+        $gstin = strtoupper(trim((string) $gstin));
+        $chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $factor = [1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2];
+        $sum = 0;
+
+        for ($i = 0; $i < 14; $i++) {
+            $code = strpos($chars, $gstin[$i]);
+            if ($code === false) {
+                return false;
+            }
+            $product = $code * $factor[$i];
+            $sum += intdiv($product, 36) + ($product % 36);
+        }
+
+        $checkCode = (36 - ($sum % 36)) % 36;
+
+        return $gstin[14] === $chars[$checkCode];
+    }
+
+    /**
      * Check if the configured provider has the required credentials.
      */
     public function isConfigured(?string $provider = null): bool
@@ -64,22 +92,7 @@ class GstLookupService
      *     is_configured?: bool,
      *     status_code?: int,
      *     message: string,
-     *     party?: array{
-     *         gstin: string,
-     *         name: string,
-     *         trade_name: string,
-     *         legal_name: string,
-     *         pan: string,
-     *         state: string,
-     *         city: string,
-     *         pincode: string,
-     *         address: string,
-     *         address_line_1: string,
-     *         address_line_2: string,
-     *         status: string,
-     *         registration_date?: ?string,
-     *         taxpayer_type?: ?string
-     *     },
+     *     party?: array<string, mixed>,
      *     required_keys?: array<int, string>
      * }
      */
@@ -87,16 +100,14 @@ class GstLookupService
     {
         $gstin = strtoupper(trim($gstin));
 
-        // 1. Length check
         if (strlen($gstin) !== 15) {
             return [
                 'success' => false,
                 'status_code' => 422,
-                'message' => 'Please enter a valid 15-character GSTIN (e.g. 27AAAAA0000A1Z5).',
+                'message' => 'Please enter a valid 15-character GSTIN (e.g. 27AAAAA0000A1Z2).',
             ];
         }
 
-        // 2. Format validation
         if (! self::isValidGstin($gstin)) {
             return [
                 'success' => false,
@@ -105,7 +116,6 @@ class GstLookupService
             ];
         }
 
-        // 3. State code validation
         $stateCode = substr($gstin, 0, 2);
         if (! isset(IndianStates::all()[$stateCode])) {
             return [
@@ -115,9 +125,17 @@ class GstLookupService
             ];
         }
 
+        if (! self::hasValidChecksum($gstin)) {
+            return [
+                'success' => false,
+                'status_code' => 422,
+                'message' => 'Invalid GSTIN checksum. Please verify the GSTIN and try again.',
+                'extracted' => $this->extractedFromGstin($gstin),
+            ];
+        }
+
         $provider = strtolower((string) config('services.gst.provider', 'sandbox'));
 
-        // 4. Missing credentials check
         if (! $this->isConfigured($provider)) {
             return [
                 'success' => false,
@@ -126,10 +144,10 @@ class GstLookupService
                 'message' => "GST verification API is not configured. Please configure {$this->getRequiredCredentialsName($provider)} in your environment.",
                 'provider' => $provider,
                 'required_keys' => $this->getRequiredConfigKeys($provider),
+                'extracted' => $this->extractedFromGstin($gstin),
             ];
         }
 
-        // 5. Query the authorized provider
         try {
             $response = match ($provider) {
                 'sandbox' => $this->callSandbox($gstin),
@@ -142,40 +160,53 @@ class GstLookupService
                 'success' => false,
                 'status_code' => 401,
                 'message' => $e->getMessage(),
+                'extracted' => $this->extractedFromGstin($gstin),
             ];
         } catch (ConnectionException $e) {
-            Log::warning("GST API connection timeout for GSTIN {$gstin}: " . $e->getMessage());
+            Log::warning('GST API connection timeout for GSTIN '.$gstin.': '.$e->getMessage());
 
             return [
                 'success' => false,
                 'status_code' => 504,
                 'message' => 'GST verification service timed out. Please try again or enter party details manually.',
+                'extracted' => $this->extractedFromGstin($gstin),
             ];
         } catch (\Throwable $e) {
-            Log::warning("GST API unexpected error for GSTIN {$gstin}: " . $e->getMessage());
+            Log::warning('GST API unexpected error for GSTIN '.$gstin.': '.$e->getMessage());
 
             return [
                 'success' => false,
                 'status_code' => 502,
                 'message' => 'Unable to connect to GST verification provider. Please try again later or enter details manually.',
+                'extracted' => $this->extractedFromGstin($gstin),
             ];
         }
 
-        // 6. Handle HTTP response status
         return $this->handleProviderResponse($response, $gstin, $provider);
     }
 
     /**
+     * PAN / state derived from GSTIN structure (not provider-verified).
+     *
+     * @return array{pan: string, state: string, state_code: string}
+     */
+    protected function extractedFromGstin(string $gstin): array
+    {
+        return [
+            'pan' => substr($gstin, 2, 10),
+            'state' => IndianStates::stateFromGstin($gstin) ?? '',
+            'state_code' => substr($gstin, 0, 2),
+        ];
+    }
+
+    /**
      * Obtain or retrieve cached Sandbox access token.
-     * Uses official Sandbox POST /authenticate endpoint with x-api-key and x-api-secret.
-     * Tokens are valid for 24 hours and cached for 23 hours.
      */
     protected function getSandboxAccessToken(string $baseUrl): string
     {
         $apiKey = (string) config('services.gst.api_key');
         $apiSecret = (string) config('services.gst.api_secret');
 
-        // If either API key or secret is already a JWT token, use it directly
         if (str_starts_with($apiKey, 'eyJ')) {
             return $apiKey;
         }
@@ -187,7 +218,7 @@ class GstLookupService
             return $apiKey;
         }
 
-        $cacheKey = 'sandbox:gst_lookup_token:' . md5($apiKey . $apiSecret);
+        $cacheKey = 'sandbox:gst_lookup_token:'.md5($apiKey.$apiSecret);
 
         return Cache::remember($cacheKey, now()->addHours(23), function () use ($baseUrl, $apiKey, $apiSecret) {
             $timeout = (int) config('services.gst.timeout', 15);
@@ -195,7 +226,7 @@ class GstLookupService
                 ->withHeaders([
                     'x-api-key' => $apiKey,
                     'x-api-secret' => $apiSecret,
-                    'x-api-version' => '1.0.0',
+                    'x-api-version' => '1.0',
                     'Accept' => 'application/json',
                 ])
                 ->post("{$baseUrl}/authenticate");
@@ -206,8 +237,8 @@ class GstLookupService
             }
 
             if (! $authResponse->successful()) {
-                Log::warning("Sandbox API authentication error: HTTP {$authResponse->status()} - {$authResponse->body()}");
-                throw new \RuntimeException('Sandbox authentication failed: ' . ($authResponse->json('message') ?? "HTTP {$authResponse->status()}"));
+                Log::warning("Sandbox API authentication error: HTTP {$authResponse->status()}");
+                throw new \RuntimeException('Sandbox authentication failed: '.($this->safeProviderMessage($authResponse) ?? "HTTP {$authResponse->status()}"));
             }
 
             $token = (string) (
@@ -227,9 +258,6 @@ class GstLookupService
 
     /**
      * Sandbox.co.in GSTIN verification search API.
-     * Documented flow:
-     * - Authenticate via POST /authenticate with x-api-key, x-api-secret, and x-api-version to obtain JWT access token.
-     * - Query POST /gst/compliance/public/gstin/search with x-api-key, authorization (token without Bearer), and x-api-version.
      */
     protected function callSandbox(string $gstin): Response
     {
@@ -242,13 +270,14 @@ class GstLookupService
         $headers = [
             'x-api-key' => $apiKey,
             'authorization' => $accessToken,
-            'x-api-version' => '1.0.0',
+            'x-api-version' => '1.0',
             'Accept' => 'application/json',
         ];
 
         $customUrl = (string) config('services.gst.api_url');
         if (filled($customUrl) && str_contains($customUrl, '{gstin}')) {
             $endpoint = str_replace('{gstin}', $gstin, $customUrl);
+
             return Http::timeout($timeout)->withHeaders($headers)->get($endpoint);
         }
 
@@ -259,21 +288,25 @@ class GstLookupService
             ->asJson()
             ->post($endpoint, ['gstin' => $gstin]);
 
-        // Fallback to legacy GET /gsp/public/gstin/{gstin} if customUrl explicitly targets /gsp/
         if ($response->status() === 404 && filled($customUrl) && str_contains($customUrl, '/gsp/')) {
             $fallbackEndpoint = "{$baseUrl}/gsp/public/gstin/{$gstin}";
+
             return Http::timeout($timeout)->withHeaders($headers)->get($fallbackEndpoint);
         }
 
         return $response;
     }
 
-    /**
-     * ClearTax (Clear) Enterprise GSTIN verification API.
-     */
     protected function callClearTax(string $gstin): Response
     {
-        $baseUrl = rtrim((string) (config('services.gst.api_url') ?: 'https://api.cleartax.in'), '/');
+        $configuredUrl = (string) config('services.gst.api_url');
+        // Ignore Sandbox base URL when ClearTax provider is selected.
+        $baseUrl = rtrim(
+            (filled($configuredUrl) && ! str_contains($configuredUrl, 'sandbox.co.in'))
+                ? $configuredUrl
+                : 'https://api.cleartax.in',
+            '/'
+        );
         $endpoint = "{$baseUrl}/enterprise/v1/gstin/{$gstin}";
         $timeout = (int) config('services.gst.timeout', 15);
 
@@ -285,9 +318,6 @@ class GstLookupService
             ->get($endpoint);
     }
 
-    /**
-     * Masters India search taxpayer API.
-     */
     protected function callMastersIndia(string $gstin): Response
     {
         $baseUrl = rtrim((string) (config('services.mastersindia.base_url') ?: config('services.gst.api_url') ?: 'https://commonapi.mastersindia.co'), '/');
@@ -308,9 +338,6 @@ class GstLookupService
             ->get($endpoint, ['gstin' => $gstin]);
     }
 
-    /**
-     * Custom / Generic REST GST endpoint.
-     */
     protected function callCustom(string $gstin): Response
     {
         $url = (string) config('services.gst.api_url');
@@ -331,13 +358,10 @@ class GstLookupService
             ->get($endpoint, $params);
     }
 
-    /**
-     * Obtain or retrieve cached Masters India OAuth token.
-     */
     protected function getMastersIndiaOauthToken(string $baseUrl): string
     {
         $clientId = (string) config('services.mastersindia.client_id');
-        $cacheKey = 'mastersindia:gst_lookup_token:' . md5($clientId);
+        $cacheKey = 'mastersindia:gst_lookup_token:'.md5($clientId);
 
         return Cache::remember($cacheKey, now()->addMinutes(50), function () use ($baseUrl) {
             $resp = Http::baseUrl($baseUrl)
@@ -352,7 +376,7 @@ class GstLookupService
                 ]);
 
             if (! $resp->ok()) {
-                throw new \RuntimeException('Masters India authentication failed: ' . $resp->status());
+                throw new \RuntimeException('Masters India authentication failed: '.$resp->status());
             }
 
             return (string) ($resp->json('access_token') ?? $resp->json('data.access_token') ?? '');
@@ -365,12 +389,14 @@ class GstLookupService
     protected function handleProviderResponse(Response $response, string $gstin, string $provider): array
     {
         $status = $response->status();
+        $extracted = $this->extractedFromGstin($gstin);
 
         if ($status === 404) {
             return [
                 'success' => false,
                 'status_code' => 404,
                 'message' => "GSTIN {$gstin} was not found or is not registered.",
+                'extracted' => $extracted,
             ];
         }
 
@@ -381,6 +407,7 @@ class GstLookupService
                 'success' => false,
                 'status_code' => 401,
                 'message' => 'GST verification service authentication failed. Please check provider API credentials.',
+                'extracted' => $extracted,
             ];
         }
 
@@ -389,6 +416,18 @@ class GstLookupService
                 'success' => false,
                 'status_code' => 429,
                 'message' => 'GST verification API rate limit reached. Please wait a moment and try again.',
+                'extracted' => $extracted,
+            ];
+        }
+
+        if ($status === 400) {
+            $providerMessage = $this->safeProviderMessage($response) ?? 'The GST provider rejected this GSTIN.';
+
+            return [
+                'success' => false,
+                'status_code' => 400,
+                'message' => $providerMessage,
+                'extracted' => $extracted,
             ];
         }
 
@@ -399,14 +438,20 @@ class GstLookupService
                 'success' => false,
                 'status_code' => $status,
                 'message' => 'GST verification service is temporarily unavailable. Please enter details manually or retry later.',
+                'extracted' => $extracted,
             ];
         }
 
         if (! $response->successful()) {
+            $providerMessage = $this->safeProviderMessage($response);
+
             return [
                 'success' => false,
                 'status_code' => $status,
-                'message' => "GST lookup failed with status {$status}. Please enter details manually.",
+                'message' => $providerMessage
+                    ? $providerMessage
+                    : "GST lookup failed with status {$status}. Please enter details manually.",
+                'extracted' => $extracted,
             ];
         }
 
@@ -416,10 +461,87 @@ class GstLookupService
                 'success' => false,
                 'status_code' => 502,
                 'message' => 'Invalid response received from GST lookup provider.',
+                'extracted' => $extracted,
             ];
         }
 
-        // Check for error keys in 200 responses
+        if ($notFound = $this->detectNotFoundResponse($json, $gstin)) {
+            $notFound['extracted'] = $extracted;
+
+            return $notFound;
+        }
+
+        $data = $this->extractTaxpayerPayload($json);
+
+        if (! is_array($data) || ! $this->payloadHasIdentity($data)) {
+            return [
+                'success' => false,
+                'status_code' => 404,
+                'message' => "GSTIN {$gstin} was not found or is not registered.",
+                'extracted' => $extracted,
+            ];
+        }
+
+        $normalized = $this->normalizeTaxpayerData($data, $gstin);
+
+        if (empty($normalized['success'])) {
+            $normalized['extracted'] = $extracted;
+
+            return $normalized;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Extract a safe, non-sensitive provider message for the UI.
+     */
+    protected function safeProviderMessage(Response $response): ?string
+    {
+        $json = $response->json();
+        if (! is_array($json)) {
+            return null;
+        }
+
+        $candidates = [
+            $json['message'] ?? null,
+            data_get($json, 'error.message'),
+            is_string($json['error'] ?? null) ? $json['error'] : null,
+            data_get($json, 'data.message'),
+            data_get($json, 'data.error.message'),
+            $json['status_desc'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (! is_string($candidate)) {
+                continue;
+            }
+            $message = trim($candidate);
+            if ($message === '') {
+                continue;
+            }
+            // Never echo tokens / secrets if a provider mistakenly includes them.
+            if (preg_match('/eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/i', $message)) {
+                continue;
+            }
+            if (preg_match('/(api[_-]?key|api[_-]?secret|authorization|bearer\s+)/i', $message)) {
+                continue;
+            }
+
+            return $message;
+        }
+
+        return null;
+    }
+
+    /**
+     * Detect FO8000 / status_cd=0 / explicit not-found payloads that still return HTTP 200.
+     *
+     * @param  array<string, mixed>  $json
+     * @return array<string, mixed>|null
+     */
+    protected function detectNotFoundResponse(array $json, string $gstin): ?array
+    {
         if (isset($json['status_cd']) && (string) $json['status_cd'] === '0') {
             return [
                 'success' => false,
@@ -436,8 +558,32 @@ class GstLookupService
             ];
         }
 
-        if (isset($json['error']) && ! empty($json['error'])) {
-            $msg = is_array($json['error']) ? ($json['error']['message'] ?? "GSTIN {$gstin} lookup failed.") : (string) $json['error'];
+        $errorCd = (string) (
+            data_get($json, 'data.error.error_cd')
+            ?? data_get($json, 'data.error_cd')
+            ?? data_get($json, 'error.error_cd')
+            ?? ''
+        );
+
+        $errorMessage = (string) (
+            data_get($json, 'data.error.message')
+            ?? data_get($json, 'data.message')
+            ?? data_get($json, 'error.message')
+            ?? ($json['message'] ?? '')
+        );
+
+        if ($errorCd === 'FO8000' || stripos($errorMessage, 'no records') !== false) {
+            return [
+                'success' => false,
+                'status_code' => 404,
+                'message' => $errorMessage !== '' ? $errorMessage : "GSTIN {$gstin} was not found or is not registered.",
+            ];
+        }
+
+        if (isset($json['error']) && ! empty($json['error']) && ! $this->payloadHasIdentity($this->extractTaxpayerPayload($json) ?? [])) {
+            $msg = is_array($json['error'])
+                ? (string) ($json['error']['message'] ?? "GSTIN {$gstin} lookup failed.")
+                : (string) $json['error'];
 
             return [
                 'success' => false,
@@ -446,123 +592,148 @@ class GstLookupService
             ];
         }
 
-        // Extract taxpayer data block
-        $data = $json['data'] ?? $json['taxpayerInfo'] ?? $json['taxpayer_info'] ?? $json;
-
-        if (is_array($data) && isset($data['data']) && is_array($data['data'])) {
-            $data = $data['data'];
-        }
-        if (is_array($data) && isset($data[0]) && is_array($data[0])) {
-            $data = $data[0];
-        }
-
-        if (empty($data) || (! isset($data['tradeNam']) && ! isset($data['lgnm']) && ! isset($data['trade_name']) && ! isset($data['legal_name']))) {
-            // If data is empty or missing name identifiers
-            if (isset($json['message']) && is_string($json['message'])) {
-                return [
-                    'success' => false,
-                    'status_code' => 404,
-                    'message' => $json['message'],
-                ];
-            }
-        }
-
-        return $this->normalizeTaxpayerData($data, $gstin);
+        return null;
     }
 
     /**
-     * Normalize raw taxpayer data to standard DMS party fields:
-     * - Party Name: Prefer registered trade name; fallback to legal name
-     * - PAN: Verified PAN or derived from GSTIN
-     * - State: Principal place of business state name or from state code
-     * - Address: Street, city, district, state, pincode
-     * - Status: Active / Cancelled / Suspended
+     * @param  array<string, mixed>  $json
+     * @return array<string, mixed>|null
+     */
+    protected function extractTaxpayerPayload(array $json): ?array
+    {
+        $data = $json['data'] ?? $json['taxpayerInfo'] ?? $json['taxpayer_info'] ?? $json;
+
+        if (! is_array($data)) {
+            return null;
+        }
+
+        // Sandbox wraps GSTN payload at data.data
+        if (isset($data['data']) && is_array($data['data']) && $this->payloadHasIdentity($data['data'])) {
+            return $data['data'];
+        }
+
+        if (isset($data[0]) && is_array($data[0]) && $this->payloadHasIdentity($data[0])) {
+            return $data[0];
+        }
+
+        if ($this->payloadHasIdentity($data)) {
+            return $data;
+        }
+
+        return is_array($data) ? $data : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function payloadHasIdentity(array $data): bool
+    {
+        foreach (['tradeNam', 'lgnm', 'trade_name', 'legal_name', 'tradeName', 'legalName'] as $key) {
+            if (! empty($data[$key]) && is_string($data[$key])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Normalize raw taxpayer data to standard DMS party fields.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
      */
     protected function normalizeTaxpayerData(array $data, string $gstin): array
     {
         $tradeName = trim((string) ($data['tradeNam'] ?? $data['trade_name'] ?? $data['tradeName'] ?? $data['trade_nm'] ?? ''));
         $legalName = trim((string) ($data['lgnm'] ?? $data['legal_name'] ?? $data['legalName'] ?? $data['legal_nm'] ?? ''));
 
-        // Rule: Prefer trade name, fallback to legal name
-        $name = $tradeName !== '' ? $tradeName : $legalName;
+        // Prefer legal business name; keep trade name available for review.
+        $name = $legalName !== '' ? $legalName : $tradeName;
         if ($name === '') {
-            $name = $legalName !== '' ? $legalName : $gstin;
+            return [
+                'success' => false,
+                'status_code' => 404,
+                'message' => "GSTIN {$gstin} was found but no business name was returned.",
+            ];
         }
 
-        // PAN: use verified PAN if returned, otherwise derive from valid GSTIN
+        $returnedGstin = strtoupper(trim((string) ($data['gstin'] ?? $data['GSTIN'] ?? $gstin)));
+        if ($returnedGstin !== '' && $returnedGstin !== $gstin) {
+            Log::warning("GST lookup GSTIN mismatch: requested {$gstin}, provider returned {$returnedGstin}");
+        }
+
         $pan = trim((string) ($data['pan'] ?? ''));
         if ($pan === '' || strlen($pan) !== 10) {
             $pan = substr($gstin, 2, 10);
         }
 
-        // Registration status
-        $status = trim((string) ($data['sts'] ?? $data['status'] ?? $data['gstin_status'] ?? 'Active'));
-
-        // Address resolution
-        $addr = $data['pradr']['addr']
-            ?? $data['principal_place_of_business']['address']
-            ?? $data['principal_place_of_business']
-            ?? $data['address']
-            ?? [];
-
-        $addressLine1 = '';
-        $addressLine2 = '';
-        $city = '';
-        $district = '';
-        $pincode = '';
-        $stateRaw = '';
-
-        if (is_array($addr)) {
-            $flno = trim((string) ($addr['flno'] ?? $addr['floor_number'] ?? $addr['floor_no'] ?? ''));
-            $bno = trim((string) ($addr['bno'] ?? $addr['building_number'] ?? $addr['building_no'] ?? $addr['door_no'] ?? ''));
-            $bnm = trim((string) ($addr['bnm'] ?? $addr['building_name'] ?? ''));
-            $st = trim((string) ($addr['st'] ?? $addr['street'] ?? $addr['street_name'] ?? ''));
-            $loc = trim((string) ($addr['loc'] ?? $addr['location'] ?? $addr['locality'] ?? ''));
-            $city = trim((string) ($addr['city'] ?? $addr['city_name'] ?? ''));
-            $district = trim((string) ($addr['dst'] ?? $addr['district'] ?? ''));
-            $pincode = trim((string) ($addr['pncd'] ?? $addr['pincode'] ?? $addr['postal_code'] ?? $addr['pin_code'] ?? ''));
-            $stateRaw = trim((string) ($addr['stcd'] ?? $addr['state'] ?? $addr['state_name'] ?? ''));
-
-            if ($city === '' && $district !== '') {
-                $city = $district;
-            }
-
-            $bldg = $bno;
-            if ($flno !== '') {
-                $bldg = $bno !== '' ? "{$flno}, {$bno}" : $flno;
-            }
-
-            $line1Parts = array_filter([$bldg, $bnm, $st], fn ($v) => $v !== '');
-            $addressLine1 = implode(', ', $line1Parts);
-
-            $line2Parts = array_filter([$loc, $district !== $city ? $district : ''], fn ($v) => $v !== '');
-            $addressLine2 = implode(', ', $line2Parts);
-
-            $fullParts = array_filter([$addressLine1, $addressLine2, $city, $pincode], fn ($v) => $v !== '');
-            $fullAddress = implode(', ', $fullParts);
-        } else {
-            $fullAddress = trim((string) $addr);
-            $addressLine1 = $fullAddress;
+        $status = trim((string) ($data['sts'] ?? $data['status'] ?? $data['gstin_status'] ?? ''));
+        if ($status === '') {
+            $status = 'Active';
         }
 
-        // State name resolution
-        $state = '';
-        if ($stateRaw !== '') {
-            if (isset(IndianStates::all()[$stateRaw])) {
-                $state = IndianStates::all()[$stateRaw];
-            } else {
-                foreach (IndianStates::all() as $nameVal) {
-                    if (strcasecmp($nameVal, $stateRaw) === 0) {
-                        $state = $nameVal;
-                        break;
-                    }
+        $principal = $this->normalizeAddressBlock(
+            $data['pradr']['addr']
+                ?? $data['principal_place_of_business']['address']
+                ?? $data['principal_place_of_business']
+                ?? $data['address']
+                ?? [],
+            $gstin,
+            'Principal Place of Business'
+        );
+
+        $additionalAddresses = [];
+        $adadr = $data['adadr'] ?? $data['additional_places_of_business'] ?? [];
+        if (is_array($adadr)) {
+            foreach ($adadr as $index => $block) {
+                $addr = is_array($block) ? ($block['addr'] ?? $block['address'] ?? $block) : [];
+                $normalized = $this->normalizeAddressBlock($addr, $gstin, 'Additional Place of Business '.((int) $index + 1));
+                if ($normalized['address_line_1'] === '' && $normalized['city'] === '' && $normalized['pincode'] === '') {
+                    continue;
                 }
+                if ($this->addressesMatch($principal, $normalized)) {
+                    continue;
+                }
+                $nature = $block['ntr'] ?? null;
+                if (is_array($nature)) {
+                    $normalized['nature_of_business'] = array_values(array_filter(array_map('strval', $nature)));
+                } elseif (is_string($nature) && trim($nature) !== '') {
+                    $normalized['nature_of_business'] = [trim($nature)];
+                }
+                $additionalAddresses[] = $normalized;
             }
         }
 
-        if ($state === '') {
-            $state = IndianStates::stateFromGstin($gstin) ?? '';
+        $nba = $data['nba'] ?? $data['nature_of_business'] ?? null;
+        $natureOfBusiness = [];
+        if (is_array($nba)) {
+            $natureOfBusiness = array_values(array_filter(array_map(fn ($v) => trim((string) $v), $nba)));
+        } elseif (is_string($nba) && trim($nba) !== '') {
+            $natureOfBusiness = [trim($nba)];
         }
+
+        $pradrNature = $data['pradr']['ntr'] ?? null;
+        if ($natureOfBusiness === []) {
+            if (is_array($pradrNature)) {
+                $natureOfBusiness = array_values(array_filter(array_map(fn ($v) => trim((string) $v), $pradrNature)));
+            } elseif (is_string($pradrNature) && trim($pradrNature) !== '') {
+                $natureOfBusiness = [trim($pradrNature)];
+            }
+        }
+
+        $state = $principal['state'] !== '' ? $principal['state'] : (IndianStates::stateFromGstin($gstin) ?? '');
+        $stateCode = $principal['state_code'] !== '' ? $principal['state_code'] : substr($gstin, 0, 2);
+
+        $registrationDate = $this->nullableString($data['rgdt'] ?? $data['registration_date'] ?? $data['registrationDate'] ?? null);
+        $cancellationDate = $this->nullableString($data['cxdt'] ?? $data['canclDt'] ?? $data['cancellation_date'] ?? null);
+        $constitution = $this->nullableString($data['ctb'] ?? $data['constitution'] ?? $data['constitution_of_business'] ?? null);
+        $taxpayerType = $this->nullableString($data['dty'] ?? $data['taxpayer_type'] ?? $data['taxpayerType'] ?? null);
+        $stateJurisdiction = $this->nullableString($data['stj'] ?? $data['state_jurisdiction'] ?? null);
+        $centerJurisdiction = $this->nullableString($data['ctj'] ?? $data['center_jurisdiction'] ?? null);
+        $einvoiceStatus = $this->nullableString($data['einvoiceStatus'] ?? $data['einvoice_status'] ?? null);
+
+        $isInactive = $status !== '' && ! in_array(strtolower($status), ['active', 'provisional'], true);
 
         return [
             'success' => true,
@@ -575,16 +746,206 @@ class GstLookupService
                 'legal_name' => $legalName,
                 'pan' => $pan,
                 'state' => $state,
-                'city' => $city,
-                'pincode' => $pincode,
-                'address' => $fullAddress,
-                'address_line_1' => $addressLine1,
-                'address_line_2' => $addressLine2,
+                'state_code' => $stateCode,
+                'city' => $principal['city'],
+                'district' => $principal['district'],
+                'pincode' => $principal['pincode'],
+                'address' => $principal['address'],
+                'address_line_1' => $principal['address_line_1'],
+                'address_line_2' => $principal['address_line_2'],
+                'address_label' => $principal['label'],
+                'country' => $principal['country'],
                 'status' => $status,
-                'registration_date' => $data['rgdt'] ?? $data['registration_date'] ?? null,
-                'taxpayer_type' => $data['dty'] ?? $data['taxpayer_type'] ?? null,
+                'registration_date' => $registrationDate,
+                'cancellation_date' => $cancellationDate,
+                'constitution_of_business' => $constitution,
+                'taxpayer_type' => $taxpayerType,
+                'nature_of_business' => $natureOfBusiness,
+                'state_jurisdiction' => $stateJurisdiction,
+                'center_jurisdiction' => $centerJurisdiction,
+                'einvoice_status' => $einvoiceStatus,
+                'is_inactive' => $isInactive,
+                'addresses' => array_values(array_filter(array_merge(
+                    [$principal['address_line_1'] !== '' || $principal['city'] !== '' || $principal['pincode'] !== '' ? $principal : null],
+                    $additionalAddresses
+                ))),
             ],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>|string  $addr
+     * @return array{
+     *     label: string,
+     *     address_line_1: string,
+     *     address_line_2: string,
+     *     city: string,
+     *     district: string,
+     *     state: string,
+     *     state_code: string,
+     *     pincode: string,
+     *     country: string,
+     *     address: string,
+     *     building: string,
+     *     street: string,
+     *     locality: string
+     * }
+     */
+    protected function normalizeAddressBlock(array|string $addr, string $gstin, string $label): array
+    {
+        $empty = [
+            'label' => $label,
+            'address_line_1' => '',
+            'address_line_2' => '',
+            'city' => '',
+            'district' => '',
+            'state' => '',
+            'state_code' => '',
+            'pincode' => '',
+            'country' => '',
+            'address' => '',
+            'building' => '',
+            'street' => '',
+            'locality' => '',
+        ];
+
+        if (! is_array($addr)) {
+            $full = trim((string) $addr);
+            if ($full === '') {
+                return $empty;
+            }
+
+            return array_merge($empty, [
+                'address_line_1' => $full,
+                'address' => $full,
+                'state' => IndianStates::stateFromGstin($gstin) ?? '',
+                'state_code' => substr($gstin, 0, 2),
+            ]);
+        }
+
+        $flno = trim((string) ($addr['flno'] ?? $addr['floor_number'] ?? $addr['floor_no'] ?? ''));
+        $bno = trim((string) ($addr['bno'] ?? $addr['building_number'] ?? $addr['building_no'] ?? $addr['door_no'] ?? ''));
+        $bnm = trim((string) ($addr['bnm'] ?? $addr['building_name'] ?? ''));
+        $st = trim((string) ($addr['st'] ?? $addr['street'] ?? $addr['street_name'] ?? ''));
+        $loc = trim((string) ($addr['loc'] ?? $addr['location'] ?? ''));
+        $locality = trim((string) ($addr['locality'] ?? $addr['locality_name'] ?? ''));
+        $landmark = trim((string) ($addr['landMark'] ?? $addr['landmark'] ?? ''));
+        $city = trim((string) ($addr['city'] ?? $addr['city_name'] ?? $addr['town'] ?? ''));
+        $district = trim((string) ($addr['dst'] ?? $addr['district'] ?? ''));
+        $pincode = trim((string) ($addr['pncd'] ?? $addr['pincode'] ?? $addr['postal_code'] ?? $addr['pin_code'] ?? ''));
+        $stateRaw = trim((string) ($addr['stcd'] ?? $addr['state'] ?? $addr['state_name'] ?? ''));
+        $country = trim((string) ($addr['country'] ?? $addr['cntry'] ?? ''));
+
+        // GST "loc" is often a locality/landmark, not the city. Prefer explicit city, then district.
+        if ($city === '' && $district !== '') {
+            $city = $district;
+        }
+        if ($city === '' && $loc !== '' && ! $this->looksLikeLandmark($loc)) {
+            $city = $loc;
+        }
+        if ($locality === '' && $loc !== '' && strcasecmp($loc, $city) !== 0) {
+            $locality = $loc;
+        }
+
+        $floorBuilding = trim(implode(', ', array_filter([$flno, $bno], fn ($v) => $v !== '')));
+        $building = trim(implode(', ', array_filter([$floorBuilding, $bnm], fn ($v) => $v !== '')));
+
+        $line1Parts = array_filter([$building, $st], fn ($v) => $v !== '');
+        $addressLine1 = implode(', ', $line1Parts);
+
+        $line2Parts = [];
+        foreach ([$locality !== '' ? $locality : null, $loc !== '' && $loc !== $city ? $loc : null, $landmark, $district !== '' && $district !== $city ? $district : null] as $part) {
+            if (is_string($part) && $part !== '' && ! in_array($part, $line2Parts, true)) {
+                $line2Parts[] = $part;
+            }
+        }
+        $addressLine2 = implode(', ', $line2Parts);
+
+        // If provider only returned a single combined street string, keep it on line 1.
+        if ($addressLine1 === '' && $addressLine2 !== '') {
+            $addressLine1 = $addressLine2;
+            $addressLine2 = '';
+        }
+
+        [$state, $stateCode] = $this->resolveState($stateRaw, $gstin);
+
+        $fullParts = array_filter([$addressLine1, $addressLine2, $city, $state, $pincode], fn ($v) => $v !== '');
+        $fullAddress = implode(', ', $fullParts);
+
+        return [
+            'label' => $label,
+            'address_line_1' => $addressLine1,
+            'address_line_2' => $addressLine2,
+            'city' => $city,
+            'district' => $district,
+            'state' => $state,
+            'state_code' => $stateCode,
+            'pincode' => $pincode,
+            'country' => $country,
+            'address' => $fullAddress,
+            'building' => $building,
+            'street' => $st,
+            'locality' => $locality !== '' ? $locality : $loc,
+        ];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    protected function resolveState(string $stateRaw, string $gstin): array
+    {
+        $states = IndianStates::all();
+        $fallbackCode = substr($gstin, 0, 2);
+        $fallbackName = $states[$fallbackCode] ?? '';
+
+        if ($stateRaw === '') {
+            return [$fallbackName, $fallbackCode];
+        }
+
+        if (isset($states[$stateRaw])) {
+            return [$states[$stateRaw], $stateRaw];
+        }
+
+        foreach ($states as $code => $name) {
+            if (strcasecmp($name, $stateRaw) === 0) {
+                return [$name, (string) $code];
+            }
+        }
+
+        return [$stateRaw, $fallbackCode];
+    }
+
+    /**
+     * @param  array<string, mixed>  $a
+     * @param  array<string, mixed>  $b
+     */
+    protected function addressesMatch(array $a, array $b): bool
+    {
+        $normalize = static function (?string $value): string {
+            return strtolower(preg_replace('/\s+/', ' ', trim((string) $value)) ?? '');
+        };
+
+        return $normalize($a['address_line_1'] ?? '') === $normalize($b['address_line_1'] ?? '')
+            && $normalize($a['city'] ?? '') === $normalize($b['city'] ?? '')
+            && $normalize($a['pincode'] ?? '') === $normalize($b['pincode'] ?? '');
+    }
+
+    protected function nullableString(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $string = trim((string) $value);
+
+        return $string === '' ? null : $string;
+    }
+
+    /**
+     * Heuristic: GST location strings like "OPP. XYZ" / "NEAR ABC" are landmarks, not cities.
+     */
+    protected function looksLikeLandmark(string $value): bool
+    {
+        return (bool) preg_match('/\b(opp\.?|opposite|near|behind|beside|next to|shop|floor|building|apartment|plot)\b/i', $value);
     }
 
     protected function getRequiredCredentialsName(string $provider): string

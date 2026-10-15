@@ -16,6 +16,7 @@ class GstLookupTest extends TestCase
     use RefreshDatabase;
 
     protected User $user;
+
     protected Company $company;
 
     protected function setUp(): void
@@ -39,9 +40,6 @@ class GstLookupTest extends TestCase
         $this->user->givePermissionTo(['masters.view', 'masters.create', 'masters.edit', 'masters.manage', 'customers.view', 'customers.create', 'customers.edit']);
     }
 
-    /**
-     * Requirement 1: Valid GSTIN with a successful Sandbox API response populates the correct fields.
-     */
     public function test_valid_gstin_returns_verified_party_details(): void
     {
         config([
@@ -57,38 +55,47 @@ class GstLookupTest extends TestCase
             'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => Http::response([
                 'code' => 200,
                 'data' => [
-                    'gstin' => '27AAAAA0000A1Z5',
-                    'trade_name' => 'Apex Solutions',
-                    'legal_name' => 'Apex Solutions Private Limited',
-                    'status' => 'Active',
-                    'registration_date' => '01/07/2017',
-                    'taxpayer_type' => 'Regular',
-                    'principal_place_of_business' => [
-                        'address' => [
-                            'building_number' => 'Flat 402',
-                            'building_name' => 'Galaxy Tower',
-                            'street' => 'Senapati Bapat Marg',
-                            'location' => 'Dadar West',
-                            'city' => 'Mumbai',
-                            'district' => 'Mumbai',
-                            'state' => 'Maharashtra',
-                            'pincode' => '400028',
+                    'data' => [
+                        'gstin' => '27AAAAA0000A1Z2',
+                        'tradeNam' => 'Apex Solutions',
+                        'lgnm' => 'Apex Solutions Private Limited',
+                        'sts' => 'Active',
+                        'rgdt' => '01/07/2017',
+                        'dty' => 'Regular',
+                        'ctb' => 'Private Limited Company',
+                        'nba' => ['Wholesale Business'],
+                        'stj' => 'MUM-VAT-001',
+                        'ctj' => 'RANGE-MUM-01',
+                        'pradr' => [
+                            'addr' => [
+                                'bno' => 'Flat 402',
+                                'bnm' => 'Galaxy Tower',
+                                'st' => 'Senapati Bapat Marg',
+                                'loc' => 'Dadar West',
+                                'city' => 'Mumbai',
+                                'dst' => 'Mumbai',
+                                'stcd' => 'Maharashtra',
+                                'pncd' => '400028',
+                            ],
+                            'ntr' => ['Wholesale Business'],
                         ],
+                        'adadr' => [],
                     ],
+                    'status_cd' => '1',
                 ],
             ], 200),
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
             'is_live' => true,
             'party' => [
-                'gstin' => '27AAAAA0000A1Z5',
-                'name' => 'Apex Solutions',
+                'gstin' => '27AAAAA0000A1Z2',
+                'name' => 'Apex Solutions Private Limited',
                 'trade_name' => 'Apex Solutions',
                 'legal_name' => 'Apex Solutions Private Limited',
                 'pan' => 'AAAAA0000A',
@@ -96,28 +103,29 @@ class GstLookupTest extends TestCase
                 'city' => 'Mumbai',
                 'pincode' => '400028',
                 'status' => 'Active',
+                'constitution_of_business' => 'Private Limited Company',
+                'taxpayer_type' => 'Regular',
+                'registration_date' => '01/07/2017',
             ],
         ]);
 
         $this->assertStringContainsString('Flat 402', $response->json('party.address'));
         $this->assertStringContainsString('Galaxy Tower', $response->json('party.address'));
         $this->assertStringContainsString('Senapati Bapat Marg', $response->json('party.address'));
+        $this->assertEquals(['Wholesale Business'], $response->json('party.nature_of_business'));
 
-        // Verify request headers sent to Sandbox search endpoint
         Http::assertSent(function (\Illuminate\Http\Client\Request $request) {
             if ($request->url() === 'https://api.sandbox.co.in/gst/compliance/public/gstin/search') {
                 return $request->hasHeader('x-api-key', 'valid-sandbox-key')
                     && $request->hasHeader('authorization', 'mock-jwt-token-xyz')
-                    && $request->hasHeader('x-api-version', '1.0.0')
-                    && $request['gstin'] === '27AAAAA0000A1Z5';
+                    && $request->hasHeader('x-api-version', '1.0')
+                    && $request['gstin'] === '27AAAAA0000A1Z2';
             }
+
             return true;
         });
     }
 
-    /**
-     * Requirement 1B: Sandbox token caching - multiple requests do not repeatedly call /authenticate.
-     */
     public function test_sandbox_access_token_is_cached(): void
     {
         config([
@@ -133,31 +141,29 @@ class GstLookupTest extends TestCase
             'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => Http::response([
                 'code' => 200,
                 'data' => [
-                    'gstin' => '27AAAAA0000A1Z5',
-                    'trade_name' => 'Cached Entity',
-                    'legal_name' => 'Cached Entity Pvt Ltd',
-                    'status' => 'Active',
-                    'address' => ['state' => 'Maharashtra'],
+                    'data' => [
+                        'gstin' => '27AAAAA0000A1Z2',
+                        'tradeNam' => 'Cached Entity',
+                        'lgnm' => 'Cached Entity Pvt Ltd',
+                        'sts' => 'Active',
+                        'pradr' => ['addr' => ['stcd' => 'Maharashtra']],
+                    ],
                 ],
             ], 200),
         ]);
 
         $resp1 = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
         $resp1->assertStatus(200);
 
         $resp2 = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
         $resp2->assertStatus(200);
 
-        // /authenticate should only have been called once due to caching
         Http::assertSentCount(3); // 1 authenticate + 2 searches
     }
 
-    /**
-     * Requirement 2: Trade name is preferred, with legal name as fallback.
-     */
-    public function test_trade_name_is_preferred_and_legal_name_is_used_as_fallback(): void
+    public function test_legal_name_is_preferred_and_trade_name_is_fallback(): void
     {
         config([
             'services.gst.provider' => 'sandbox',
@@ -165,48 +171,49 @@ class GstLookupTest extends TestCase
             'services.gst.api_secret' => 'valid-sandbox-secret',
         ]);
 
-        // Case A & B: trade name preferred when present, legal name fallback when blank
         Http::fake([
             'https://api.sandbox.co.in/authenticate' => Http::response(['access_token' => 'token-1'], 200),
             'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => function (\Illuminate\Http\Client\Request $request) {
-                if (($request['gstin'] ?? '') === '27BBBBA0000B1Z5') {
+                if (($request['gstin'] ?? '') === '27BBBBA0000B1ZU') {
                     return Http::response([
                         'data' => [
-                            'gstin' => '27BBBBA0000B1Z5',
-                            'trade_name' => '',
-                            'legal_name' => 'Corporate Legal Name Pvt Ltd',
-                            'status' => 'Active',
-                            'address' => ['state' => 'Maharashtra'],
+                            'data' => [
+                                'gstin' => '27BBBBA0000B1ZU',
+                                'tradeNam' => 'Only Trade Name',
+                                'lgnm' => '',
+                                'sts' => 'Active',
+                                'pradr' => ['addr' => ['stcd' => 'Maharashtra']],
+                            ],
                         ],
                     ], 200);
                 }
 
                 return Http::response([
                     'data' => [
-                        'gstin' => '27AAAAA0000A1Z5',
-                        'trade_name' => 'Preferred Brand',
-                        'legal_name' => 'Corporate Legal Name Pvt Ltd',
-                        'status' => 'Active',
-                        'address' => ['state' => 'Maharashtra'],
+                        'data' => [
+                            'gstin' => '27AAAAA0000A1Z2',
+                            'tradeNam' => 'Preferred Brand',
+                            'lgnm' => 'Corporate Legal Name Pvt Ltd',
+                            'sts' => 'Active',
+                            'pradr' => ['addr' => ['stcd' => 'Maharashtra']],
+                        ],
                     ],
                 ], 200);
             },
         ]);
 
         $respA = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
         $respA->assertStatus(200);
-        $this->assertEquals('Preferred Brand', $respA->json('party.name'));
+        $this->assertEquals('Corporate Legal Name Pvt Ltd', $respA->json('party.name'));
+        $this->assertEquals('Preferred Brand', $respA->json('party.trade_name'));
 
         $respB = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27BBBBA0000B1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27BBBBA0000B1ZU']));
         $respB->assertStatus(200);
-        $this->assertEquals('Corporate Legal Name Pvt Ltd', $respB->json('party.name'));
+        $this->assertEquals('Only Trade Name', $respB->json('party.name'));
     }
 
-    /**
-     * Requirement 3: Missing optional address fields do not break the response.
-     */
     public function test_missing_optional_address_fields_handled_cleanly(): void
     {
         config([
@@ -215,19 +222,21 @@ class GstLookupTest extends TestCase
             'services.gst.api_secret' => 'valid-sandbox-secret',
         ]);
 
-        // Address with no building name or location
         Http::fake([
             'https://api.sandbox.co.in/authenticate' => Http::response(['access_token' => 'token-xyz'], 200),
             'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => Http::response([
                 'data' => [
-                    'gstin' => '27AAAAA0000A1Z5',
-                    'trade_name' => 'Minimal Address Co',
-                    'status' => 'Active',
-                    'principal_place_of_business' => [
-                        'address' => [
-                            'city' => 'Pune',
-                            'state' => 'Maharashtra',
-                            'pincode' => '411001',
+                    'data' => [
+                        'gstin' => '27AAAAA0000A1Z2',
+                        'tradeNam' => 'Minimal Address Co',
+                        'lgnm' => 'Minimal Address Co',
+                        'sts' => 'Active',
+                        'pradr' => [
+                            'addr' => [
+                                'loc' => 'Pune',
+                                'stcd' => 'Maharashtra',
+                                'pncd' => '411001',
+                            ],
                         ],
                     ],
                 ],
@@ -235,7 +244,7 @@ class GstLookupTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $response->assertStatus(200);
         $response->assertJson([
@@ -250,20 +259,192 @@ class GstLookupTest extends TestCase
         $this->assertNotEmpty($response->json('party.address'));
     }
 
-    /**
-     * ClearTax provider format integration.
-     */
+    public function test_additional_places_of_business_are_returned(): void
+    {
+        config([
+            'services.gst.provider' => 'sandbox',
+            'services.gst.api_key' => 'valid-sandbox-key',
+            'services.gst.api_secret' => 'valid-sandbox-secret',
+        ]);
+
+        Http::fake([
+            'https://api.sandbox.co.in/authenticate' => Http::response(['access_token' => 'token-xyz'], 200),
+            'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => Http::response([
+                'data' => [
+                    'data' => [
+                        'gstin' => '27AAAAA0000A1Z2',
+                        'lgnm' => 'Multi Location Pvt Ltd',
+                        'tradeNam' => 'Multi Location',
+                        'sts' => 'Active',
+                        'pradr' => [
+                            'addr' => [
+                                'bno' => '1',
+                                'bnm' => 'Main Building',
+                                'st' => 'MG Road',
+                                'loc' => 'Pune',
+                                'stcd' => 'Maharashtra',
+                                'pncd' => '411001',
+                            ],
+                        ],
+                        'adadr' => [
+                            [
+                                'addr' => [
+                                    'bno' => '22',
+                                    'bnm' => 'Warehouse',
+                                    'st' => 'MIDC Road',
+                                    'loc' => 'Nashik',
+                                    'stcd' => 'Maharashtra',
+                                    'pncd' => '422001',
+                                ],
+                                'ntr' => ['Warehouse / Depot'],
+                            ],
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
+
+        $response->assertStatus(200);
+        $addresses = $response->json('party.addresses');
+        $this->assertCount(2, $addresses);
+        $this->assertEquals('Principal Place of Business', $addresses[0]['label']);
+        $this->assertEquals('Additional Place of Business 1', $addresses[1]['label']);
+        $this->assertEquals('422001', $addresses[1]['pincode']);
+    }
+
+    public function test_cancelled_registration_is_flagged(): void
+    {
+        config([
+            'services.gst.provider' => 'sandbox',
+            'services.gst.api_key' => 'valid-sandbox-key',
+            'services.gst.api_secret' => 'valid-sandbox-secret',
+        ]);
+
+        Http::fake([
+            'https://api.sandbox.co.in/authenticate' => Http::response(['access_token' => 'token-xyz'], 200),
+            'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => Http::response([
+                'data' => [
+                    'data' => [
+                        'gstin' => '27AAAAA0000A1Z2',
+                        'lgnm' => 'Cancelled Traders',
+                        'tradeNam' => 'Cancelled Traders',
+                        'sts' => 'Cancelled',
+                        'cxdt' => '01/01/2024',
+                        'pradr' => ['addr' => ['stcd' => 'Maharashtra', 'loc' => 'Mumbai']],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'party' => [
+                'status' => 'Cancelled',
+                'cancellation_date' => '01/01/2024',
+                'is_inactive' => true,
+            ],
+        ]);
+    }
+
+    public function test_fo8000_no_records_is_not_treated_as_success(): void
+    {
+        config([
+            'services.gst.provider' => 'sandbox',
+            'services.gst.api_key' => 'valid-sandbox-key',
+            'services.gst.api_secret' => 'valid-sandbox-secret',
+        ]);
+
+        Http::fake([
+            'https://api.sandbox.co.in/authenticate' => Http::response(['access_token' => 'token-xyz'], 200),
+            'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => Http::response([
+                'code' => 200,
+                'data' => [
+                    'message' => 'No records found',
+                    'error_cd' => 'FO8000',
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAPFU0939F1ZV']));
+
+        $response->assertStatus(404);
+        $response->assertJson([
+            'success' => false,
+        ]);
+        $this->assertStringContainsString('no records', strtolower($response->json('message')));
+        $this->assertEquals('AAPFU0939F', $response->json('extracted.pan'));
+        $this->assertEquals('Maharashtra', $response->json('extracted.state'));
+    }
+
+    public function test_http_400_surfaces_provider_message(): void
+    {
+        config([
+            'services.gst.provider' => 'sandbox',
+            'services.gst.api_key' => 'valid-sandbox-key',
+            'services.gst.api_secret' => 'valid-sandbox-secret',
+        ]);
+
+        // Bypass local checksum so the mocked provider 400 is exercised.
+        $gstin = '27AAAAA0000A1Z2';
+
+        Http::fake([
+            'https://api.sandbox.co.in/authenticate' => Http::response(['access_token' => 'token-xyz'], 200),
+            'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => Http::response([
+                'code' => 400,
+                'message' => 'Invalid GSTIN pattern',
+            ], 400),
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => $gstin]));
+
+        $response->assertStatus(400);
+        $response->assertJson([
+            'success' => false,
+            'message' => 'Invalid GSTIN pattern',
+        ]);
+        $this->assertStringNotContainsString('valid-sandbox-key', $response->getContent());
+        $this->assertStringNotContainsString('valid-sandbox-secret', $response->getContent());
+    }
+
+    public function test_invalid_checksum_rejected_before_provider_call(): void
+    {
+        config([
+            'services.gst.provider' => 'sandbox',
+            'services.gst.api_key' => 'valid-sandbox-key',
+            'services.gst.api_secret' => 'valid-sandbox-secret',
+        ]);
+
+        Http::fake();
+
+        $response = $this->actingAs($this->user)
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+
+        $response->assertStatus(422);
+        $this->assertStringContainsString('checksum', strtolower($response->json('message')));
+        Http::assertNothingSent();
+    }
+
     public function test_cleartax_provider_response_mapping(): void
     {
         config([
             'services.gst.provider' => 'cleartax',
             'services.gst.api_key' => 'cleartax-token-123',
+            'services.gst.api_url' => 'https://api.cleartax.in',
         ]);
 
         Http::fake([
-            'https://api.cleartax.in/enterprise/v1/gstin/29ABCDE1234F1Z5' => Http::response([
+            'api.cleartax.in/*' => Http::response([
                 'taxpayerInfo' => [
-                    'gstin' => '29ABCDE1234F1Z5',
+                    'gstin' => '29ABCDE1234F1ZW',
                     'tradeNam' => 'ClearTax Client Traders',
                     'lgnm' => 'ClearTax Client Traders LLP',
                     'sts' => 'Active',
@@ -284,15 +465,15 @@ class GstLookupTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '29ABCDE1234F1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '29ABCDE1234F1ZW']));
 
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
             'is_live' => true,
             'party' => [
-                'gstin' => '29ABCDE1234F1Z5',
-                'name' => 'ClearTax Client Traders',
+                'gstin' => '29ABCDE1234F1ZW',
+                'name' => 'ClearTax Client Traders LLP',
                 'pan' => 'ABCDE1234F',
                 'state' => 'Karnataka',
                 'city' => 'Bengaluru',
@@ -301,9 +482,6 @@ class GstLookupTest extends TestCase
         ]);
     }
 
-    /**
-     * Masters India provider format integration.
-     */
     public function test_mastersindia_provider_response_mapping(): void
     {
         config([
@@ -315,7 +493,7 @@ class GstLookupTest extends TestCase
             '*searchTaxpayer*' => Http::response([
                 'status_code' => 200,
                 'data' => [
-                    'gstin' => '27AAACG9999A1Z9',
+                    'gstin' => '27AAACG9999A1ZA',
                     'tradeNam' => 'Masters India Vendor',
                     'lgnm' => 'Masters India Vendor Pvt Ltd',
                     'sts' => 'Active',
@@ -335,13 +513,13 @@ class GstLookupTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAACG9999A1Z9']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAACG9999A1ZA']));
 
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
             'party' => [
-                'name' => 'Masters India Vendor',
+                'name' => 'Masters India Vendor Pvt Ltd',
                 'pan' => 'AAACG9999A',
                 'state' => 'Maharashtra',
                 'city' => 'Mumbai',
@@ -350,38 +528,25 @@ class GstLookupTest extends TestCase
         ]);
     }
 
-    /**
-     * Requirement 4: Invalid GSTIN inputs produce clear error messages.
-     */
     public function test_invalid_gstin_length_and_pattern_produce_clear_messages(): void
     {
-        // 1. Missing parameter
         $respEmpty = $this->actingAs($this->user)->getJson(route('masters.customers.gst-lookup'));
         $respEmpty->assertStatus(422);
         $respEmpty->assertJson(['success' => false, 'message' => 'GSTIN parameter is required.']);
 
-        // 2. Short length
         $respShort = $this->actingAs($this->user)->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA000']));
         $respShort->assertStatus(422);
         $this->assertStringContainsString('valid 15-character GSTIN', $respShort->json('message'));
 
-        // 3. Invalid characters
         $respPattern = $this->actingAs($this->user)->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1$$']));
         $respPattern->assertStatus(422);
         $this->assertStringContainsString('Invalid GSTIN format', $respPattern->json('message'));
 
-        // 4. Invalid state code (e.g. 00 or 99)
         $respState = $this->actingAs($this->user)->getJson(route('masters.customers.gst-lookup', ['gstin' => '99AAAAA0000A1Z5']));
         $respState->assertStatus(422);
         $this->assertStringContainsString('Invalid GSTIN state code', $respState->json('message'));
     }
 
-    /**
-     * Requirement 5: GSTIN not found by provider returns 404 with helpful message.
-     */
-    /**
-     * Requirement 5: GSTIN not found by provider returns 404 with helpful message.
-     */
     public function test_gstin_not_found_handled_correctly(): void
     {
         config([
@@ -399,7 +564,7 @@ class GstLookupTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $response->assertStatus(404);
         $response->assertJson([
@@ -408,9 +573,6 @@ class GstLookupTest extends TestCase
         $this->assertStringContainsString('not found', strtolower($response->json('message')));
     }
 
-    /**
-     * Requirement 6A: Provider authentication failure handled gracefully without exposing secrets.
-     */
     public function test_provider_authentication_failure_handled_gracefully(): void
     {
         config([
@@ -426,21 +588,17 @@ class GstLookupTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $response->assertStatus(401);
         $response->assertJson([
             'success' => false,
         ]);
         $this->assertStringContainsString('authentication failed', strtolower($response->json('message')));
-        // Never expose secret API credentials in the response
         $this->assertStringNotContainsString('expired-secret-key-12345', $response->getContent());
         $this->assertStringNotContainsString('invalid-secret-value-67890', $response->getContent());
     }
 
-    /**
-     * Requirement 6B: Provider rate limit handled gracefully.
-     */
     public function test_provider_rate_limit_handled_gracefully(): void
     {
         config([
@@ -457,7 +615,7 @@ class GstLookupTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $response->assertStatus(429);
         $response->assertJson([
@@ -466,9 +624,6 @@ class GstLookupTest extends TestCase
         $this->assertStringContainsString('rate limit', strtolower($response->json('message')));
     }
 
-    /**
-     * Requirement 6C: Provider timeout handled gracefully.
-     */
     public function test_provider_timeout_handled_gracefully(): void
     {
         config([
@@ -484,7 +639,7 @@ class GstLookupTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $response->assertStatus(504);
         $response->assertJson([
@@ -493,9 +648,6 @@ class GstLookupTest extends TestCase
         $this->assertStringContainsString('timed out', strtolower($response->json('message')));
     }
 
-    /**
-     * Requirement 6D: Missing credentials handled with informative message.
-     */
     public function test_missing_credentials_returns_clear_configuration_notice(): void
     {
         config([
@@ -505,7 +657,7 @@ class GstLookupTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $response->assertStatus(503);
         $response->assertJson([
@@ -516,7 +668,6 @@ class GstLookupTest extends TestCase
         $this->assertContains('GST_API_KEY', $response->json('required_keys'));
         $this->assertContains('GST_API_SECRET', $response->json('required_keys'));
 
-        // Also test partial credentials (key without secret)
         config([
             'services.gst.provider' => 'sandbox',
             'services.gst.api_key' => 'key-without-secret',
@@ -524,7 +675,7 @@ class GstLookupTest extends TestCase
         ]);
 
         $partialResponse = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $partialResponse->assertStatus(503);
         $partialResponse->assertJson([
@@ -533,9 +684,6 @@ class GstLookupTest extends TestCase
         ]);
     }
 
-    /**
-     * Requirement 8: Fetching GST details does NOT automatically save the party to database.
-     */
     public function test_gst_lookup_does_not_persist_record_to_database(): void
     {
         config([
@@ -548,28 +696,26 @@ class GstLookupTest extends TestCase
             'https://api.sandbox.co.in/authenticate' => Http::response(['access_token' => 'token-123'], 200),
             'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => Http::response([
                 'data' => [
-                    'gstin' => '27AAAAA0000A1Z5',
-                    'trade_name' => 'Unsaved Temporary Entity',
-                    'status' => 'Active',
-                    'address' => ['state' => 'Maharashtra'],
+                    'data' => [
+                        'gstin' => '27AAAAA0000A1Z2',
+                        'tradeNam' => 'Unsaved Temporary Entity',
+                        'lgnm' => 'Unsaved Temporary Entity',
+                        'sts' => 'Active',
+                        'pradr' => ['addr' => ['stcd' => 'Maharashtra']],
+                    ],
                 ],
             ], 200),
         ]);
 
-        $this->assertEquals(0, Customer::where('gstin', '27AAAAA0000A1Z5')->count());
+        $this->assertEquals(0, Customer::where('gstin', '27AAAAA0000A1Z2')->count());
 
         $response = $this->actingAs($this->user)
-            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z5']));
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
 
         $response->assertStatus(200);
-
-        // Database count must still be 0!
-        $this->assertEquals(0, Customer::where('gstin', '27AAAAA0000A1Z5')->count());
+        $this->assertEquals(0, Customer::where('gstin', '27AAAAA0000A1Z2')->count());
     }
 
-    /**
-     * Requirement 9: Regular party creation with verified GST details saves properly.
-     */
     public function test_party_creation_with_gstin_persists_properly(): void
     {
         $customerType = \App\Domains\Master\Models\CustomerType::create([
@@ -581,7 +727,7 @@ class GstLookupTest extends TestCase
         $response = $this->actingAs($this->user)->post(route('masters.customers.store'), [
             'name' => 'Verified Acme Traders',
             'customer_type_id' => $customerType->id,
-            'gstin' => '27AAAAA0000A1Z5',
+            'gstin' => '27AAAAA0000A1Z2',
             'pan' => 'AAAAA0000A',
             'party_type' => 'sundry_debtors',
             'state' => 'Maharashtra',
@@ -606,7 +752,7 @@ class GstLookupTest extends TestCase
         $response->assertRedirect(route('masters.customers.index'));
         $this->assertDatabaseHas('customers', [
             'name' => 'Verified Acme Traders',
-            'gstin' => '27AAAAA0000A1Z5',
+            'gstin' => '27AAAAA0000A1Z2',
             'state' => 'Maharashtra',
         ]);
     }
