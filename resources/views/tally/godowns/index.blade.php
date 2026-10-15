@@ -5,7 +5,7 @@
         </x-slot:actions>
         <form class="filters" method="GET" action="{{ tally_route('books.tally.godowns.index') }}">
             <x-tally::form.field name="q" label="Search">
-                <x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name, code, address" />
+                <x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name, Code, Address" />
             </x-form.field>
             <x-tally::form.field name="status" label="Status">
                 <select id="status" name="status" class="input">

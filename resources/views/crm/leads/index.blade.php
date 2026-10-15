@@ -51,7 +51,7 @@
         <x-ui.card>
             <x-ui.table-toolbar
                 :search="$search ?? request('search')"
-                search-placeholder="Search contact name, company, mobile, email, tag..."
+                search-placeholder="Search Contact Name, Company, Mobile, Email, Tag..."
                 :reset-url="route('crm.leads.index')"
             >
                 <x-slot name="filters">
@@ -98,26 +98,26 @@
                         <tr>
                             <x-ui.sortable-th column="name" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Lead / Contact</x-ui.sortable-th>
                             <x-ui.sortable-th column="company" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Company</x-ui.sortable-th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Title</th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Mobile</th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Sec. Mobile</th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Phone</th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Landline</th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Email</th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Sec. Email</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Title</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Mobile</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Sec. Mobile</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Phone</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Landline</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Email</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Sec. Email</th>
                             <x-ui.sortable-th column="assignee" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Sales Person</x-ui.sortable-th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Tag</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Tag</th>
                             <x-ui.sortable-th column="category" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Category</x-ui.sortable-th>
                             <x-ui.sortable-th column="industry" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Industry</x-ui.sortable-th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Subcategory</th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Mailing Address</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Subcategory</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Mailing Address</th>
                             <x-ui.sortable-th column="status" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Status</x-ui.sortable-th>
                             <x-ui.sortable-th column="priority" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Priority</x-ui.sortable-th>
                             <x-ui.sortable-th column="source" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Source</x-ui.sortable-th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Campaign</th>
-                            <th class="px-3 py-2.5 text-left text-xs font-semibold uppercase text-slate-500 whitespace-nowrap">Notes</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Campaign</th>
+                            <th class="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">Notes</th>
                             <x-ui.sortable-th column="followup" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Follow-up Date</x-ui.sortable-th>
-                            <th class="sticky right-0 bg-slate-50 px-3 py-2.5 text-right text-xs font-semibold uppercase text-slate-500 whitespace-nowrap shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] z-10">Actions</th>
+                            <th class="sticky right-0 bg-slate-50 px-3 py-2.5 text-right text-xs font-semibold text-slate-500 whitespace-nowrap shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] z-10">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">

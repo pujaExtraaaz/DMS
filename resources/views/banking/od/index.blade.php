@@ -58,7 +58,7 @@
             <x-ui.card>
                 <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
                     <div>
-                        <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider">OD Limit &amp; Interest Configuration</h2>
+                        <h2 class="text-sm font-bold text-slate-800 tracking-wider">OD Limit &amp; Interest Configuration</h2>
                         <p class="text-xs text-slate-500">Configure overdraft facility and annual interest percentage for the selected bank account.</p>
                     </div>
                     <span class="px-2.5 py-1 text-[11px] font-semibold rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -74,7 +74,7 @@
 
                     <!-- Account Selection Dropdown linked to Company Profile -->
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                             Bank Account <span class="text-rose-500">*</span>
                         </label>
                         <select name="account_number"
@@ -104,7 +104,7 @@
                     <!-- Auto-filled Bank Name & Account Number -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 Bank Name <span class="text-rose-500">*</span>
                             </label>
                             <input type="text"
@@ -116,7 +116,7 @@
                         </div>
 
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 Account Number <span class="text-rose-500">*</span>
                             </label>
                             <input type="text"
@@ -130,7 +130,7 @@
                     <!-- OD Limit & Interest Rate -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 OD Limit (₹) <span class="text-rose-500">*</span>
                             </label>
                             <div class="relative rounded-lg shadow-sm">
@@ -150,7 +150,7 @@
                         </div>
 
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 Interest Rate (% p.a.) <span class="text-rose-500">*</span>
                             </label>
                             <div class="relative rounded-lg shadow-sm">
@@ -174,7 +174,7 @@
                     <!-- Calculation Method & Status -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 Calculation Method <span class="text-rose-500">*</span>
                             </label>
                             <select name="interest_calculation_method"
@@ -186,7 +186,7 @@
                         </div>
 
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 Status <span class="text-rose-500">*</span>
                             </label>
                             <select name="status"
@@ -202,7 +202,7 @@
                     <!-- Effective Dates -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 Effective From <span class="text-rose-500">*</span>
                             </label>
                             <input type="date"
@@ -213,7 +213,7 @@
                         </div>
 
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 Effective To (Optional)
                             </label>
                             <input type="date"
@@ -226,7 +226,7 @@
                     <!-- Optional Initial Utilized OD Balance -->
                     @if(!$activeConfig)
                         <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 Initial OD Utilized Opening Balance (Optional)
                             </label>
                             <div class="relative rounded-lg shadow-sm">
@@ -247,13 +247,13 @@
                     @endif
 
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                             Notes / Remarks (Optional)
                         </label>
                         <input type="text"
                                name="notes"
                                x-model="notes"
-                               placeholder="e.g. Sanction letter ref #SBI-OD-2026, reviewed annually"
+                               placeholder="E.G. Sanction Letter Ref #Sbi-OD-2026, Reviewed Annually"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
 
@@ -365,7 +365,7 @@
             <!-- Recent Bank Activity for this account -->
             <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
                 <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Recent Bank Transactions</h4>
+                    <h4 class="text-xs font-bold tracking-wider text-slate-700">Recent Bank Transactions</h4>
                     <a :href="`{{ route('od.report') }}?account_number=${selectedAccountNo}`"
                        class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
                         Full Statement &rarr;
@@ -408,16 +408,16 @@
     <x-ui.card class="space-y-4">
         <div class="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-                <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Company OD Accounts Master</h3>
+                <h3 class="text-sm font-bold text-slate-800 tracking-wider">Company OD Accounts Master</h3>
                 <p class="text-xs text-slate-500">Summary of all overdraft facilities configured for {{ $company?->name }}.</p>
             </div>
         </div>
 
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm divide-y divide-slate-200">
-                <thead class="bg-slate-50 text-xs uppercase font-semibold text-slate-600">
+                <thead class="bg-slate-50 text-xs font-semibold text-slate-600">
                     <tr>
-                        <th class="px-4 py-3 text-left">Bank &amp; Account</th>
+                        <th class="px-4 py-3 text-left">Bank &Amp; Account</th>
                         <th class="px-4 py-3 text-right">OD Limit</th>
                         <th class="px-4 py-3 text-right">Interest Rate</th>
                         <th class="px-4 py-3 text-right">Utilized OD</th>
@@ -511,7 +511,7 @@
             <form method="POST" action="{{ route('od.transactions.store') }}" class="space-y-4 text-xs">
                 @csrf
                 <div>
-                    <label class="block font-semibold text-slate-700 uppercase mb-1">Bank Account</label>
+                    <label class="block font-semibold text-slate-700 mb-1">Bank Account</label>
                     <select name="account_number" required class="block w-full rounded-lg border-gray-300 text-sm">
                         @foreach($companyBankAccounts as $b)
                             <option value="{{ $b['account_number'] }}" @selected($selectedAccountNo === $b['account_number'])>
@@ -523,18 +523,18 @@
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block font-semibold text-slate-700 uppercase mb-1">Date</label>
+                        <label class="block font-semibold text-slate-700 mb-1">Date</label>
                         <input type="date" name="transaction_date" value="{{ now()->toDateString() }}" required class="block w-full rounded-lg border-gray-300 text-sm">
                     </div>
                     <div>
-                        <label class="block font-semibold text-slate-700 uppercase mb-1">Txn / Cheque No.</label>
-                        <input type="text" name="transaction_no" placeholder="TXN-1001" class="block w-full rounded-lg border-gray-300 text-sm">
+                        <label class="block font-semibold text-slate-700 mb-1">Txn / Cheque No.</label>
+                        <input type="text" name="transaction_no" placeholder="Txn-1001" class="block w-full rounded-lg border-gray-300 text-sm">
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block font-semibold text-slate-700 uppercase mb-1">Transaction Type</label>
+                        <label class="block font-semibold text-slate-700 mb-1">Transaction Type</label>
                         <select name="transaction_type" required class="block w-full rounded-lg border-gray-300 text-sm">
                             <optgroup label="Increases OD (Debit / Withdrawal)">
                                 <option value="withdrawal">Withdrawal</option>
@@ -551,14 +551,14 @@
                     </div>
 
                     <div>
-                        <label class="block font-semibold text-slate-700 uppercase mb-1">Amount (₹)</label>
+                        <label class="block font-semibold text-slate-700 mb-1">Amount (₹)</label>
                         <input type="number" step="0.01" min="0.01" name="amount" required placeholder="50000.00" class="block w-full rounded-lg border-gray-300 text-sm font-semibold">
                     </div>
                 </div>
 
                 <div>
-                    <label class="block font-semibold text-slate-700 uppercase mb-1">Description / Particulars</label>
-                    <input type="text" name="description" required placeholder="e.g. Vendor raw material RTGS payout" class="block w-full rounded-lg border-gray-300 text-sm">
+                    <label class="block font-semibold text-slate-700 mb-1">Description / Particulars</label>
+                    <input type="text" name="description" required placeholder="E.G. Vendor Raw Material RTGS Payout" class="block w-full rounded-lg border-gray-300 text-sm">
                 </div>
 
                 <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">

@@ -48,7 +48,7 @@
 
     <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Reason for Leave</label>
-        <textarea name="reason" rows="3" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Please provide details...">{{ old('reason') }}</textarea>
+        <textarea name="reason" rows="3" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Please Provide Details...">{{ old('reason') }}</textarea>
     </div>
 
     <div class="flex items-center gap-3 pt-2">

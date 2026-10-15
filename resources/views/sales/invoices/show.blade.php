@@ -11,10 +11,10 @@
 <x-ui.button variant="primary" :href="route('payments.create', ['invoice_id' => $invoice->id])">Record Payment</x-ui.button>
 </x-slot></x-ui.page-header>
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-<x-ui.card class="lg:col-span-2" title="Items"><x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Product</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Qty</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Price</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Total</th></tr></x-slot>
+<x-ui.card class="lg:col-span-2" title="Items"><x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">Product</th><th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Qty</th><th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Price</th><th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Total</th></tr></x-slot>
 @foreach($invoice->items as $item)<tr><td class="px-6 py-4 text-sm">{{ $item->product->name }}</td><td class="px-6 py-4 text-sm text-right">{{ $item->quantity }} {{ $item->uom->code }}</td><td class="px-6 py-4 text-sm text-right">₹{{ number_format($item->unit_price, 2) }}</td><td class="px-6 py-4 text-sm text-right">₹{{ number_format($item->line_total, 2) }}</td></tr>@endforeach</x-ui.table>
 <div class="p-4 border-t border-slate-100 bg-slate-50/50">
-    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Addresses</h4>
+    <h4 class="text-xs font-bold tracking-wider text-slate-500 mb-2">Addresses</h4>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
         <div class="p-3 bg-white rounded-lg border border-slate-200">
             <span class="text-xs font-semibold uppercase text-slate-500">Billing Address</span>
@@ -30,6 +30,10 @@
 <x-ui.card title="Summary"><dl class="space-y-2 text-sm">
 <div class="flex justify-between"><dt>Status</dt><dd><x-ui.badge>{{ ucfirst($invoice->status) }}</x-ui.badge></dd></div>
 <div class="flex justify-between"><dt>Date</dt><dd>{{ $invoice->invoice_date->format('d M Y') }}</dd></div>
+@if($invoice->scheme)
+<div class="flex justify-between border-t pt-2"><dt class="text-slate-500">Scheme</dt><dd class="font-medium text-indigo-700">{{ $invoice->scheme->name }} ({{ $invoice->scheme->code }})</dd></div>
+<div class="flex justify-between"><dt class="text-slate-500">Scheme Rebate</dt><dd class="font-semibold text-emerald-600">₹{{ number_format($invoice->scheme_benefit_amount, 2) }}</dd></div>
+@endif
 <div class="flex justify-between border-t pt-2"><dt>Grand Total</dt><dd class="font-semibold">₹{{ number_format($invoice->grand_total, 2) }}</dd></div>
 <div class="flex justify-between"><dt>Paid</dt><dd>₹{{ number_format($invoice->paid_amount, 2) }}</dd></div>
 <div class="flex justify-between"><dt>Outstanding</dt><dd>₹{{ number_format($invoice->grand_total - $invoice->paid_amount, 2) }}</dd></div>

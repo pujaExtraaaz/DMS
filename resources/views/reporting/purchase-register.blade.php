@@ -7,7 +7,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search purchase no, supplier, status, notes..."
+            search-placeholder="Search Purchase No, Supplier, Status, Notes..."
             :reset-url="route('reports.purchase-register')"
         >
             <x-slot name="filters">

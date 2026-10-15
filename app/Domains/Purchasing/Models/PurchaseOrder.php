@@ -95,7 +95,7 @@ class PurchaseOrder extends Model
 
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Customer::class, 'supplier_id');
+        return $this->belongsTo(Customer::class, 'supplier_id')->withTrashed();
     }
 
     public function creator(): BelongsTo

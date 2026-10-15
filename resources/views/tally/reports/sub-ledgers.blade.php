@@ -13,7 +13,7 @@
         @if ($kind === 'control')
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Control account</th><th>Sub-ledgers</th><th></th></tr></thead>
+                    <thead><tr><th>Control Account</th><th>Sub-Ledgers</th><th></th></tr></thead>
                     <tbody>
                         @forelse ($controlAccounts as $control)
                             <tr>

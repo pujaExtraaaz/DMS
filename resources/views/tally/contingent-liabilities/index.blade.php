@@ -15,7 +15,7 @@
         </form>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Kind</th><th>Description</th><th class="money">Amount</th><th>As of</th></tr></thead>
+                <thead><tr><th>Kind</th><th>Description</th><th class="money">Amount</th><th>As Of</th></tr></thead>
                 <tbody>
                     @forelse ($items as $item)
                         <tr>

@@ -8,7 +8,7 @@
                     <thead>
                         <tr>
                             @foreach (array_keys($report['rows'][0]) as $heading)
-                                <th>{{ str_replace('_', ' ', ucfirst($heading)) }}</th>
+                                <th>{{ Str_Replace('_', ' ', Ucfirst($Heading)) }}</th>
                             @endforeach
                         </tr>
                     </thead>

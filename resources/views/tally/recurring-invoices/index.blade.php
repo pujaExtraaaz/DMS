@@ -6,7 +6,7 @@
         </x-slot:actions>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Name</th><th>Customer</th><th>Frequency</th><th>Next run</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Customer</th><th>Frequency</th><th>Next Run</th><th></th></tr></thead>
                 <tbody>
                     @forelse ($items as $item)
                         <tr>

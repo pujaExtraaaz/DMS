@@ -26,8 +26,8 @@
     <x-ui.table>
         <x-slot name="head">
             <tr>
-                <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Customer</th>
-                <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Balance</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">Customer</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Balance</th>
             </tr>
         </x-slot>
         @forelse($balances as $row)

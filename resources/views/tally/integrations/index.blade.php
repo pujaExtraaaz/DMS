@@ -3,7 +3,7 @@
         <x-slot:actions><a class="btn btn-primary" href="{{ tally_route('books.tally.integrations.create') }}">New integration</a></x-slot:actions>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Name</th><th>Type</th><th>Direction</th><th>Status</th><th>Last sync</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Type</th><th>Direction</th><th>Status</th><th>Last Sync</th><th></th></tr></thead>
                 <tbody>
                     @forelse ($integrations as $integration)
                         <tr>

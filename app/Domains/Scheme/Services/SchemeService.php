@@ -2,6 +2,7 @@
 
 namespace App\Domains\Scheme\Services;
 
+use App\Domains\Master\Models\Product;
 use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Scheme\Models\Scheme;
@@ -28,6 +29,7 @@ class SchemeService
             $scheme = Scheme::create([
                 'code' => $data['code'] ?? $this->documentNumberService->next('SCH', now(), 4),
                 'name' => $data['name'],
+                'scheme_type' => $data['scheme_type'] ?? null,
                 'brand_id' => $data['brand_id'] ?? null,
                 'starts_on' => $data['starts_on'],
                 'ends_on' => $data['ends_on'],
@@ -69,12 +71,13 @@ class SchemeService
     {
         $invoice->loadMissing(['items.product', 'customer']);
 
-        if (in_array($invoice->status, ['cancelled', 'draft'], true)) {
+        if (in_array($invoice->status, ['cancelled', 'draft'], true) || empty($invoice->scheme_id)) {
             return [];
         }
 
         $schemes = Scheme::query()
             ->with(['slabs', 'products'])
+            ->where('id', $invoice->scheme_id)
             ->where('status', 'active')
             ->whereDate('starts_on', '<=', $invoice->invoice_date)
             ->whereDate('ends_on', '>=', $invoice->invoice_date)
@@ -171,7 +174,132 @@ class SchemeService
         });
     }
 
-    protected function matchSlab(Scheme $scheme, float $qualified): ?SchemeSlab
+    public function evaluateScheme(Scheme $scheme, string|\DateTimeInterface $invoiceDate, array $items): array
+    {
+        $scheme->loadMissing(['slabs', 'products']);
+
+        if ($scheme->status !== 'active') {
+            return [
+                'eligible' => false,
+                'reason' => 'Scheme is not active.',
+                'benefit' => 0,
+                'qualified' => 0,
+                'slab' => null,
+            ];
+        }
+
+        $dateStr = $invoiceDate instanceof \DateTimeInterface ? $invoiceDate->format('Y-m-d') : substr((string) $invoiceDate, 0, 10);
+        $starts = $scheme->starts_on ? $scheme->starts_on->format('Y-m-d') : null;
+        $ends = $scheme->ends_on ? $scheme->ends_on->format('Y-m-d') : null;
+
+        if (($starts && $dateStr < $starts) || ($ends && $dateStr > $ends)) {
+            return [
+                'eligible' => false,
+                'reason' => "Invoice date ({$dateStr}) is outside the scheme validity window ({$starts} to {$ends}).",
+                'benefit' => 0,
+                'qualified' => 0,
+                'slab' => null,
+            ];
+        }
+
+        $productIds = $scheme->products->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->all();
+        $qualifyingItems = collect($items);
+
+        if ($productIds !== []) {
+            $qualifyingItems = $qualifyingItems->filter(fn ($item) => in_array((int) ($item['product_id'] ?? 0), $productIds, true));
+        } elseif ($scheme->brand_id) {
+            $qualifyingItems = $qualifyingItems->filter(function ($item) use ($scheme) {
+                $brandId = $item['brand_id'] ?? null;
+                if ($brandId === null && !empty($item['product_id'])) {
+                    $brandId = Product::where('id', $item['product_id'])->value('brand_id');
+                }
+                return (int) $brandId === (int) $scheme->brand_id;
+            });
+        }
+
+        if ($qualifyingItems->isEmpty()) {
+            return [
+                'eligible' => false,
+                'reason' => 'None of the invoice items belong to the scheme\'s eligible ' . ($productIds !== [] ? 'products' : ($scheme->brand_id ? 'brand' : 'items')) . '.',
+                'benefit' => 0,
+                'qualified' => 0,
+                'slab' => null,
+            ];
+        }
+
+        $qualified = $scheme->basis === 'quantity'
+            ? (float) $qualifyingItems->sum(fn ($i) => (float) ($i['quantity'] ?? 0))
+            : (float) $qualifyingItems->sum(function ($i) {
+                if (isset($i['line_total'])) {
+                    return (float) $i['line_total'];
+                }
+                $qty = (float) ($i['quantity'] ?? 0);
+                $price = (float) ($i['unit_price'] ?? 0);
+                $disc = (float) ($i['discount_amount'] ?? 0);
+                return max(0, ($qty * $price) - $disc);
+            });
+
+        if ($qualified <= 0) {
+            return [
+                'eligible' => false,
+                'reason' => 'Qualified volume must be greater than zero.',
+                'benefit' => 0,
+                'qualified' => 0,
+                'slab' => null,
+            ];
+        }
+
+        $slab = $this->matchSlab($scheme, $qualified);
+        if (! $slab) {
+            $minRequired = $scheme->slabs->min('from_value') ?? 0;
+            $reason = $qualified < $minRequired
+                ? "Minimum qualification slab not reached. Qualified: {$qualified}, required minimum: {$minRequired}."
+                : "Qualified volume ({$qualified}) does not fall within any defined slab range.";
+
+            return [
+                'eligible' => false,
+                'reason' => $reason,
+                'benefit' => 0,
+                'qualified' => round($qualified, 2),
+                'slab' => null,
+            ];
+        }
+
+        $benefit = $this->benefitFor($slab, $qualified);
+
+        return [
+            'eligible' => true,
+            'reason' => null,
+            'qualified' => round($qualified, 2),
+            'benefit' => round($benefit, 2),
+            'slab' => $slab,
+        ];
+    }
+
+    public function applySchemeToInvoice(Invoice $invoice, Scheme $scheme, float $qualified, ?SchemeSlab $slab, float $benefit): SchemeAchievement
+    {
+        return SchemeAchievement::updateOrCreate(
+            [
+                'scheme_id' => $scheme->id,
+                'invoice_id' => $invoice->id,
+                'customer_id' => $invoice->customer_id,
+            ],
+            [
+                'qualified_value' => round($qualified, 2),
+                'benefit_amount' => round($benefit, 2),
+                'snapshot' => [
+                    'scheme_code' => $scheme->code,
+                    'scheme_name' => $scheme->name,
+                    'slab' => $slab?->only(['from_value', 'to_value', 'benefit_percent', 'benefit_amount']),
+                    'basis' => $scheme->basis,
+                ],
+                'status' => 'provisional',
+                'calculated_at' => now(),
+            ]
+        );
+    }
+
+    public function matchSlab(Scheme $scheme, float $qualified): ?SchemeSlab
     {
         return $scheme->slabs
             ->sortByDesc('from_value')
@@ -183,7 +311,7 @@ class SchemeService
             });
     }
 
-    protected function benefitFor(?SchemeSlab $slab, float $qualified): float
+    public function benefitFor(?SchemeSlab $slab, float $qualified): float
     {
         if (! $slab) {
             return 0;

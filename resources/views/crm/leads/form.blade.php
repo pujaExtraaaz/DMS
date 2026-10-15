@@ -32,7 +32,7 @@
     <!-- Section 1: Contact Information -->
     <div>
         <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
-            <h3 class="text-sm font-semibold text-slate-800 uppercase tracking-wider">Contact Information</h3>
+            <h3 class="text-sm font-semibold text-slate-800 tracking-wider">Contact Information</h3>
             <span class="text-xs text-slate-400">* Required field</span>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -41,24 +41,24 @@
                 label="Contact Name" 
                 :value="old('name', $lead->name)" 
                 required 
-                placeholder="Full Name (e.g. John Doe)" 
+                placeholder="Full Name (E.G. John Doe)" 
             />
 
             <x-ui.input 
                 name="company_name" 
                 label="Company Name" 
                 :value="old('company_name', $lead->company_name ?: $lead->organization)" 
-                placeholder="e.g. Acme Industries Ltd." 
+                placeholder="E.G. Acme Industries Ltd." 
             />
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Title</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Title</label>
                 <input 
                     type="text" 
                     name="title" 
                     list="lead-title-presets" 
                     value="{{ old('title', $lead->title) }}" 
-                    placeholder="e.g. Mr., Ms., Director, Purchase Manager"
+                    placeholder="E.G. Mr., Ms., Director, Purchase Manager"
                     class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
                 >
                 <datalist id="lead-title-presets">
@@ -100,7 +100,7 @@
                     name="mobile" 
                     label="Mobile" 
                     :value="old('mobile', $lead->mobile)" 
-                    placeholder="Mobile Number (e.g. 9876543210)" 
+                    placeholder="Mobile Number (E.G. 9876543210)" 
                     @blur="checkMobile($event)"
                 />
                 <p x-show="mobileError" x-text="mobileError" class="text-xs text-red-600 mt-1 font-medium" x-cloak></p>
@@ -110,28 +110,28 @@
                 name="secondary_mobile" 
                 label="Second Mobile Number (SECND MOB)" 
                 :value="old('secondary_mobile', $lead->secondary_mobile)" 
-                placeholder="e.g. 9876500000" 
+                placeholder="E.G. 9876500000" 
             />
 
             <x-ui.input 
                 name="phone" 
                 label="Phone" 
                 :value="old('phone', $lead->phone)" 
-                placeholder="e.g. 022-28001122" 
+                placeholder="E.G. 022-28001122" 
             />
 
             <x-ui.input 
                 name="landline" 
                 label="Landline" 
                 :value="old('landline', $lead->landline)" 
-                placeholder="e.g. 022-28001133" 
+                placeholder="E.G. 022-28001133" 
             />
         </div>
     </div>
 
     <!-- Section 2: Assignment and Classification -->
     <div class="pt-4 border-t border-slate-100">
-        <h3 class="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-3">Assignment and Classification</h3>
+        <h3 class="text-sm font-semibold text-slate-800 tracking-wider mb-3">Assignment and Classification</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <x-ui.select name="assigned_to" label="Sales Person">
                 <option value="">Unassigned</option>
@@ -141,13 +141,13 @@
             </x-ui.select>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Tag</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Tag</label>
                 <input 
                     type="text" 
                     name="tag" 
                     list="lead-tag-presets"
                     value="{{ old('tag', $lead->tag) }}" 
-                    placeholder="e.g. VIP, Wholesale, Priority"
+                    placeholder="E.G. Vip, Wholesale, Priority"
                     class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
                 >
                 <datalist id="lead-tag-presets">
@@ -162,13 +162,13 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Industry</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Industry</label>
                 <input 
                     type="text" 
                     name="industry" 
                     list="lead-industry-presets"
                     value="{{ old('industry', $lead->industry) }}" 
-                    placeholder="e.g. Manufacturing, Retail, IT, Healthcare"
+                    placeholder="E.G. Manufacturing, Retail, It, Healthcare"
                     class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
                 >
                 <datalist id="lead-industry-presets">
@@ -193,7 +193,7 @@
             </x-ui.select>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Sub Category</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Sub Category</label>
                 <select 
                     name="sub_category_id" 
                     class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
@@ -240,17 +240,17 @@
                 name="interested_product" 
                 label="Interested Product" 
                 :value="old('interested_product', $lead->interested_product)" 
-                placeholder="e.g. Solar Inverter 5kW" 
+                placeholder="E.G. Solar Inverter 5kW" 
             />
         </div>
     </div>
 
     <!-- Section 3: Mailing Address -->
     <div class="pt-4 border-t border-slate-100">
-        <h3 class="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-3">Mailing Address</h3>
+        <h3 class="text-sm font-semibold text-slate-800 tracking-wider mb-3">Mailing Address</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="md:col-span-2">
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Mailing Street</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Mailing Street</label>
                 <textarea 
                     name="street" 
                     rows="2" 
@@ -263,7 +263,7 @@
                 name="city" 
                 label="Mailing City" 
                 :value="old('city', $lead->city)" 
-                placeholder="e.g. Mumbai" 
+                placeholder="E.G. Mumbai" 
             />
 
             <x-ui.select name="state" label="Mailing State">
@@ -277,20 +277,20 @@
                 name="zip" 
                 label="Mailing Zip" 
                 :value="old('zip', $lead->zip)" 
-                placeholder="e.g. 400001" 
+                placeholder="E.G. 400001" 
             />
         </div>
     </div>
 
     <!-- Section 4: Additional Notes -->
     <div class="pt-4 border-t border-slate-100">
-        <h3 class="text-sm font-semibold text-slate-800 uppercase tracking-wider mb-3">Additional Notes</h3>
+        <h3 class="text-sm font-semibold text-slate-800 tracking-wider mb-3">Additional Notes</h3>
         <div>
             <textarea 
                 name="notes" 
                 rows="3" 
                 class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" 
-                placeholder="Initial discussion notes or requirements..."
+                placeholder="Initial Discussion Notes Or Requirements..."
             >{{ old('notes', $lead->notes) }}</textarea>
         </div>
     </div>

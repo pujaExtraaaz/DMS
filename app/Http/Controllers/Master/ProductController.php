@@ -12,6 +12,7 @@ use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
 use App\Support\CodeGenerator;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -38,12 +39,22 @@ class ProductController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'barcode', 'hsn_code']);
+        $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'hsn_code', 'series', 'model', 'product_type']);
 
         $sortData = $this->applySorting(
             $query,
             $request,
-            ['name', 'sku', 'serial_no', 'is_active', 'created_at'],
+            [
+                'name' => 'name',
+                'sku' => 'sku',
+                'serial_no' => 'serial_no',
+                'series' => 'series',
+                'model' => 'model',
+                'models' => 'model',
+                'product_type' => 'product_type',
+                'is_active' => 'is_active',
+                'created_at' => 'created_at',
+            ],
             defaultSort: 'name',
             defaultDirection: 'asc'
         );
@@ -105,11 +116,67 @@ class ProductController extends Controller
         return $this->flashSuccess('Product updated successfully.', 'masters.products.index');
     }
 
-    public function destroy(Product $product): RedirectResponse
+    public function destroy(Request $request, Product $product): RedirectResponse|JsonResponse
     {
-        $product->delete();
+        $user = auth()->user();
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) &&
+            ! $user->can('products.manage') &&
+            ! $user->can('products.edit') &&
+            ! $user->can('masters.manage') &&
+            ! $user->can('masters.edit')) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: You do not have permission to delete products.',
+                ], 403);
+            }
 
-        return $this->flashSuccess('Product deleted successfully.', 'masters.products.index');
+            return back()->with('error', 'Unauthorized to delete product.');
+        }
+
+        // Prevent deleting a product if it belongs to another company or unauthorized tenant
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && (int) $product->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This product belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This product belongs to another company.');
+        }
+
+        $productName = $product->getRawOriginal('name') ?: $product->name;
+
+        try {
+            DB::transaction(function () use ($product) {
+                // Deactivate the product and soft-delete it so that all historical purchases,
+                // sales, orders, serial numbers, and transactions remain completely intact.
+                $product->is_active = false;
+                $product->save();
+                $product->delete();
+            });
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Product '{$productName}' deleted successfully.",
+                ]);
+            }
+
+            return $this->flashSuccess("Product '{$productName}' deleted successfully.", 'masters.products.index')
+                ->with('success', "Product '{$productName}' deleted successfully.");
+        } catch (\Throwable $e) {
+            report($e);
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to delete product: ' . $e->getMessage(),
+                ], 500);
+            }
+
+            return back()->with('error', 'Failed to delete product: ' . $e->getMessage());
+        }
     }
 
     protected function formData(Product $item): array
@@ -139,6 +206,10 @@ class ProductController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'required|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
+            'series' => 'nullable|string|max:100',
+            'model' => 'nullable|string|max:100',
+            'models' => 'nullable|string|max:100',
+            'product_type' => 'nullable|string|max:100',
             'hsn_code' => 'nullable|string|max:20',
             'description' => 'nullable|string',
             'specification' => 'nullable|string',
@@ -188,6 +259,10 @@ class ProductController extends Controller
         ]);
 
         $data['is_active'] = $request->boolean('is_active');
+        $data['model'] = $data['model'] ?? $data['models'] ?? ($product?->model ?? null);
+        $data['series'] = $data['series'] ?? ($product?->series ?? null);
+        $data['product_type'] = $data['product_type'] ?? ($product?->product_type ?? null);
+        unset($data['models']);
         $data['apply_discount_on_payable'] = $request->has('apply_discount_on_payable')
             ? $request->boolean('apply_discount_on_payable')
             : ($product?->apply_discount_on_payable ?? false);

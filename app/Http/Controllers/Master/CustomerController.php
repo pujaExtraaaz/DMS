@@ -20,6 +20,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
@@ -350,11 +351,139 @@ class CustomerController extends Controller
         return $this->flashSuccess('Party updated successfully.', 'masters.customers.index');
     }
 
-    public function destroy(Customer $customer): RedirectResponse
+    public function destroy(Request $request, Customer $customer): RedirectResponse|JsonResponse
     {
-        $customer->delete();
+        $user = $request->user() ?? auth()->user();
 
-        return $this->flashSuccess('Party deleted successfully.', 'masters.customers.index');
+        // Enforce authorization
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) &&
+            ! $user->can('masters.manage') &&
+            ! $user->can('masters.edit') &&
+            ! $user->can('masters.delete') &&
+            ! $user->can('customers.manage') &&
+            ! $user->can('customers.edit') &&
+            ! $user->can('customers.delete')) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: You do not have permission to delete parties.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: You do not have permission to delete parties.');
+        }
+
+        // Multi-tenancy company boundary check
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && $customer->company_id && (int) $customer->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This party belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This party belongs to another company.');
+        }
+
+        $partyName = $customer->name;
+        $partyCode = $customer->code;
+
+        try {
+            // Check for existing transactions & historical records
+            $hasOrders = Schema::hasTable('orders') && DB::table('orders')->where('customer_id', $customer->id)->exists();
+            $hasInvoices = Schema::hasTable('invoices') && DB::table('invoices')->where('customer_id', $customer->id)->exists();
+            $hasPurchaseOrders = Schema::hasTable('purchase_orders') && DB::table('purchase_orders')->where('supplier_id', $customer->id)->exists();
+            $hasPurchaseInvoices = Schema::hasTable('purchase_invoices') && DB::table('purchase_invoices')->where('supplier_id', $customer->id)->exists();
+            $hasPurchases = Schema::hasTable('purchases') && DB::table('purchases')->where('supplier_party_id', $customer->id)->exists();
+            $hasPayments = Schema::hasTable('payments') && DB::table('payments')->where('customer_id', $customer->id)->exists();
+            $hasCreditNotes = Schema::hasTable('credit_notes') && DB::table('credit_notes')->where('customer_id', $customer->id)->exists();
+            $hasCheques = Schema::hasTable('cheques') && DB::table('cheques')->where('customer_id', $customer->id)->exists();
+            $hasQuotations = Schema::hasTable('quotations') && DB::table('quotations')->where('customer_id', $customer->id)->exists();
+            $hasDeals = Schema::hasTable('deals') && DB::table('deals')->where('customer_id', $customer->id)->exists();
+
+            $hasTransactions = $hasOrders || $hasInvoices || $hasPurchaseOrders || $hasPurchaseInvoices
+                || $hasPurchases || $hasPayments || $hasCreditNotes || $hasCheques || $hasQuotations || $hasDeals;
+
+            if ($hasTransactions) {
+                // Safe archival / soft delete:
+                // Mark inactive, soft delete, and deactivate child addresses/contacts so that
+                // all historical financial and operational transactions remain completely intact.
+                DB::transaction(function () use ($customer) {
+                    $customer->is_active = false;
+                    $customer->save();
+                    $customer->delete();
+
+                    $customer->addresses()->update(['is_active' => false]);
+                    $customer->contacts()->update(['is_active' => false]);
+                });
+
+                $deps = [];
+                if ($hasOrders) $deps[] = 'orders';
+                if ($hasInvoices) $deps[] = 'sales invoices';
+                if ($hasPurchaseOrders) $deps[] = 'purchase orders';
+                if ($hasPurchaseInvoices || $hasPurchases) $deps[] = 'purchases';
+                if ($hasPayments || $hasCreditNotes || $hasCheques) $deps[] = 'payment records';
+                if ($hasQuotations) $deps[] = 'quotations';
+                if ($hasDeals) $deps[] = 'deals';
+                $depText = implode(', ', $deps);
+
+                $message = "Party '{$partyName}' ({$partyCode}) is linked to historical records ({$depText}) and has been safely archived.";
+
+                if ($request->wantsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => $message,
+                        'archived' => true,
+                    ]);
+                }
+
+                return $this->flashSuccess($message, 'masters.customers.index')
+                    ->with('success', $message);
+            }
+
+            // No historical transactions: permanent deletion is safe
+            DB::transaction(function () use ($customer) {
+                $customer->addresses()->delete();
+                $customer->contacts()->delete();
+                $customer->bankAccounts()->delete();
+                $customer->creditCheques()->delete();
+
+                if (Schema::hasTable('leads') && Schema::hasColumn('leads', 'converted_customer_id')) {
+                    DB::table('leads')->where('converted_customer_id', $customer->id)->update(['converted_customer_id' => null]);
+                }
+                if (Schema::hasTable('target_periods') && Schema::hasColumn('target_periods', 'supplier_id')) {
+                    DB::table('target_periods')->where('supplier_id', $customer->id)->update(['supplier_id' => null]);
+                }
+                if (Schema::hasTable('party_targets')) {
+                    DB::table('party_targets')->where('customer_id', $customer->id)->delete();
+                }
+
+                $customer->forceDelete();
+            });
+
+            $message = "Party '{$partyName}' ({$partyCode}) deleted successfully.";
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                ]);
+            }
+
+            return $this->flashSuccess($message, 'masters.customers.index')
+                ->with('success', $message);
+        } catch (\Throwable $e) {
+            report($e);
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to delete party: ' . $e->getMessage(),
+                ], 500);
+            }
+
+            return back()->with('error', 'Failed to delete party: ' . $e->getMessage());
+        }
     }
 
     public function show(Customer $customer): RedirectResponse

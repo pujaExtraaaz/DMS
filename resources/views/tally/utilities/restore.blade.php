@@ -20,8 +20,8 @@
                     <thead>
                         <tr>
                             <th>Table</th>
-                            <th>Rows now</th>
-                            <th>Rows in backup</th>
+                            <th>Rows Now</th>
+                            <th>Rows In Backup</th>
                         </tr>
                     </thead>
                     <tbody>

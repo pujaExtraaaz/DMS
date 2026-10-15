@@ -28,7 +28,7 @@
                     <p class="text-xs text-slate-600">{{ $segment->description }}</p>
                 @endif
                 <div>
-                    <h4 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Configured Criteria</h4>
+                    <h4 class="text-[11px] font-semibold text-slate-400 tracking-wider mb-1.5">Configured Criteria</h4>
                     <div class="flex flex-wrap gap-1.5">
                         @foreach($segment->criteria_summary as $rule)
                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
@@ -60,7 +60,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search within matching audience..."
+            search-placeholder="Search Within Matching Audience..."
             :reset-url="route('crm.leads.segments.show', $segment)"
         />
 
@@ -69,12 +69,12 @@
                 <thead class="bg-slate-50">
                     <tr>
                         <x-ui.sortable-th column="name" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Lead Name</x-ui.sortable-th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Contact</th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Location</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Contact</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Location</th>
                         <x-ui.sortable-th column="status" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Status</x-ui.sortable-th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Purchase History</th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Engagement Level</th>
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Action</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Purchase History</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Engagement Level</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Action</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">

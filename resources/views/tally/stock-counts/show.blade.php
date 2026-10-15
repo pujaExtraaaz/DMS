@@ -15,7 +15,7 @@
         </dl>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Product</th><th class="money">System</th><th class="money">Counted</th><th class="money">Variance</th><th class="money">Unit cost</th></tr></thead>
+                <thead><tr><th>Product</th><th class="money">System</th><th class="money">Counted</th><th class="money">Variance</th><th class="money">Unit Cost</th></tr></thead>
                 <tbody>
                     @foreach ($count->lines as $line)
                         <tr>

@@ -44,7 +44,7 @@
 
         <div>
             <div class="flex items-center justify-between mb-1">
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Credit Days</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider">Credit Days</label>
                 <span class="text-xs text-slate-500" id="due_date_preview_badge" style="display: none;">
                     Due: <span class="font-semibold text-indigo-600" id="due_date_badge_text"></span>
                 </span>
@@ -98,7 +98,7 @@
             <!-- Billing Address Card (Supplier) -->
             <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                 <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Billing Address (Supplier / Vendor)</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Billing Address (Supplier / Vendor)</label>
                     <span class="text-[11px] text-indigo-600 font-medium">Billed from</span>
                 </div>
                 <select name="billing_address_id" id="billing_address_id" onchange="handleBillingChange()"
@@ -106,19 +106,19 @@
                     <option value="">Default Address</option>
                 </select>
                 <textarea name="billing_address" id="billing_address" rows="3"
-                          placeholder="Supplier billing address snapshot"
+                          placeholder="Supplier Billing Address Snapshot"
                           class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ old('billing_address', $order->billing_address) }}</textarea>
             </div>
 
             <!-- Delivery Address Card (Consignee) -->
             <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                 <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Delivery / Dispatch Address (Consignee)</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery / Dispatch Address (Consignee)</label>
                     <span class="text-[11px] text-emerald-600 font-medium">Deliver to</span>
                 </div>
                 <textarea name="shipping_address" id="shipping_address" rows="3"
                           oninput="this.dataset.autoFilled='0'"
-                          placeholder="Consignee delivery address (defaults to warehouse/branch address)"
+                          placeholder="Consignee Delivery Address (Defaults To Warehouse/Branch Address)"
                           class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ $currentShippingValue }}</textarea>
                 <p class="text-[11px] text-slate-400">Auto-fills from selected warehouse/branch. You may customize if needed.</p>
             </div>
@@ -136,8 +136,8 @@
     <th class="px-3 py-2 text-left">Qty</th>
     <th class="px-3 py-2 text-left">Unit Cost</th>
     <th class="px-3 py-2 text-left">Tax %</th>
-    <th class="px-3 py-2 text-left">CGST %</th>
-    <th class="px-3 py-2 text-left">SGST %</th>
+    <th class="px-3 py-2 text-left">Cgst %</th>
+    <th class="px-3 py-2 text-left">Sgst %</th>
     <th class="px-3 py-2"></th>
     </tr></thead>
     <tbody id="po-lines">
@@ -301,7 +301,7 @@
                 <p class="text-xs text-slate-500">Specify whether freight / shipping costs apply to this purchase order.</p>
             </div>
             <div class="flex items-center gap-3">
-                <label class="text-xs font-semibold text-slate-700 uppercase tracking-wider">Freight Applicable?</label>
+                <label class="text-xs font-semibold text-slate-700 tracking-wider">Freight Applicable?</label>
                 <select name="is_freight_applicable" id="po_is_freight_applicable" onchange="toggleFreightFields()" class="rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     <option value="0" @selected(old('is_freight_applicable', $order->is_freight_applicable ? 1 : 0) == 0)>No</option>
                     <option value="1" @selected(old('is_freight_applicable', $order->is_freight_applicable ? 1 : 0) == 1)>Yes</option>
@@ -343,7 +343,7 @@
                 <input type="text" name="freight_notes" id="po_freight_notes"
                        value="{{ old('freight_notes', $order->freight_notes) }}"
                        maxlength="1000"
-                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="e.g. Transporter name, terms (Paid/To-Pay), dispatch terms...">
+                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="E.G. Transporter Name, Terms (Paid/To-Pay), Dispatch Terms...">
             </div>
         </div>
     </div>
@@ -351,11 +351,11 @@
     <!-- Notes & Order Summary Section -->
     <div class="mt-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         <div class="lg:col-span-7 space-y-2">
-            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Notes / Instructions</label>
-            <textarea name="notes" rows="3" placeholder="Optional notes or instructions for this purchase order..." class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('notes', $order->notes) }}</textarea>
+            <label class="block text-xs font-semibold text-slate-700 tracking-wider">Notes / Instructions</label>
+            <textarea name="notes" rows="3" placeholder="Optional Notes Or Instructions For This Purchase Order..." class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('notes', $order->notes) }}</textarea>
         </div>
         <div class="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-4 shadow-xs">
-            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-100 pb-2 mb-3">Order Summary</h4>
+            <h4 class="text-xs font-bold tracking-wider text-slate-600 border-b border-slate-100 pb-2 mb-3">Order Summary</h4>
             <div class="space-y-2 text-sm">
                 <div class="flex justify-between text-slate-600">
                     <span>Items Subtotal:</span>
@@ -409,7 +409,7 @@
                 <input type="text"
                        id="po-dropdown-search-box"
                        class="block w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 bg-white placeholder-gray-400"
-                       placeholder="Search product by name or SKU..."
+                       placeholder="Search Product By Name Or SKU..."
                        autocomplete="off"
                        oninput="handleDropdownFilter(this.value)"
                        onkeydown="handleDropdownSearchKeydown(event)">

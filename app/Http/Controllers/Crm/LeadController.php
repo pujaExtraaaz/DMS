@@ -458,8 +458,8 @@ class LeadController extends Controller
                         ->select('leads.*');
                 },
             ],
-            'created_at',
-            'desc'
+            'name',
+            'asc'
         );
 
         $items = $query->paginate(15)->withQueryString();

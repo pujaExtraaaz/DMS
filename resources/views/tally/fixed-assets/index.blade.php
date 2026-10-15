@@ -5,7 +5,7 @@
         </x-slot:actions>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Code</th><th>Name</th><th>Category</th><th class="money">Gross</th><th class="money">Book value</th><th>Status</th></tr></thead>
+                <thead><tr><th>Code</th><th>Name</th><th>Category</th><th class="money">Gross</th><th class="money">Book Value</th><th>Status</th></tr></thead>
                 <tbody>
                     @forelse ($assets as $asset)
                         <tr>

@@ -4,10 +4,17 @@ namespace App\Http\Controllers\Catalog;
 
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
+use App\Domains\Catalog\Models\SubCategory;
+use App\Domains\Master\Models\Product;
 use App\Http\Controllers\Controller;
+<<<<<<< HEAD
 use App\Support\CodeGenerator;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Database\QueryException;
+=======
+use App\Support\Traits\SortableAndSearchable;
+use Illuminate\Http\JsonResponse;
+>>>>>>> aa321ea5d5d641e2b160405edaf720832da9a01f
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -124,11 +131,109 @@ class CategoryController extends Controller
         return $this->flashSuccess('Category updated successfully.', 'masters.categories.index');
     }
 
-    public function destroy(Category $category): RedirectResponse
+    public function destroy(Request $request, Category $category): RedirectResponse|JsonResponse
     {
+<<<<<<< HEAD
         $category->delete();
 
         return $this->flashSuccess('Category deleted successfully.', 'masters.categories.index');
+=======
+        $user = $request->user();
+
+        // Enforce existing authentication and authorization rules
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) &&
+            ! $user->can('masters.manage') &&
+            ! $user->can('masters.edit') &&
+            ! $user->can('masters.delete') &&
+            ! $user->can('products.manage') &&
+            ! $user->can('products.edit')) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: You do not have permission to delete categories.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: You do not have permission to delete categories.');
+        }
+
+        // Multi-tenancy check if brand is associated and user is restricted
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && $category->brand?->company_id && (int) $category->brand->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This category belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This category belongs to another company.');
+        }
+
+        $categoryName = $category->name;
+
+        try {
+            $hasSubCategories = $category->subCategories()->exists();
+            $hasProducts = $category->products()->exists();
+
+            if ($hasSubCategories || $hasProducts) {
+                // Safe archival strategy: archive category and its subcategories to preserve
+                // historical products, transactions, and inventory references intact.
+                DB::transaction(function () use ($category) {
+                    $category->update(['is_active' => false]);
+                    $category->subCategories()->update(['is_active' => false]);
+                });
+
+                $dependencies = [];
+                if ($hasSubCategories) {
+                    $dependencies[] = 'subcategories';
+                }
+                if ($hasProducts) {
+                    $dependencies[] = 'products';
+                }
+                $depText = implode(' and ', $dependencies);
+
+                $message = "Category '{$categoryName}' is linked to {$depText} and has been safely archived to preserve historical records.";
+
+                if ($request->wantsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => true,
+                        'message' => $message,
+                        'archived' => true,
+                    ]);
+                }
+
+                return $this->flashSuccess($message, 'masters.categories.index');
+            }
+
+            // No dependencies: safely permanent delete
+            DB::transaction(function () use ($category) {
+                $category->delete();
+            });
+
+            $message = "Category '{$categoryName}' deleted successfully.";
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                    'archived' => false,
+                ]);
+            }
+
+            return $this->flashSuccess($message, 'masters.categories.index');
+        } catch (\Throwable $e) {
+            report($e);
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to delete category: ' . $e->getMessage(),
+                ], 500);
+            }
+
+            return $this->flashError('Failed to delete category: ' . $e->getMessage(), 'masters.categories.index');
+        }
+>>>>>>> aa321ea5d5d641e2b160405edaf720832da9a01f
     }
 
     protected function validated(Request $request, ?Category $category = null): array

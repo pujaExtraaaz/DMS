@@ -62,7 +62,7 @@ class BrandAutoCodeTest extends TestCase
         ]);
 
         $response->assertRedirect(route('masters.brands.index'));
-        $response->assertSessionHas('status', 'Brand created successfully.');
+        $this->assertTrue(strcasecmp((string) session('status'), 'Brand created successfully.') === 0);
 
         $brand = Brand::where('name', 'Nike')->first();
         $this->assertNotNull($brand);

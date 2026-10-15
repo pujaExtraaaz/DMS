@@ -27,7 +27,7 @@
             <p>Quantities are per one finished unit. Choose the alternate unit when the quantity is in that unit.</p>
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Component</th><th>Quantity</th><th>Unit</th><th>Extra wastage %</th></tr></thead>
+                    <thead><tr><th>Component</th><th>Quantity</th><th>Unit</th><th>Extra Wastage %</th></tr></thead>
                     <tbody>
                         @foreach (old('lines', $bill->exists ? $bill->lines->map->only(['product_id', 'quantity', 'unit_id', 'wastage_percent'])->all() : array_fill(0, 4, [])) as $index => $line)
                             <tr>
@@ -57,7 +57,7 @@
             <h2>By-products / scrap</h2>
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>By-product</th><th>Quantity per finished unit</th></tr></thead>
+                    <thead><tr><th>By-Product</th><th>Quantity Per Finished Unit</th></tr></thead>
                     <tbody>
                         @foreach (old('byproducts', $bill->exists ? $bill->byproducts->map->only(['product_id', 'quantity'])->all() : array_fill(0, 2, [])) as $index => $line)
                             <tr>

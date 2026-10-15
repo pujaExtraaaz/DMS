@@ -26,7 +26,7 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::resource('business-groups', BusinessGroupController::class)->except(['show']);
 });
 
-Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.manage|products.view|products.create|products.edit')->group(function () {
+Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|products.delete')->group(function () {
     Route::resource('brands', BrandController::class)->except(['show']);
     Route::resource('categories', CategoryController::class)->except(['show']);
     Route::resource('sub-categories', SubCategoryController::class)->except(['show']);

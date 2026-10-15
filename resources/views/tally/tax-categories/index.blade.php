@@ -5,7 +5,7 @@
         </x-slot:actions>
         <form class="filters" method="GET" action="{{ tally_route('books.tally.tax-categories.index') }}">
             <x-tally::form.field name="q" label="Search">
-                <x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name or code" />
+                <x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name Or Code" />
             </x-form.field>
             <button class="btn btn-primary" type="submit">Apply</button>
             <a class="btn" href="{{ tally_route('books.tally.tax-categories.index') }}">Reset</a>

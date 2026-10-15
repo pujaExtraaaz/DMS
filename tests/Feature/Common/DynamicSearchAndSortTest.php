@@ -9,6 +9,8 @@ use App\Domains\Master\Models\CustomerType;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
+use App\Domains\Organization\Models\FinancialYear;
+use App\Domains\Target\Models\TargetPeriod;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Role;
@@ -164,5 +166,101 @@ class DynamicSearchAndSortTest extends TestCase
         $searchProducts = $searchResponse->viewData('items');
         $this->assertCount(1, $searchProducts);
         $this->assertEquals('Wireless Keyboard', $searchProducts->first()->name);
+    }
+
+    public function test_case_insensitive_and_whitespace_trimmed_sorting(): void
+    {
+        Brand::create(['name' => 'beta brand', 'code' => 'BR-010', 'is_active' => true, 'company_id' => $this->company->id]);
+        Brand::create(['name' => '  Alpha Brand', 'code' => 'BR-011', 'is_active' => true, 'company_id' => $this->company->id]);
+        Brand::create(['name' => 'GAMMA BRAND', 'code' => 'BR-012', 'is_active' => true, 'company_id' => $this->company->id]);
+
+        $response = $this->actingAs($this->user)->get(route('masters.brands.index', ['sort' => 'name', 'direction' => 'asc']));
+        $response->assertOk();
+        $items = $response->viewData('items');
+
+        $names = $items->pluck('name')->toArray();
+        $this->assertEquals(['  Alpha Brand', 'beta brand', 'GAMMA BRAND'], $names);
+    }
+
+    public function test_financial_years_listing_defaults_to_alphabetical_a_to_z(): void
+    {
+        FinancialYear::create([
+            'company_id' => $this->company->id,
+            'name' => 'FY 2026-2027',
+            'starts_on' => '2026-04-01',
+            'ends_on' => '2027-03-31',
+        ]);
+        FinancialYear::create([
+            'company_id' => $this->company->id,
+            'name' => 'FY 2024-2025',
+            'starts_on' => '2024-04-01',
+            'ends_on' => '2025-03-31',
+        ]);
+        FinancialYear::create([
+            'company_id' => $this->company->id,
+            'name' => 'FY 2025-2026',
+            'starts_on' => '2025-04-01',
+            'ends_on' => '2026-03-31',
+        ]);
+
+        $response = $this->actingAs($this->user)->get(route('organization.financial-years.index'));
+        $response->assertOk();
+        $items = $response->viewData('items');
+
+        $names = $items->pluck('name')->toArray();
+        $sortedNames = $names;
+        natcasesort($sortedNames);
+        $this->assertEquals(array_values($sortedNames), $names);
+        $this->assertTrue(in_array('FY 2024-2025', $names, true));
+    }
+
+    public function test_targets_listing_defaults_to_alphabetical_a_to_z(): void
+    {
+        TargetPeriod::create([
+            'name' => 'Quarter 3 Sales Target',
+            'period_type' => 'quarterly',
+            'starts_on' => '2026-10-01',
+            'ends_on' => '2026-12-31',
+            'status' => 'draft',
+        ]);
+        TargetPeriod::create([
+            'name' => 'Annual Sales Target 2026',
+            'period_type' => 'yearly',
+            'starts_on' => '2026-01-01',
+            'ends_on' => '2026-12-31',
+            'status' => 'draft',
+        ]);
+        TargetPeriod::create([
+            'name' => 'Quarter 1 Sales Target',
+            'period_type' => 'quarterly',
+            'starts_on' => '2026-04-01',
+            'ends_on' => '2026-06-30',
+            'status' => 'draft',
+        ]);
+
+        $response = $this->actingAs($this->user)->get(route('targets.index'));
+        $response->assertOk();
+        $periods = $response->viewData('periods');
+
+        $names = $periods->pluck('name')->toArray();
+        $this->assertEquals(['Annual Sales Target 2026', 'Quarter 1 Sales Target', 'Quarter 3 Sales Target'], $names);
+    }
+
+    public function test_users_index_sorts_alphabetically_by_name_within_role(): void
+    {
+        $salesRole = Role::firstOrCreate(['name' => 'salesperson', 'guard_name' => 'web']);
+
+        $userZ = User::factory()->create(['name' => 'Zack Taylor']);
+        $userZ->assignRole($salesRole);
+
+        $userA = User::factory()->create(['name' => 'Adam Smith']);
+        $userA->assignRole($salesRole);
+
+        $response = $this->actingAs($this->user)->get(route('users.index'));
+        $response->assertOk();
+        $users = $response->viewData('users');
+
+        $salespersonNames = $users->filter(fn ($u) => $u->hasRole('salesperson'))->pluck('name')->values()->toArray();
+        $this->assertEquals(['Adam Smith', 'Zack Taylor'], $salespersonNames);
     }
 }

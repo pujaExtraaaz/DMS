@@ -79,7 +79,7 @@
                     type="password"
                     required
                     autocomplete="current-password"
-                    placeholder="Enter your password"
+                    placeholder="Enter Your Password"
                     class="avit-input avit-password-input @error('password') avit-input-error @enderror"
                 >
 

@@ -42,7 +42,7 @@
                     name="{{ $searchName }}"
                     x-model="query"
                     data-dynamic-search
-                    placeholder="{{ $searchPlaceholder }}"
+                    placeholder="{{ \App\Support\TitleCase::format($searchPlaceholder) }}"
                     autocomplete="off"
                     class="block w-full rounded-lg border-slate-300 pl-9 pr-9 text-sm placeholder:text-slate-400 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm transition"
                 />
@@ -54,7 +54,7 @@
                     x-cloak
                     @click="clear()"
                     class="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600 transition"
-                    title="Clear search"
+                    title="Clear Search"
                 >
                     <svg class="h-4 w-4 rounded-full p-0.5 hover:bg-slate-100" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -75,7 +75,7 @@
                     href="{{ $resetUrl }}"
                     data-reset-filters
                     class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-sm transition"
-                    title="Reset all filters and search"
+                    title="Reset All Filters And Search"
                 >
                     <svg class="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />

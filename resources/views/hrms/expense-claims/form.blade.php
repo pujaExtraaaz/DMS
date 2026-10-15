@@ -36,7 +36,7 @@
 
     <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Expense Type / Category *</label>
-        <input type="text" name="claim_type" value="{{ old('claim_type') }}" required placeholder="e.g. Travel, Food, Lodging, Client Meeting, Fuel" class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+        <input type="text" name="claim_type" value="{{ old('claim_type') }}" required placeholder="E.G. Travel, Food, Lodging, Client Meeting, Fuel" class="block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
     </div>
 
     <div>
@@ -46,7 +46,7 @@
 
     <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Description / Purpose</label>
-        <textarea name="description" rows="3" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Details of the incurred expense...">{{ old('description') }}</textarea>
+        <textarea name="description" rows="3" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Details Of The Incurred Expense...">{{ old('description') }}</textarea>
     </div>
 
     <div class="flex items-center gap-3 pt-2">

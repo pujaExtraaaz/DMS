@@ -7,7 +7,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search customer, recipient, status..."
+            search-placeholder="Search Customer, Recipient, Status..."
             :reset-url="route('communications.index')"
         >
             <x-slot name="filters">

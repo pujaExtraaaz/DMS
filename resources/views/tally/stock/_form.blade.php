@@ -27,7 +27,7 @@
         </x-form.field>
     @endif
     <x-tally::form.field name="barcode_scan" label="Scan barcode">
-        <x-tally::form.input name="barcode_scan" data-barcode-scan data-barcode-scope="stock" data-barcode-url="{{ tally_route('books.tally.barcodes.lookup') }}" placeholder="Scan, then Enter" autocomplete="off" />
+        <x-tally::form.input name="barcode_scan" data-barcode-scan data-barcode-scope="stock" data-barcode-url="{{ tally_route('books.tally.barcodes.lookup') }}" placeholder="Scan, Then Enter" autocomplete="off" />
     </x-form.field>
 </div>
 @foreach ($errors->getMessages() as $field => $messages)
@@ -49,7 +49,7 @@
                 <th>Rate</th>
                 <th class="money">Value</th>
                 <th>Batch</th>
-                <th>Mfg date</th>
+                <th>Mfg Date</th>
                 <th>Expiry</th>
                 <th>Serial</th>
                 @if ($type === \Tally\Inventory\StockTransactionType::Adjustment)

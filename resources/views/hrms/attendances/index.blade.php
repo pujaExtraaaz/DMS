@@ -101,7 +101,7 @@
 <!-- Attendance Table -->
 <x-ui.card>
     <x-ui.table-toolbar
-        placeholder="Search attendances by employee, notes..."
+        placeholder="Search Attendances By Employee, Notes..."
         :searchValue="request('search')"
         :resetUrl="route('hrms.attendances.index')"
     />
@@ -112,12 +112,12 @@
                 <tr>
                     <x-ui.sortable-th column="attendance_date" label="Date" :currentSort="$sort" :currentDirection="$direction" />
                     <x-ui.sortable-th column="employee" label="Employee" :currentSort="$sort" :currentDirection="$direction" />
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Department</th>
-                    <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">In</th>
-                    <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Out</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Department</th>
+                    <th class="px-3 py-2 text-center text-xs font-semibold text-slate-500">In</th>
+                    <th class="px-3 py-2 text-center text-xs font-semibold text-slate-500">Out</th>
                     <x-ui.sortable-th column="status" label="Status" align="center" :currentSort="$sort" :currentDirection="$direction" />
                     <x-ui.sortable-th column="hours_worked" label="Hours" align="right" :currentSort="$sort" :currentDirection="$direction" />
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Action</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Action</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">

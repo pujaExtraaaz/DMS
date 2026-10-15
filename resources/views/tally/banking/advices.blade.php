@@ -37,7 +37,7 @@
             <button class="btn btn-primary" type="submit">Accept</button>
         </form>
         <table class="data">
-            <thead><tr><th>Date</th><th>Advice no.</th><th>Party</th><th>Bank</th><th class="money">Amount</th><th>Narration</th></tr></thead>
+            <thead><tr><th>Date</th><th>Advice No.</th><th>Party</th><th>Bank</th><th class="money">Amount</th><th>Narration</th></tr></thead>
             <tbody>
                 @forelse ($advices as $advice)
                     <tr>

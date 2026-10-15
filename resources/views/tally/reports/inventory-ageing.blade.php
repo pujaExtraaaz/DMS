@@ -20,7 +20,7 @@
         </div>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Product</th><th>Code</th><th class="money">Qty</th><th>Last movement</th><th>Days</th><th>Bucket</th></tr></thead>
+                <thead><tr><th>Product</th><th>Code</th><th class="money">Qty</th><th>Last Movement</th><th>Days</th><th>Bucket</th></tr></thead>
                 <tbody>
                     @forelse ($rows as $row)
                         <tr>

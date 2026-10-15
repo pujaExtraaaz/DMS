@@ -10,5 +10,10 @@ Route::prefix('schemes')->name('schemes.')->middleware('role_or_permission:super
     Route::get('/{scheme}', [SchemeController::class, 'show'])->name('show');
     Route::post('/{scheme}/activate', [SchemeController::class, 'activate'])->name('activate');
     Route::post('/{scheme}/finalize', [SchemeController::class, 'finalize'])->name('finalize');
+<<<<<<< HEAD
     Route::post('/{scheme}/provisional', [SchemeController::class, 'provisional'])->name('provisional');
+=======
+    Route::post('/{scheme}/provisional', [SchemeController::class, 'calculateProvisional'])->name('provisional');
+>>>>>>> aa321ea5d5d641e2b160405edaf720832da9a01f
 });
+

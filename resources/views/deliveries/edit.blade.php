@@ -3,7 +3,7 @@
 @section('content')
 <x-ui.page-header :title="$delivery->invoice->invoice_no" :description="$delivery->customer->name"><x-slot name="actions"><x-ui.button variant="secondary" :href="route('deliveries.index')">Back</x-ui.button></x-slot></x-ui.page-header>
 <x-ui.card><form method="POST" action="{{ route('deliveries.update', $delivery) }}" class="space-y-4">@csrf @method('PUT')
-<x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Product</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Loaded</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Delivered</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Short</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Returned</th></tr></x-slot>
+<x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">Product</th><th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Loaded</th><th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Delivered</th><th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Short</th><th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Returned</th></tr></x-slot>
 @foreach($delivery->items as $item)<tr>
 <input type="hidden" name="items[{{ $loop->index }}][id]" value="{{ $item->id }}">
 <td class="px-6 py-4 text-sm">{{ $item->product->name }} ({{ $item->uom->code }})</td>

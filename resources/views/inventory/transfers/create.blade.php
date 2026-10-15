@@ -37,7 +37,7 @@
         <x-ui.card>
             <div class="mb-4 pb-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Location Transfer</h2>
+                    <h2 class="text-sm font-bold text-slate-800 tracking-wider">Location Transfer</h2>
                     <p class="text-xs text-slate-500 mt-0.5">Transfer physical stock between warehouses (From Warehouse &rarr; To Warehouse).</p>
                 </div>
                 <span class="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">Location Movement</span>
@@ -51,7 +51,7 @@
                     <x-ui.input name="transfer_date" label="Date" type="date" :value="old('transfer_date', now()->toDateString())" required />
                     
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">From Warehouse <span class="text-rose-500">*</span></label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">From Warehouse <span class="text-rose-500">*</span></label>
                         <select name="from_warehouse_id" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
                             <option value="">Select source warehouse...</option>
                             @foreach($warehouses as $w)
@@ -61,7 +61,7 @@
                     </div>
 
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">To Warehouse <span class="text-rose-500">*</span></label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">To Warehouse <span class="text-rose-500">*</span></label>
                         <select name="to_warehouse_id" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
                             <option value="">Select destination warehouse...</option>
                             @foreach($warehouses as $w)
@@ -73,7 +73,7 @@
 
                 <div class="overflow-x-auto border border-slate-200 rounded-lg">
                     <table class="min-w-full text-xs">
-                        <thead class="bg-slate-50 text-slate-600 uppercase border-b">
+                        <thead class="bg-slate-50 text-slate-600 border-b">
                             <tr>
                                 <th class="px-3 py-2 text-left">Product</th>
                                 <th class="px-3 py-2 text-left w-36">UOM</th>
@@ -126,7 +126,7 @@
         <x-ui.card>
             <div class="mb-5 pb-3 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Item / Stock Name Transfer (Stock Reclassification)</h2>
+                    <h2 class="text-sm font-bold text-slate-800 tracking-wider">Item / Stock Name Transfer (Stock Reclassification)</h2>
                     <p class="text-xs text-slate-500 mt-0.5">Change the product identity of on-hand inventory within the same warehouse without modifying product master catalogs or historical documents.</p>
                 </div>
                 <span class="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Identity Reclassification</span>
@@ -143,7 +143,7 @@
                     <x-ui.input name="transfer_date" label="Transfer Date" type="date" :value="old('transfer_date', now()->toDateString())" required />
 
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                             Warehouse / Location <span class="text-rose-500">*</span>
                         </label>
                         <select name="warehouse_id"
@@ -177,7 +177,7 @@
                                        @focus="sourceOpen = true"
                                        @input="sourceOpen = true"
                                        @click.outside="sourceOpen = false"
-                                       placeholder="Type product name or SKU..."
+                                       placeholder="Type Product Name Or SKU..."
                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
                                 <button type="button" x-show="sourceProductId" @click="clearSource()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold">&times;</button>
                             </div>
@@ -201,19 +201,19 @@
                         <!-- Read-only Info Grid -->
                         <div class="grid grid-cols-2 gap-3 pt-1">
                             <div>
-                                <label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Current Product Name</label>
+                                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Current Product Name</label>
                                 <input type="text" readonly :value="sourceProductName || '—'"
                                        class="block w-full rounded-lg border-slate-200 bg-slate-100 text-xs text-slate-800 font-semibold cursor-not-allowed">
                             </div>
 
                             <div>
-                                <label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Unit of Measure (UOM)</label>
+                                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Unit of Measure (UOM)</label>
                                 <input type="text" readonly :value="uomCode || '—'"
                                        class="block w-full rounded-lg border-slate-200 bg-slate-100 text-xs text-slate-800 font-mono cursor-not-allowed">
                             </div>
 
                             <div class="col-span-2">
-                                <label class="block text-[11px] font-semibold uppercase text-slate-500 mb-1">Current Stock Quantity (In Selected Location)</label>
+                                <label class="block text-[11px] font-semibold text-slate-500 mb-1">Current Stock Quantity (In Selected Location)</label>
                                 <div class="flex items-center gap-2">
                                     <div class="relative flex-1">
                                         <input type="text" readonly :value="isLoadingStock ? 'Checking available stock...' : (sourceProductId ? (availableStock.toFixed(2) + ' ' + uomCode) : 'Select product & warehouse')"
@@ -246,7 +246,7 @@
                                        @focus="destOpen = true"
                                        @input="destOpen = true"
                                        @click.outside="destOpen = false"
-                                       placeholder="Type destination product name or SKU..."
+                                       placeholder="Type Destination Product Name Or SKU..."
                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
                                 <button type="button" x-show="destProductId" @click="clearDest()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold">&times;</button>
                             </div>
@@ -268,7 +268,7 @@
                         </div>
 
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
                                 Quantity to Rename / Transfer <span class="text-rose-500">*</span>
                             </label>
                             <div class="relative">
@@ -278,7 +278,7 @@
                                        name="quantity"
                                        x-model="quantity"
                                        :max="availableStock > 0 ? availableStock : ''"
-                                       placeholder="Enter quantity to transfer..."
+                                       placeholder="Enter Quantity To Transfer..."
                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono font-bold"
                                        required>
                                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-slate-500" x-text="uomCode"></span>
@@ -297,11 +297,11 @@
                         </div>
 
                         <div>
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Reason / Remarks (Optional)</label>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Reason / Remarks (Optional)</label>
                             <input type="text"
                                    name="notes"
                                    x-model="notes"
-                                   placeholder="e.g. Corrected SKU naming, grade reclassification, repackaged..."
+                                   placeholder="E.G. Corrected SKU Naming, Grade Reclassification, Repackaged..."
                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         </div>
                     </div>
@@ -311,7 +311,7 @@
                 <div x-show="sourceProductId && destProductId && quantity > 0 && !isOverStock && !isSameProduct"
                      x-transition
                      class="p-4 rounded-xl bg-indigo-50/70 border border-indigo-200">
-                    <h4 class="text-xs font-bold uppercase text-indigo-900 tracking-wider mb-2">Reclassification Accounting Preview</h4>
+                    <h4 class="text-xs font-bold text-indigo-900 tracking-wider mb-2">Reclassification Accounting Preview</h4>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                         <div class="bg-white p-2.5 rounded-lg border border-indigo-100">
                             <span class="text-slate-500 block">Source Balance After:</span>

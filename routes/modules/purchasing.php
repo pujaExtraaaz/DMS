@@ -49,6 +49,10 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
         ->name('invoices.update');
     Route::delete('invoices/{invoice}', [PurchaseInvoiceController::class, 'destroy'])
         ->name('invoices.destroy');
+    Route::post('invoices/{invoice}/post', [PurchaseInvoiceController::class, 'post'])
+        ->name('invoices.post');
+    Route::post('invoices/{invoice}/cancel', [PurchaseInvoiceController::class, 'cancel'])
+        ->name('invoices.cancel');
 
     Route::get('landed-costs', [LandedCostController::class, 'index'])->name('landed-costs.index');
     Route::get('landed-costs/create', [LandedCostController::class, 'create'])->name('landed-costs.create');

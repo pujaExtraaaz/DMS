@@ -11,7 +11,7 @@ class UserController extends Controller
         $users = User::with(['roles', 'permissions'])
         ->get()
         ->sortBy(function ($user) {
-            return [
+            $roleRank = [
                 'super-admin'    => 1,
                 'owner'         => 2,
                 'sales-manager' => 3,
@@ -21,6 +21,8 @@ class UserController extends Controller
                 'driver'        => 7,
                 'delivery-person' => 8,
             ][$user->roles->first()?->name] ?? 99;
+
+            return sprintf('%02d_%s', $roleRank, strtolower(trim((string) $user->name)));
         });
 
         return view('users.index', compact('users'));

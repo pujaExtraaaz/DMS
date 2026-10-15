@@ -77,7 +77,7 @@
                         name="q"
                         value="{{ request('q', request('search')) }}"
                         data-dynamic-search
-                        placeholder="Order no, customer name or code..."
+                        placeholder="Order No, Customer Name Or Code..."
                         class="mt-1 block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
                     >
                 </div>
@@ -277,7 +277,7 @@
                                 Date
                             </x-ui.sortable-th>
 
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">
                                 Salesperson
                             </th>
 
@@ -285,7 +285,7 @@
                                 Status
                             </x-ui.sortable-th>
 
-                            <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
+                            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">
                                 Items
                             </th>
 
@@ -293,7 +293,7 @@
                                 Total
                             </x-ui.sortable-th>
 
-                            <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
+                            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">
                                 Actions
                             </th>
                         </tr>

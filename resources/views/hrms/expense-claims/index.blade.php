@@ -10,7 +10,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search expense claims by type, description, employee..."
+            placeholder="Search Expense Claims By Type, Description, Employee..."
             :searchValue="request('search')"
             :resetUrl="route('hrms.expense-claims.index')"
         >
@@ -39,9 +39,9 @@
                         <x-ui.sortable-th column="employee" label="Employee" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="claim_type" label="Type" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="claim_amount" label="Claim Amount" align="right" :currentSort="$sort" :currentDirection="$direction" />
-                        <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Receipt</th>
+                        <th class="px-3 py-2 text-center text-xs font-semibold text-slate-500">Receipt</th>
                         <x-ui.sortable-th column="status" label="Status" align="center" :currentSort="$sort" :currentDirection="$direction" />
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions / Settlement</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions / Settlement</th>
                     </tr>
                 </thead>
             <tbody class="divide-y divide-slate-100">
@@ -108,11 +108,11 @@
                                             </div>
                                             <div>
                                                 <label class="block text-[11px] font-medium text-slate-600 mb-0.5">Reference / UTR</label>
-                                                <input type="text" name="settlement_reference" placeholder="e.g. TXN123456" class="block w-full text-xs rounded border-gray-300">
+                                                <input type="text" name="settlement_reference" placeholder="E.G. TXN123456" class="block w-full text-xs rounded border-gray-300">
                                             </div>
                                             <div>
                                                 <label class="block text-[11px] font-medium text-slate-600 mb-0.5">Notes</label>
-                                                <input type="text" name="settlement_notes" placeholder="Optional notes" class="block w-full text-xs rounded border-gray-300">
+                                                <input type="text" name="settlement_notes" placeholder="Optional Notes" class="block w-full text-xs rounded border-gray-300">
                                             </div>
                                             <x-ui.button type="submit" size="sm" variant="primary" class="w-full bg-emerald-600 hover:bg-emerald-700">Confirm Settlement</x-ui.button>
                                         </form>

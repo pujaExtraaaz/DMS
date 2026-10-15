@@ -12,15 +12,15 @@
             <table class="data">
                 <thead>
                     <tr>
-                        <th>Book date</th>
+                        <th>Book Date</th>
                         <th>Voucher</th>
                         <th>Reference</th>
-                        <th>Transaction date</th>
-                        <th class="money">Book amount</th>
-                        <th class="money">Bank amount</th>
+                        <th>Transaction Date</th>
+                        <th class="money">Book Amount</th>
+                        <th class="money">Bank Amount</th>
                         <th class="money">Difference</th>
                         <th>Status</th>
-                        <th>Reconciliation date</th>
+                        <th>Reconciliation Date</th>
                         <th></th>
                     </tr>
                 </thead>

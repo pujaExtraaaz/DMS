@@ -79,6 +79,10 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::policy(Order::class, OrderPolicy::class);
 
+        \Illuminate\Support\Facades\Blade::directive('titleCase', function ($expression) {
+            return "<?php echo \App\Support\TitleCase::format($expression); ?>";
+        });
+
         // Books + Spatie: Super Admin / Client Admin bypass every ability check.
         Gate::before(function ($user, string $ability) {
             if (function_exists('tally_super_admin') && tally_super_admin($user)) {

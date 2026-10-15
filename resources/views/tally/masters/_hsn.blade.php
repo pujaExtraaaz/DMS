@@ -3,7 +3,7 @@
     $selected = collect($hsnSacs ?? [])->first(fn ($hsn) => (string) $hsn->id === $current);
 @endphp
 <div class="picker" data-picker data-hsn data-hsn-catalogue="{{ tally_route('books.tally.hsn-catalogue.index') }}" data-hsn-adopt="{{ tally_route('books.tally.hsn-catalogue.store') }}">
-    <input class="input picker-query" data-picker-query inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Type 4, 6 or 8 digits" value="{{ $selected->code ?? '' }}">
+    <input class="input picker-query" data-picker-query inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Type 4, 6 Or 8 Digits" value="{{ $selected->code ?? '' }}">
     <select class="picker-store" name="{{ $name }}" data-hsn-store tabindex="-1" aria-hidden="true">
         <option value="">None</option>
         @foreach ($hsnSacs ?? [] as $hsn)

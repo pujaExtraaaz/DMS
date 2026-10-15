@@ -16,12 +16,16 @@
     if ($hasError) {
         $inputClasses .= ' border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500';
     }
+
+    if ($attributes->has('placeholder')) {
+        $attributes = $attributes->merge(['placeholder' => \App\Support\TitleCase::format($attributes->get('placeholder'))]);
+    }
 @endphp
 
 <div {{ $attributes->only('class')->merge(['class' => 'space-y-1']) }}>
     @if ($label)
         <label @if($fieldName) for="{{ $fieldName }}" @endif class="block text-sm font-medium text-gray-700">
-            {{ $label }}
+            {{ \App\Support\TitleCase::format($label) }}
             @if ($required)
                 <span class="text-red-500">*</span>
             @endif
@@ -35,7 +39,7 @@
     />
 
     @if ($help && ! $hasError)
-        <p class="text-xs text-gray-500">{{ $help }}</p>
+        <p class="text-xs text-gray-500">{{ \App\Support\TitleCase::format($help) }}</p>
     @endif
 
     @if ($hasError)

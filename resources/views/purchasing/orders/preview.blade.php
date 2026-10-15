@@ -593,15 +593,15 @@
             <tr>
                 <th style="width: 24px;">S.No.</th>
                 <th class="text-left" style="width: 220px;">Item Description</th>
-                <th style="width: 55px;">HSN/SAC</th>
+                <th style="width: 55px;">HSN/Sac</th>
                 <th class="text-right" style="width: 44px;">Qty</th>
                 <th style="width: 34px;">Unit</th>
                 <th class="text-right" style="width: 65px;">Rate (&#8377;)</th>
                 <th class="text-right" style="width: 38px;">Disc.</th>
                 <th class="text-right" style="width: 38px;">Tax %</th>
-                <th class="text-right" style="width: 44px;">CGST %</th>
-                <th class="text-right" style="width: 44px;">SGST %</th>
-                <th class="text-right" style="width: 44px;">IGST %</th>
+                <th class="text-right" style="width: 44px;">Cgst %</th>
+                <th class="text-right" style="width: 44px;">Sgst %</th>
+                <th class="text-right" style="width: 44px;">Igst %</th>
                 <th class="text-right" style="width: 80px;">Line Amount (&#8377;)</th>
             </tr>
         </thead>

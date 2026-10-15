@@ -6,7 +6,7 @@
         @endif
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Employee</th><th class="money">Days</th><th class="money">Earnings</th><th class="money">PF</th><th class="money">ESI</th><th class="money">Deductions</th><th class="money">Net</th></tr></thead>
+                <thead><tr><th>Employee</th><th class="money">Days</th><th class="money">Earnings</th><th class="money">Pf</th><th class="money">Esi</th><th class="money">Deductions</th><th class="money">Net</th></tr></thead>
                 <tbody>
                     @foreach ($run->lines as $line)
                         <tr>

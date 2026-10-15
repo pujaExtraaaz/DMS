@@ -26,7 +26,7 @@
         </form>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Type</th><th>Class</th><th>Default ledger</th><th></th></tr></thead>
+                <thead><tr><th>Type</th><th>Class</th><th>Default Ledger</th><th></th></tr></thead>
                 <tbody>
                     @forelse ($classes as $class)
                         <tr>

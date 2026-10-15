@@ -11,11 +11,11 @@
 <x-ui.card class="mb-6">
     <form method="GET" action="{{ route('hrms.attendances.bulk') }}" class="flex flex-wrap items-end gap-4">
         <div>
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Attendance Date</label>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Attendance Date</label>
             <input type="date" name="date" value="{{ $date }}" class="rounded-lg border-gray-300 text-sm">
         </div>
         <div>
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Department</label>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Department</label>
             <select name="department_id" class="rounded-lg border-gray-300 text-sm">
                 <option value="">All Departments</option>
                 @foreach($departments as $d)
@@ -36,12 +36,12 @@
             <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50">
                     <tr>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Employee</th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Department</th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Status</th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Check In</th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Check Out</th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Notes</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Employee</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Department</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Status</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Check In</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Check Out</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Notes</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
@@ -74,7 +74,7 @@
                                 <input type="time" name="records[{{ $index }}][check_out]" value="{{ $curOut }}" class="rounded-md border-gray-300 text-xs py-1">
                             </td>
                             <td class="px-3 py-2">
-                                <input type="text" name="records[{{ $index }}][notes]" value="{{ $curNotes }}" placeholder="Optional notes" class="rounded-md border-gray-300 text-xs py-1 w-full max-w-xs">
+                                <input type="text" name="records[{{ $index }}][notes]" value="{{ $curNotes }}" placeholder="Optional Notes" class="rounded-md border-gray-300 text-xs py-1 w-full max-w-xs">
                             </td>
                         </tr>
                     @empty

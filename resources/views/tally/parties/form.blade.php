@@ -171,7 +171,7 @@
             </form>
             <div class="table-wrap" style="margin-top:0.75rem">
                 <table class="data">
-                    <thead><tr><th>Price list</th><th>From</th><th>To</th></tr></thead>
+                    <thead><tr><th>Price List</th><th>From</th><th>To</th></tr></thead>
                     <tbody>
                         @forelse ($party->priceLists as $assignment)
                             <tr>

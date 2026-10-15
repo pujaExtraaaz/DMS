@@ -5,7 +5,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search payments by number, customer, invoice..."
+            placeholder="Search Payments By Number, Customer, Invoice..."
             :searchValue="request('search')"
             :resetUrl="route('payments.index')"
         >

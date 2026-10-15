@@ -11,7 +11,7 @@
                 <x-tally::form.input name="number" value="{{ $filters['number'] }}" placeholder="Number" />
             </x-form.field>
             <x-tally::form.field name="q" label="Search">
-                <x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Narration or reference" />
+                <x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Narration Or Reference" />
             </x-form.field>
             <x-tally::form.field name="from" label="From">
                 <x-tally::form.input name="from" type="date" value="{{ $filters['from'] }}" />

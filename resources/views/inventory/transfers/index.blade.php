@@ -37,7 +37,7 @@
         <x-ui.card>
             <x-ui.table-toolbar
                 :search="$search ?? request('search')"
-                search-placeholder="Search reference no, remarks, item names..."
+                search-placeholder="Search Reference No, Remarks, Item Names..."
                 :reset-url="route('inventory.transfers.index', ['tab' => 'name'])"
             >
                 <x-slot name="filters">
@@ -88,14 +88,14 @@
                             <x-ui.sortable-th column="reclassification_date" :current-sort="$sort ?? 'reclassification_date'" :current-direction="$direction ?? 'desc'" default-direction="desc">
                                 Date
                             </x-ui.sortable-th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Warehouse</th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Current Item</th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">New Item</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Warehouse</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Current Item</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">New Item</th>
                             <x-ui.sortable-th column="quantity" :current-sort="$sort ?? 'reclassification_date'" :current-direction="$direction ?? 'desc'" align="right">
                                 Quantity
                             </x-ui.sortable-th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Performed By</th>
-                            <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Performed By</th>
+                            <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">
@@ -149,7 +149,7 @@
         <x-ui.card>
             <x-ui.table-toolbar
                 :search="$search ?? request('search')"
-                search-placeholder="Search transfer no, notes..."
+                search-placeholder="Search Transfer No, Notes..."
                 :reset-url="route('inventory.transfers.index', ['tab' => 'location'])"
             >
                 <x-slot name="filters">
@@ -222,12 +222,12 @@
                             <x-ui.sortable-th column="transfer_date" :current-sort="$sort ?? request('sort', 'transfer_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc">
                                 Date
                             </x-ui.sortable-th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">From</th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">To</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">From</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">To</th>
                             <x-ui.sortable-th column="status" :current-sort="$sort ?? request('sort', 'transfer_date')" :current-direction="$direction ?? request('direction', 'desc')">
                                 Status
                             </x-ui.sortable-th>
-                            <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                            <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">

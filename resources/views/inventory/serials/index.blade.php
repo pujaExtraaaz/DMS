@@ -33,7 +33,7 @@
     <x-ui.card title="Reserve">
         <form method="POST" action="{{ route('inventory.serials.reserve') }}" class="space-y-3">@csrf
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Serial numbers</label>
-                <textarea name="serial_numbers" rows="3" required class="block w-full rounded-lg border-gray-300 text-sm" placeholder="One per line or comma-separated">{{ $serial?->serial_number }}</textarea>
+                <textarea name="serial_numbers" rows="3" required class="block w-full rounded-lg border-gray-300 text-sm" placeholder="One Per Line Or Comma-Separated">{{ $serial?->serial_number }}</textarea>
             </div>
             <x-ui.input name="owner_label" label="Reservation note" :value="old('owner_label', 'Sales hold')" required />
             <x-ui.button type="submit" variant="primary">Reserve</x-ui.button>
@@ -43,7 +43,7 @@
     <x-ui.card title="Deliver / Sell">
         <form method="POST" action="{{ route('inventory.serials.deliver') }}" class="space-y-3">@csrf
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Serial numbers</label>
-                <textarea name="serial_numbers" rows="3" required class="block w-full rounded-lg border-gray-300 text-sm" placeholder="One per line or comma-separated">{{ $serial?->serial_number }}</textarea>
+                <textarea name="serial_numbers" rows="3" required class="block w-full rounded-lg border-gray-300 text-sm" placeholder="One Per Line Or Comma-Separated">{{ $serial?->serial_number }}</textarea>
             </div>
             <x-ui.button type="submit" variant="primary">Mark Delivered</x-ui.button>
         </form>
@@ -52,9 +52,9 @@
     <x-ui.card title="Return to Stock">
         <form method="POST" action="{{ route('inventory.serials.return') }}" class="space-y-3">@csrf
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Serial numbers</label>
-                <textarea name="serial_numbers" rows="3" required class="block w-full rounded-lg border-gray-300 text-sm" placeholder="One per line or comma-separated">{{ $serial?->serial_number }}</textarea>
+                <textarea name="serial_numbers" rows="3" required class="block w-full rounded-lg border-gray-300 text-sm" placeholder="One Per Line Or Comma-Separated">{{ $serial?->serial_number }}</textarea>
             </div>
-            <x-ui.select name="warehouse_id" label="Return warehouse" placeholder="Keep current">
+            <x-ui.select name="warehouse_id" label="Return warehouse" placeholder="Keep Current">
                 <option value=""></option>
                 @foreach($warehouses as $w)
                     <option value="{{ $w->id }}">{{ $w->name }}</option>
@@ -68,7 +68,7 @@
 <div id="listing-container" data-dynamic-container>
 <x-ui.card title="Recent Serials">
 <x-ui.table-toolbar
-    placeholder="Search serials by number, product, note..."
+    placeholder="Search Serials By Number, Product, Note..."
     :searchValue="request('search')"
     :resetUrl="route('inventory.serials.index')"
 >
@@ -95,7 +95,7 @@
 <x-ui.sortable-th column="product" label="Product" :currentSort="$sort" :currentDirection="$direction" />
 <x-ui.sortable-th column="status" label="Status" :currentSort="$sort" :currentDirection="$direction" />
 <x-ui.sortable-th column="warehouse" label="Warehouse" :currentSort="$sort" :currentDirection="$direction" />
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Note</th>
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Note</th>
 </tr></thead>
 <tbody class="divide-y divide-slate-100">
 @forelse($recent as $row)

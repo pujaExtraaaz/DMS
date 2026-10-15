@@ -12,6 +12,7 @@ class Scheme extends Model
     protected $fillable = [
         'code',
         'name',
+        'scheme_type',
         'brand_id',
         'starts_on',
         'ends_on',
@@ -22,6 +23,15 @@ class Scheme extends Model
         'created_by_name',
         'closed_at',
     ];
+
+    public function getSchemeTypeLabelAttribute(): ?string
+    {
+        return match ($this->scheme_type) {
+            'brand_based', 'brand' => 'Brand-Based Scheme',
+            'product_based', 'product' => 'Product-Based Scheme',
+            default => null,
+        };
+    }
 
     protected function casts(): array
     {

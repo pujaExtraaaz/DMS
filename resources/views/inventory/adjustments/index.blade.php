@@ -7,7 +7,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search adjustments by no, reason, notes..."
+            placeholder="Search Adjustments By No, Reason, Notes..."
             :searchValue="request('search')"
             :resetUrl="route('inventory.adjustments.index')"
         >
@@ -44,7 +44,7 @@
                         <x-ui.sortable-th column="warehouse" label="Warehouse" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="reason" label="Reason" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="status" label="Status" :currentSort="$sort" :currentDirection="$direction" />
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y">

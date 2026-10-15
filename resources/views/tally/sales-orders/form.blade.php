@@ -40,7 +40,7 @@
             </div>
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Name of Item</th><th>Product</th><th>Tax</th><th class="money">Quantity</th><th class="money">Rate</th><th class="money">Disc</th><th class="money">Amount</th></tr></thead>
+                    <thead><tr><th>Name Of Item</th><th>Product</th><th>Tax</th><th class="money">Quantity</th><th class="money">Rate</th><th class="money">Disc</th><th class="money">Amount</th></tr></thead>
                     <tbody>
                         @for ($i = 0; $i < 4; $i++)
                             @php $line = $order?->lines[$i] ?? null; @endphp

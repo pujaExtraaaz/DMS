@@ -1,6 +1,6 @@
 <div class="form-grid">
     <x-tally::form.field name="code" label="Code" required>
-        <x-tally::form.input name="code" value="{{ old('code', $record->code) }}" required maxlength="8" inputmode="numeric" placeholder="4, 6 or 8 digits" />
+        <x-tally::form.input name="code" value="{{ old('code', $record->code) }}" required maxlength="8" inputmode="numeric" placeholder="4, 6 Or 8 Digits" />
     </x-form.field>
     <x-tally::form.field name="kind" label="Kind" required>
         <select id="kind" name="kind" class="input" required>

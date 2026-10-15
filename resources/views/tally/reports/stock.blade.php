@@ -5,7 +5,7 @@
         </x-slot:actions>
         <form class="filters" method="GET">
             <x-tally::form.field name="q" label="Search">
-                <x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Product name or code" />
+                <x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Product Name Or Code" />
             </x-form.field>
             @unless ($kind === 'low')
                 <x-tally::form.field name="from" label="From">
@@ -53,8 +53,8 @@
                         <tr>
                             <th>Product</th>
                             <th class="qty">Opening</th>
-                            <th class="qty">Stock in</th>
-                            <th class="qty">Stock out</th>
+                            <th class="qty">Stock In</th>
+                            <th class="qty">Stock Out</th>
                             <th class="qty">Closing</th>
                             <th class="money">Rate</th>
                             <th class="money">Value</th>
@@ -141,8 +141,8 @@
                             <th>Product</th>
                             <th>Godown</th>
                             <th class="qty">Opening</th>
-                            <th class="qty">Stock in</th>
-                            <th class="qty">Stock out</th>
+                            <th class="qty">Stock In</th>
+                            <th class="qty">Stock Out</th>
                             <th class="qty">Closing</th>
                             <th class="money">Rate</th>
                             <th class="money">Value</th>
@@ -201,7 +201,7 @@
                             <th>Product</th>
                             <th>Code</th>
                             <th class="qty">Closing</th>
-                            <th class="qty">Reorder level</th>
+                            <th class="qty">Reorder Level</th>
                             <th class="qty">Minimum</th>
                             <th class="qty">Shortfall</th>
                         </tr>
