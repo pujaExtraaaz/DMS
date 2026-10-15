@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Organization;
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -83,11 +84,64 @@ class BranchController extends Controller
         return $this->flashSuccess('Branch updated successfully.', 'organization.branches.index');
     }
 
-    public function destroy(Branch $branch): RedirectResponse
+    public function destroy(Request $request, Branch $branch): RedirectResponse|JsonResponse
     {
-        $branch->delete();
+        $user = $request->user();
 
-        return $this->flashSuccess('Branch deleted successfully.', 'organization.branches.index');
+        // Check user permissions before deleting
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) && ! $user->can('organization.manage') && ! $user->can('organization.edit')) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to delete branch.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized to delete branch.');
+        }
+
+        // Prevent deleting a branch if it belongs to another company or unauthorized tenant
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && (int) $branch->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This branch belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This branch belongs to another company.');
+        }
+
+        $branchName = $branch->getRawOriginal('name') ?: $branch->name;
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($branch) {
+            // Automatically handle linked warehouses: soft-delete and deactivate them
+            foreach ($branch->warehouses as $warehouse) {
+                $warehouse->update(['is_active' => false]);
+                $warehouse->delete();
+            }
+
+            // Unassign default branch from assigned users and clean up branch access pivot
+            \App\Models\User::where('branch_id', $branch->id)->update(['branch_id' => null]);
+            if (\Illuminate\Support\Facades\Schema::hasTable('user_branch_access')) {
+                \Illuminate\Support\Facades\DB::table('user_branch_access')->where('branch_id', $branch->id)->delete();
+            }
+
+            // Mark branch inactive and soft delete it
+            $branch->is_active = false;
+            $branch->save();
+            $branch->delete();
+        });
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Branch '{$branchName}' deleted successfully.",
+            ]);
+        }
+
+        return $this->flashSuccess("Branch '{$branchName}' deleted successfully.", 'organization.branches.index')
+            ->with('success', "Branch '{$branchName}' deleted successfully.");
     }
 
     protected function validated(Request $request, ?Branch $branch = null): array

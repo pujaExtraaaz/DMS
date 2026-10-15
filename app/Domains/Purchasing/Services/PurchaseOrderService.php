@@ -2,6 +2,7 @@
 
 namespace App\Domains\Purchasing\Services;
 
+use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
@@ -11,6 +12,7 @@ use App\Domains\Purchasing\Models\PurchaseInwardItem;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseInvoiceItem;
 use App\Domains\Purchasing\Models\PurchaseOrder;
+use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Purchasing\Models\PurchaseOrderItem;
 use App\Domains\Purchasing\Models\SupplierPayable;
 use App\Domains\Purchasing\Models\VendorPriceHistory;
@@ -98,17 +100,26 @@ class PurchaseOrderService
             if (!$billingAddress) {
                 $billingAddress = $supplier->defaultBillingAddress();
             }
-            if (!$shippingAddress) {
-                $shippingAddress = $supplier->defaultDeliveryAddress() ?? $billingAddress;
-            }
 
             $billingSnapshot = !empty($data['billing_address'])
                 ? $data['billing_address']
                 : ($billingAddress ? $billingAddress->formatSnapshot() : $supplier->address);
 
-            $shippingSnapshot = !empty($data['shipping_address'])
-                ? $data['shipping_address']
-                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $supplier->address));
+            $warehouse = !empty($data['warehouse_id'])
+                ? Warehouse::with(['branch', 'company'])->find($data['warehouse_id'])
+                : null;
+
+            $defaultDeliveryAddress = $warehouse?->address
+                ?: ($warehouse?->branch?->address
+                    ?: ($warehouse?->company?->address
+                        ?: ($actor->company?->address ?? null)));
+
+            $rawShipping = !empty($data['shipping_address']) ? trim($data['shipping_address']) : null;
+            if ($rawShipping && ($rawShipping === $billingSnapshot || $rawShipping === $supplier->address)) {
+                $shippingSnapshot = $defaultDeliveryAddress ?: $rawShipping;
+            } else {
+                $shippingSnapshot = $rawShipping ?: ($shippingAddress ? $shippingAddress->formatSnapshot() : $defaultDeliveryAddress);
+            }
 
             $isFreightApplicable = !empty($data['is_freight_applicable']);
             $freightAmount = 0.0;
@@ -314,17 +325,30 @@ class PurchaseOrderService
             if (!$billingAddress && empty($data['billing_address'])) {
                 $billingAddress = $supplier->defaultBillingAddress();
             }
-            if (!$shippingAddress && empty($data['shipping_address'])) {
-                $shippingAddress = $supplier->defaultDeliveryAddress() ?? $billingAddress;
-            }
 
             $billingSnapshot = !empty($data['billing_address'])
                 ? $data['billing_address']
                 : ($billingAddress ? $billingAddress->formatSnapshot() : ($order->billing_address ?: $supplier->address));
 
-            $shippingSnapshot = !empty($data['shipping_address'])
-                ? $data['shipping_address']
-                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($order->shipping_address ?: ($billingSnapshot ?: $supplier->address)));
+            $warehouse = !empty($data['warehouse_id'])
+                ? Warehouse::with(['branch', 'company'])->find($data['warehouse_id'])
+                : ($order->warehouse()->with(['branch', 'company'])->first());
+
+            $defaultDeliveryAddress = $warehouse?->address
+                ?: ($warehouse?->branch?->address
+                    ?: ($warehouse?->company?->address
+                        ?: ($order->company?->address ?? null)));
+
+            $rawShipping = !empty($data['shipping_address']) ? trim($data['shipping_address']) : null;
+            if ($rawShipping && ($rawShipping === $billingSnapshot || $rawShipping === $supplier->address)) {
+                $shippingSnapshot = $defaultDeliveryAddress ?: $rawShipping;
+            } else {
+                $existingShipping = $order->shipping_address;
+                if ($existingShipping && ($existingShipping === $order->billing_address || $existingShipping === $supplier->address)) {
+                    $existingShipping = null;
+                }
+                $shippingSnapshot = $rawShipping ?: ($shippingAddress ? $shippingAddress->formatSnapshot() : ($existingShipping ?: $defaultDeliveryAddress));
+            }
 
             $newStatus = $order->status;
             if (! empty($data['submit_for_approval'])) {
@@ -758,6 +782,360 @@ class PurchaseOrderService
         });
     }
 
+    public function updateInvoice(PurchaseInvoice $invoice, array $data, User $actor): PurchaseInvoice
+    {
+        return DB::transaction(function () use ($invoice, $data, $actor) {
+            $supplierId = (int) $data['supplier_id'];
+            $items = $this->normalizeItems($data['items'] ?? []);
+            $overrideReason = $data['rate_override_reason'] ?? $invoice->rate_override_reason;
+            $needsOverride = false;
+
+            $subtotal = 0;
+            $taxAmount = 0;
+            $prepared = [];
+
+            foreach ($items as $item) {
+                $invoiceDate = $data['invoice_date'];
+
+                $otherRate = VendorPriceHistory::query()
+                    ->where('product_id', $item['product_id'])
+                    ->where('uom_id', $item['uom_id'])
+                    ->where('supplier_id', '!=', $supplierId)
+                    ->whereDate('effective_from', '<=', $invoiceDate)
+                    ->latest('effective_from')
+                    ->value('unit_cost');
+
+                if ($otherRate !== null && (float) $item['unit_cost'] > (float) $otherRate) {
+                    $needsOverride = true;
+                }
+
+                $line = $item['quantity'] * $item['unit_cost'];
+                $taxPercent = (float) ($item['tax_percent'] ?? 0);
+
+                $cgstPercent = array_key_exists('cgst_percent', $item)
+                    ? (float) $item['cgst_percent']
+                    : ($taxPercent / 2);
+
+                $sgstPercent = array_key_exists('sgst_percent', $item)
+                    ? (float) $item['sgst_percent']
+                    : ($taxPercent / 2);
+
+                if (abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
+                    throw ValidationException::withMessages([
+                        'items' => 'CGST % and SGST % must add up to the Total Tax % for every item.',
+                    ]);
+                }
+
+                $cgstAmount = $line * ($cgstPercent / 100);
+                $sgstAmount = $line * ($sgstPercent / 100);
+                $tax = $cgstAmount + $sgstAmount;
+
+                $subtotal += $line;
+                $taxAmount += $tax;
+
+                $prepared[] = [
+                    ...$item,
+                    'tax_percent' => $taxPercent,
+                    'cgst_percent' => $cgstPercent,
+                    'sgst_percent' => $sgstPercent,
+                    'cgst_amount' => $cgstAmount,
+                    'sgst_amount' => $sgstAmount,
+                    'line_total' => $line + $tax,
+                    'other_vendor_rate' => $otherRate,
+                ];
+            }
+
+            if ($needsOverride && blank($overrideReason)) {
+                throw ValidationException::withMessages([
+                    'rate_override_reason' => 'Unit cost is higher than another vendor rate. Provide an override reason.',
+                ]);
+            }
+
+            $supplier = Customer::query()->findOrFail($supplierId);
+            $inwardDate = ! empty($data['purchase_receive_date']) ? $data['purchase_receive_date'] : null;
+            if (! $inwardDate && ! empty($data['purchase_inward_id'])) {
+                $inwardDate = PurchaseInward::query()->whereKey($data['purchase_inward_id'])->value('inward_date');
+            }
+
+            $due = $this->dueDateService->forPurchaseInvoice(
+                $supplier,
+                $data['invoice_date'],
+                $data['due_date_basis'] ?? null,
+                isset($data['credit_days']) ? (int) $data['credit_days'] : null,
+                $inwardDate,
+            );
+
+            $billingAddress = null;
+            if (! empty($data['billing_address_id'])) {
+                $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['billing_address_id'])
+                    ->where('customer_id', $supplierId)
+                    ->first();
+                if (! $billingAddress) {
+                    throw ValidationException::withMessages([
+                        'billing_address_id' => 'The selected billing address does not belong to the selected supplier.',
+                    ]);
+                }
+            }
+            $shippingAddress = null;
+            if (! empty($data['shipping_address_id'])) {
+                $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['shipping_address_id'])
+                    ->where('customer_id', $supplierId)
+                    ->first();
+                if (! $shippingAddress) {
+                    throw ValidationException::withMessages([
+                        'shipping_address_id' => 'The selected delivery address does not belong to the selected supplier.',
+                    ]);
+                }
+            }
+
+            if (! $billingAddress) {
+                $billingAddress = $supplier->defaultBillingAddress();
+            }
+            if (! $shippingAddress) {
+                $shippingAddress = $supplier->defaultDeliveryAddress() ?? $billingAddress;
+            }
+
+            $billingSnapshot = ! empty($data['billing_address'])
+                ? $data['billing_address']
+                : ($billingAddress ? $billingAddress->formatSnapshot() : $supplier->address);
+
+            $shippingSnapshot = ! empty($data['shipping_address'])
+                ? $data['shipping_address']
+                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $supplier->address));
+
+            $freightCharge = max(0.0, (float) ($data['freight_charge'] ?? 0));
+            $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
+            $grandTotal = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+
+            $invoice->update([
+                'purchase_order_id' => $data['purchase_order_id'] ?? null,
+                'purchase_inward_id' => $data['purchase_inward_id'] ?? null,
+                'supplier_id' => $supplierId,
+                'warehouse_id' => $data['warehouse_id'] ?? null,
+                'billing_address_id' => $billingAddress?->id,
+                'shipping_address_id' => $shippingAddress?->id,
+                'billing_address' => $billingSnapshot,
+                'shipping_address' => $shippingSnapshot,
+                'supplier_invoice_no' => $data['supplier_invoice_number'] ?? $data['supplier_invoice_no'] ?? $invoice->supplier_invoice_no,
+                'invoice_date' => $data['invoice_date'],
+                'purchase_receive_date' => $data['purchase_receive_date'] ?? null,
+                'payment_order_date' => $data['payment_order_date'] ?? null,
+                'due_date' => $data['due_date'] ?? $due['due_date'],
+                'credit_days' => $data['credit_days'] ?? null,
+                'due_date_basis' => $due['due_date_basis'],
+                'due_date_source_date' => $due['due_date_source_date'],
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'freight_charge' => $freightCharge,
+                'other_charges' => $otherCharges,
+                'grand_total' => $grandTotal,
+                'rate_override_reason' => $overrideReason,
+                'notes' => $data['notes'] ?? null,
+                'terms_and_conditions' => $data['terms_and_conditions'] ?? $invoice->terms_and_conditions,
+                'freight_allocation_method' => $data['freight_allocation_method'] ?? $invoice->freight_allocation_method,
+            ]);
+
+            // Clean up old items and history
+            foreach ($invoice->items as $oldItem) {
+                \App\Domains\Inventory\Models\ProductSerial::where('source_type', $oldItem->getMorphClass())
+                    ->where('source_id', $oldItem->id)
+                    ->delete();
+            }
+            $invoice->items()->delete();
+            VendorPriceHistory::where('reference_type', $invoice->getMorphClass())
+                ->where('reference_id', $invoice->id)
+                ->delete();
+
+            foreach ($prepared as $item) {
+                $piItem = PurchaseInvoiceItem::create([
+                    'purchase_invoice_id' => $invoice->id,
+                    'product_id' => $item['product_id'],
+                    'uom_id' => $item['uom_id'],
+                    'quantity' => $item['quantity'],
+                    'unit_cost' => $item['unit_cost'],
+                    'tax_percent' => $item['tax_percent'],
+                    'cgst_percent' => $item['cgst_percent'],
+                    'sgst_percent' => $item['sgst_percent'],
+                    'cgst_amount' => $item['cgst_amount'],
+                    'sgst_amount' => $item['sgst_amount'],
+                    'line_total' => $item['line_total'],
+                    'other_vendor_rate' => $item['other_vendor_rate'],
+                    'batch_no' => $item['batch_no'] ?? null,
+                    'batch_selling_price' => $item['batch_selling_price'] ?? null,
+                    'batch_mrp' => $item['batch_mrp'] ?? null,
+                    'expiry_date' => $item['expiry_date'] ?? null,
+                ]);
+
+                if (! empty($item['serials']) && is_array($item['serials'])) {
+                    $prod = Product::find($item['product_id']);
+                    if ($prod) {
+                        $this->serialBatchService->assignSerials(
+                            $prod,
+                            $item['serials'],
+                            $invoice->warehouse_id,
+                            $piItem,
+                            $actor,
+                        );
+                    }
+                }
+
+                VendorPriceHistory::create([
+                    'supplier_id' => $supplierId,
+                    'product_id' => $item['product_id'],
+                    'uom_id' => $item['uom_id'],
+                    'unit_cost' => $item['unit_cost'],
+                    'effective_from' => $data['invoice_date'],
+                    'reference_type' => $invoice->getMorphClass(),
+                    'reference_id' => $invoice->id,
+                    'created_by' => $actor->id,
+                ]);
+            }
+
+            // Sync SupplierPayable
+            SupplierPayable::where('reference_type', $invoice->getMorphClass())
+                ->where('reference_id', $invoice->id)
+                ->delete();
+
+            $previous = (float) (SupplierPayable::query()
+                ->where('supplier_id', $supplierId)
+                ->orderByDesc('id')
+                ->value('balance') ?? 0);
+
+            SupplierPayable::create([
+                'supplier_id' => $supplierId,
+                'type' => 'invoice',
+                'reference_type' => $invoice->getMorphClass(),
+                'reference_id' => $invoice->id,
+                'debit' => $invoice->grand_total,
+                'credit' => 0,
+                'balance' => $previous + (float) $invoice->grand_total,
+                'notes' => "Purchase invoice {$invoice->invoice_no}",
+            ]);
+
+            return $invoice->fresh(['items.product', 'items.uom', 'supplier', 'warehouse']);
+        });
+    }
+
+    public function deleteInvoice(PurchaseInvoice $invoice, User $actor): void
+    {
+        DB::transaction(function () use ($invoice, $actor) {
+            $blockReason = $invoice->getDeleteBlockReason();
+            if ($blockReason) {
+                throw new \RuntimeException($blockReason);
+            }
+
+            // 1. Revert any stock movements linked to this invoice
+            foreach ($invoice->inventoryMovements as $movement) {
+                if ($movement->quantity > 0) {
+                    $stockLevel = StockLevel::query()
+                        ->where('warehouse_id', $movement->warehouse_id)
+                        ->where('product_id', $movement->product_id)
+                        ->where('uom_id', $movement->uom_id)
+                        ->first();
+                    if ($stockLevel) {
+                        $stockLevel->decrement('quantity', $movement->quantity);
+                    }
+                }
+                $movement->delete();
+            }
+
+            // 2. Clean up SupplierPayable
+            SupplierPayable::where('reference_type', $invoice->getMorphClass())
+                ->where('reference_id', $invoice->id)
+                ->delete();
+
+            // 3. Clean up VendorPriceHistory
+            VendorPriceHistory::where('reference_type', $invoice->getMorphClass())
+                ->where('reference_id', $invoice->id)
+                ->delete();
+
+            // 4. Disassociate landed costs if any (draft/unposted)
+            $invoice->landedCosts()->update(['purchase_invoice_id' => null]);
+
+            // 5. Delete serials, items and invoice
+            foreach ($invoice->items as $oldItem) {
+                \App\Domains\Inventory\Models\ProductSerial::where('source_type', $oldItem->getMorphClass())
+                    ->where('source_id', $oldItem->id)
+                    ->delete();
+            }
+            $invoice->items()->delete();
+            $invoice->delete();
+        });
+    }
+
+    public function postInvoice(PurchaseInvoice $invoice): PurchaseInvoice
+    {
+        return DB::transaction(function () use ($invoice) {
+            if ($invoice->status === 'posted') {
+                return $invoice;
+            }
+
+            $invoice->update([
+                'status' => 'posted',
+                'posted_at' => now(),
+            ]);
+
+            if ($invoice->inventoryMovements()->doesntExist() && $invoice->warehouse_id) {
+                foreach ($invoice->items as $item) {
+                    $this->stockMovementService->recordIn(
+                        $item->product,
+                        $item->uom ?? $item->product->baseUom,
+                        (float) $item->quantity,
+                        'purchase_invoice',
+                        $invoice,
+                        "Stock inward from PI {$invoice->invoice_no}",
+                        auth()->user(),
+                        $invoice->warehouse_id,
+                        (float) $item->unit_cost,
+                        null,
+                        $item->batch_no,
+                    );
+                }
+            }
+
+            return $invoice;
+        });
+    }
+
+    public function cancelInvoice(PurchaseInvoice $invoice): PurchaseInvoice
+    {
+        return DB::transaction(function () use ($invoice) {
+            if ($invoice->status === 'cancelled') {
+                return $invoice;
+            }
+
+            // Reverse stock movements
+            foreach ($invoice->inventoryMovements as $movement) {
+                if ($movement->quantity > 0) {
+                    $stockLevel = StockLevel::query()
+                        ->where('warehouse_id', $movement->warehouse_id)
+                        ->where('product_id', $movement->product_id)
+                        ->where('uom_id', $movement->uom_id)
+                        ->first();
+                    if ($stockLevel) {
+                        $stockLevel->decrement('quantity', $movement->quantity);
+                    }
+                }
+                $movement->delete();
+            }
+
+            // Reverse supplier payable
+            $supplierPayable = SupplierPayable::where('reference_type', $invoice->getMorphClass())
+                ->where('reference_id', $invoice->id)
+                ->first();
+
+            if ($supplierPayable) {
+                $supplierPayable->delete();
+            }
+
+            $invoice->update([
+                'status' => 'cancelled',
+            ]);
+
+            return $invoice;
+        });
+    }
+
     protected function refreshOrderStatus(PurchaseOrder $order): void
     {
         $order->refresh()->load('items');
@@ -811,10 +1189,11 @@ class PurchaseOrderService
                 'batch_no' => $item['batch_no'] ?? $item['batch_number'] ?? $item['batch_name'] ?? null,
                 'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
                 'batch_mrp' => isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
-                'expiry_date' => $item['expiry_date'] ?? null,
                 'serials' => ! empty($item['serials'])
                     ? (is_array($item['serials']) ? $item['serials'] : preg_split('/[\s,;]+/', (string) $item['serials'], -1, PREG_SPLIT_NO_EMPTY))
-                    : [],
+                    : (! empty($item['serial_numbers'])
+                        ? (is_array($item['serial_numbers']) ? array_values(array_filter($item['serial_numbers'], fn($s) => trim((string)$s) !== '')) : preg_split('/[\s,;]+/', (string) $item['serial_numbers'], -1, PREG_SPLIT_NO_EMPTY))
+                        : []),
             ];
         }
 

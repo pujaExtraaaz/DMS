@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Purchasing;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Warehouse;
+use App\Domains\Organization\Services\FinancialYearService;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Purchasing\Services\PurchaseOrderService;
@@ -25,7 +26,8 @@ class PurchaseInvoiceController extends Controller
     use SortableAndSearchable;
 
     public function __construct(
-        protected PurchaseOrderService $service
+        protected PurchaseOrderService $service,
+        protected FinancialYearService $financialYearService,
     ) {}
 
     public function index(Request $request): View|Response
@@ -41,16 +43,19 @@ class PurchaseInvoiceController extends Controller
         $this->applySearch(
             $query,
             $request->input('search'),
-            ['invoice_number', 'supplier_invoice_number', 'notes'],
+            ['invoice_no', 'supplier_invoice_no', 'notes'],
             ['supplier' => ['name', 'code']]
         );
 
         $allowedSorts = [
-            'invoice_number' => 'invoice_number',
-            'supplier_invoice_number' => 'supplier_invoice_number',
+            'invoice_number' => 'invoice_no',
+            'invoice_no' => 'invoice_no',
+            'supplier_invoice_number' => 'supplier_invoice_no',
+            'supplier_invoice_no' => 'supplier_invoice_no',
             'invoice_date' => 'invoice_date',
             'status' => 'status',
-            'total_amount' => 'total_amount',
+            'total_amount' => 'grand_total',
+            'grand_total' => 'grand_total',
             'created_at' => 'created_at',
             'supplier' => function ($q, $dir) {
                 $q->join('customers', 'purchase_invoices.supplier_id', '=', 'customers.id')
@@ -248,6 +253,259 @@ class PurchaseInvoiceController extends Controller
             return $this->flashSuccess('Purchase invoice cancelled and stock reversed.', 'purchasing.invoices.show', ['invoice' => $invoice]);
         } catch (\Throwable $e) {
             return back()->with('error', 'Failed to cancel invoice: '.$e->getMessage());
+        }
+    }
+
+    protected function authorizeInvoiceAction(Request $request, PurchaseInvoice $invoice, string $action): void
+    {
+        $user = $request->user();
+        if ($user && ! $user->hasRole('super-admin') && ! $user->hasAnyPermission(['purchases.edit', 'purchases.manage', 'purchase-orders.edit', 'purchase-orders.manage'])) {
+            if ($request->wantsJson() || $request->ajax()) {
+                abort(response()->json(['success' => false, 'message' => "You do not have permission to {$action} purchase invoices."], 403));
+            }
+            abort(403, "You do not have permission to {$action} purchase invoices.");
+        }
+
+        if ($user && ! $user->hasRole('super-admin')) {
+            if ($user->company_id && $invoice->company_id && (int) $invoice->company_id !== (int) $user->company_id) {
+                if ($request->wantsJson() || $request->ajax()) {
+                    abort(response()->json(['success' => false, 'message' => 'Unauthorized action for this company.'], 403));
+                }
+                abort(403, 'Unauthorized action for this company.');
+            }
+            $allowedBranchIds = method_exists($user, 'allowedBranchIds') ? $user->allowedBranchIds() : [];
+            if (! empty($allowedBranchIds) && $invoice->branch_id && ! in_array($invoice->branch_id, $allowedBranchIds)) {
+                if ($request->wantsJson() || $request->ajax()) {
+                    abort(response()->json(['success' => false, 'message' => 'Unauthorized action for this branch.'], 403));
+                }
+                abort(403, 'Unauthorized action for this branch.');
+            }
+        }
+    }
+
+    public function edit(Request $request, PurchaseInvoice $invoice): View|RedirectResponse
+    {
+        $this->authorizeInvoiceAction($request, $invoice, 'edit');
+
+        if (! $invoice->isEditable()) {
+            return $this->flashError(
+                "Purchase invoice {$invoice->invoice_no} cannot be edited in its current status.",
+                'purchasing.invoices.show',
+                ['invoice' => $invoice]
+            );
+        }
+
+        $invoice->load([
+            'supplier',
+            'warehouse',
+            'purchaseOrder.items',
+            'items.product',
+            'items.uom',
+            'billingAddress',
+            'shippingAddress',
+        ]);
+
+        $suppliers = Customer::whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+        $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get();
+        $products = Product::where('is_active', true)->orderBy('name')->get();
+
+        $initialOrders = $invoice->supplier ? $this->getEligibleOrdersForSupplier($invoice->supplier, $request->user()) : collect();
+
+        if ($invoice->purchaseOrder && ! $initialOrders->contains('id', $invoice->purchaseOrder->id)) {
+            $po = $invoice->purchaseOrder;
+            $totalOrdered = (float) $po->items->sum('quantity');
+            $invoicedQty = (float) DB::table('purchase_invoice_items')
+                ->join('purchase_invoices', 'purchase_invoice_items.purchase_invoice_id', '=', 'purchase_invoices.id')
+                ->where('purchase_invoices.purchase_order_id', $po->id)
+                ->where('purchase_invoices.id', '!=', $invoice->id)
+                ->where('purchase_invoices.status', '!=', 'cancelled')
+                ->sum('purchase_invoice_items.quantity');
+            $rem = max(0, $totalOrdered - $invoicedQty);
+
+            $initialOrders->prepend([
+                'id' => $po->id,
+                'po_no' => $po->po_no,
+                'po_date' => $po->po_date?->format('d M Y') ?? '—',
+                'grand_total' => (float) $po->grand_total,
+                'status' => ucfirst(str_replace('_', ' ', $po->status)),
+                'credit_days' => $po->credit_days,
+                'remaining_qty' => $rem,
+                'total_qty' => $totalOrdered,
+                'label' => sprintf(
+                    '%s (%s) - ₹%s%s',
+                    $po->po_no,
+                    $po->po_date?->format('d M Y') ?? 'No date',
+                    number_format($po->grand_total, 2),
+                    $invoicedQty > 0 ? " [Remaining: {$rem}/{$totalOrdered}]" : ''
+                ),
+            ]);
+        }
+
+        $invoiceItems = $invoice->items->map(function ($it) {
+            return [
+                'product_id' => $it->product_id,
+                'unit' => $it->product?->unit ?? ($it->uom?->code ?? 'PCS'),
+                'tracking_type' => $it->product?->tracking_type ?? 'none',
+                'quantity' => (float) $it->quantity,
+                'unit_cost' => (float) $it->unit_cost,
+                'cgst_percent' => (float) $it->cgst_percent,
+                'sgst_percent' => (float) $it->sgst_percent,
+                'tax_percent' => (float) $it->tax_percent,
+                'batch_number' => $it->batch_no ?? '',
+                'batch_mrp' => (float) ($it->batch_mrp ?? ($it->product?->mrp ?? 0)),
+                'serial_numbers' => \App\Domains\Inventory\Models\ProductSerial::where('source_type', $it->getMorphClass())
+                    ->where('source_id', $it->id)
+                    ->pluck('serial_number')
+                    ->values()
+                    ->all(),
+                'line_total' => (float) $it->line_total,
+            ];
+        })->values();
+
+        return view('purchasing.invoices.edit', [
+            'invoice' => $invoice,
+            'suppliers' => $suppliers,
+            'warehouses' => $warehouses,
+            'products' => $products,
+            'initialOrders' => $initialOrders,
+            'invoiceItems' => $invoiceItems,
+        ]);
+    }
+
+    public function update(Request $request, PurchaseInvoice $invoice): RedirectResponse
+    {
+        $this->authorizeInvoiceAction($request, $invoice, 'edit');
+
+        if (! $invoice->isEditable()) {
+            return $this->flashError(
+                "Purchase invoice {$invoice->invoice_no} cannot be edited in its current status.",
+                'purchasing.invoices.show',
+                ['invoice' => $invoice]
+            );
+        }
+
+        $validated = $request->validate([
+            'purchase_order_id' => 'nullable|exists:purchase_orders,id',
+            'supplier_id' => 'required|exists:customers,id',
+            'billing_address_id' => 'nullable|exists:party_addresses,id',
+            'shipping_address_id' => 'nullable|exists:party_addresses,id',
+            'billing_address' => 'nullable|string',
+            'shipping_address' => 'nullable|string',
+            'warehouse_id' => 'required|exists:warehouses,id',
+            'invoice_date' => 'required|date',
+            'purchase_receive_date' => 'nullable|date',
+            'payment_order_date' => 'nullable|date',
+            'supplier_invoice_number' => 'nullable|string|max:100',
+            'notes' => 'nullable|string',
+            'freight_charge' => 'nullable|numeric|min:0',
+            'other_charges' => 'nullable|numeric|min:0',
+            'credit_days' => 'nullable|integer|min:0',
+            'due_date' => 'nullable|date',
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.quantity' => 'required|numeric|min:0.0001',
+            'items.*.unit_cost' => 'required|numeric|min:0',
+            'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
+            'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
+            'items.*.batch_number' => 'nullable|string|max:100',
+            'items.*.batch_mrp' => 'nullable|numeric|min:0',
+            'items.*.serial_numbers' => 'nullable|array',
+            'items.*.serial_numbers.*' => 'nullable|string|max:100',
+        ]);
+
+        if (! empty($validated['purchase_order_id'])) {
+            $po = PurchaseOrder::with('items')->findOrFail($validated['purchase_order_id']);
+
+            if ((int) $po->supplier_id !== (int) $validated['supplier_id']) {
+                throw ValidationException::withMessages([
+                    'purchase_order_id' => 'The selected purchase order does not belong to the selected supplier.',
+                ]);
+            }
+
+            $user = $request->user();
+            if ($user && $user->company_id && $po->company_id && $po->company_id !== $user->company_id) {
+                throw ValidationException::withMessages([
+                    'purchase_order_id' => 'You are not authorized to access this purchase order.',
+                ]);
+            }
+
+            if (! in_array($po->status, ['approved', 'partially_received', 'closed'], true)) {
+                throw ValidationException::withMessages([
+                    'purchase_order_id' => "Purchase order with status '{$po->status}' cannot be invoiced.",
+                ]);
+            }
+
+            // Invoiced quantity check excluding this current invoice's previous count
+            $totalOrdered = (float) $po->items->sum('quantity');
+            $invoicedQty = (float) DB::table('purchase_invoice_items')
+                ->join('purchase_invoices', 'purchase_invoice_items.purchase_invoice_id', '=', 'purchase_invoices.id')
+                ->where('purchase_invoices.purchase_order_id', $po->id)
+                ->where('purchase_invoices.id', '!=', $invoice->id)
+                ->where('purchase_invoices.status', '!=', 'cancelled')
+                ->sum('purchase_invoice_items.quantity');
+
+            if ($totalOrdered > 0 && $invoicedQty >= $totalOrdered) {
+                throw ValidationException::withMessages([
+                    'purchase_order_id' => 'This purchase order has already been fully invoiced.',
+                ]);
+            }
+        }
+
+        $this->financialYearService->assertOpen($validated['invoice_date'], $invoice->company_id);
+
+        try {
+            $updatedInvoice = $this->service->updateInvoice($invoice, $validated, $request->user());
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return back()->withInput()->with('error', 'Failed to update invoice: ' . $e->getMessage());
+        }
+
+        return $this->flashSuccess('Purchase invoice updated successfully.', 'purchasing.invoices.show', ['invoice' => $updatedInvoice]);
+    }
+
+    public function destroy(Request $request, PurchaseInvoice $invoice): Response|RedirectResponse
+    {
+        $this->authorizeInvoiceAction($request, $invoice, 'delete');
+
+        $blockReason = $invoice->getDeleteBlockReason();
+        if ($blockReason) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $blockReason,
+                ], 422);
+            }
+            return $this->flashError($blockReason, 'purchasing.invoices.index');
+        }
+
+        $this->financialYearService->assertOpen($invoice->invoice_date, $invoice->company_id);
+
+        $invoiceNo = $invoice->invoice_number ?? $invoice->invoice_no;
+
+        try {
+            $this->service->deleteInvoice($invoice, $request->user());
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Purchase invoice {$invoiceNo} deleted successfully.",
+                ]);
+            }
+
+            return $this->flashSuccess("Purchase invoice {$invoiceNo} deleted successfully.", 'purchasing.invoices.index');
+        } catch (\Throwable $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to delete purchase invoice: ' . $e->getMessage(),
+                ], 422);
+            }
+
+            return $this->flashError('Failed to delete purchase invoice: ' . $e->getMessage(), 'purchasing.invoices.index');
         }
     }
 

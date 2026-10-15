@@ -23,9 +23,14 @@
         </div>
         <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Warehouse</label>
-            <select name="warehouse_id" class="block w-full rounded-lg border-gray-300 text-sm">
-                <option value="">Optional</option>
-                @foreach($warehouses as $w)<option value="{{ $w->id }}" @selected(old('warehouse_id')==$w->id)>{{ $w->name }}</option>@endforeach
+            <select name="warehouse_id" id="warehouse_id" class="block w-full rounded-lg border-gray-300 text-sm" onchange="handleWarehouseChange(this)">
+                <option value="" data-address="">Optional</option>
+                @foreach($warehouses as $w)
+                    @php
+                        $wAddress = $w->address ?: ($w->branch?->address ?: ($w->company?->address ?: ''));
+                    @endphp
+                    <option value="{{ $w->id }}" data-address="{{ $wAddress }}" @selected(old('warehouse_id')==$w->id)>{{ $w->name }}</option>
+                @endforeach
             </select>
         </div>
         <x-ui.input name="po_date" id="po_date" label="PO Date" type="date" :value="old('po_date', now()->toDateString())" required onchange="recalcPoDueDate()" oninput="recalcPoDueDate()" />
@@ -71,18 +76,18 @@
         </div>
     </div>
 
-    <!-- Supplier Billing & Delivery Addresses -->
-    <div id="supplier-addresses-card" class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4" style="display: none;">
+    <!-- Billing & Delivery Addresses -->
+    <div id="supplier-addresses-card" class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
         <div class="flex items-center justify-between pb-2 border-b border-slate-200">
             <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Billing &amp; Delivery Addresses</span>
             <span id="address-status-text" class="text-xs text-slate-500"></span>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Billing Address Card -->
+            <!-- Billing Address Card (Supplier) -->
             <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                 <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Billing Address</label>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Billing Address (Supplier / Vendor)</label>
                     <span class="text-[11px] text-indigo-600 font-medium">Billed from</span>
                 </div>
                 <select name="billing_address_id" id="billing_address_id" onchange="handleBillingChange()"
@@ -90,29 +95,21 @@
                     <option value="">Default Address</option>
                 </select>
                 <textarea name="billing_address" id="billing_address" rows="3"
-                          placeholder="Billing address snapshot"
-                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                          placeholder="Supplier billing address snapshot"
+                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ old('billing_address') }}</textarea>
             </div>
 
-            <!-- Delivery Address Card -->
+            <!-- Delivery Address Card (Consignee) -->
             <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                 <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Delivery / Dispatch Address</label>
-                    <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium">
-                        <input type="checkbox" id="same_as_billing" checked onchange="handleSameAsBillingToggle()"
-                               class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                        <span>Same as Billing Address</span>
-                    </label>
-                </div>
-                <div id="shipping_select_container" style="display: none;">
-                    <select name="shipping_address_id" id="shipping_address_id" onchange="handleShippingChange()"
-                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        <option value="">Default Delivery Address</option>
-                    </select>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Delivery / Dispatch Address (Consignee)</label>
+                    <span class="text-[11px] text-emerald-600 font-medium">Deliver to</span>
                 </div>
                 <textarea name="shipping_address" id="shipping_address" rows="3"
-                          placeholder="Delivery address snapshot"
-                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                          oninput="this.dataset.autoFilled='0'"
+                          placeholder="Consignee delivery address (defaults to warehouse/branch address)"
+                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ old('shipping_address') }}</textarea>
+                <p class="text-[11px] text-slate-400">Auto-fills from selected warehouse/branch. You may customize if needed.</p>
             </div>
         </div>
     </div>
@@ -345,6 +342,14 @@
     @endif
     </tbody></table></div>
 
+    <!-- Section 3: Add Line Button directly below line items table -->
+    <div class="mt-3 flex items-center justify-between">
+        <x-ui.button type="button" variant="secondary" onclick="addPoRow()" class="inline-flex items-center gap-1.5 shadow-xs">
+            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span>Add Line</span>
+        </x-ui.button>
+    </div>
+
     <!-- Freight Charges Section -->
     <div class="mt-6 border border-slate-200 rounded-xl bg-slate-50/70 p-4 space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
@@ -433,10 +438,13 @@
         </div>
     </div>
 
-    <div class="flex flex-wrap gap-3 items-center pt-2">
-    <x-ui.button type="button" variant="secondary" onclick="addPoRow()">Add Line</x-ui.button>
-    <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="submit_for_approval" value="1" class="rounded border-gray-300"> Submit for approval</label>
-    <x-ui.button type="submit" variant="primary">Save PO</x-ui.button>
+    <!-- Section 7: Action bar with Submit for Approval and Save PO -->
+    <div class="flex flex-wrap gap-3 items-center justify-end pt-4 border-t border-slate-200">
+        <label class="inline-flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input type="checkbox" name="submit_for_approval" value="1" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+            <span>Submit for approval</span>
+        </label>
+        <x-ui.button type="submit" variant="primary">Save PO</x-ui.button>
     </div>
     </form></x-ui.card>
     <x-quick-add-supplier targetSelect="supplier_id" />
@@ -1212,15 +1220,11 @@ async function handleSupplierChange(supplierId) {
     const card = document.getElementById('supplier-addresses-card');
     const statusText = document.getElementById('address-status-text');
     const billingSelect = document.getElementById('billing_address_id');
-    const shippingSelect = document.getElementById('shipping_address_id');
     const billingSnapshot = document.getElementById('billing_address');
-    const shippingSnapshot = document.getElementById('shipping_address');
 
     if (!supplierId) {
-        card.style.display = 'none';
         supplierAddresses = [];
         billingSnapshot.value = '';
-        shippingSnapshot.value = '';
         if (!isInitialSupplierLoad) {
             setPoCreditDays(0);
         }
@@ -1236,8 +1240,7 @@ async function handleSupplierChange(supplierId) {
         }
     }
 
-    card.style.display = 'block';
-    statusText.innerText = 'Loading addresses...';
+    statusText.innerText = 'Loading supplier addresses...';
     try {
         const res = await fetch(`{{ url('/masters/customers') }}/${supplierId}/addresses`, {
             headers: { 'Accept': 'application/json' }
@@ -1245,20 +1248,16 @@ async function handleSupplierChange(supplierId) {
         const data = await res.json();
         if (data.success) {
             supplierAddresses = data.addresses || [];
-            statusText.innerText = `${supplierAddresses.length} address(es) available`;
+            statusText.innerText = `${supplierAddresses.length} supplier billing address(es) available`;
 
             billingSelect.innerHTML = '<option value="">Default Address</option>';
-            shippingSelect.innerHTML = '<option value="">Default Delivery Address</option>';
 
             supplierAddresses.forEach(addr => {
                 const opt1 = new Option(`${addr.label} — ${addr.full_address}`, addr.id);
-                const opt2 = new Option(`${addr.label} — ${addr.full_address}`, addr.id);
                 billingSelect.add(opt1);
-                shippingSelect.add(opt2);
             });
 
             if (data.default_billing_id) billingSelect.value = data.default_billing_id;
-            if (data.default_delivery_id) shippingSelect.value = data.default_delivery_id;
 
             handleBillingChange();
         }
@@ -1271,35 +1270,19 @@ async function handleSupplierChange(supplierId) {
 function handleBillingChange() {
     const billingSelect = document.getElementById('billing_address_id');
     const billingSnapshot = document.getElementById('billing_address');
-    const sameCheckbox = document.getElementById('same_as_billing');
-    const shippingSelect = document.getElementById('shipping_address_id');
-    const shippingSnapshot = document.getElementById('shipping_address');
-
     const addr = supplierAddresses.find(a => String(a.id) === String(billingSelect.value));
     billingSnapshot.value = addr ? (addr.snapshot || addr.full_address) : '';
-
-    if (sameCheckbox.checked) {
-        shippingSelect.value = billingSelect.value;
-        shippingSnapshot.value = billingSnapshot.value;
-    }
 }
 
-function handleShippingChange() {
-    const shippingSelect = document.getElementById('shipping_address_id');
+function handleWarehouseChange(selectEl) {
+    const selectedOption = selectEl.options[selectEl.selectedIndex];
+    const warehouseAddress = selectedOption ? (selectedOption.dataset.address || '') : '';
     const shippingSnapshot = document.getElementById('shipping_address');
-    const addr = supplierAddresses.find(a => String(a.id) === String(shippingSelect.value));
-    shippingSnapshot.value = addr ? (addr.snapshot || addr.full_address) : '';
-}
-
-function handleSameAsBillingToggle() {
-    const sameCheckbox = document.getElementById('same_as_billing');
-    const container = document.getElementById('shipping_select_container');
-    if (sameCheckbox.checked) {
-        container.style.display = 'none';
-        handleBillingChange();
-    } else {
-        container.style.display = 'block';
-        handleShippingChange();
+    if (shippingSnapshot && warehouseAddress) {
+        if (!shippingSnapshot.value || shippingSnapshot.dataset.autoFilled === '1' || shippingSnapshot.value.trim() === '') {
+            shippingSnapshot.value = warehouseAddress;
+            shippingSnapshot.dataset.autoFilled = '1';
+        }
     }
 }
 
@@ -1307,6 +1290,16 @@ document.addEventListener('DOMContentLoaded', function () {
     const supSelect = document.getElementById('supplier_id');
     if (supSelect && supSelect.value) {
         handleSupplierChange(supSelect.value);
+    }
+    const whSelect = document.getElementById('warehouse_id');
+    if (whSelect && whSelect.value) {
+        const opt = whSelect.options[whSelect.selectedIndex];
+        const addr = opt ? (opt.dataset.address || '') : '';
+        const shippingSnapshot = document.getElementById('shipping_address');
+        if (shippingSnapshot && !shippingSnapshot.value.trim() && addr) {
+            shippingSnapshot.value = addr;
+            shippingSnapshot.dataset.autoFilled = '1';
+        }
     }
     isInitialSupplierLoad = false;
     recalcPoDueDate();

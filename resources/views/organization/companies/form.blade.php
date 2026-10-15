@@ -353,11 +353,26 @@
             </div>
         </div>
 
-        <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600"> Active
-        </label>
+        <div>
+            <h3 class="text-sm font-semibold text-slate-700 mb-3">Status</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="company_status" class="block text-sm font-medium text-slate-700 mb-1">Company Status <span class="text-rose-500">*</span></label>
+                    <select id="company_status" name="is_active" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 shadow-xs">
+                        <option value="1" @selected((string) old('is_active', $item->exists ? ($item->is_active ? '1' : '0') : '1') === '1')>Active</option>
+                        <option value="0" @selected((string) old('is_active', $item->exists ? ($item->is_active ? '1' : '0') : '1') === '0')>Inactive</option>
+                    </select>
+                    <p class="text-xs text-slate-400 mt-1">Inactive companies cannot be set as default and allow their branches to be deleted if no dependencies exist.</p>
+                    @error('is_active')
+                        <p class="text-xs font-medium text-rose-600 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+            </div>
+        </div>
 
-        <x-ui.button type="submit" variant="primary">Save</x-ui.button>
+        <div class="pt-2">
+            <x-ui.button type="submit" variant="primary">Save</x-ui.button>
+        </div>
     </form>
 </x-ui.card>
 @endsection

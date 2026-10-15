@@ -150,7 +150,7 @@ class Lead extends Model
     }
 
     public function company(): BelongsTo { return $this->belongsTo(Company::class); }
-    public function branch(): BelongsTo { return $this->belongsTo(Branch::class); }
+    public function branch(): BelongsTo { return $this->belongsTo(Branch::class)->withTrashed(); }
     public function source(): BelongsTo { return $this->belongsTo(LeadSource::class, 'lead_source_id'); }
     public function campaign(): BelongsTo { return $this->belongsTo(LeadCampaign::class, 'lead_campaign_id'); }
     public function metaForm(): BelongsTo { return $this->belongsTo(MetaLeadForm::class, 'meta_lead_form_id'); }

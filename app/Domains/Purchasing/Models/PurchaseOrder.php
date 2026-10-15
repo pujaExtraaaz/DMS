@@ -85,12 +85,12 @@ class PurchaseOrder extends Model
 
     public function branch(): BelongsTo
     {
-        return $this->belongsTo(Branch::class);
+        return $this->belongsTo(Branch::class)->withTrashed();
     }
 
     public function warehouse(): BelongsTo
     {
-        return $this->belongsTo(Warehouse::class);
+        return $this->belongsTo(Warehouse::class)->withTrashed();
     }
 
     public function supplier(): BelongsTo
@@ -174,5 +174,131 @@ class PurchaseOrder extends Model
         }
 
         return null;
+    }
+
+    /**
+     * Resolve consignee (delivery destination / purchasing company) details.
+     *
+     * @return array<string, mixed>
+     */
+    public function resolveConsigneeDetails(?Company $defaultCompany = null): array
+    {
+        $company = $this->company ?? $defaultCompany ?? Company::resolveCurrent() ?? Company::query()->find(auth()->user()?->company_id) ?? Company::query()->first();
+
+        if (! $company || empty($company->gstin)) {
+            $avit = Company::where(function ($q) {
+                $q->where('name', 'like', '%Avit%')->orWhere('code', 'AD');
+            })->whereNotNull('gstin')->first();
+            if ($avit) {
+                $company = $avit;
+            }
+        }
+
+        $companyName = $company?->name ?: 'Avit Digital';
+        $companyLegalName = $company?->legal_name ?: $companyName;
+        $companyGstin = $company?->gstin ?: '03ABGPG1954N1ZN';
+        $companyPan = $company?->pan ?: ($companyGstin && strlen(trim($companyGstin)) >= 12 ? substr(trim($companyGstin), 2, 10) : 'ABGPG1954N');
+        $companyPhone = $company?->phone ?: '9876120738';
+        $companyEmail = $company?->email ?: 'info@avitdigital.in';
+        $companyState = $company?->state ?: 'Punjab';
+        $companyAddress = $company?->address;
+
+        $warehouse = $this->warehouse;
+        $branch = $warehouse?->branch ?? $this->branch;
+
+        $supplierAddress = trim((string) ($this->supplier?->address ?? ''));
+        $billingAddress = trim((string) ($this->billing_address ?? ''));
+        $rawShippingAddress = trim((string) ($this->shipping_address ?? ''));
+
+        // Check if shipping_address was accidentally copied from supplier billing address or supplier address
+        $isCopiedSupplierAddress = false;
+        if ($rawShippingAddress !== '') {
+            if ($billingAddress !== '' && strcasecmp($rawShippingAddress, $billingAddress) === 0) {
+                $isCopiedSupplierAddress = true;
+            } elseif ($supplierAddress !== '' && strcasecmp($rawShippingAddress, $supplierAddress) === 0) {
+                $isCopiedSupplierAddress = true;
+            }
+        }
+
+        $specificDeliveryAddress = ($rawShippingAddress !== '' && ! $isCopiedSupplierAddress)
+            ? $rawShippingAddress
+            : null;
+
+        $warehouseAddress = trim((string) ($warehouse?->address ?? ''));
+        $branchAddress = trim((string) ($branch?->address ?? ''));
+        $companyAddressClean = trim((string) ($companyAddress ?? ''));
+
+        $deliveryAddress = $specificDeliveryAddress
+            ?: ($warehouseAddress !== '' ? $warehouseAddress
+                : ($branchAddress !== '' ? $branchAddress
+                    : ($companyAddressClean !== '' ? $companyAddressClean
+                        : 'Address not provided')));
+
+        $consigneeGstin = $branch?->gstin ?: ($companyGstin ?: '—');
+        $consigneePan = $companyPan ?: ($consigneeGstin !== '—' && strlen($consigneeGstin) >= 12 ? substr($consigneeGstin, 2, 10) : '—');
+
+        $deliveryState = $branch?->state ?: $companyState;
+        $deliveryStateCode = ($consigneeGstin !== '—' && strlen(trim($consigneeGstin)) >= 2 && ctype_digit(substr(trim($consigneeGstin), 0, 2)))
+            ? substr(trim($consigneeGstin), 0, 2)
+            : ($deliveryState ? \App\Support\IndianStates::codeFromName($deliveryState) : null);
+
+        $dispatchPhone = $warehouse?->phone ?? $branch?->phone ?? $companyPhone;
+
+        return [
+            'company' => $company,
+            'company_name' => $companyName,
+            'company_legal_name' => $companyLegalName,
+            'company_address' => $companyAddressClean !== '' ? $companyAddressClean : 'Address not provided',
+            'warehouse' => $warehouse,
+            'warehouse_name' => $warehouse?->name,
+            'branch' => $branch,
+            'branch_name' => $branch?->name,
+            'delivery_address' => $deliveryAddress,
+            'gstin' => $consigneeGstin,
+            'pan' => $consigneePan,
+            'state' => $deliveryState ?: '—',
+            'state_code' => $deliveryStateCode,
+            'phone' => $dispatchPhone ?: '—',
+            'email' => $companyEmail ?: '—',
+        ];
+    }
+
+    /**
+     * Resolve supplier / vendor details.
+     *
+     * @return array<string, mixed>
+     */
+    public function resolveSupplierDetails(): array
+    {
+        $supplier = $this->supplier;
+        $supplierContact = $supplier?->contacts?->firstWhere('is_primary', true) ?? $supplier?->contacts?->first();
+
+        $billingAddress = trim((string) ($this->billing_address ?: ($supplier?->address ?: '')));
+        $supplierState = $supplier?->state;
+        $supplierGstin = $supplier?->gstin;
+        $supplierStateCode = ($supplierGstin && strlen(trim($supplierGstin)) >= 2 && ctype_digit(substr(trim($supplierGstin), 0, 2)))
+            ? substr(trim($supplierGstin), 0, 2)
+            : ($supplierState ? \App\Support\IndianStates::codeFromName($supplierState) : null);
+
+        $supplierPan = $supplier?->pan
+            ?: ($supplierGstin && strlen($supplierGstin) >= 12 ? substr($supplierGstin, 2, 10) : '—');
+
+        $contactPerson = $supplierContact?->name ?: '—';
+        $phone = $supplierContact?->phone ?: ($supplier?->phone ?: '—');
+        $email = $supplierContact?->email ?: ($supplier?->email ?: '—');
+
+        return [
+            'supplier' => $supplier,
+            'name' => $supplier?->name ?: '—',
+            'code' => $supplier?->code,
+            'billing_address' => $billingAddress !== '' ? $billingAddress : 'Address not provided',
+            'gstin' => $supplierGstin ?: '—',
+            'pan' => $supplierPan,
+            'state' => $supplierState ?: ($supplierStateCode ? (\App\Support\IndianStates::all()[$supplierStateCode] ?? '—') : '—'),
+            'state_code' => $supplierStateCode,
+            'contact_person' => $contactPerson,
+            'phone' => $phone,
+            'email' => $email,
+        ];
     }
 }

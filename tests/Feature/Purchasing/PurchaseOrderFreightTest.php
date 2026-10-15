@@ -410,4 +410,148 @@ class PurchaseOrderFreightTest extends TestCase
 
         $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphMany::class, $relation);
     }
+
+    public function test_purchase_order_create_form_renders_add_line_button_before_freight_charges(): void
+    {
+        $response = $this->actingAs($this->adminUser)->get(route('purchasing.orders.create'));
+
+        $response->assertOk();
+        $content = $response->getContent();
+
+        $tablePos = strpos($content, 'id="po-lines"');
+        $addLinePos = strpos($content, 'onclick="addPoRow()"');
+        $freightPos = strpos($content, 'Freight Charges');
+        $orderSummaryPos = strpos($content, 'Order Summary');
+        $saveBtnPos = strpos($content, 'Save PO');
+
+        $this->assertNotFalse($tablePos, 'PO lines table should be present');
+        $this->assertNotFalse($addLinePos, 'Add Line button should be present');
+        $this->assertNotFalse($freightPos, 'Freight Charges section should be present');
+        $this->assertNotFalse($orderSummaryPos, 'Order Summary section should be present');
+        $this->assertNotFalse($saveBtnPos, 'Save PO button should be present');
+
+        // Form layout order: Table -> Add Line -> Freight Charges -> Order Summary -> Save PO
+        $this->assertTrue($tablePos < $addLinePos, 'PO lines table must appear before Add Line button');
+        $this->assertTrue($addLinePos < $freightPos, 'Add Line button must appear before Freight Charges section');
+        $this->assertTrue($freightPos < $orderSummaryPos, 'Freight Charges must appear before Order Summary');
+        $this->assertTrue($orderSummaryPos < $saveBtnPos, 'Order Summary must appear before Save PO button');
+    }
+
+    public function test_purchase_order_edit_form_renders_add_line_button_before_freight_charges(): void
+    {
+        $order = PurchaseOrder::create([
+            'company_id' => $this->company->id,
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'po_no' => 'PO-TEST-LAYOUT-01',
+            'po_date' => now()->toDateString(),
+            'status' => 'draft',
+            'is_freight_applicable' => true,
+            'freight_amount' => 150.00,
+            'freight_tax_rate' => 18.00,
+            'freight_tax_amount' => 27.00,
+            'freight_total' => 177.00,
+            'subtotal' => 1000.00,
+            'tax_amount' => 180.00,
+            'grand_total' => 1357.00,
+        ]);
+
+        $order->items()->create([
+            'product_id' => $this->product->id,
+            'uom_id' => $this->uom->id,
+            'quantity' => 2,
+            'unit_cost' => 500.00,
+            'line_total' => 1000.00,
+            'tax_percent' => 18.00,
+            'cgst_percent' => 9.00,
+            'sgst_percent' => 9.00,
+        ]);
+
+        $response = $this->actingAs($this->adminUser)->get(route('purchasing.orders.edit', $order));
+
+        $response->assertOk();
+        $content = $response->getContent();
+
+        $tablePos = strpos($content, 'id="po-lines"');
+        $addLinePos = strpos($content, 'onclick="addPoRow()"');
+        $freightPos = strpos($content, 'Freight Charges');
+        $orderSummaryPos = strpos($content, 'Order Summary');
+        $updateBtnPos = strpos($content, 'Update Purchase Order');
+
+        $this->assertNotFalse($tablePos, 'PO lines table should be present');
+        $this->assertNotFalse($addLinePos, 'Add Line button should be present');
+        $this->assertNotFalse($freightPos, 'Freight Charges section should be present');
+        $this->assertNotFalse($orderSummaryPos, 'Order Summary section should be present');
+        $this->assertNotFalse($updateBtnPos, 'Update Purchase Order button should be present');
+
+        // Form layout order: Table -> Add Line -> Freight Charges -> Order Summary -> Update Purchase Order
+        $this->assertTrue($tablePos < $addLinePos, 'PO lines table must appear before Add Line button');
+        $this->assertTrue($addLinePos < $freightPos, 'Add Line button must appear before Freight Charges section');
+        $this->assertTrue($freightPos < $orderSummaryPos, 'Freight Charges must appear before Order Summary');
+        $this->assertTrue($orderSummaryPos < $updateBtnPos, 'Order Summary must appear before Update Purchase Order button');
+    }
+
+    public function test_multiple_products_with_freight_calculates_freight_strictly_at_order_level(): void
+    {
+        $product2 = Product::create([
+            'company_id' => $this->company->id,
+            'brand_id' => $this->brand->id,
+            'base_uom_id' => $this->uom->id,
+            'name' => 'Hydraulic Pump B2',
+            'sku' => 'PUMP-B2',
+            'serial_no' => 'SN-PUMP-B2',
+            'purchase_price' => 1500.00,
+            'tax_rate' => 18.00,
+            'is_active' => true,
+        ]);
+
+        // Item 1: 3 @ 500 = 1500, Tax 18% = 270
+        // Item 2: 2 @ 1500 = 3000, Tax 18% = 540
+        // Items Subtotal = 4500.00, Items Tax = 810.00
+        // Freight Amount = 500.00, Freight Tax 18% = 90.00, Freight Total = 590.00
+        // Grand Total = 4500 + 810 + 590 = 5900.00
+        $payload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'po_date' => now()->toDateString(),
+            'is_freight_applicable' => '1',
+            'freight_amount' => '500.00',
+            'freight_tax_rate' => '18.00',
+            'items' => [
+                [
+                    'brand_id' => $this->brand->id,
+                    'product_id' => $this->product->id,
+                    'uom_id' => $this->uom->id,
+                    'quantity' => 3,
+                    'unit_cost' => 500.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                ],
+                [
+                    'brand_id' => $this->brand->id,
+                    'product_id' => $product2->id,
+                    'uom_id' => $this->uom->id,
+                    'quantity' => 2,
+                    'unit_cost' => 1500.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->adminUser)->post(route('purchasing.orders.store'), $payload);
+        $response->assertRedirect();
+
+        $po = PurchaseOrder::where('supplier_id', $this->supplier->id)->latest('id')->first();
+        $this->assertNotNull($po);
+        $this->assertEquals(4500.00, (float) $po->subtotal);
+        $this->assertEquals(810.00, (float) $po->tax_amount);
+        $this->assertEquals(500.00, (float) $po->freight_amount);
+        $this->assertEquals(90.00, (float) $po->freight_tax_amount);
+        $this->assertEquals(590.00, (float) $po->freight_total);
+        $this->assertEquals(5900.00, (float) $po->grand_total);
+        $this->assertCount(2, $po->items);
+    }
 }
