@@ -357,11 +357,10 @@ class CustomerController extends Controller
         return $this->flashSuccess('Party deleted successfully.', 'masters.customers.index');
     }
 
-    public function show(Customer $customer): View
+    public function show(Customer $customer): RedirectResponse
     {
-        $customer->load(['customerType', 'area', 'route', 'salesperson', 'salesManager', 'contacts', 'addresses', 'bankAccounts', 'creditCheques']);
-
-        return view('masters.customers.show', compact('customer'));
+        // Dedicated show view is not used; open the edit form instead.
+        return redirect()->route('masters.customers.edit', $customer);
     }
 
     /**

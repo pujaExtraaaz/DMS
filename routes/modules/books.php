@@ -31,6 +31,8 @@ use Tally\Http\Controllers\BackupController;
 use Tally\Http\Controllers\ExportController;
 use Tally\Http\Controllers\GodownController;
 use Tally\Http\Controllers\ImportController;
+use Tally\Http\Controllers\IntegrationController;
+use Tally\Http\Controllers\ApiTokenController;
 use Tally\Http\Controllers\HsnCatalogueController;
 use Tally\Http\Controllers\HsnSacController;
 use Tally\Http\Controllers\PriceListController;
@@ -608,7 +610,22 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
     Route::middleware('permission:settings.manage')->group(function () {
         Route::get('/settings/preferences', [PreferenceController::class, 'edit'])->name('preferences.edit');
         Route::put('/settings/preferences', [PreferenceController::class, 'update'])->name('preferences.update');
+
+        Route::get('/settings/api-tokens', [ApiTokenController::class, 'index'])->name('settings.api-tokens');
+        Route::post('/settings/api-tokens', [ApiTokenController::class, 'store'])->name('settings.api-tokens.store');
+        Route::delete('/settings/api-tokens/{apiToken}', [ApiTokenController::class, 'destroy'])->name('settings.api-tokens.destroy');
     });
+
+    Route::get('/integrations', [IntegrationController::class, 'index'])->name('integrations.index');
+    Route::get('/integrations/create', [IntegrationController::class, 'create'])->name('integrations.create');
+    Route::post('/integrations', [IntegrationController::class, 'store'])->name('integrations.store');
+    Route::get('/integrations/{integration}', [IntegrationController::class, 'show'])->name('integrations.show');
+    Route::get('/integrations/{integration}/edit', [IntegrationController::class, 'edit'])->name('integrations.edit');
+    Route::put('/integrations/{integration}', [IntegrationController::class, 'update'])->name('integrations.update');
+    Route::patch('/integrations/{integration}/activation', [IntegrationController::class, 'updateActivation'])->name('integrations.activation');
+    Route::post('/integrations/{integration}/sync', [IntegrationController::class, 'sync'])->name('integrations.sync');
+    Route::post('/integrations/{integration}/retry', [IntegrationController::class, 'retry'])->name('integrations.retry');
+    Route::delete('/integrations/{integration}', [IntegrationController::class, 'destroy'])->name('integrations.destroy');
 
     Route::get('/inventory/barcode', [BarcodeController::class, 'lookup'])->middleware('permission:inventory.view')->name('barcodes.lookup');
     Route::get('/masters/products/{product}/barcode', [BarcodeController::class, 'print'])->middleware('permission:inventory.view')->name('products.barcode');

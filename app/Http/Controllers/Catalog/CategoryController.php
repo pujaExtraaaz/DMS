@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Catalog;
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
 use App\Http\Controllers\Controller;
+use App\Support\CodeGenerator;
+use App\Support\Traits\SortableAndSearchable;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
-
-use App\Support\Traits\SortableAndSearchable;
 
 class CategoryController extends Controller
 {
@@ -60,7 +62,48 @@ class CategoryController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        Category::create($this->validated($request));
+        $data = $this->validated($request);
+        $maxAttempts = 5;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                DB::transaction(function () use ($data) {
+                    $payload = $data;
+                    unset($payload['code']);
+
+                    $companyId = ! empty($payload['brand_id'])
+                        ? Brand::query()->whereKey($payload['brand_id'])->value('company_id')
+                        : null;
+
+                    $payload['code'] = CodeGenerator::forCategory($companyId ? (int) $companyId : null);
+
+                    return Category::create($payload);
+                });
+                break;
+            } catch (QueryException $e) {
+                $isDuplicate = isset($e->errorInfo[1]) && $e->errorInfo[1] === 1062;
+                $message = $e->getMessage();
+                $isCodeDuplicate = $isDuplicate && (
+                    str_contains($message, 'categories_code_unique')
+                    || str_contains($message, 'categories.code')
+                    || str_contains($message, "for key 'code'")
+                );
+
+                if ($isCodeDuplicate && $attempt < $maxAttempts) {
+                    usleep(random_int(10000, 30000));
+                    continue;
+                }
+
+                if ($isCodeDuplicate) {
+                    return back()->withInput()->withErrors([
+                        'code' => 'Unable to generate a unique category code due to concurrent requests. Please try again.',
+                    ]);
+                }
+
+                throw $e;
+            }
+        }
+
         return $this->flashSuccess('Category created successfully.', 'masters.categories.index');
     }
 
@@ -74,25 +117,33 @@ class CategoryController extends Controller
 
     public function update(Request $request, Category $category): RedirectResponse
     {
-        $category->update($this->validated($request, $category));
+        $data = $this->validated($request, $category);
+        $data['code'] = $category->code;
+        $category->update($data);
+
         return $this->flashSuccess('Category updated successfully.', 'masters.categories.index');
     }
 
     public function destroy(Category $category): RedirectResponse
     {
         $category->delete();
+
         return $this->flashSuccess('Category deleted successfully.', 'masters.categories.index');
     }
 
     protected function validated(Request $request, ?Category $category = null): array
     {
+        if ($request->has('name')) {
+            $request->merge(['name' => trim((string) $request->input('name'))]);
+        }
+
         $data = $request->validate([
             'brand_id' => 'nullable|exists:brands,id',
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:30|unique:categories,code'.($category ? ','.$category->id : ''),
             'is_active' => 'boolean',
         ]);
         $data['is_active'] = $request->boolean('is_active');
+
         return $data;
     }
 }

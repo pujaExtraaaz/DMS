@@ -363,24 +363,34 @@ class GstLookupService
         $clientId = (string) config('services.mastersindia.client_id');
         $cacheKey = 'mastersindia:gst_lookup_token:'.md5($clientId);
 
-        return Cache::remember($cacheKey, now()->addMinutes(50), function () use ($baseUrl) {
-            $resp = Http::baseUrl($baseUrl)
-                ->timeout((int) config('services.mastersindia.timeout', 15))
-                ->asJson()
-                ->post('/oauth/token', [
-                    'username' => config('services.mastersindia.username'),
-                    'password' => config('services.mastersindia.password'),
-                    'client_id' => config('services.mastersindia.client_id'),
-                    'client_secret' => config('services.mastersindia.client_secret'),
-                    'grant_type' => 'password',
-                ]);
+        $cached = Cache::get($cacheKey);
+        if (is_string($cached) && filled($cached)) {
+            return $cached;
+        }
 
-            if (! $resp->ok()) {
-                throw new \RuntimeException('Masters India authentication failed: '.$resp->status());
-            }
+        $resp = Http::baseUrl($baseUrl)
+            ->timeout((int) config('services.mastersindia.timeout', 15))
+            ->asJson()
+            ->post('/oauth/token', [
+                'username' => config('services.mastersindia.username'),
+                'password' => config('services.mastersindia.password'),
+                'client_id' => config('services.mastersindia.client_id'),
+                'client_secret' => config('services.mastersindia.client_secret'),
+                'grant_type' => 'password',
+            ]);
 
-            return (string) ($resp->json('access_token') ?? $resp->json('data.access_token') ?? '');
-        });
+        if (! $resp->ok()) {
+            throw new \RuntimeException('Masters India authentication failed: '.$resp->status());
+        }
+
+        $token = (string) ($resp->json('access_token') ?? $resp->json('data.access_token') ?? '');
+        if (blank($token)) {
+            throw new \RuntimeException('Masters India authentication failed: no access token returned.');
+        }
+
+        Cache::put($cacheKey, $token, now()->addMinutes(50));
+
+        return $token;
     }
 
     /**

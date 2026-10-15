@@ -97,4 +97,18 @@ class WarehouseSync
         $warehouse ? $warehouse->update($attributes) : $warehouse = Warehouse::query()->create($attributes);
         SyncLinks::store(self::KEY, $warehouse, $godown);
     }
+
+    public function remove(Model $source): void
+    {
+        if (! $source instanceof Warehouse) {
+            return;
+        }
+
+        $godownId = SyncLinks::acctId(self::KEY, $source);
+        if ($godownId) {
+            Godown::query()->whereKey($godownId)->update(['is_active' => false]);
+        }
+
+        SyncLinks::forget(self::KEY, $source);
+    }
 }

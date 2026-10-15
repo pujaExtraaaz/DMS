@@ -8,6 +8,7 @@ use App\Domains\Sync\Support\BooksCompany;
 use App\Domains\Sync\Support\SyncLinks;
 use App\Domains\Sync\Support\SyncNames;
 use Illuminate\Database\Eloquent\Model;
+use InvalidArgumentException;
 use Tally\Models\Company;
 use Tally\Models\Party;
 use Tally\Parties\PartyService;
@@ -44,7 +45,7 @@ class CustomerSync
         }
 
         $party = Party::query()->find(SyncLinks::acctId(self::KEY, $customer));
-        $type = $customer->party_type === Customer::PARTY_TYPE_SUNDRY_CREDITORS ? 'supplier' : 'customer';
+        $type = $this->booksTypeForCustomer($customer, $party);
         $saved = $this->parties->save($company, $this->payload($company, $customer, $type, $party), $party);
         SyncLinks::store(self::KEY, $customer, $saved);
     }
@@ -71,12 +72,17 @@ class CustomerSync
             30
         );
 
+        // Preserve DMS dual-role "both" when Books only has customer|supplier.
+        $partyType = $customer?->party_type === Customer::PARTY_TYPE_BOTH
+            ? Customer::PARTY_TYPE_BOTH
+            : ($party->type === 'supplier' ? Customer::PARTY_TYPE_SUNDRY_CREDITORS : Customer::PARTY_TYPE_SUNDRY_DEBTORS);
+
         $attributes = [
             'company_id' => $organizationId,
             'customer_type_id' => $typeId,
             'name' => $party->ledger?->name ?: $party->legal_name ?: ('Party '.$party->id),
             'code' => $code,
-            'party_type' => $party->type === 'supplier' ? Customer::PARTY_TYPE_SUNDRY_CREDITORS : Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'party_type' => $partyType,
             'phone' => $party->phone,
             'email' => $party->email,
             'address' => $party->billing_address,
@@ -89,6 +95,23 @@ class CustomerSync
 
         $customer ? $customer->update($attributes) : $customer = Customer::query()->create($attributes);
         SyncLinks::store(self::KEY, $customer, $party);
+    }
+
+    /**
+     * Books parties only support customer|supplier. Dual-role DMS parties keep their
+     * existing Books link type when present; otherwise default to customer.
+     */
+    private function booksTypeForCustomer(Customer $customer, ?Party $party): string
+    {
+        if ($customer->party_type === Customer::PARTY_TYPE_SUNDRY_CREDITORS) {
+            return 'supplier';
+        }
+
+        if ($customer->party_type === Customer::PARTY_TYPE_BOTH && $party?->type === 'supplier') {
+            return 'supplier';
+        }
+
+        return 'customer';
     }
 
     /**
@@ -111,7 +134,9 @@ class CustomerSync
                 ->when($party?->ledger_id, fn ($query) => $query->whereKeyNot($party->ledger_id))
                 ->exists();
             if ($taken) {
-                $gstin = null;
+                throw new InvalidArgumentException(
+                    "GSTIN {$gstin} is already used by another Books ledger. Resolve the duplicate before syncing party {$customer->name}."
+                );
             }
         }
 

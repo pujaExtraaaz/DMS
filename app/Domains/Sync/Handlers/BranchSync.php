@@ -68,6 +68,12 @@ class BranchSync
         if (! $source instanceof Branch) {
             return;
         }
+
+        $booksId = SyncLinks::acctId(self::KEY, $source);
+        if ($booksId) {
+            BooksBranch::query()->whereKey($booksId)->update(['is_active' => false]);
+        }
+
         SyncLinks::forget(self::KEY, $source);
     }
 }

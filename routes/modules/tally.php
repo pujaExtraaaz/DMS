@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Tally\TallySyncQueueController;
+use Illuminate\Support\Facades\Route;
+
 // The TallyPrime office connector is dormant (not required for day-to-day Books).
 // Native Books (`routes/modules/books.php`) is the live accounting path.
 //
@@ -12,3 +15,9 @@
 //
 // Templates: App\Domains\TallySync\Templates
 // Config: config/tally_sync.php
+
+Route::prefix('tally/queue')->name('tally.queue.')->middleware('role_or_permission:super-admin|tally.view|tally.manage|masters.manage')->group(function () {
+    Route::get('/', [TallySyncQueueController::class, 'index'])->name('index');
+    Route::get('/{tally_sync_queue}', [TallySyncQueueController::class, 'show'])->name('show');
+    Route::post('/{tally_sync_queue}/retry', [TallySyncQueueController::class, 'retry'])->name('retry');
+});

@@ -3,6 +3,7 @@
 namespace App\Domains\Catalog\Models;
 
 use App\Domains\Master\Models\Product;
+use App\Support\CodeGenerator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -19,6 +20,24 @@ class Category extends Model
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Category $category) {
+            if (blank($category->code)) {
+                $companyId = $category->brand_id
+                    ? Brand::query()->whereKey($category->brand_id)->value('company_id')
+                    : null;
+                $category->code = CodeGenerator::forCategory($companyId ? (int) $companyId : null);
+            }
+        });
+
+        static::updating(function (Category $category) {
+            if ($category->isDirty('code') && ! blank($category->getOriginal('code'))) {
+                $category->code = $category->getOriginal('code');
+            }
+        });
     }
 
     public function brand(): BelongsTo

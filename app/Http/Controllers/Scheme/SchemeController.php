@@ -143,4 +143,31 @@ class SchemeController extends Controller
 
         return $this->flashSuccess('Scheme finalized from provisional snapshots.');
     }
+
+    public function provisional(Request $request, Scheme $scheme): RedirectResponse
+    {
+        if ($scheme->status !== 'active') {
+            return $this->flashError('Only active schemes can calculate provisional achievements.');
+        }
+
+        $data = $request->validate([
+            'invoice_id' => 'required|integer|exists:invoices,id',
+        ]);
+
+        $invoice = \App\Domains\Sales\Models\Invoice::query()->findOrFail($data['invoice_id']);
+
+        try {
+            $created = $this->schemeService->provisionalForInvoice($invoice);
+        } catch (InvalidArgumentException $e) {
+            return $this->flashError($e->getMessage());
+        }
+
+        $count = is_countable($created) ? count($created) : 0;
+
+        return $this->flashSuccess(
+            $count > 0
+                ? "Provisional calculation created {$count} achievement row(s)."
+                : 'No provisional achievements matched this invoice.'
+        );
+    }
 }

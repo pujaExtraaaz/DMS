@@ -41,9 +41,23 @@ class BooksSyncObserver
                 return;
             }
 
-            $fresh = $method === 'remove' ? $model : $class::query()->find($id);
+            $query = $class::query();
+            if (in_array(\Illuminate\Database\Eloquent\SoftDeletes::class, class_uses_recursive($class), true)) {
+                $query->withTrashed();
+            }
+
+            $fresh = $method === 'remove' ? $model : $query->find($id);
             if (! $fresh) {
                 return;
+            }
+
+            // Soft-deleted DMS rows should deactivate Books counterparts, not re-push as active.
+            if (
+                $method === 'sync'
+                && method_exists($fresh, 'trashed')
+                && $fresh->trashed()
+            ) {
+                $method = 'remove';
             }
 
             try {
