@@ -68,12 +68,12 @@ class BankController extends Controller
 
     public function transactions(Request $request, WorkspaceContext $context, BankBook $book): View
     {
-        return $this->listing($request, $context, $book, 'banking.transactions', 'Bank transactions');
+        return $this->listing($request, $context, $book, 'tally::banking.transactions', 'Bank transactions');
     }
 
     public function reconciliation(Request $request, WorkspaceContext $context, BankBook $book): View
     {
-        return $this->listing($request, $context, $book, 'banking.reconciliation', 'Bank reconciliation');
+        return $this->listing($request, $context, $book, 'tally::banking.reconciliation', 'Bank reconciliation');
     }
 
     public function reconcile(Request $request, WorkspaceContext $context, BankReconciliationService $service, VoucherEntry $voucherEntry): RedirectResponse

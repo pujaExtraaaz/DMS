@@ -42,12 +42,73 @@ final class BooksCompany
             return null;
         }
 
+        if ($dmsBranchId) {
+            $fromLink = DB::table('sync_entity_links')
+                ->where('entity_key', 'branch')
+                ->where('dms_type', \App\Domains\Organization\Models\Branch::class)
+                ->where('dms_id', $dmsBranchId)
+                ->value('acct_id');
+            if ($fromLink) {
+                return (int) $fromLink;
+            }
+        }
+
         $map = self::settings($link)['branches'] ?? [];
         if ($dmsBranchId && isset($map[(string) $dmsBranchId])) {
             return (int) $map[(string) $dmsBranchId];
         }
 
         return $link->acct_branch_id ? (int) $link->acct_branch_id : null;
+    }
+
+    /** Merge one DMS→Books branch id into accounting_company_links.settings.branches. */
+    public static function putBranchMap(int $organizationCompanyId, int $dmsBranchId, int $acctBranchId): void
+    {
+        self::putSettingsMap($organizationCompanyId, 'branches', $dmsBranchId, $acctBranchId, 'acct_branch_id');
+    }
+
+    /** Merge one DMS→Books financial year id into accounting_company_links.settings.years. */
+    public static function putYearMap(int $organizationCompanyId, int $dmsYearId, int $acctYearId, bool $isCurrent = false): void
+    {
+        self::putSettingsMap(
+            $organizationCompanyId,
+            'years',
+            $dmsYearId,
+            $acctYearId,
+            $isCurrent ? 'acct_financial_year_id' : null
+        );
+    }
+
+    private static function putSettingsMap(
+        int $organizationCompanyId,
+        string $key,
+        int $dmsId,
+        int $acctId,
+        ?string $defaultColumn = null,
+    ): void {
+        $link = self::link($organizationCompanyId);
+        if (! $link) {
+            return;
+        }
+
+        $settings = self::settings($link);
+        $map = $settings[$key] ?? [];
+        $map[(string) $dmsId] = $acctId;
+        $settings[$key] = $map;
+
+        $payload = [
+            'settings' => json_encode($settings),
+            'updated_at' => now(),
+        ];
+        if ($defaultColumn && empty($link->{$defaultColumn})) {
+            $payload[$defaultColumn] = $acctId;
+        } elseif ($defaultColumn === 'acct_financial_year_id') {
+            $payload[$defaultColumn] = $acctId;
+        }
+
+        DB::table('accounting_company_links')
+            ->where('organization_company_id', $organizationCompanyId)
+            ->update($payload);
     }
 
     public static function defaultGodown(Company $company, int $organizationId): int
@@ -98,6 +159,41 @@ final class BooksCompany
     public static function cashLedger(Company $company): Ledger
     {
         return self::namedLedger($company, 'CASH', 'Cash', 'CASH');
+    }
+
+    /**
+     * Prefer an existing Bank Accounts ledger (company HDFC etc.), else create a default bank ledger.
+     */
+    public static function bankLedger(Company $company): Ledger
+    {
+        $bankGroup = AccountGroup::query()->where('company_id', $company->id)->where('code', 'BANK')->first();
+        if ($bankGroup) {
+            $existing = Ledger::query()
+                ->where('company_id', $company->id)
+                ->where('account_group_id', $bankGroup->id)
+                ->where('is_active', true)
+                ->orderBy('id')
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+        }
+
+        return self::namedLedger($company, 'BANK', 'Bank Account', 'BANK');
+    }
+
+    /**
+     * Map DMS payment method → cash or bank ledger for receipts/payments.
+     */
+    public static function receiptLedger(Company $company, ?string $method = null): Ledger
+    {
+        $method = strtolower(trim((string) $method));
+
+        return match (true) {
+            in_array($method, ['cash', ''], true) => self::cashLedger($company),
+            in_array($method, ['bank', 'neft', 'rtgs', 'imps', 'upi', 'card', 'cheque', 'online', 'transfer'], true) => self::bankLedger($company),
+            default => self::bankLedger($company),
+        };
     }
 
     public static function clearingLedger(Company $company): Ledger

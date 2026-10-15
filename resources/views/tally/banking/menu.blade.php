@@ -16,4 +16,4 @@
             <a data-esc href="{{ tally_route('books.tally.dashboard') }}">Quit</a>
         </nav>
     </div>
-</x-layouts.app>
+</x-tally::layouts.app>

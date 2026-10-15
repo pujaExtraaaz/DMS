@@ -6,6 +6,7 @@ use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Warehouse;
+use App\Domains\Payment\Models\Cheque;
 use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
@@ -15,6 +16,9 @@ use App\Domains\Banking\Models\BankAccountTransaction;
 use App\Domains\Banking\Models\OdAccount;
 use App\Domains\Inventory\Models\StockAdjustment;
 use App\Domains\Order\Models\Order;
+use App\Domains\Organization\Models\Company;
+use App\Domains\Sync\Handlers\CompanyBankSync;
+use App\Domains\Sync\Handlers\StockOpeningSync;
 use App\Domains\Sync\Support\SyncGuard;
 use App\Domains\Sync\Support\SyncRegistry;
 use Illuminate\Console\Command;
@@ -34,6 +38,15 @@ class BackfillAccounting extends Command
 
     public function handle(): int
     {
+        // Ensure each company bank profile is in Books first.
+        Company::query()->orderBy('id')->each(function (Company $company) {
+            try {
+                app(CompanyBankSync::class)->push($company);
+            } catch (Throwable $e) {
+                $this->warn('Company bank #'.$company->id.': '.$e->getMessage());
+            }
+        });
+
         $steps = [
             Uom::class,
             Warehouse::class,
@@ -48,6 +61,7 @@ class BackfillAccounting extends Command
             StockAdjustment::class,
             OdAccount::class,
             BankAccountTransaction::class,
+            Cheque::class,
             BooksSalesOrder::class,
             BankAccount::class,
         ];
@@ -67,6 +81,16 @@ class BackfillAccounting extends Command
                     }
                 });
             }
+
+            Warehouse::query()->orderBy('id')->each(function (Warehouse $warehouse) use (&$copied, &$failed) {
+                try {
+                    app(StockOpeningSync::class)->pushWarehouse($warehouse);
+                    $copied++;
+                } catch (Throwable $exception) {
+                    $failed++;
+                    $this->error('Stock opening '.$warehouse->code.': '.$exception->getMessage());
+                }
+            });
 
             StockTransaction::query()
                 ->where('type', StockTransactionType::Adjustment)

@@ -15,7 +15,12 @@ class ProductSync
 {
     public const KEY = 'product';
 
-    public function __construct(private readonly UomSync $uoms) {}
+    public function __construct(
+        private readonly UomSync $uoms,
+        private readonly BrandSync $brands,
+        private readonly CategorySync $categories,
+        private readonly SubCategorySync $subCategories,
+    ) {}
 
     public function sync(Model $model): void
     {
@@ -61,9 +66,11 @@ class ProductSync
             $books?->id
         );
 
+        $groupId = $this->resolveProductGroupId($product, $company);
+
         $attributes = [
             'company_id' => $company->id,
-            'product_group_id' => ($books?->product_group_id) ?: BooksCompany::generalGroup($company)->id,
+            'product_group_id' => $groupId,
             'primary_unit_id' => $unit->id,
             'name' => $name,
             'code' => $code,
@@ -116,5 +123,36 @@ class ProductSync
 
         $product ? $product->update($attributes) : $product = Product::query()->create($attributes);
         SyncLinks::store(self::KEY, $product, $books);
+    }
+
+    private function resolveProductGroupId(Product $product, \Tally\Models\Company $company): int
+    {
+        $product->loadMissing(['subCategory.category.brand', 'category.brand', 'brand']);
+
+        if ($product->subCategory) {
+            $this->subCategories->push($product->subCategory);
+            $id = SyncLinks::acctId(SubCategorySync::KEY, $product->subCategory);
+            if ($id) {
+                return $id;
+            }
+        }
+
+        if ($product->category) {
+            $this->categories->push($product->category);
+            $id = SyncLinks::acctId(CategorySync::KEY, $product->category);
+            if ($id) {
+                return $id;
+            }
+        }
+
+        if ($product->brand) {
+            $this->brands->push($product->brand);
+            $id = SyncLinks::acctId(BrandSync::KEY, $product->brand);
+            if ($id) {
+                return $id;
+            }
+        }
+
+        return BooksCompany::generalGroup($company)->id;
     }
 }

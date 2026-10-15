@@ -32,3 +32,18 @@ if (! function_exists('tally_route_has')) {
         return \Illuminate\Support\Facades\Route::has($name);
     }
 }
+
+if (! function_exists('books_workspace_active')) {
+    function books_workspace_active(): bool
+    {
+        return \App\Support\BooksWorkspace::active();
+    }
+}
+
+if (! function_exists('books_show_aside')) {
+    function books_show_aside(): bool
+    {
+        return \App\Support\BooksWorkspace::showAside();
+    }
+}
+

@@ -92,12 +92,14 @@ class PaymentSync
             'total_credit' => $amount,
         ];
 
-        DB::transaction(function () use (&$voucher, $attributes, $payment, $company, $party, $amount) {
+        $moneyLedgerId = BooksCompany::receiptLedger($company, $payment->method ?? null)->id;
+
+        DB::transaction(function () use (&$voucher, $attributes, $payment, $company, $party, $amount, $moneyLedgerId) {
             $voucher ? $voucher->update($attributes) : $voucher = Voucher::query()->create($attributes);
             $voucher->entries()->delete();
             VoucherEntry::query()->create([
                 'voucher_id' => $voucher->id,
-                'ledger_id' => BooksCompany::cashLedger($company)->id,
+                'ledger_id' => $moneyLedgerId,
                 'line_number' => 1,
                 'debit' => $amount,
                 'credit' => 0,

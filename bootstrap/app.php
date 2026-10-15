@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->appendToGroup('web', [
             \App\Http\Middleware\SetUserBranchScope::class,
+            \App\Http\Middleware\SyncBooksWorkspace::class,
         ]);
 
         $middleware->trustProxies(at: '*');

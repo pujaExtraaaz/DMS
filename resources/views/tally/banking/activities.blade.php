@@ -27,4 +27,4 @@
             @endif
         </nav>
     </div>
-</x-layouts.app>
+</x-tally::layouts.app>

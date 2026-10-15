@@ -29,15 +29,34 @@
         x-data="{
             sidebarOpen: false,
             sidebarCollapsed: localStorage.getItem('dmsSidebarCollapsed') === 'true',
+            booksAsideCollapsed: false,
+            hasBooksAside: {{ books_show_aside() ? 'true' : 'false' }},
             toggleCollapsed() {
+                // In Accounting workspace: chevron toggles the Books (second) sidebar only.
+                if (this.hasBooksAside) {
+                    this.booksAsideCollapsed = !this.booksAsideCollapsed;
+                    sessionStorage.setItem('booksAsideCollapsed', this.booksAsideCollapsed ? 'true' : 'false');
+                    return;
+                }
                 this.sidebarCollapsed = !this.sidebarCollapsed;
-                localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed);
+                localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
+            },
+            init() {
+                if (this.hasBooksAside) {
+                    this.booksAsideCollapsed = sessionStorage.getItem('booksAsideCollapsed') === 'true';
+                } else {
+                    this.booksAsideCollapsed = false;
+                }
             }
         }"
         class="flex h-[100dvh] w-full overflow-hidden"
         id="app"
     >
         @include('partials.sidebar')
+
+        @if(books_show_aside())
+            @include('partials.books-aside')
+        @endif
 
         <div class="relative z-0 flex flex-1 flex-col min-w-0 h-[100dvh] overflow-hidden bg-slate-100">
             <header class="shrink-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-sm pt-[env(safe-area-inset-top)] overflow-visible">
@@ -62,7 +81,7 @@
                             <span class="sr-only">Toggle sidebar</span>
                             <svg
                                 class="h-5 w-5 transition-transform duration-300"
-                                :class="sidebarCollapsed ? 'rotate-180' : ''"
+                                :class="(hasBooksAside ? booksAsideCollapsed : sidebarCollapsed) ? 'rotate-180' : ''"
                                 fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
                             >
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />

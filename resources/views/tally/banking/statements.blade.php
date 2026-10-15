@@ -49,5 +49,5 @@
             </table>
         </div>
         {{ $lines->links() }}
-    </x-shell.page>
-</x-layouts.app>
+    </x-tally::shell.page>
+</x-tally::layouts.app>
