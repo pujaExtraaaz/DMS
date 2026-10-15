@@ -8,7 +8,7 @@
         @else
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Name</th><th>Type</th><th>Frequency</th><th>Next run</th><th>Status</th><th></th></tr></thead>
+                    <thead><tr><th>Name</th><th>Type</th><th>Frequency</th><th>Next Run</th><th>Status</th><th></th></tr></thead>
                     <tbody>
                         @foreach ($items as $item)
                             <tr>

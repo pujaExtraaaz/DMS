@@ -8,6 +8,8 @@ Route::prefix('targets')->name('targets.')->middleware('role_or_permission:super
     Route::get('/periods/create', [TargetController::class, 'createPeriod'])->name('periods.create');
     Route::post('/periods', [TargetController::class, 'storePeriod'])->name('periods.store');
     Route::get('/periods/{target_period}', [TargetController::class, 'showPeriod'])->name('periods.show');
+    Route::get('/periods/{target_period}/edit', [TargetController::class, 'editPeriod'])->name('periods.edit');
+    Route::put('/periods/{target_period}', [TargetController::class, 'updatePeriod'])->name('periods.update');
     Route::post('/periods/{target_period}/recalculate', [TargetController::class, 'recalculate'])->name('periods.recalculate');
     Route::post('/periods/{target_period}/close', [TargetController::class, 'close'])->name('periods.close');
     Route::get('/periods/{target_period}/targets/create', [TargetController::class, 'createTarget'])->name('create');

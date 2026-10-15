@@ -5,7 +5,7 @@
         </x-slot:actions>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Name</th><th>Method</th><th>Life (yrs)</th><th>Residual %</th><th>Assets</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Method</th><th>Life (Yrs)</th><th>Residual %</th><th>Assets</th><th></th></tr></thead>
                 <tbody>
                     @forelse ($categories as $category)
                         <tr>

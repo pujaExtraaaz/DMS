@@ -40,8 +40,8 @@
     {{-- Header --}}
     <div class="flex items-start justify-between gap-4">
 
-        <p class="min-w-0 pr-2 text-sm font-semibold uppercase tracking-wider text-slate-400">
-            {{ $label }}
+        <p class="min-w-0 pr-2 text-sm font-semibold tracking-wider text-slate-500">
+            {{ \App\Support\TitleCase::format($label) }}
         </p>
 
         @if ($iconHtml || isset($icon))

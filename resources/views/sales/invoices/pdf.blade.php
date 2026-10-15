@@ -132,8 +132,8 @@
 
         <table class="grid-table">
             <tr class="bg-gray">
-                <th style="width: 50%;">Details Of Receiver (Billed to)</th>
-                <th style="width: 50%;">Details Of Consignee (Shipped to)</th>
+                <th style="width: 50%;">Details Of Receiver (Billed To)</th>
+                <th style="width: 50%;">Details Of Consignee (Shipped To)</th>
             </tr>
             <tr>
                 <td>
@@ -185,9 +185,9 @@
         <table class="grid-table">
             <tr class="bg-gray">
                 <th class="text-right">Taxable Amount</th>
-                <th class="text-right">CGST</th>
-                <th class="text-right">SGST</th>
-                <th class="text-right">IGST</th>
+                <th class="text-right">Cgst</th>
+                <th class="text-right">Sgst</th>
+                <th class="text-right">Igst</th>
                 <th class="text-right">Round Off</th>
                 <th class="text-right">Invoice Total</th>
             </tr>
@@ -197,14 +197,22 @@
                 <td class="text-right">{{ number_format($invoice->sgst_amount, 2) }}</td>
                 <td class="text-right">{{ number_format($invoice->igst_amount, 2) }}</td>
                 <td class="text-right">{{ number_format($invoice->round_off, 2) }}</td>
-                <td class="text-right bold" style="font-size: 11px;">INR {{ number_format($invoice->total_amount, 2) }}</td>
+                <td class="text-right bold" style="font-size: 11px;">INR {{ number_format($invoice->grand_total ?? $invoice->total_amount ?? 0, 2) }}</td>
             </tr>
         </table>
 
         <div style="font-size: 9px; margin-bottom: 12px;">
             <span class="bold">Amount in Words:</span>
-            {{ \App\Support\NumberToWords::convert($invoice->total_amount) }}
+            {{ \App\Support\DocumentExporter::numberToIndianWords($invoice->grand_total ?? $invoice->total_amount ?? 0) }}
         </div>
+
+        @if($invoice->scheme && (float) $invoice->scheme_benefit_amount > 0)
+        <div style="font-size: 9px; margin-bottom: 8px; color: #4338ca;">
+            <span class="bold">Scheme:</span> {{ $invoice->scheme->name }} ({{ $invoice->scheme->code }}) &bull;
+            <span class="bold">Rebate Benefit:</span> INR {{ number_format($invoice->scheme_benefit_amount, 2) }}
+            <span style="color: #6b7280;">(Settled via Credit Note)</span>
+        </div>
+        @endif
 
         <table class="grid-table" style="margin-bottom: 0;">
             <tr>

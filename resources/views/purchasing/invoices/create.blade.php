@@ -9,7 +9,7 @@
 </x-ui.page-header>
 
 <form method="POST" action="{{ route('purchasing.invoices.store') }}"
-      x-data="purchaseInvoiceForm(@js($products), @js($order ?? null), @js($initialOrders ?? []))"
+      x-data="purchaseInvoiceForm(@js($products), @js($order ?? null), @js($initialOrders ?? []), @js($odAccounts ?? []))"
       class="space-y-6">
     @csrf
 
@@ -17,7 +17,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
                 <div class="flex items-center justify-between mb-1">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Supplier *</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Supplier *</label>
                     <button type="button" @click="$dispatch('open-quick-add-supplier')"
                             class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1">
                         + Add New
@@ -34,7 +34,7 @@
 
             <div>
                 <div class="flex items-center justify-between mb-1">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Purchase Order</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Purchase Order</label>
                     <span x-show="poLoading" class="text-[11px] text-indigo-600 animate-pulse font-medium inline-flex items-center gap-1" x-cloak>
                         <svg class="animate-spin h-3 w-3 text-indigo-600" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -65,7 +65,7 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Warehouse *</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Warehouse *</label>
                 <select name="warehouse_id" x-model="warehouseId" required
                         class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     <option value="">Select warehouse</option>
@@ -76,33 +76,33 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Invoice Date *</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Invoice Date *</label>
                 <input type="date" name="invoice_date" x-model="invoiceDate" @change="recalcDueDate()" @input="recalcDueDate()" value="{{ old('invoice_date', date('Y-m-d')) }}" required
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Supplier Inv No.</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Supplier Inv No.</label>
                 <input type="text" name="supplier_invoice_number" value="{{ old('supplier_invoice_number') }}"
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
-                       placeholder="e.g. INV-10023">
+                       placeholder="E.G. Inv-10023">
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Purchase Receive Date</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Purchase Receive Date</label>
                 <input type="date" name="purchase_receive_date" x-model="purchaseReceiveDate"
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Payment Order Date</label>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Payment Order Date</label>
                 <input type="date" name="payment_order_date" x-model="paymentOrderDate"
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
             </div>
 
             <div class="sm:col-span-2 lg:col-span-1">
                 <div class="flex items-center justify-between mb-1">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Credit Days</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Credit Days</label>
                     <span class="text-xs text-slate-500" x-show="dueDatePreview">
                         Due: <span class="font-semibold text-indigo-600" x-text="dueDatePreview"></span>
                     </span>
@@ -139,6 +139,26 @@
                     Due Date Preview: <strong class="text-slate-700" x-text="dueDatePreview"></strong>
                 </p>
             </div>
+
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">OD Bank Account</label>
+                    <span class="text-[11px] text-slate-400 font-normal">Optional</span>
+                </div>
+                <select name="od_account_id" x-model="odAccountId" @change="onOdAccountChange()"
+                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <option value="">No OD Financing (Standard)</option>
+                    @foreach($odAccounts as $acc)
+                        <option value="{{ $acc->id }}" @selected(old('od_account_id') == $acc->id)>
+                            {{ $acc->bank_name }} ({{ $acc->masked_account_number }}) - Avail: ₹{{ number_format($acc->available_limit, 2) }}
+                        </option>
+                    @endforeach
+                </select>
+                <div x-show="odAccountId && selectedOdAccount" class="mt-1 text-[11px]" x-cloak>
+                    <span class="text-slate-500">Available: </span>
+                    <span class="font-semibold text-emerald-600" x-text="formatCurrency(selectedOdAccount ? selectedOdAccount.available_limit : 0)"></span>
+                </div>
+            </div>
         </div>
     </x-ui.card>
 
@@ -153,7 +173,7 @@
             <!-- Billing Address Card -->
             <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                 <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Billing Address</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Billing Address</label>
                     <span class="text-[11px] text-indigo-600 font-medium">Billed from</span>
                 </div>
                 <select name="billing_address_id" x-model="selectedBillingId" @change="onBillingAddressChange()"
@@ -164,14 +184,14 @@
                     </template>
                 </select>
                 <textarea name="billing_address" x-model="billingSnapshot" rows="3"
-                          placeholder="Billing address snapshot"
+                          placeholder="Billing Address Snapshot"
                           class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
             </div>
 
             <!-- Delivery Address Card -->
             <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                 <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Delivery / Dispatch Address</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery / Dispatch Address</label>
                     <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium">
                         <input type="checkbox" x-model="sameAsBilling" @change="onSameAsBillingToggle()"
                                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
@@ -191,7 +211,7 @@
                     Delivery address matches the selected Billing Address.
                 </div>
                 <textarea name="shipping_address" x-model="shippingSnapshot" rows="3"
-                          placeholder="Delivery address snapshot"
+                          placeholder="Delivery Address Snapshot"
                           class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
             </div>
         </div>
@@ -208,14 +228,14 @@
 
         <div class="overflow-x-auto border-t border-slate-200">
             <table class="w-full min-w-[1360px] text-left text-xs border-collapse">
-                <thead class="bg-slate-50 text-slate-600 uppercase tracking-wider border-b border-slate-200 font-semibold text-[11px]">
+                <thead class="bg-slate-50 text-slate-600 tracking-wider border-b border-slate-200 font-semibold text-[11px]">
                     <tr>
                         <th class="p-3 min-w-[340px] lg:min-w-[380px]">Product / Description</th>
                         <th class="p-3 min-w-[70px] w-20 text-center">Unit</th>
                         <th class="p-3 min-w-[110px] w-28 text-right">Qty *</th>
                         <th class="p-3 min-w-[130px] w-36 text-right">Unit Cost (₹) *</th>
-                        <th class="p-3 min-w-[95px] w-24 text-right">CGST %</th>
-                        <th class="p-3 min-w-[95px] w-24 text-right">SGST %</th>
+                        <th class="p-3 min-w-[95px] w-24 text-right">Cgst %</th>
+                        <th class="p-3 min-w-[95px] w-24 text-right">Sgst %</th>
                         <th class="p-3 min-w-[100px] w-28 text-center">Tax Rate</th>
                         <th class="p-3 min-w-[130px] w-36">Batch No</th>
                         <th class="p-3 min-w-[125px] w-32 text-right">Batch MRP (₹)</th>
@@ -376,8 +396,8 @@
 
         <div class="p-4 bg-slate-50/50 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             <div>
-                <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Notes / Remarks</label>
-                <textarea name="notes" rows="4" placeholder="Additional delivery or invoice remarks..."
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Notes / Remarks</label>
+                <textarea name="notes" rows="4" placeholder="Additional Delivery Or Invoice Remarks..."
                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 shadow-sm">{{ old('notes') }}</textarea>
             </div>
 
@@ -404,6 +424,43 @@
                     <span>Grand Total:</span>
                     <span class="font-mono text-indigo-700 text-lg" x-text="formatCurrency(grandTotal)"></span>
                 </div>
+
+                <!-- OD Financing Summary Card -->
+                <div x-show="odAccountId && selectedOdAccount" class="mt-4 pt-3 border-t border-slate-200 space-y-2 bg-indigo-50/60 p-3 rounded-lg border border-indigo-100" x-cloak>
+                    <div class="flex items-center justify-between text-indigo-900 font-semibold text-xs">
+                        <span class="inline-flex items-center gap-1.5">
+                            <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                            </svg>
+                            OD Financing Summary
+                        </span>
+                        <span class="text-[11px] font-mono font-medium text-indigo-700" x-text="selectedOdAccount ? selectedOdAccount.bank_name : ''"></span>
+                    </div>
+
+                    <div class="flex justify-between items-center text-slate-600 text-xs">
+                        <span>Available OD Limit:</span>
+                        <span class="font-mono font-semibold text-slate-800" x-text="formatCurrency(selectedOdAccount ? selectedOdAccount.available_limit : 0)"></span>
+                    </div>
+
+                    <div class="flex justify-between items-center text-slate-600 text-xs">
+                        <span>Invoice OD Utilization:</span>
+                        <span class="font-mono font-bold text-indigo-700" x-text="formatCurrency(grandTotal)"></span>
+                    </div>
+
+                    <div class="flex justify-between items-center text-xs border-t border-indigo-200/60 pt-1.5 font-medium">
+                        <span class="text-slate-700">Projected Remaining Limit:</span>
+                        <span class="font-mono font-bold text-sm"
+                              :class="remainingOdLimit < 0 ? 'text-rose-600' : 'text-emerald-700'"
+                              x-text="formatCurrency(remainingOdLimit)"></span>
+                    </div>
+
+                    <div x-show="remainingOdLimit < 0" class="mt-2 p-2 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-1.5 font-medium">
+                        <svg class="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                        </svg>
+                        <span>Invoice amount exceeds available OD limit. Submission will fail.</span>
+                    </div>
+                </div>
             </div>
         </div>
     </x-ui.card>
@@ -418,9 +475,19 @@
 
 @push('scripts')
 <script>
-function purchaseInvoiceForm(products, initialOrder, initialOrders) {
+function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) {
     return {
         products: products || [],
+        odAccounts: odAccounts || [],
+        odAccountId: '{{ old('od_account_id', '') }}',
+        get selectedOdAccount() {
+            return this.odAccounts.find(a => String(a.id) === String(this.odAccountId)) || null;
+        },
+        get remainingOdLimit() {
+            if (!this.selectedOdAccount) return 0;
+            return (Number(this.selectedOdAccount.available_limit) || 0) - (Number(this.grandTotal) || 0);
+        },
+        onOdAccountChange() {},
         supplierId: initialOrder ? initialOrder.supplier_id : '{{ old('supplier_id', '') }}',
         warehouseId: initialOrder ? initialOrder.warehouse_id : '{{ old('warehouse_id', '') }}',
         supplierOrders: initialOrders || [],

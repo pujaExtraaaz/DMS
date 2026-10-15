@@ -37,9 +37,9 @@
             <div class="space-y-3 overflow-y-auto pr-1 flex-1">
                 <!-- GSTIN & Fetch -->
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">GSTIN</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GSTIN</label>
                     <div class="flex gap-2">
-                        <input type="text" x-model="form.gstin" @input="onGstinInput()" maxlength="15" placeholder="e.g. 27AAAAA0000A1Z5"
+                        <input type="text" x-model="form.gstin" @input="onGstinInput()" maxlength="15" placeholder="E.G. 27AAAAA0000A1Z5"
                                class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         <button type="button" @click="fetchGstDetails()" :disabled="searchingGst"
                                 class="inline-flex items-center px-3 py-2 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-100 disabled:opacity-50 shrink-0">
@@ -52,13 +52,13 @@
                 <!-- Customer Name & Customer Code -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Customer Name *</label>
-                        <input type="text" x-model="form.name" required placeholder="Business or Customer Name"
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Customer Name *</label>
+                        <input type="text" x-model="form.name" required placeholder="Business Or Customer Name"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Customer Code</label>
-                        <input type="text" x-model="form.code" placeholder="Auto-generated if blank"
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Customer Code</label>
+                        <input type="text" x-model="form.code" placeholder="Auto-Generated If Blank"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono text-xs">
                         <p class="text-[11px] text-slate-500 mt-0.5">Leave blank to auto-generate (PTY-...)</p>
                     </div>
@@ -67,12 +67,12 @@
                 <!-- PAN & Classification -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">PAN</label>
-                        <input type="text" x-model="form.pan" maxlength="10" placeholder="e.g. AAAAA0000A"
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">PAN</label>
+                        <input type="text" x-model="form.pan" maxlength="10" placeholder="E.G. AAAAA0000A"
                                class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Classification</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Classification</label>
                         <select x-model="form.customer_type_id" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             <option value="">Select classification</option>
                             @foreach($customerTypes as $ct)
@@ -85,12 +85,12 @@
                 <!-- Phone & Email -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Phone</label>
-                        <input type="text" x-model="form.phone" placeholder="Contact number"
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Phone</label>
+                        <input type="text" x-model="form.phone" placeholder="Contact Number"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Email</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Email</label>
                         <input type="email" x-model="form.email" placeholder="customer@example.com"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
@@ -99,7 +99,7 @@
                 <!-- State, City & Pincode -->
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">State</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">State</label>
                         <select x-model="form.state" @change="onStateChanged()" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             <option value="">Select State / UT</option>
                             @foreach($stateOptions as $st)
@@ -108,7 +108,7 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">City</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">City</label>
                         <input type="text" list="customer-quick-add-cities" x-model="form.city"
                                :placeholder="form.state ? 'Select or type city' : 'Select state first'"
                                :disabled="!form.state"
@@ -120,7 +120,7 @@
                         </datalist>
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Pincode</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Pincode</label>
                         <input type="text" x-model="form.pincode" maxlength="12" placeholder="Pincode"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
@@ -128,8 +128,8 @@
 
                 <!-- Address -->
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Address</label>
-                    <textarea x-model="form.address" rows="2" placeholder="Full address / Delivery address"
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Address</label>
+                    <textarea x-model="form.address" rows="2" placeholder="Full Address / Delivery Address"
                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                 </div>
             </div>

@@ -20,9 +20,9 @@
 
             <div class="space-y-3">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">GSTIN</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GSTIN</label>
                     <div class="flex gap-2">
-                        <input type="text" x-model="form.gstin" maxlength="15" placeholder="e.g. 27AAAAA0000A1Z5"
+                        <input type="text" x-model="form.gstin" maxlength="15" placeholder="E.G. 27AAAAA0000A1Z5"
                                class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         <button type="button" @click="fetchGstDetails()" :disabled="searchingGst"
                                 class="inline-flex items-center px-3 py-2 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-100 disabled:opacity-50">
@@ -33,19 +33,19 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Supplier Name *</label>
-                    <input type="text" x-model="form.name" required placeholder="Business or Company Name"
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Supplier Name *</label>
+                    <input type="text" x-model="form.name" required placeholder="Business Or Company Name"
                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Phone</label>
-                        <input type="text" x-model="form.phone" placeholder="Contact number"
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Phone</label>
+                        <input type="text" x-model="form.phone" placeholder="Contact Number"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Email</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Email</label>
                         <input type="email" x-model="form.email" placeholder="vendor@example.com"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
@@ -53,20 +53,20 @@
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">State</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">State</label>
                         <input type="text" x-model="form.state" placeholder="State"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Pincode</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Pincode</label>
                         <input type="text" x-model="form.pincode" placeholder="Pincode"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Address</label>
-                    <textarea x-model="form.address" rows="2" placeholder="Full billing address"
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Address</label>
+                    <textarea x-model="form.address" rows="2" placeholder="Full Billing Address"
                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                 </div>
             </div>

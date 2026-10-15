@@ -2,7 +2,7 @@
     <x-tally::shell.page title="Day book" section="Reports" :description="$company->name.' · '.$year->name">
         <a class="esc-back" data-esc href="{{ tally_route('books.tally.reports.menu') }}">Quit</a>
         <form class="filters" method="GET">
-            <x-tally::form.field name="q" label="Search"><x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Number, narration, or reference" /></x-form.field>
+            <x-tally::form.field name="q" label="Search"><x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Number, Narration, Or Reference" /></x-form.field>
             <x-tally::form.field name="from" label="From"><x-tally::form.input name="from" type="date" value="{{ $filters['from'] }}" /></x-form.field>
             <x-tally::form.field name="to" label="To"><x-tally::form.input name="to" type="date" value="{{ $filters['to'] }}" /></x-form.field>
             <x-tally::form.field name="branch_id" label="Branch">

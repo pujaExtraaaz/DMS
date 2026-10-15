@@ -7,7 +7,7 @@
         <form class="filters" method="POST" action="{{ tally_route('books.tally.settings.api-tokens.store') }}">
             @csrf
             <x-tally::form.field name="name" label="Token name" required>
-                <x-tally::form.input name="name" required maxlength="100" placeholder="Shop connector" />
+                <x-tally::form.input name="name" required maxlength="100" placeholder="Shop Connector" />
             </x-form.field>
             <button class="btn btn-primary" type="submit">Create token</button>
         </form>
@@ -17,7 +17,7 @@
                 <thead>
                     <tr>
                         <th>Name</th>
-                        <th>Last used</th>
+                        <th>Last Used</th>
                         <th>Created</th>
                         <th></th>
                     </tr>

@@ -449,7 +449,7 @@
                                            max="100"
                                            :name="`bank_accounts[${index}][interest_rate]`"
                                            x-model.number="account.interest_rate"
-                                           placeholder="e.g. 10.50"
+                                           placeholder="E.G. 10.50"
                                            class="block w-full rounded-lg border-gray-300 pr-8 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
                                     <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                                         <span class="text-slate-500 sm:text-sm">%</span>
@@ -531,7 +531,7 @@
                         name="purchase_terms_and_conditions"
                         rows="5"
                         class="block w-full rounded-lg border-gray-300 text-sm"
-                        placeholder="Enter default terms and conditions for Purchase Invoices..."
+                        placeholder="Enter Default Terms And Conditions For Purchase Invoices..."
                     >{{ old('purchase_terms_and_conditions', $item->purchase_terms_and_conditions) }}</textarea>
                 </div>
 
@@ -544,7 +544,7 @@
                         name="selling_terms_and_conditions"
                         rows="5"
                         class="block w-full rounded-lg border-gray-300 text-sm"
-                        placeholder="Enter default terms and conditions for Sales Invoices..."
+                        placeholder="Enter Default Terms And Conditions For Sales Invoices..."
                     >{{ old('selling_terms_and_conditions', $item->selling_terms_and_conditions) }}</textarea>
                 </div>
             </div>

@@ -1,7 +1,7 @@
 <x-tally::layouts.app title="GST summary">
     <x-tally::shell.page title="GST summary" section="Reports" :description="$company->name.' · '.$year->name">
         <form class="filters" method="GET">
-            <x-tally::form.field name="q" label="Search"><x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Invoice or party" /></x-form.field>
+            <x-tally::form.field name="q" label="Search"><x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Invoice Or Party" /></x-form.field>
             <x-tally::form.field name="from" label="From"><x-tally::form.input name="from" type="date" value="{{ $filters['from'] }}" /></x-form.field>
             <x-tally::form.field name="to" label="To"><x-tally::form.input name="to" type="date" value="{{ $filters['to'] }}" /></x-form.field>
             <x-tally::form.field name="branch_id" label="Branch">
@@ -17,18 +17,18 @@
         <p class="form-note">Posted sales and purchase invoices only. Drafts and cancelled documents are left out. Net is output tax minus input tax.</p>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th></th><th class="money">Taxable</th><th class="money">CGST</th><th class="money">SGST</th><th class="money">IGST</th><th class="money">Cess</th><th class="money">Tax</th></tr></thead>
+                <thead><tr><th></th><th class="money">Taxable</th><th class="money">Cgst</th><th class="money">Sgst</th><th class="money">Igst</th><th class="money">Cess</th><th class="money">Tax</th></tr></thead>
                 <tbody>
                     <tr><td>Output GST</td>@foreach (['taxable','cgst','sgst','igst','cess','tax'] as $key)<td class="money">{{ $report['output'][$key] }}</td>@endforeach</tr>
                     <tr><td>Input GST</td>@foreach (['taxable','cgst','sgst','igst','cess','tax'] as $key)<td class="money">{{ $report['input'][$key] }}</td>@endforeach</tr>
-                    <tr><th>Net payable</th><td colspan="5"></td><th class="money">{{ $report['net'] }}</th></tr>
+                    <tr><th>Net Payable</th><td colspan="5"></td><th class="money">{{ $report['net'] }}</th></tr>
                 </tbody>
             </table>
         </div>
         <h2>Tax-wise</h2>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Side</th><th>Rate</th><th class="money">Taxable</th><th class="money">CGST</th><th class="money">SGST</th><th class="money">IGST</th><th class="money">Cess</th><th class="money">Tax</th></tr></thead>
+                <thead><tr><th>Side</th><th>Rate</th><th class="money">Taxable</th><th class="money">Cgst</th><th class="money">Sgst</th><th class="money">Igst</th><th class="money">Cess</th><th class="money">Tax</th></tr></thead>
                 <tbody>
                     @foreach (['output' => 'Sales', 'input' => 'Purchase'] as $side => $label)
                         @foreach ($report['by_rate'][$side] as $row)
@@ -44,18 +44,18 @@
                 <thead>
                     <tr>
                         <th>Code</th>
-                        <th class="money">Sales taxable</th>
-                        <th class="money">Sales CGST</th>
-                        <th class="money">Sales SGST</th>
-                        <th class="money">Sales IGST</th>
-                        <th class="money">Sales cess</th>
-                        <th class="money">Sales tax</th>
-                        <th class="money">Purchase taxable</th>
-                        <th class="money">Purchase CGST</th>
-                        <th class="money">Purchase SGST</th>
-                        <th class="money">Purchase IGST</th>
-                        <th class="money">Purchase cess</th>
-                        <th class="money">Purchase tax</th>
+                        <th class="money">Sales Taxable</th>
+                        <th class="money">Sales Cgst</th>
+                        <th class="money">Sales Sgst</th>
+                        <th class="money">Sales Igst</th>
+                        <th class="money">Sales Cess</th>
+                        <th class="money">Sales Tax</th>
+                        <th class="money">Purchase Taxable</th>
+                        <th class="money">Purchase Cgst</th>
+                        <th class="money">Purchase Sgst</th>
+                        <th class="money">Purchase Igst</th>
+                        <th class="money">Purchase Cess</th>
+                        <th class="money">Purchase Tax</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -75,7 +75,7 @@
         <h2>Transactions</h2>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Date</th><th>Document</th><th>Party</th><th class="money">Taxable</th><th class="money">CGST</th><th class="money">SGST</th><th class="money">IGST</th><th class="money">Cess</th><th class="money">Tax</th></tr></thead>
+                <thead><tr><th>Date</th><th>Document</th><th>Party</th><th class="money">Taxable</th><th class="money">Cgst</th><th class="money">Sgst</th><th class="money">Igst</th><th class="money">Cess</th><th class="money">Tax</th></tr></thead>
                 <tbody>
                     @forelse ($report['transactions'] as $row)
                         <tr>

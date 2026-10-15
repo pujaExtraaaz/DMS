@@ -25,9 +25,9 @@
     <div class="flex items-start justify-between gap-3">
         <div class="flex-1">
             @if ($message)
-                {{ $message }}
+                {!! \App\Support\TitleCase::format((string) $message) !!}
             @else
-                {{ $slot }}
+                {!! \App\Support\TitleCase::format((string) $slot) !!}
             @endif
         </div>
 

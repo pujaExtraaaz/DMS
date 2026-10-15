@@ -13,7 +13,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search driver name, phone, license..."
+            search-placeholder="Search Driver Name, Phone, License..."
             :reset-url="route('masters.drivers.index')"
         >
             <x-slot name="filters">
@@ -44,7 +44,7 @@
                     <x-ui.sortable-th column="is_active" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                         Status
                     </x-ui.sortable-th>
-                    <th scope="col" class="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Actions</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-semibold tracking-wider text-gray-500">Actions</th>
                 </tr>
             </x-slot>
             @forelse ($items as $item)

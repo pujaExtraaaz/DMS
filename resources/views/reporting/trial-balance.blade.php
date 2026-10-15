@@ -19,10 +19,10 @@
         <table class="min-w-full divide-y divide-slate-200 text-sm">
             <thead class="bg-slate-50">
                 <tr>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Ledger</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Debit</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Credit</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Net</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Ledger</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Debit</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Credit</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Net</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">

@@ -44,7 +44,7 @@
                 <thead>
                     <tr>
                         <th>Date</th>
-                        <th>Cheque no.</th>
+                        <th>Cheque No.</th>
                         <th>Bank</th>
                         <th>Favouring</th>
                         <th class="money">Amount</th>

@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Purchasing;
 
+use App\Domains\Banking\Models\OdAccount;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
+use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Organization\Services\FinancialYearService;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
@@ -140,6 +142,19 @@ class PurchaseInvoiceController extends Controller
             $defaultReceiveDate = $latestInward?->inward_date?->toDateString();
         }
 
+        $companyId = $request->user()?->company_id ?? Company::defaultCompanyId();
+        $odAccountsQuery = OdAccount::query()->active()->orderBy('bank_name');
+        if ($companyId) {
+            $odAccountsQuery->where('company_id', $companyId);
+        }
+        $odAccounts = $odAccountsQuery->get()->map(function (OdAccount $acc) {
+            $acc->current_utilization = $acc->getCurrentUtilization();
+            $acc->available_limit = $acc->getAvailableLimit();
+            $last4 = strlen($acc->account_number) > 4 ? substr($acc->account_number, -4) : $acc->account_number;
+            $acc->masked_account_number = '•••• ' . $last4;
+            return $acc;
+        });
+
         return view('purchasing.invoices.create', [
             'order' => $order,
             'initialOrders' => $initialOrders,
@@ -148,6 +163,7 @@ class PurchaseInvoiceController extends Controller
             'suppliers' => Customer::whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])->where('is_active', true)->orderBy('name')->get(),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
             'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'odAccounts' => $odAccounts,
         ]);
     }
 
@@ -156,6 +172,7 @@ class PurchaseInvoiceController extends Controller
         $validated = $request->validate([
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
             'supplier_id' => 'required|exists:customers,id',
+            'od_account_id' => 'nullable|exists:od_accounts,id',
             'billing_address_id' => 'nullable|exists:party_addresses,id',
             'shipping_address_id' => 'nullable|exists:party_addresses,id',
             'billing_address' => 'nullable|string',
@@ -229,7 +246,7 @@ class PurchaseInvoiceController extends Controller
 
     public function show(PurchaseInvoice $invoice): View
     {
-        $invoice->load(['supplier', 'warehouse', 'purchaseOrder', 'items.product', 'inventoryMovements']);
+        $invoice->load(['supplier', 'warehouse', 'purchaseOrder', 'items.product', 'inventoryMovements', 'odAccount', 'bankAccountTransactions']);
 
         return view('purchasing.invoices.show', compact('invoice'));
     }
@@ -303,6 +320,8 @@ class PurchaseInvoiceController extends Controller
             'items.uom',
             'billingAddress',
             'shippingAddress',
+            'odAccount',
+            'bankAccountTransactions',
         ]);
 
         $suppliers = Customer::whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])
@@ -311,6 +330,28 @@ class PurchaseInvoiceController extends Controller
             ->get();
         $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get();
         $products = Product::where('is_active', true)->orderBy('name')->get();
+
+        $companyId = $invoice->company_id ?? $request->user()?->company_id ?? Company::defaultCompanyId();
+        $odAccountsQuery = OdAccount::query()->orderBy('bank_name');
+        if ($companyId) {
+            $odAccountsQuery->where('company_id', $companyId);
+        }
+        $odAccountsQuery->where(function ($q) use ($invoice) {
+            $q->where('status', 'active');
+            if ($invoice->od_account_id) {
+                $q->orWhere('id', $invoice->od_account_id);
+            }
+        });
+        $odAccounts = $odAccountsQuery->get()->map(function (OdAccount $acc) use ($invoice) {
+            $acc->current_utilization = $acc->getCurrentUtilization();
+            $existingTxDebit = ($invoice->od_account_id == $acc->id)
+                ? (float) $invoice->bankAccountTransactions->where('od_account_id', $acc->id)->sum('debit')
+                : 0.0;
+            $acc->available_limit = round($acc->getAvailableLimit() + $existingTxDebit, 2);
+            $last4 = strlen($acc->account_number) > 4 ? substr($acc->account_number, -4) : $acc->account_number;
+            $acc->masked_account_number = '•••• ' . $last4;
+            return $acc;
+        });
 
         $initialOrders = $invoice->supplier ? $this->getEligibleOrdersForSupplier($invoice->supplier, $request->user()) : collect();
 
@@ -370,6 +411,7 @@ class PurchaseInvoiceController extends Controller
             'suppliers' => $suppliers,
             'warehouses' => $warehouses,
             'products' => $products,
+            'odAccounts' => $odAccounts,
             'initialOrders' => $initialOrders,
             'invoiceItems' => $invoiceItems,
         ]);
@@ -390,6 +432,7 @@ class PurchaseInvoiceController extends Controller
         $validated = $request->validate([
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
             'supplier_id' => 'required|exists:customers,id',
+            'od_account_id' => 'nullable|exists:od_accounts,id',
             'billing_address_id' => 'nullable|exists:party_addresses,id',
             'shipping_address_id' => 'nullable|exists:party_addresses,id',
             'billing_address' => 'nullable|string',

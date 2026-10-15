@@ -9,7 +9,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search cheques by number, bank, notes..."
+            placeholder="Search Cheques By Number, Bank, Notes..."
             :searchValue="request('search')"
             :resetUrl="route('cheques.index')"
         >
@@ -44,7 +44,7 @@
                     <x-ui.sortable-th column="purpose" label="Purpose" :currentSort="$sort" :currentDirection="$direction" />
                     <x-ui.sortable-th column="status" label="Status" :currentSort="$sort" :currentDirection="$direction" />
                     <x-ui.sortable-th column="amount" label="Amount" align="right" :currentSort="$sort" :currentDirection="$direction" />
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                 </tr></thead>
                 <tbody class="divide-y divide-slate-100">
                     @forelse($items as $item)

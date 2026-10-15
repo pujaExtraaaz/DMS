@@ -10,9 +10,9 @@
                     <tr>
                         <th>Ledger</th>
                         <th>Bank</th>
-                        <th>Account number</th>
-                        <th>IFSC</th>
-                        <th class="money">Opening bank balance</th>
+                        <th>Account Number</th>
+                        <th>Ifsc</th>
+                        <th class="money">Opening Bank Balance</th>
                     </tr>
                 </thead>
                 <tbody>

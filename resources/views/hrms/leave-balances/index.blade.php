@@ -11,7 +11,7 @@
 <x-ui.card class="mb-6">
     <form method="GET" action="{{ route('hrms.leave-balances.index') }}" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
         <div>
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Year</label>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Year</label>
             <select name="year" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
                 @foreach(range(now()->year - 2, now()->year + 2) as $y)
                     <option value="{{ $y }}" @selected($year == $y)>{{ $y }}</option>
@@ -19,7 +19,7 @@
             </select>
         </div>
         <div>
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Employee</label>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Employee</label>
             <select name="employee_id" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
                 <option value="">All Employees</option>
                 @foreach($employees as $e)
@@ -28,7 +28,7 @@
             </select>
         </div>
         <div>
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Leave Type</label>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">Leave Type</label>
             <select name="leave_type_id" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
                 <option value="">All Leave Types</option>
                 @foreach($leaveTypes as $lt)
@@ -47,13 +47,13 @@
         <table class="min-w-full divide-y divide-slate-200 text-sm">
             <thead class="bg-slate-50">
                 <tr>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Employee</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Department</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Leave Type</th>
-                    <th class="px-3 py-2 text-center text-xs font-semibold uppercase text-slate-500">Year</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Opening</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Used</th>
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Closing / Available</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Employee</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Department</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Leave Type</th>
+                    <th class="px-3 py-2 text-center text-xs font-semibold text-slate-500">Year</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Opening</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Used</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Closing / Available</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">

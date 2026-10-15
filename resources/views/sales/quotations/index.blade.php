@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search', request('q'))"
-            search-placeholder="Search quotation no, customer, notes..."
+            search-placeholder="Search Quotation No, Customer, Notes..."
             :reset-url="route('quotations.index')"
         >
             <x-slot name="filters">
@@ -80,7 +80,7 @@
                         <x-ui.sortable-th column="grand_total" :current-sort="$sort ?? request('sort', 'quotation_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc" align="right">
                             Total
                         </x-ui.sortable-th>
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">

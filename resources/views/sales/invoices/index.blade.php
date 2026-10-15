@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search invoice no, customer, notes..."
+            search-placeholder="Search Invoice No, Customer, Notes..."
             :reset-url="route('invoices.index')"
         >
             <x-slot name="filters">
@@ -108,12 +108,17 @@
                     <x-ui.sortable-th column="grand_total" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc" align="right">
                         Total
                     </x-ui.sortable-th>
-                    <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Actions</th>
                 </tr>
             </x-slot>
             @forelse($invoices as $invoice)
                 <tr class="hover:bg-slate-50/75 transition-colors">
-                    <td class="px-6 py-4 text-sm font-medium font-mono text-xs text-slate-900">{{ $invoice->invoice_no }}</td>
+                    <td class="px-6 py-4 text-sm font-medium font-mono text-xs text-slate-900">
+                        <div>{{ $invoice->invoice_no }}</div>
+                        @if($invoice->scheme)
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 font-sans" title="{{ $invoice->scheme->name }}">Scheme: {{ $invoice->scheme->code }}</span>
+                        @endif
+                    </td>
                     <td class="px-6 py-4 text-sm font-medium text-slate-900">{{ $invoice->customer?->name }}</td>
                     <td class="px-6 py-4 text-sm text-slate-600">{{ $invoice->invoice_date?->format('d M Y') }}</td>
                     <td class="px-6 py-4 text-sm">

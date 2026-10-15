@@ -5,7 +5,7 @@
         </x-slot:actions>
         <form class="filters" method="GET" action="{{ tally_route('books.tally.hsn-sacs.index') }}">
             <x-tally::form.field name="q" label="Search">
-                <x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Code or description" />
+                <x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Code Or Description" />
             </x-form.field>
             <button class="btn btn-primary" type="submit">Apply</button>
             <a class="btn" href="{{ tally_route('books.tally.hsn-sacs.index') }}">Reset</a>
@@ -17,7 +17,7 @@
         @else
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Code</th><th>Kind</th><th>Description</th><th>Tax rate</th><th>Status</th><th></th></tr></thead>
+                    <thead><tr><th>Code</th><th>Kind</th><th>Description</th><th>Tax Rate</th><th>Status</th><th></th></tr></thead>
                     <tbody>
                         @foreach ($records as $record)
                             <tr>

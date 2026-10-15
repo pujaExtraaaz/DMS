@@ -27,9 +27,9 @@
                         <tr>
                             <th>Item</th>
                             <th class="money">Qty</th>
-                            <th class="money">Base value</th>
+                            <th class="money">Base Value</th>
                             <th class="money">Allocated</th>
-                            <th class="money">Landed unit</th>
+                            <th class="money">Landed Unit</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search product, customer type..."
+            search-placeholder="Search Product, Customer Type..."
             :reset-url="route('masters.price-masters.index')"
         >
             <x-slot name="filters">
@@ -48,12 +48,12 @@
                     <x-ui.sortable-th column="product" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
                         Product
                     </x-ui.sortable-th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Unit</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">Unit</th>
                     <x-ui.sortable-th column="rate" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" align="right">
                         Rate
                     </x-ui.sortable-th>
-                    <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Min Qty</th>
-                    <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Min Qty</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Actions</th>
                 </tr>
             </x-slot>
             @forelse($items as $item)

@@ -27,7 +27,7 @@
                     <x-tally::form.input name="gross_value" value="{{ old('gross_value') }}" required />
                 </x-tally::form.field>
                 <x-tally::form.field name="residual_value" label="Residual value">
-                    <x-tally::form.input name="residual_value" value="{{ old('residual_value') }}" placeholder="From category %" />
+                    <x-tally::form.input name="residual_value" value="{{ old('residual_value') }}" placeholder="From Category %" />
                 </x-tally::form.field>
                 <x-tally::form.field name="location" label="Location">
                     <x-tally::form.input name="location" value="{{ old('location') }}" />

@@ -55,7 +55,7 @@
     <x-ui.card class="p-4" x-data="{ loading: false }">
         <form method="GET" action="{{ route('reports.od') }}" x-on:submit="loading = true">
             <div class="max-w-md">
-                <label for="account_number" class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                <label for="account_number" class="block text-xs font-semibold text-slate-700 tracking-wider mb-1.5">
                     Bank Account No. <span class="text-rose-500">*</span>
                 </label>
                 <div class="relative">
@@ -234,7 +234,7 @@
             <x-ui.card class="space-y-4">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
                     <div>
-                        <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Account Transaction Statement &amp; Running Balance</h3>
+                        <h3 class="text-sm font-bold text-slate-800 tracking-wider">Account Transaction Statement &amp; Running Balance</h3>
                         <p class="text-xs text-slate-500">
                             Transactions ordered with latest transactions first. Running balances calculated in chronological order.
                         </p>
@@ -246,7 +246,7 @@
 
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-xs divide-y divide-slate-200">
-                        <thead class="bg-slate-50 uppercase font-semibold text-slate-600">
+                        <thead class="bg-slate-50 font-semibold text-slate-600">
                             <tr>
                                 <th scope="col" class="px-3 py-3 text-center w-12">Sr. No.</th>
                                 <th scope="col" class="px-3 py-3 text-left">Transaction Date</th>

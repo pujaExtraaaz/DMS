@@ -14,7 +14,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search customer, invoice, method, reference..."
+            search-placeholder="Search Customer, Invoice, Method, Reference..."
             :reset-url="route('reconciliation.index')"
         >
             <x-slot name="filters">
@@ -58,7 +58,7 @@
                     <tr>
                         <x-ui.sortable-th column="paid_at" :current-sort="$sort ?? 'paid_at'" :current-direction="$direction ?? 'desc'">Date</x-ui.sortable-th>
                         <x-ui.sortable-th column="customer" :current-sort="$sort ?? 'paid_at'" :current-direction="$direction ?? 'desc'">Customer</x-ui.sortable-th>
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-slate-500">Invoice</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500">Invoice</th>
                         <x-ui.sortable-th column="method" :current-sort="$sort ?? 'paid_at'" :current-direction="$direction ?? 'desc'">Method</x-ui.sortable-th>
                         <x-ui.sortable-th column="amount" :current-sort="$sort ?? 'paid_at'" :current-direction="$direction ?? 'desc'" align="right">Amount</x-ui.sortable-th>
                     </tr>

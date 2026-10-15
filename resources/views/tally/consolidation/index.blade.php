@@ -44,7 +44,7 @@
                         <th class="money">Credit</th>
                         <th class="money">Net</th>
                         <th class="money">Ownership %</th>
-                        <th class="money">Group share</th>
+                        <th class="money">Group Share</th>
                     </tr>
                 </thead>
                 <tbody>

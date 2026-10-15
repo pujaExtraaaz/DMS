@@ -4,7 +4,7 @@
             <a class="btn btn-primary" href="{{ tally_route('books.tally.parties.create') }}">New party</a>
         </x-slot:actions>
         <form class="filters" method="GET">
-            <x-tally::form.field name="q" label="Search"><x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name, code, GSTIN" /></x-form.field>
+            <x-tally::form.field name="q" label="Search"><x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name, Code, GSTIN" /></x-form.field>
             <x-tally::form.field name="type" label="Type">
                 <select id="type" name="type" class="input">
                     <option value="">All</option>

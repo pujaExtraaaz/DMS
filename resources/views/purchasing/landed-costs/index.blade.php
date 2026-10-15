@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search landed no, invoice..."
+            search-placeholder="Search Landed No, Invoice..."
             :reset-url="route('purchasing.landed-costs.index')"
         >
             <x-slot name="filters">
@@ -49,14 +49,14 @@
                         <x-ui.sortable-th column="landed_date" :current-sort="$sort ?? request('sort', 'landed_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc">
                             Date
                         </x-ui.sortable-th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Invoice</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Invoice</th>
                         <x-ui.sortable-th column="allocation_method" :current-sort="$sort ?? request('sort', 'landed_date')" :current-direction="$direction ?? request('direction', 'desc')">
                             Method
                         </x-ui.sortable-th>
                         <x-ui.sortable-th column="total_additional_cost" :current-sort="$sort ?? request('sort', 'landed_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc" align="right">
                             Additional Cost
                         </x-ui.sortable-th>
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">

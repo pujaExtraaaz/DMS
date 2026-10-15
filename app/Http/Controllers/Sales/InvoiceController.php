@@ -19,6 +19,8 @@ use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sales\Models\InvoiceItem;
 use App\Domains\Sales\Services\InvoiceNumberGenerator;
 use App\Domains\Sales\Services\MastersIndiaGspService;
+use App\Domains\Scheme\Models\Scheme;
+use App\Domains\Scheme\Services\SchemeService;
 use App\Http\Controllers\Controller;
 use App\Support\DueDateService;
 use App\Support\QrCodeRenderer;
@@ -46,6 +48,7 @@ class InvoiceController extends Controller
         protected ProductDiscountService $productDiscountService,
         protected MastersIndiaGspService $mastersIndiaService,
         protected FinancialYearService $financialYearService,
+        protected SchemeService $schemeService,
     ) {}
 
     public function index(Request $request): View|Response
@@ -124,6 +127,11 @@ class InvoiceController extends Controller
                 ->orderBy('name')
                 ->get(),
 
+            'schemes' => Scheme::with(['brand', 'slabs', 'products'])
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(),
+
             // NEW
             'sellingTermsAndConditions' => $company?->selling_terms_and_conditions,
         ]);
@@ -133,6 +141,7 @@ class InvoiceController extends Controller
     {
         $validated = $request->validate([
             'customer_id' => 'required|exists:customers,id',
+            'scheme_id' => 'nullable|exists:schemes,id',
             'invoice_date' => 'required|date',
             'notes' => 'nullable|string',
             'terms_and_conditions' => 'nullable|string',
@@ -217,9 +226,40 @@ class InvoiceController extends Controller
                 $adjustedTotal = round(max(0, (float) $pricing['total'] - $universalDiscount), 2);
                 $totalDiscount = round($itemDiscountTotal + $universalDiscount, 2);
 
+                // Scheme evaluation
+                $scheme = null;
+                $schemeBenefitAmount = 0;
+                $schemeQualifiedValue = 0;
+                $schemeSlab = null;
+
+                if (!empty($validated['scheme_id'])) {
+                    $scheme = Scheme::with(['slabs', 'products'])->findOrFail($validated['scheme_id']);
+
+                    $evalItems = collect($pricing['lines'])->map(fn ($l) => [
+                        'product_id' => $l['product']->id,
+                        'brand_id' => $l['product']->brand_id,
+                        'quantity' => (float) $l['quantity'],
+                        'unit_price' => (float) $l['unitPrice'],
+                        'discount_amount' => (float) $l['discount'],
+                        'line_total' => (float) $l['lineTotal'],
+                    ])->all();
+
+                    $eval = $this->schemeService->evaluateScheme($scheme, $validated['invoice_date'], $evalItems);
+                    if (! $eval['eligible']) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'scheme_id' => [$eval['reason'] ?? 'The selected scheme is not eligible for this invoice.'],
+                        ]);
+                    }
+
+                    $schemeBenefitAmount = (float) $eval['benefit'];
+                    $schemeQualifiedValue = (float) $eval['qualified'];
+                    $schemeSlab = $eval['slab'];
+                }
+
                 $invoice = Invoice::create([
                     'invoice_no' => $this->invoiceNumberGenerator->generate(),
                     'customer_id' => $validated['customer_id'],
+                    'scheme_id' => $scheme?->id,
                     'billing_address_id' => $billingAddress?->id,
                     'shipping_address_id' => $shippingAddress?->id,
                     'billing_address' => $billingSnapshot,
@@ -239,6 +279,7 @@ class InvoiceController extends Controller
                     'item_discount_total' => $itemDiscountTotal,
                     'tax_amount' => $pricing['tax'],
                     'grand_total' => $adjustedTotal,
+                    'scheme_benefit_amount' => $schemeBenefitAmount,
                     'paid_amount' => 0,
                     'notes' => $validated['notes'] ?? null,
                     'terms_and_conditions' => $validated['terms_and_conditions'] ?? null,
@@ -247,6 +288,10 @@ class InvoiceController extends Controller
                     'reference_no' => $validated['reference_no'] ?? null,
                     'delivery_state' => $shippingAddress?->state ?? ($validated['delivery_state'] ?? $customer->shipping_state ?? $customer->state),
                 ]);
+
+                if ($scheme && $schemeBenefitAmount >= 0) {
+                    $this->schemeService->applySchemeToInvoice($invoice, $scheme, $schemeQualifiedValue, $schemeSlab, $schemeBenefitAmount);
+                }
 
                 foreach ($pricing['lines'] as $idx => $line) {
                     $product = $line['product'];
@@ -293,14 +338,14 @@ class InvoiceController extends Controller
 
     public function show(Invoice $invoice): View
     {
-        $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'payments', 'eInvoice', 'eWayBill', 'order']);
+        $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'payments', 'eInvoice', 'eWayBill', 'order', 'scheme.brand', 'schemeAchievement']);
 
         return view('sales.invoices.show', compact('invoice'));
     }
 
     public function pdf(Request $request, Invoice $invoice): Response
     {
-        $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice']);
+        $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice', 'scheme.brand']);
 
         $company = Company::resolveCurrent() ?? Company::query()->first();
 
@@ -333,7 +378,7 @@ class InvoiceController extends Controller
 
     public function eInvoiceDocument(Invoice $invoice): View
     {
-        $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice']);
+        $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice', 'scheme.brand']);
         $eInvoice = $invoice->eInvoice ?? EInvoice::create([
             'invoice_id' => $invoice->id,
             'status' => 'manual',
@@ -346,7 +391,7 @@ class InvoiceController extends Controller
 
     public function eInvoicePreview(Invoice $invoice): View
     {
-        $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice']);
+        $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice', 'scheme.brand']);
 
         $company = Company::resolveCurrent() ?? Company::query()->first();
 
@@ -381,7 +426,7 @@ class InvoiceController extends Controller
 
     public function preview(Invoice $invoice): View
     {
-        $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'eInvoice', 'eWayBill']);
+        $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'eInvoice', 'eWayBill', 'scheme.brand', 'schemeAchievement']);
         $company = Company::resolveCurrent() ?? Company::query()->first();
 
         $invoiceUrl = route('invoice.qr', [

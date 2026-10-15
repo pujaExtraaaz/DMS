@@ -73,11 +73,11 @@
                     <table class="min-w-full divide-y divide-slate-200 text-sm">
                         <thead class="bg-slate-50">
                             <tr>
-                                <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Leave Type</th>
-                                <th class="px-3 py-2 text-center text-xs font-semibold text-slate-500 uppercase">Year</th>
-                                <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase">Opening</th>
-                                <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase">Used</th>
-                                <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500 uppercase">Closing / Available</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Leave Type</th>
+                                <th class="px-3 py-2 text-center text-xs font-semibold text-slate-500">Year</th>
+                                <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Opening</th>
+                                <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Used</th>
+                                <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Closing / Available</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -108,11 +108,11 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
                             <label class="block text-xs font-medium text-slate-600 mb-1">Document Type *</label>
-                            <input type="text" name="document_type" required placeholder="e.g. Aadhaar, PAN, Contract, Degree" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
+                            <input type="text" name="document_type" required placeholder="E.G. Aadhaar, PAN, Contract, Degree" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-slate-600 mb-1">Document Number</label>
-                            <input type="text" name="document_number" placeholder="e.g. ABCDE1234F" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
+                            <input type="text" name="document_number" placeholder="E.G. ABCDE1234F" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-slate-600 mb-1">Expiry Date</label>
@@ -136,11 +136,11 @@
                         <table class="min-w-full divide-y divide-slate-200 text-xs">
                             <thead class="bg-slate-50">
                                 <tr>
-                                    <th class="px-3 py-2 text-left font-semibold text-slate-500 uppercase">Document</th>
-                                    <th class="px-3 py-2 text-left font-semibold text-slate-500 uppercase">Doc #</th>
-                                    <th class="px-3 py-2 text-left font-semibold text-slate-500 uppercase">Expiry</th>
-                                    <th class="px-3 py-2 text-left font-semibold text-slate-500 uppercase">Status</th>
-                                    <th class="px-3 py-2 text-right font-semibold text-slate-500 uppercase">Action</th>
+                                    <th class="px-3 py-2 text-left font-semibold text-slate-500">Document</th>
+                                    <th class="px-3 py-2 text-left font-semibold text-slate-500">Doc #</th>
+                                    <th class="px-3 py-2 text-left font-semibold text-slate-500">Expiry</th>
+                                    <th class="px-3 py-2 text-left font-semibold text-slate-500">Status</th>
+                                    <th class="px-3 py-2 text-right font-semibold text-slate-500">Action</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100">
@@ -187,11 +187,11 @@
                     <table class="min-w-full divide-y divide-slate-200 text-xs">
                         <thead class="bg-slate-50">
                             <tr>
-                                <th class="px-3 py-2 text-left font-semibold text-slate-500 uppercase">Date</th>
-                                <th class="px-3 py-2 text-center font-semibold text-slate-500 uppercase">In</th>
-                                <th class="px-3 py-2 text-center font-semibold text-slate-500 uppercase">Out</th>
-                                <th class="px-3 py-2 text-center font-semibold text-slate-500 uppercase">Status</th>
-                                <th class="px-3 py-2 text-right font-semibold text-slate-500 uppercase">Hours</th>
+                                <th class="px-3 py-2 text-left font-semibold text-slate-500">Date</th>
+                                <th class="px-3 py-2 text-center font-semibold text-slate-500">In</th>
+                                <th class="px-3 py-2 text-center font-semibold text-slate-500">Out</th>
+                                <th class="px-3 py-2 text-center font-semibold text-slate-500">Status</th>
+                                <th class="px-3 py-2 text-right font-semibold text-slate-500">Hours</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">

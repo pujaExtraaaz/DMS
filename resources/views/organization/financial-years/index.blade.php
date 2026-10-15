@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search financial year name, company..."
+            search-placeholder="Search Financial Year Name, Company..."
             :reset-url="route('organization.financial-years.index')"
         />
 
@@ -23,7 +23,7 @@
                         <x-ui.sortable-th column="company" :current-sort="$sort ?? 'starts_on'" :current-direction="$direction ?? 'desc'">Company</x-ui.sortable-th>
                         <x-ui.sortable-th column="starts_on" :current-sort="$sort ?? 'starts_on'" :current-direction="$direction ?? 'desc'">Date Range</x-ui.sortable-th>
                         <x-ui.sortable-th column="is_current" :current-sort="$sort ?? 'starts_on'" :current-direction="$direction ?? 'desc'">Status</x-ui.sortable-th>
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Actions</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold tracking-wider text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">

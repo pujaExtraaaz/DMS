@@ -5,7 +5,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search leave types by name..."
+            placeholder="Search Leave Types By Name..."
             :searchValue="request('search')"
             :resetUrl="route('hrms.leave-types.index')"
         />
@@ -17,7 +17,7 @@
                         <x-ui.sortable-th column="name" label="Name" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="default_days" label="Default Days" align="right" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="is_paid" label="Paid" :currentSort="$sort" :currentDirection="$direction" />
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">

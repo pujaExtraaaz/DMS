@@ -32,7 +32,7 @@
     <x-ui.card><p class="text-xs text-slate-500">Grand Total</p><p class="font-medium">₹{{ number_format($order->grand_total, 2) }}</p></x-ui.card>
 </div>
 <x-ui.card class="mb-4">
-    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Addresses</h4>
+    <h4 class="text-xs font-bold tracking-wider text-slate-500 mb-2">Addresses</h4>
     @php
         $supplierDetails = $order->resolveSupplierDetails();
         $consigneeDetails = $order->resolveConsigneeDetails();
@@ -70,7 +70,7 @@
 
 <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
     <x-ui.card>
-        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Freight &amp; Order Notes</h4>
+        <h4 class="text-xs font-bold tracking-wider text-slate-500 mb-3">Freight &amp; Order Notes</h4>
         <div class="space-y-3 text-sm">
             <div>
                 <span class="text-xs text-slate-500 block">Freight Applicable</span>
@@ -97,7 +97,7 @@
     </x-ui.card>
 
     <x-ui.card>
-        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Order Total Summary</h4>
+        <h4 class="text-xs font-bold tracking-wider text-slate-500 mb-3">Order Total Summary</h4>
         <div class="space-y-2 text-sm">
             <div class="flex justify-between text-slate-600">
                 <span>Items Subtotal (Taxable):</span>

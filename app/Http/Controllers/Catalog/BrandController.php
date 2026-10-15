@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\Catalog;
 
 use App\Domains\Catalog\Models\Brand;
+use App\Domains\Catalog\Models\Category;
+use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
 use App\Support\CodeGenerator;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -151,10 +155,85 @@ class BrandController extends Controller
         return $this->flashSuccess('Brand updated successfully.', 'masters.brands.index');
     }
 
-    public function destroy(Brand $brand): RedirectResponse
+    public function destroy(Request $request, Brand $brand): RedirectResponse|JsonResponse
     {
-        $brand->delete();
-        return $this->flashSuccess('Brand deleted successfully.', 'masters.brands.index');
+        $user = $request->user();
+
+        // Enforce existing authentication and authorization rules
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) &&
+            ! $user->can('masters.manage') &&
+            ! $user->can('masters.edit') &&
+            ! $user->can('masters.delete') &&
+            ! $user->can('products.manage') &&
+            ! $user->can('products.edit')) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: You do not have permission to delete brands.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: You do not have permission to delete brands.');
+        }
+
+        // Multi-tenancy company boundary check
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && $brand->company_id && (int) $brand->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This brand belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This brand belongs to another company.');
+        }
+
+        $brandName = $brand->name;
+
+        try {
+            DB::transaction(function () use ($brand) {
+                // Safely disassociate referencing entities so dependent records (products,
+                // categories, schemes, targets) remain completely intact and functional,
+                // matching the database foreign key nullOnDelete / cascadeOnDelete rules.
+                Product::where('brand_id', $brand->id)->update(['brand_id' => null]);
+                Category::where('brand_id', $brand->id)->update(['brand_id' => null]);
+
+                if (Schema::hasTable('schemes')) {
+                    DB::table('schemes')->where('brand_id', $brand->id)->update(['brand_id' => null]);
+                }
+                if (Schema::hasTable('target_periods')) {
+                    DB::table('target_periods')->where('brand_id', $brand->id)->update(['brand_id' => null]);
+                }
+                if (Schema::hasTable('party_targets')) {
+                    DB::table('party_targets')->where('brand_id', $brand->id)->update(['brand_id' => null]);
+                }
+                if (Schema::hasTable('region_brand_policies')) {
+                    DB::table('region_brand_policies')->where('brand_id', $brand->id)->delete();
+                }
+
+                $brand->delete();
+            });
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Brand '{$brandName}' deleted successfully.",
+                ]);
+            }
+
+            return $this->flashSuccess("Brand '{$brandName}' deleted successfully.", 'masters.brands.index');
+        } catch (\Throwable $e) {
+            report($e);
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to delete brand: ' . $e->getMessage(),
+                ], 500);
+            }
+
+            return $this->flashError('Failed to delete brand: ' . $e->getMessage(), 'masters.brands.index');
+        }
     }
 
     protected function validated(Request $request, ?Brand $brand = null): array

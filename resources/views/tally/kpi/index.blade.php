@@ -15,7 +15,7 @@
         @endif
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Date</th><th>DSO</th><th>DPO</th><th class="money">WC</th></tr></thead>
+                <thead><tr><th>Date</th><th>Dso</th><th>Dpo</th><th class="money">Wc</th></tr></thead>
                 <tbody>
                     @forelse ($history as $row)
                         <tr>

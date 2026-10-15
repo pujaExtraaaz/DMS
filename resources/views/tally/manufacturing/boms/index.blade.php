@@ -19,7 +19,7 @@
             <div class="table-wrap">
                 <table class="data">
                     <thead>
-                        <tr><th>Name</th><th>Finished product</th><th>Wastage %</th><th>Orders</th><th>Status</th><th></th></tr>
+                        <tr><th>Name</th><th>Finished Product</th><th>Wastage %</th><th>Orders</th><th>Status</th><th></th></tr>
                     </thead>
                     <tbody>
                         @foreach ($bills as $bill)

@@ -11,7 +11,7 @@
             <form method="POST" action="{{ route('cheques.clear', $item) }}">@csrf<x-ui.button type="submit" variant="primary">Clear</x-ui.button></form>
             <form method="POST" action="{{ route('cheques.bounce', $item) }}" class="flex gap-2 items-center">
                 @csrf
-                <input type="text" name="reason" placeholder="Bounce reason" class="rounded-lg border-gray-300 text-sm">
+                <input type="text" name="reason" placeholder="Bounce Reason" class="rounded-lg border-gray-300 text-sm">
                 <x-ui.button type="submit" variant="secondary">Bounce</x-ui.button>
             </form>
         @endif

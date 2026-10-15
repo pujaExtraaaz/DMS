@@ -28,7 +28,7 @@
 
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Source</th><th>Counterparty</th><th>Mapped ledger</th><th></th></tr></thead>
+                <thead><tr><th>Source</th><th>Counterparty</th><th>Mapped Ledger</th><th></th></tr></thead>
                 <tbody>
                     @forelse ($mirrors as $mirror)
                         <tr>

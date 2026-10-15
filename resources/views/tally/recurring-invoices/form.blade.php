@@ -36,8 +36,8 @@
                 <x-tally::form.field name="next_run_on" label="Next run"><x-tally::form.input type="date" name="next_run_on" value="{{ old('next_run_on', optional($item->next_run_on)->toDateString() ?? now()->toDateString()) }}" /></x-tally::form.field>
                 <x-tally::form.field name="invoice_category" label="Category">
                     <select class="input" name="invoice_category">
-                        <option value="tax_invoice" @selected(old('invoice_category', $item->invoice_category) === 'tax_invoice')>Tax invoice</option>
-                        <option value="bill_of_supply" @selected(old('invoice_category', $item->invoice_category) === 'bill_of_supply')>Bill of supply</option>
+                        <option value="tax_invoice" @selected(old('invoice_category', $item->invoice_category) === 'tax_invoice')>Tax Invoice</option>
+                        <option value="bill_of_supply" @selected(old('invoice_category', $item->invoice_category) === 'bill_of_supply')>Bill Of Supply</option>
                     </select>
                 </x-tally::form.field>
                 <label class="check"><input type="checkbox" name="auto_post" value="1" @checked(old('auto_post', $item->auto_post))> Auto-post</label>

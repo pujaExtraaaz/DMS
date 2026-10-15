@@ -20,7 +20,7 @@
         </form>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Date</th><th>Value date</th><th>Narration</th><th class="money">Debit</th><th class="money">Credit</th><th>Reference</th><th>Matched voucher</th></tr></thead>
+                <thead><tr><th>Date</th><th>Value Date</th><th>Narration</th><th class="money">Debit</th><th class="money">Credit</th><th>Reference</th><th>Matched Voucher</th></tr></thead>
                 <tbody>
                     @forelse ($lines as $line)
                         <tr>
@@ -36,7 +36,7 @@
                                 @else
                                     <form method="POST" action="{{ tally_route('books.tally.bank-statements.match', $line) }}">
                                         @csrf
-                                        <input class="input" name="voucher_entry_id" placeholder="Voucher line id" required>
+                                        <input class="input" name="voucher_entry_id" placeholder="Voucher Line ID" required>
                                         <button class="btn" type="submit">Match</button>
                                     </form>
                                 @endif

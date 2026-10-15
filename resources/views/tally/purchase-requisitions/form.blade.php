@@ -22,7 +22,7 @@
             @endphp
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Required by</th><th>Notes</th></tr></thead>
+                    <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Required By</th><th>Notes</th></tr></thead>
                     <tbody>
                         @foreach ($lines as $i => $line)
                             <tr>

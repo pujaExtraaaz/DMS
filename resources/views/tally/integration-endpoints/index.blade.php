@@ -24,7 +24,7 @@
         </form>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Name</th><th>Kind</th><th>Bank</th><th>Last sync</th><th>Active</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Kind</th><th>Bank</th><th>Last Sync</th><th>Active</th><th></th></tr></thead>
                 <tbody>
                     @forelse ($endpoints as $endpoint)
                         <tr>

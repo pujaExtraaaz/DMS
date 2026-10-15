@@ -30,6 +30,7 @@ class Invoice extends Model
     protected $fillable = [
         'invoice_no',
         'customer_id',
+        'scheme_id',
         'order_id',
         'salesperson_id',
         'invoice_date',
@@ -46,6 +47,7 @@ class Invoice extends Model
         'item_discount_total',
         'tax_amount',
         'grand_total',
+        'scheme_benefit_amount',
         'paid_amount',
         'notes',
         'terms_and_conditions',
@@ -72,13 +74,14 @@ class Invoice extends Model
             'item_discount_total' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'grand_total' => 'decimal:2',
+            'scheme_benefit_amount' => 'decimal:2',
             'paid_amount' => 'decimal:2',
         ];
     }
 
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Customer::class)->withTrashed();
     }
 
     public function order(): BelongsTo
@@ -134,5 +137,15 @@ class Invoice extends Model
     public function shippingAddress(): BelongsTo
     {
         return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'shipping_address_id');
+    }
+
+    public function scheme(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Scheme\Models\Scheme::class);
+    }
+
+    public function schemeAchievement(): HasOne
+    {
+        return $this->hasOne(\App\Domains\Scheme\Models\SchemeAchievement::class);
     }
 }

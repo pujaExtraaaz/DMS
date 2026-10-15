@@ -38,7 +38,7 @@
         </form>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Date</th><th>Channel</th><th>Beneficiary</th><th>A/c</th><th>IFSC</th><th>Bank</th><th class="money">Amount</th><th>UTR</th><th>Status</th></tr></thead>
+                <thead><tr><th>Date</th><th>Channel</th><th>Beneficiary</th><th>A/C</th><th>Ifsc</th><th>Bank</th><th class="money">Amount</th><th>Utr</th><th>Status</th></tr></thead>
                 <tbody>
                     @forelse ($payments as $payment)
                         <tr>

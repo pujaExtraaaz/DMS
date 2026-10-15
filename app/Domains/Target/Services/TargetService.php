@@ -51,9 +51,19 @@ class TargetService
             $query->where('salesperson_id', $target->salesperson_id);
         }
 
-        if ($target->brand_id) {
-            $query->whereHas('items.product', fn ($q) => $q->where('brand_id', $target->brand_id));
+        // Apply brand scope: party target brand takes precedence; fallback to period brand
+        $effectiveBrandId = $target->brand_id ?: ($period->target_category === 'brand' ? $period->brand_id : null);
+        if ($effectiveBrandId) {
+            $query->whereHas('items.product', fn ($q) => $q->where('brand_id', $effectiveBrandId));
         }
+
+        // Apply product scope if period category is product
+        if ($period->target_category === 'product' && $period->product_id) {
+            $query->whereHas('items', fn ($q) => $q->where('product_id', $period->product_id));
+        }
+
+        // Note: For suppliers, achievement calculations are not artificially invented
+        // to preserve existing sales calculations. Supplier selection and tracking are persisted.
 
         $achieved = (float) $query->sum('grand_total');
 
@@ -85,13 +95,49 @@ class TargetService
 
     public function createPeriod(array $data): TargetPeriod
     {
+        $rawCategory = $data['target_category'] ?? null;
+        $category = match ($rawCategory) {
+            'brand', 'brands' => 'brand',
+            'product', 'products' => 'product',
+            'supplier', 'suppliers' => 'supplier',
+            default => null,
+        };
+
         return TargetPeriod::create([
             'name' => $data['name'],
             'period_type' => $data['period_type'],
             'starts_on' => $data['starts_on'],
             'ends_on' => $data['ends_on'],
             'status' => 'open',
+            'target_category' => $category,
+            'brand_id' => $category === 'brand' ? ($data['brand_id'] ?? null) : null,
+            'product_id' => $category === 'product' ? ($data['product_id'] ?? null) : null,
+            'supplier_id' => $category === 'supplier' ? ($data['supplier_id'] ?? null) : null,
         ]);
+    }
+
+    public function updatePeriod(TargetPeriod $period, array $data): TargetPeriod
+    {
+        $rawCategory = $data['target_category'] ?? null;
+        $category = match ($rawCategory) {
+            'brand', 'brands' => 'brand',
+            'product', 'products' => 'product',
+            'supplier', 'suppliers' => 'supplier',
+            default => null,
+        };
+
+        $period->update([
+            'name' => $data['name'],
+            'period_type' => $data['period_type'],
+            'starts_on' => $data['starts_on'],
+            'ends_on' => $data['ends_on'],
+            'target_category' => $category,
+            'brand_id' => $category === 'brand' ? ($data['brand_id'] ?? null) : null,
+            'product_id' => $category === 'product' ? ($data['product_id'] ?? null) : null,
+            'supplier_id' => $category === 'supplier' ? ($data['supplier_id'] ?? null) : null,
+        ]);
+
+        return $period;
     }
 
     public function createTarget(array $data): PartyTarget

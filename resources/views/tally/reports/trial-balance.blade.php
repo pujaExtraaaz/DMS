@@ -31,8 +31,8 @@
                         <th class="money">Debit</th>
                         <th class="money">Credit</th>
                         @if ($report['foreign'] ?? false)
-                            <th class="money">Foreign debit</th>
-                            <th class="money">Foreign credit</th>
+                            <th class="money">Foreign Debit</th>
+                            <th class="money">Foreign Credit</th>
                         @endif
                     </tr>
                 </thead>

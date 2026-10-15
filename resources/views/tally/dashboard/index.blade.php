@@ -240,15 +240,15 @@
                 <x-ui.card title="Cash flow" description="Cash and bank movement for the period.">
                     <dl class="grid grid-cols-3 gap-4">
                         <div>
-                            <dt class="text-xs font-medium uppercase tracking-wider text-slate-400">Inflow</dt>
+                            <dt class="text-xs font-medium tracking-wider text-slate-400">Inflow</dt>
                             <dd class="mt-1 text-lg font-semibold text-emerald-700">{{ $money($cards['cash_flow']['inflow'] ?? '0.00') }}</dd>
                         </div>
                         <div>
-                            <dt class="text-xs font-medium uppercase tracking-wider text-slate-400">Outflow</dt>
+                            <dt class="text-xs font-medium tracking-wider text-slate-400">Outflow</dt>
                             <dd class="mt-1 text-lg font-semibold text-rose-700">{{ $money($cards['cash_flow']['outflow'] ?? '0.00') }}</dd>
                         </div>
                         <div>
-                            <dt class="text-xs font-medium uppercase tracking-wider text-slate-400">Net</dt>
+                            <dt class="text-xs font-medium tracking-wider text-slate-400">Net</dt>
                             <dd class="mt-1 text-lg font-semibold text-slate-900">{{ $cards['cash_flow']['net'] ?? '0.00' }}</dd>
                         </div>
                     </dl>
@@ -282,11 +282,11 @@
                         <table class="min-w-full divide-y divide-slate-100">
                             <thead class="bg-slate-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Date</th>
-                                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Number</th>
-                                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Type</th>
-                                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Status</th>
-                                    <th class="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500"></th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Date</th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Number</th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Status</th>
+                                    <th class="px-6 py-3 text-right text-xs font-semibold tracking-wider text-slate-500"></th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100 bg-white">

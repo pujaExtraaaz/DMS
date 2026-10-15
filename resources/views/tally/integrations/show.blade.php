@@ -61,7 +61,7 @@
         <h2>External ids</h2>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Source</th><th>External id</th><th>Status</th><th>Record</th></tr></thead>
+                <thead><tr><th>Source</th><th>External ID</th><th>Status</th><th>Record</th></tr></thead>
                 <tbody>
                     @forelse ($references as $reference)
                         <tr>

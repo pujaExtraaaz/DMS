@@ -14,7 +14,7 @@
           x-data="searchableProductSelect(@js($products), '{{ $filters['product_id'] ?? '' }}')">
         
         <div class="relative">
-            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Product</label>
+            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Product</label>
             <input type="hidden" name="product_id" :value="selectedId" data-dynamic-filter>
             <div class="relative">
                 <input type="text"
@@ -24,7 +24,7 @@
                        @focus="openDropdown()"
                        @input="openDropdown()"
                        @click.outside="closeDropdown()"
-                       placeholder="Search product name or SKU..."
+                       placeholder="Search Product Name Or SKU..."
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
                 <button type="button" x-show="selectedId" @click="clearSelection()"
                         class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold">&times;</button>
@@ -44,7 +44,7 @@
         </div>
 
         <div>
-            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Warehouse</label>
+            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Warehouse</label>
             <select name="warehouse_id" data-dynamic-filter class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 <option value="">All Warehouses</option>
                 @foreach($warehouses as $w)
@@ -54,7 +54,7 @@
         </div>
 
         <div>
-            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Category</label>
+            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Category</label>
             <select name="category_id" data-dynamic-filter class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 <option value="">All Categories</option>
                 @foreach($categories as $c)
@@ -64,7 +64,7 @@
         </div>
 
         <div>
-            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Brand</label>
+            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Brand</label>
             <select name="brand_id" data-dynamic-filter class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 <option value="">All Brands</option>
                 @foreach($brands as $b)
@@ -74,13 +74,13 @@
         </div>
 
         <div>
-            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Color / Variant</label>
+            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Color / Variant</label>
             <input type="text"
                    name="color_variant"
                    value="{{ $filters['color_variant'] ?? request('color_variant') }}"
                    list="stock-colors"
                    data-dynamic-filter
-                   placeholder="Filter variant..."
+                   placeholder="Filter Variant..."
                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
             <datalist id="stock-colors">
                 @foreach($colors as $c)<option value="{{ $c }}"></option>@endforeach
@@ -105,7 +105,7 @@
 <x-ui.card padding="false">
     <div class="overflow-x-auto">
         <table class="w-full text-left text-xs border-collapse">
-            <thead class="bg-slate-50 text-slate-600 uppercase tracking-wider border-b">
+            <thead class="bg-slate-50 text-slate-600 tracking-wider border-b">
                 <tr>
                     <x-ui.sortable-th column="product" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
                         Product
@@ -179,7 +179,7 @@
 <x-ui.card class="mt-6" title="Recent Stock Movements">
     <div class="overflow-x-auto">
         <table class="w-full text-left text-xs border-collapse">
-            <thead class="bg-slate-50 text-slate-600 uppercase tracking-wider border-b">
+            <thead class="bg-slate-50 text-slate-600 tracking-wider border-b">
                 <tr>
                     <th class="p-3">Date / Time</th>
                     <th class="p-3">Product</th>

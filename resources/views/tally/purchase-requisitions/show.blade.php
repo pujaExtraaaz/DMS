@@ -18,7 +18,7 @@
         </dl>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Item</th><th class="money">Qty</th><th>Unit</th><th>Required by</th></tr></thead>
+                <thead><tr><th>Item</th><th class="money">Qty</th><th>Unit</th><th>Required By</th></tr></thead>
                 <tbody>
                     @foreach ($requisition->lines as $line)
                         <tr>

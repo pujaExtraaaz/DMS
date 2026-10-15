@@ -19,6 +19,7 @@ class PurchaseInvoice extends Model
         'company_id',
         'branch_id',
         'warehouse_id',
+        'od_account_id',
         'supplier_id',
         'purchase_order_id',
         'purchase_inward_id',
@@ -125,9 +126,19 @@ class PurchaseInvoice extends Model
         return $this->belongsTo(Warehouse::class)->withTrashed();
     }
 
+    public function odAccount(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Banking\Models\OdAccount::class, 'od_account_id');
+    }
+
+    public function bankAccountTransactions(): MorphMany
+    {
+        return $this->morphMany(\App\Domains\Banking\Models\BankAccountTransaction::class, 'reference');
+    }
+
     public function supplier(): BelongsTo
     {
-        return $this->belongsTo(Customer::class, 'supplier_id');
+        return $this->belongsTo(Customer::class, 'supplier_id')->withTrashed();
     }
 
     public function purchaseOrder(): BelongsTo

@@ -37,7 +37,7 @@
                 <option value="{{ $s }}" @selected(old('status', $item->status ?? 'present') == $s)>{{ ucfirst(str_replace('_',' ',$s)) }}</option>
             @endforeach
         </x-ui.select>
-        <x-ui.input name="hours_worked" label="Hours Worked" type="number" step="0.01" :value="old('hours_worked', $item->hours_worked)" placeholder="Leave empty to auto-calculate" />
+        <x-ui.input name="hours_worked" label="Hours Worked" type="number" step="0.01" :value="old('hours_worked', $item->hours_worked)" placeholder="Leave Empty To Auto-Calculate" />
     </div>
 
     <div>

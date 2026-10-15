@@ -36,8 +36,8 @@
             <span>Invoice category</span>
             <span>:</span>
             <select class="input" name="invoice_category">
-                <option value="tax_invoice" @selected(old('invoice_category', $invoice->invoice_category ?? 'tax_invoice') === 'tax_invoice')>Tax invoice</option>
-                <option value="bill_of_supply" @selected(old('invoice_category', $invoice->invoice_category ?? '') === 'bill_of_supply')>Bill of supply</option>
+                <option value="tax_invoice" @selected(old('invoice_category', $invoice->invoice_category ?? 'tax_invoice') === 'tax_invoice')>Tax Invoice</option>
+                <option value="bill_of_supply" @selected(old('invoice_category', $invoice->invoice_category ?? '') === 'bill_of_supply')>Bill Of Supply</option>
             </select>
         </label>
         <label class="tally-co-row">
@@ -83,7 +83,7 @@
         <span>Scan barcode</span>
         <span>:</span>
         <span class="gstin-fetch">
-            <input class="input" name="barcode_scan" data-barcode-scan data-barcode-scope="invoice" data-barcode-url="{{ tally_route('books.tally.barcodes.lookup') }}" placeholder="Scan, then Enter" autocomplete="off">
+            <input class="input" name="barcode_scan" data-barcode-scan data-barcode-scope="invoice" data-barcode-url="{{ tally_route('books.tally.barcodes.lookup') }}" placeholder="Scan, Then Enter" autocomplete="off">
             <button class="btn" type="button" data-barcode-camera>Camera</button>
         </span>
     </label>

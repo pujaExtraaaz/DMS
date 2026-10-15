@@ -2,17 +2,20 @@
 
 namespace App\Domains\Purchasing\Services;
 
+use App\Domains\Banking\Models\BankAccountTransaction;
+use App\Domains\Banking\Models\OdAccount;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Organization\Models\Company;
+use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Purchasing\Models\PurchaseInward;
 use App\Domains\Purchasing\Models\PurchaseInwardItem;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseInvoiceItem;
 use App\Domains\Purchasing\Models\PurchaseOrder;
-use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Purchasing\Models\PurchaseOrderItem;
 use App\Domains\Purchasing\Models\SupplierPayable;
 use App\Domains\Purchasing\Models\VendorPriceHistory;
@@ -686,7 +689,39 @@ class PurchaseOrderService
             $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
             $grandTotal = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
 
+            $warehouse = !empty($data['warehouse_id']) ? Warehouse::find($data['warehouse_id']) : null;
+            $companyId = $data['company_id'] ?? $warehouse?->company_id ?? $actor->company_id ?? Company::defaultCompanyId() ?? 1;
+
+            $odAccount = null;
+            if (!empty($data['od_account_id'])) {
+                $odAccount = OdAccount::where('id', $data['od_account_id'])->lockForUpdate()->first();
+                if (!$odAccount) {
+                    throw ValidationException::withMessages([
+                        'od_account_id' => 'The selected OD bank account was not found.',
+                    ]);
+                }
+                if ($odAccount->status !== 'active') {
+                    throw ValidationException::withMessages([
+                        'od_account_id' => 'The selected OD bank account is inactive.',
+                    ]);
+                }
+                if ($companyId && (int) $odAccount->company_id !== (int) $companyId) {
+                    throw ValidationException::withMessages([
+                        'od_account_id' => 'The selected OD bank account belongs to another company.',
+                    ]);
+                }
+
+                $availableLimit = $odAccount->getAvailableLimit();
+                if ($grandTotal > $availableLimit) {
+                    throw ValidationException::withMessages([
+                        'od_account_id' => "The invoice payable amount (₹" . number_format($grandTotal, 2) . ") exceeds the available OD limit of ₹" . number_format($availableLimit, 2) . " for account {$odAccount->bank_name} - {$odAccount->account_number}."
+                    ]);
+                }
+            }
+
             $invoice = PurchaseInvoice::create([
+                'company_id' => $companyId,
+                'od_account_id' => $odAccount?->id,
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
                 'purchase_inward_id' => $data['purchase_inward_id'] ?? null,
                 'supplier_id' => $supplierId,
@@ -778,7 +813,28 @@ class PurchaseOrderService
                 'notes' => "Purchase invoice {$invoice->invoice_no}",
             ]);
 
-            return $invoice->load(['items.product', 'items.uom', 'supplier']);
+            if ($odAccount) {
+                BankAccountTransaction::updateOrCreate(
+                    [
+                        'reference_type' => $invoice->getMorphClass(),
+                        'reference_id' => $invoice->id,
+                    ],
+                    [
+                        'company_id' => $companyId,
+                        'account_number' => $odAccount->account_number,
+                        'od_account_id' => $odAccount->id,
+                        'transaction_date' => $invoice->invoice_date,
+                        'transaction_no' => 'OD-' . $invoice->invoice_no,
+                        'description' => "OD utilization for Purchase Invoice {$invoice->invoice_no}",
+                        'transaction_type' => 'debit',
+                        'debit' => $invoice->grand_total,
+                        'credit' => 0,
+                        'created_by' => $actor->id,
+                    ]
+                );
+            }
+
+            return $invoice->load(['items.product', 'items.uom', 'supplier', 'odAccount']);
         });
     }
 
@@ -907,7 +963,47 @@ class PurchaseOrderService
             $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
             $grandTotal = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
 
+            $warehouse = ! empty($data['warehouse_id']) ? Warehouse::find($data['warehouse_id']) : null;
+            $companyId = $data['company_id'] ?? $invoice->company_id ?? $warehouse?->company_id ?? $actor->company_id ?? Company::defaultCompanyId() ?? 1;
+
+            $odAccount = null;
+            if (! empty($data['od_account_id'])) {
+                $odAccount = OdAccount::where('id', $data['od_account_id'])->lockForUpdate()->first();
+                if (! $odAccount) {
+                    throw ValidationException::withMessages([
+                        'od_account_id' => 'The selected OD bank account was not found.',
+                    ]);
+                }
+                if ($odAccount->status !== 'active') {
+                    throw ValidationException::withMessages([
+                        'od_account_id' => 'The selected OD bank account is inactive.',
+                    ]);
+                }
+                if ($companyId && (int) $odAccount->company_id !== (int) $companyId) {
+                    throw ValidationException::withMessages([
+                        'od_account_id' => 'The selected OD bank account belongs to another company.',
+                    ]);
+                }
+
+                $existingTx = BankAccountTransaction::where('reference_type', $invoice->getMorphClass())
+                    ->where('reference_id', $invoice->id)
+                    ->first();
+
+                $existingDebit = ($existingTx && (int) $existingTx->od_account_id === (int) $odAccount->id)
+                    ? (float) $existingTx->debit
+                    : 0.0;
+
+                $availableLimit = (float) $odAccount->getAvailableLimit() + $existingDebit;
+                if ($grandTotal > $availableLimit) {
+                    throw ValidationException::withMessages([
+                        'od_account_id' => "The invoice payable amount (₹" . number_format($grandTotal, 2) . ") exceeds the available OD limit of ₹" . number_format($availableLimit, 2) . " for account {$odAccount->bank_name} - {$odAccount->account_number}."
+                    ]);
+                }
+            }
+
             $invoice->update([
+                'company_id' => $companyId,
+                'od_account_id' => $odAccount?->id,
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
                 'purchase_inward_id' => $data['purchase_inward_id'] ?? null,
                 'supplier_id' => $supplierId,
@@ -1012,7 +1108,33 @@ class PurchaseOrderService
                 'notes' => "Purchase invoice {$invoice->invoice_no}",
             ]);
 
-            return $invoice->fresh(['items.product', 'items.uom', 'supplier', 'warehouse']);
+            // Sync BankAccountTransaction (OD utilization)
+            if ($odAccount) {
+                BankAccountTransaction::updateOrCreate(
+                    [
+                        'reference_type' => $invoice->getMorphClass(),
+                        'reference_id' => $invoice->id,
+                    ],
+                    [
+                        'company_id' => $companyId,
+                        'account_number' => $odAccount->account_number,
+                        'od_account_id' => $odAccount->id,
+                        'transaction_date' => $invoice->invoice_date,
+                        'transaction_no' => 'OD-' . $invoice->invoice_no,
+                        'description' => "OD utilization for Purchase Invoice {$invoice->invoice_no}",
+                        'transaction_type' => 'debit',
+                        'debit' => $invoice->grand_total,
+                        'credit' => 0,
+                        'created_by' => $actor->id,
+                    ]
+                );
+            } else {
+                BankAccountTransaction::where('reference_type', $invoice->getMorphClass())
+                    ->where('reference_id', $invoice->id)
+                    ->delete();
+            }
+
+            return $invoice->fresh(['items.product', 'items.uom', 'supplier', 'warehouse', 'odAccount']);
         });
     }
 
@@ -1041,6 +1163,11 @@ class PurchaseOrderService
 
             // 2. Clean up SupplierPayable
             SupplierPayable::where('reference_type', $invoice->getMorphClass())
+                ->where('reference_id', $invoice->id)
+                ->delete();
+
+            // 2b. Clean up BankAccountTransaction (OD utilization)
+            BankAccountTransaction::where('reference_type', $invoice->getMorphClass())
                 ->where('reference_id', $invoice->id)
                 ->delete();
 
@@ -1127,6 +1254,11 @@ class PurchaseOrderService
             if ($supplierPayable) {
                 $supplierPayable->delete();
             }
+
+            // Reverse bank account transaction (OD utilization)
+            BankAccountTransaction::where('reference_type', $invoice->getMorphClass())
+                ->where('reference_id', $invoice->id)
+                ->delete();
 
             $invoice->update([
                 'status' => 'cancelled',

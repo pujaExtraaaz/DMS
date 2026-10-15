@@ -17,6 +17,9 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <x-ui.input name="name" label="Product Name" :value="old('name', $item->name)" required onblur="if(this.value.trim().length > 0){ this.value = this.value.trim().charAt(0).toUpperCase() + this.value.trim().slice(1); }" />
                 <x-ui.input name="sku" label="SKU" :value="old('sku', $item->sku)" required />
+                <x-ui.input name="series" label="Series" :value="old('series', $item->series)" placeholder="E.G. Thinkpad, Galaxy, Xps" />
+                <x-ui.input name="model" label="Model" :value="old('model', $item->model ?? $item->models)" placeholder="E.G. T14 Gen 4, Sm-S928b" />
+                <x-ui.input name="product_type" label="Product Type" :value="old('product_type', $item->product_type)" placeholder="E.G. Finished Goods, Hardware, Spare Part" />
                 <x-ui.input name="hsn_code" label="HSN Code" :value="old('hsn_code', $item->hsn_code)" />
                 <x-ui.select name="base_uom_id" label="Base UOM" required placeholder="Select UOM">
                     @foreach($uoms as $u)
@@ -41,7 +44,7 @@
                         <option value="{{ $s->id }}" @selected(old('sub_category_id', $item->sub_category_id)==$s->id)>{{ $s->name }}</option>
                     @endforeach
                 </x-ui.select>
-                <x-ui.input name="color_variant" label="Color / Variant" :value="old('color_variant', $item->color_variant)" placeholder="e.g. Red, 128GB, Silver" />
+                <x-ui.input name="color_variant" label="Color / Variant" :value="old('color_variant', $item->color_variant)" placeholder="E.G. Red, 128GB, Silver" />
                 
                 @php
                     $rawTracking = old('tracking_type', $item->tracking_type ?? 'none');
@@ -151,7 +154,7 @@
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Label</label>
-                            <input type="text" :name="`product_uoms[${idx}][label]`" x-model="row.label" placeholder="e.g. Box of 12" class="block w-full rounded-lg border-gray-300 text-sm">
+                            <input type="text" :name="`product_uoms[${idx}][label]`" x-model="row.label" placeholder="E.G. Box Of 12" class="block w-full rounded-lg border-gray-300 text-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Factor</label>
@@ -249,15 +252,15 @@
         <x-ui.table>
             <x-slot name="head">
                 <tr>
-                    <th class="px-4 py-2 text-left text-xs font-semibold uppercase text-gray-500">Effective From</th>
-                    <th class="px-4 py-2 text-left text-xs font-semibold uppercase text-gray-500">Effective To</th>
-                    <th class="px-4 py-2 text-left text-xs font-semibold uppercase text-gray-500">UOM</th>
-                    <th class="px-4 py-2 text-right text-xs font-semibold uppercase text-gray-500">MRP</th>
-                    <th class="px-4 py-2 text-right text-xs font-semibold uppercase text-gray-500">Purchase</th>
-                    <th class="px-4 py-2 text-right text-xs font-semibold uppercase text-gray-500">Trade</th>
-                    <th class="px-4 py-2 text-right text-xs font-semibold uppercase text-gray-500">Selling</th>
-                    <th class="px-4 py-2 text-left text-xs font-semibold uppercase text-gray-500">Source</th>
-                    <th class="px-4 py-2 text-left text-xs font-semibold uppercase text-gray-500">By</th>
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500">Effective From</th>
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500">Effective To</th>
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500">UOM</th>
+                    <th class="px-4 py-2 text-right text-xs font-semibold text-gray-500">MRP</th>
+                    <th class="px-4 py-2 text-right text-xs font-semibold text-gray-500">Purchase</th>
+                    <th class="px-4 py-2 text-right text-xs font-semibold text-gray-500">Trade</th>
+                    <th class="px-4 py-2 text-right text-xs font-semibold text-gray-500">Selling</th>
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500">Source</th>
+                    <th class="px-4 py-2 text-left text-xs font-semibold text-gray-500">By</th>
                 </tr>
             </x-slot>
             @foreach($priceHistory as $h)

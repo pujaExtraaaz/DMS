@@ -27,7 +27,7 @@
                         <th>Due</th>
                         <th class="money">Principal</th>
                         <th class="money">Interest</th>
-                        <th class="money">EMI</th>
+                        <th class="money">Emi</th>
                         <th class="money">Outstanding</th>
                         <th>Status</th>
                         <th></th>

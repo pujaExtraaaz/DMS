@@ -5,7 +5,7 @@
             $selectedProduct = collect($products)->first(fn ($product) => (string) $product->id === (string) ($line['product_id'] ?? ''));
         @endphp
         <div class="picker" data-picker>
-            <input class="input picker-query" data-picker-query autocomplete="off" placeholder="Stock item" value="{{ $selectedProduct->name ?? '' }}">
+            <input class="input picker-query" data-picker-query autocomplete="off" placeholder="Stock Item" value="{{ $selectedProduct->name ?? '' }}">
             <select class="picker-store" name="lines[{{ $index }}][product_id]" tabindex="-1" aria-hidden="true">
                 <option value="">No stock item</option>
                 @foreach ($products as $product)
@@ -21,7 +21,7 @@
             </div>
             <a class="picker-alter" data-picker-alter data-base="{{ url('/masters/products/__ID__/edit') }}" href="{{ $selectedProduct ? tally_route('books.tally.products.edit', $selectedProduct) : '#' }}" @unless ($selectedProduct) hidden @endunless>Alter</a>
         </div>
-        <input class="input item-name" name="lines[{{ $index }}][item_name]" value="{{ $line['item_name'] ?? '' }}" maxlength="200" placeholder="Item or product" data-item>
+        <input class="input item-name" name="lines[{{ $index }}][item_name]" value="{{ $line['item_name'] ?? '' }}" maxlength="200" placeholder="Item Or Product" data-item>
         @include('tally::masters._hsn', [
             'name' => 'lines['.$index.'][hsn_sac_id]',
             'hsnSacs' => $hsnSacs,

@@ -25,7 +25,7 @@
                 name="detail"
                 rows="4"
                 maxlength="2000"
-                placeholder="Enter brand details..."
+                placeholder="Enter Brand Details..."
                 class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
             >{{ old('detail', $item->detail) }}</textarea>
 

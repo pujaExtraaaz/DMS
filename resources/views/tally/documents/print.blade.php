@@ -79,9 +79,9 @@
                 <th class="money">Rate</th>
                 <th class="money">Discount</th>
                 <th class="money">Taxable</th>
-                <th class="money">CGST</th>
-                <th class="money">SGST</th>
-                <th class="money">IGST</th>
+                <th class="money">Cgst</th>
+                <th class="money">Sgst</th>
+                <th class="money">Igst</th>
                 <th class="money">Cess</th>
                 <th class="money">Amount</th>
             </tr>

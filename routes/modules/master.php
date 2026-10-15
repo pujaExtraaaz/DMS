@@ -36,6 +36,7 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::get('cities', [CustomerController::class, 'cities'])->name('cities');
         Route::resource('customers', CustomerController::class);
         Route::get('parties', [CustomerController::class, 'index'])->name('parties.index');
+        Route::delete('parties/{customer}', [CustomerController::class, 'destroy'])->name('parties.destroy');
 
         // Quick-add product endpoint used by PO / PI / Sales create flows.
         Route::post('products/quick-add', [QuickAddProductController::class, 'store'])->name('products.quick-add');

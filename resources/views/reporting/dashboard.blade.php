@@ -224,10 +224,10 @@
                 <table class="min-w-full divide-y divide-slate-100">
                     <thead class="bg-slate-50/80">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Order</th>
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Customer</th>
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Status</th>
-                            <th class="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Amount</th>
+                            <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-400">Order</th>
+                            <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-400">Customer</th>
+                            <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-400">Status</th>
+                            <th class="px-6 py-3 text-right text-xs font-semibold tracking-wider text-slate-400">Amount</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
@@ -272,10 +272,10 @@
                 <table class="min-w-full divide-y divide-slate-100">
                     <thead class="bg-slate-50/80">
                         <tr>
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Invoice</th>
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Customer</th>
-                            <th class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Status</th>
-                            <th class="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Amount</th>
+                            <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-400">Invoice</th>
+                            <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-400">Customer</th>
+                            <th class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-slate-400">Status</th>
+                            <th class="px-6 py-3 text-right text-xs font-semibold tracking-wider text-slate-400">Amount</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">

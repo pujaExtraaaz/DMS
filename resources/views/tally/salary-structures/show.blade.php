@@ -2,7 +2,7 @@
     <x-tally::shell.page title="{{ $structure->name }}" section="Payroll" :description="$company->name">
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Pay head</th><th class="money">Amount</th><th>% basic</th><th>Type</th></tr></thead>
+                <thead><tr><th>Pay Head</th><th class="money">Amount</th><th>% Basic</th><th>Type</th></tr></thead>
                 <tbody>
                     @forelse ($structure->lines as $line)
                         <tr>

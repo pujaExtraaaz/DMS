@@ -5,7 +5,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search load sheets by number, route, driver..."
+            placeholder="Search Load Sheets By Number, Route, Driver..."
             :searchValue="request('search')"
             :resetUrl="route('settlements.index')"
         >
@@ -26,7 +26,7 @@
                         <x-ui.sortable-th column="load_date" label="Date" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="route" label="Route" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="status" label="Status" :currentSort="$sort" :currentDirection="$direction" />
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Actions</th>
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">

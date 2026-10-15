@@ -9,7 +9,7 @@
 
 <x-ui.card class="mb-4">
     <form method="GET" class="flex flex-wrap gap-3 items-end">
-        <div class="flex-1 min-w-[200px]"><x-ui.input name="search" label="Search" value="{{ request('search') }}" placeholder="Name, code, email" /></div>
+        <div class="flex-1 min-w-[200px]"><x-ui.input name="search" label="Search" value="{{ request('search') }}" placeholder="Name, Code, Email" /></div>
         <x-ui.button type="submit" variant="secondary">Search</x-ui.button>
     </form>
 </x-ui.card>
@@ -19,11 +19,11 @@
         <table class="min-w-full divide-y divide-slate-200 text-sm">
             <thead class="bg-slate-50">
                 <tr>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Name</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Code</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Department</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Designation</th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Reports</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Name</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Code</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Department</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Designation</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Reports</th>
                     <th></th>
                 </tr>
             </thead>

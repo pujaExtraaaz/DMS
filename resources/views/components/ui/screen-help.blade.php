@@ -17,8 +17,8 @@
         <div class="flex min-w-0 items-center gap-2.5">
             <span class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-teal-600 text-white text-xs font-bold">?</span>
             <div class="min-w-0">
-                <p class="text-sm font-semibold text-slate-800 truncate">How to use: {{ $help['title'] ?? 'this screen' }}</p>
-                <p class="truncate text-xs text-slate-500" x-show="!open">{{ $help['summary'] ?? 'Tap to see steps' }}</p>
+                <p class="text-sm font-semibold text-slate-800 truncate">How To Use: {{ \App\Support\TitleCase::format($help['title'] ?? 'This Screen') }}</p>
+                <p class="truncate text-xs text-slate-500" x-show="!open">{{ \App\Support\TitleCase::format($help['summary'] ?? 'Tap To See Steps') }}</p>
             </div>
         </div>
         <span class="shrink-0 text-xs font-medium text-teal-700" x-text="open ? 'Hide' : 'Show'"></span>

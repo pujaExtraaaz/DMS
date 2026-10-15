@@ -92,7 +92,7 @@
                                 @yield('breadcrumbs')
                             @else
                                 <p class="hidden sm:block text-xs font-medium uppercase tracking-wider text-slate-400">Overview</p>
-                                <h1 class="truncate text-base sm:text-lg font-semibold text-slate-900">@yield('title', 'Dashboard')</h1>
+                                <h1 class="truncate text-base sm:text-lg font-semibold text-slate-900">{{ \App\Support\TitleCase::format($__env->yieldContent('title') ?: 'Dashboard') }}</h1>
                             @endif
                         </div>
                     </div>
@@ -106,7 +106,7 @@
                         @endphp
                         @if($currentFy)
                             <a href="{{ route('organization.financial-years.index') }}"
-                                title="Change / close period"
+                                title="Change / Close Period"
                                 class="hidden md:inline-flex items-center gap-1.5 rounded-lg border {{ $currentFy->is_closed ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700' }} px-3 py-1.5 text-xs font-semibold">
                                 <span class="opacity-70">Period:</span>
                                 <span>{{ $currentFy->name }}</span>

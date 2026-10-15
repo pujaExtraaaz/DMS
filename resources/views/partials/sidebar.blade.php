@@ -281,7 +281,7 @@
                     <a href="{{ route('books.tally.parties.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.parties.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Parties</span></a>
                     <a href="{{ route('books.tally.vouchers.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.vouchers.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Vouchers</span></a>
                     <a href="{{ route('books.tally.periods.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.periods.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Period Locking</span></a>
-                    <a href="{{ route('books.tally.year-end.show') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.year-end.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Year-end Close</span></a>
+                    <a href="{{ route('books.tally.year-end.show') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.year-end.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Year-End Close</span></a>
                     <a href="{{ route('books.tally.intercompany.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.intercompany.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Intercompany</span></a>
 
                     <p class="px-3 pt-2 text-[9px] font-bold uppercase tracking-wider text-slate-600" x-show="!$root.sidebarCollapsed" x-cloak>B · Sales / AR</p>
@@ -334,7 +334,7 @@
                     <p class="px-3 pt-2 text-[9px] font-bold uppercase tracking-wider text-slate-600" x-show="!$root.sidebarCollapsed" x-cloak>F–H · Stock / Assets / Payroll</p>
                     <a href="{{ route('books.tally.stock-counts.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.stock-counts.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Counts</span></a>
                     <a href="{{ route('books.tally.job-works.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.job-works.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Job Work</span></a>
-                    <a href="{{ route('books.tally.goods-in-transit.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.goods-in-transit.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Goods in Transit</span></a>
+                    <a href="{{ route('books.tally.goods-in-transit.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.goods-in-transit.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Goods In Transit</span></a>
                     <a href="{{ route('books.tally.inventory-impairments.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.inventory-impairments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Inventory Impairment</span></a>
                     <a href="{{ route('books.tally.fixed-assets.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.fixed-assets.*', 'books.tally.fixed-asset-categories.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Fixed Assets</span></a>
                     <a href="{{ route('books.tally.depreciation.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.depreciation.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Depreciation</span></a>
@@ -346,7 +346,7 @@
                     <a href="{{ route('books.tally.kpi-dashboard.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.kpi-dashboard.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>KPI Dashboard</span></a>
                     <a href="{{ route('books.tally.profitability.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.profitability.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Profitability</span></a>
                     <a href="{{ route('books.tally.reports.comparative') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.reports.comparative']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Comparative / YoY</span></a>
-                    <a href="{{ route('books.tally.reports.break-even') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.reports.break-even']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Break-even / CVP</span></a>
+                    <a href="{{ route('books.tally.reports.break-even') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.reports.break-even']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Break-Even / CVP</span></a>
                     <a href="{{ route('books.tally.management-pack.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.management-pack.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Management Pack</span></a>
                     <a href="{{ route('books.tally.approvals.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.approvals.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Approvals</span></a>
                     <a href="{{ route('books.tally.anomalies.index') }}" class="{{ $itemClass }} {{ $linkClass(['books.tally.anomalies.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Anomaly Flags</span></a>
@@ -368,7 +368,7 @@
         @if($can('reports.view', 'reports.manage'))
             <div x-data="{ open: {{ $is('reports.*') ? 'true' : 'false' }} }">
                 <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>11 · REPORTS</span>
+                    <span>11 · Reports</span>
                     <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                 </button>
                 <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">

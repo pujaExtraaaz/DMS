@@ -10,19 +10,19 @@
 <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
 <x-ui.card title="Lead details" class="xl:col-span-2">
 <dl class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Contact Name</dt><dd class="font-medium text-slate-900">{{ $lead->name }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Company Name</dt><dd class="font-medium text-slate-900">{{ $lead->company_name ?: $lead->organization ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Title</dt><dd class="font-medium text-slate-900">{{ $lead->title ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Sales Person</dt><dd class="font-medium text-slate-900">{{ $lead->assignee?->name ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mobile</dt><dd class="font-medium text-slate-900">{{ $lead->mobile ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Second Mobile (SECND MOB)</dt><dd class="font-medium text-slate-900">{{ $lead->secondary_mobile ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Phone</dt><dd class="font-medium text-slate-900">{{ $lead->phone ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Landline</dt><dd class="font-medium text-slate-900">{{ $lead->landline ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Email</dt><dd class="font-medium text-slate-900">{{ $lead->email ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Secondary Email</dt><dd class="font-medium text-slate-900">{{ $lead->secondary_email ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Tag</dt><dd class="font-medium text-slate-900">{{ $lead->tag ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Industry</dt><dd class="font-medium text-slate-900">{{ $lead->industry ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Category</dt><dd class="font-medium text-slate-900 mt-0.5">
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Contact Name</dt><dd class="font-medium text-slate-900">{{ $lead->name }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Company Name</dt><dd class="font-medium text-slate-900">{{ $lead->company_name ?: $lead->organization ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Title</dt><dd class="font-medium text-slate-900">{{ $lead->title ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Sales Person</dt><dd class="font-medium text-slate-900">{{ $lead->assignee?->name ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Mobile</dt><dd class="font-medium text-slate-900">{{ $lead->mobile ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Second Mobile (SECND MOB)</dt><dd class="font-medium text-slate-900">{{ $lead->secondary_mobile ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Phone</dt><dd class="font-medium text-slate-900">{{ $lead->phone ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Landline</dt><dd class="font-medium text-slate-900">{{ $lead->landline ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Email</dt><dd class="font-medium text-slate-900">{{ $lead->email ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Secondary Email</dt><dd class="font-medium text-slate-900">{{ $lead->secondary_email ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Tag</dt><dd class="font-medium text-slate-900">{{ $lead->tag ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Industry</dt><dd class="font-medium text-slate-900">{{ $lead->industry ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Category</dt><dd class="font-medium text-slate-900 mt-0.5">
     @php
         $catKey = $lead->category;
         $catLabel = match($catKey) {
@@ -40,9 +40,9 @@
     @endphp
     <x-ui.badge :variant="$catVariant">{{ $catLabel }}</x-ui.badge>
 </dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Sub Category</dt><dd class="font-medium text-slate-900">{{ $lead->subCategory?->name ?: $lead->sub_category ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Sub Category</dt><dd class="font-medium text-slate-900">{{ $lead->subCategory?->name ?: $lead->sub_category ?: '—' }}</dd></div>
 <div class="md:col-span-2">
-    <dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mailing Address</dt>
+    <dt class="text-xs font-semibold tracking-wider text-slate-500">Mailing Address</dt>
     <dd class="font-medium text-slate-900">
         @php
             $addrParts = array_filter([$lead->street, $lead->city, $lead->state, $lead->zip]);
@@ -50,14 +50,14 @@
         {{ !empty($addrParts) ? implode(', ', $addrParts) : '—' }}
     </dd>
 </div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Status</dt><dd class="font-medium text-slate-900">{{ ucfirst($lead->status) }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Priority</dt><dd class="font-medium text-slate-900">{{ ucfirst($lead->priority ?? 'normal') }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Source</dt><dd class="font-medium text-slate-900">{{ $lead->source?->name ?: '—' }}</dd></div>
-<div><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Campaign</dt><dd class="font-medium text-slate-900">{{ $lead->campaign?->name ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Status</dt><dd class="font-medium text-slate-900">{{ ucfirst($lead->status) }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Priority</dt><dd class="font-medium text-slate-900">{{ ucfirst($lead->priority ?? 'normal') }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Source</dt><dd class="font-medium text-slate-900">{{ $lead->source?->name ?: '—' }}</dd></div>
+<div><dt class="text-xs font-semibold tracking-wider text-slate-500">Campaign</dt><dd class="font-medium text-slate-900">{{ $lead->campaign?->name ?: '—' }}</dd></div>
 @if($lead->interested_product)
-    <div class="md:col-span-2"><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Interested Product</dt><dd class="font-medium text-slate-900">{{ $lead->interested_product }}</dd></div>
+    <div class="md:col-span-2"><dt class="text-xs font-semibold tracking-wider text-slate-500">Interested Product</dt><dd class="font-medium text-slate-900">{{ $lead->interested_product }}</dd></div>
 @endif
-<div class="md:col-span-2"><dt class="text-xs font-semibold uppercase tracking-wider text-slate-500">Notes</dt><dd class="font-medium text-slate-900">{{ $lead->notes ?: '—' }}</dd></div>
+<div class="md:col-span-2"><dt class="text-xs font-semibold tracking-wider text-slate-500">Notes</dt><dd class="font-medium text-slate-900">{{ $lead->notes ?: '—' }}</dd></div>
 </dl>
 </x-ui.card>
 <div class="space-y-6">
@@ -89,7 +89,7 @@
 @foreach(['call','whatsapp','email','meeting','note'] as $c)<option value="{{ $c }}">{{ ucfirst($c) }}</option>@endforeach
 </x-ui.select>
 <x-ui.input name="due_at" type="datetime-local" label="Next follow-up" required />
-<textarea name="notes" rows="3" class="block w-full rounded-lg border-gray-300 text-sm" placeholder="Follow-up notes"></textarea>
+<textarea name="notes" rows="3" class="block w-full rounded-lg border-gray-300 text-sm" placeholder="Follow-Up Notes"></textarea>
 <x-ui.button type="submit" variant="primary">Log follow-up</x-ui.button>
 </form>
 <ul class="mt-4 space-y-2 text-sm">

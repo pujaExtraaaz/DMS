@@ -7,7 +7,7 @@
         </form>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Due date</th><th>Supplier</th><th>Bill</th><th class="money">Amount</th></tr></thead>
+                <thead><tr><th>Due Date</th><th>Supplier</th><th>Bill</th><th class="money">Amount</th></tr></thead>
                 <tbody>
                     @forelse ($bills as $bill)
                         <tr>

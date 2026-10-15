@@ -47,7 +47,7 @@
                     <th>Ledger</th>
                     <th class="money">Debit</th>
                     <th class="money">Credit</th>
-                    <th>Line narration</th>
+                    <th>Line Narration</th>
                     <th>Reference</th>
                     <th></th>
                 </tr>

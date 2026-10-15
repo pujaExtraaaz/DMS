@@ -13,13 +13,13 @@
                     <tbody>
                         <tr><th>Company (Tally)</th><td>{{ $status['company'] ?: '—' }}</td></tr>
                         <tr><th>Endpoint</th><td>{{ $status['endpoint'] ?: '—' }}</td></tr>
-                        <tr><th>Use connector pull</th><td>{{ $status['use_connector'] ? 'Yes' : 'No (HTTP push)' }}</td></tr>
-                        <tr><th>Connector token</th><td>{{ $status['token_configured'] ? 'Configured' : 'Missing' }}</td></tr>
-                        <tr><th>Public API exposed</th><td>{{ $status['api_exposed'] ? 'Yes (/api/tally-connector)' : 'No' }}</td></tr>
-                        <tr><th>Auto-enqueue observer</th><td>{{ $status['auto_enqueue'] ? 'Registered' : 'Not registered' }}</td></tr>
-                        <tr><th>Pending queue</th><td>{{ $status['pending'] }}</td></tr>
-                        <tr><th>Failed queue</th><td>{{ $status['failed'] }}</td></tr>
-                        <tr><th>XML templates</th><td>{{ implode(', ', $status['templates']) }}</td></tr>
+                        <tr><th>Use Connector Pull</th><td>{{ $status['use_connector'] ? 'Yes' : 'No (HTTP push)' }}</td></tr>
+                        <tr><th>Connector Token</th><td>{{ $status['token_configured'] ? 'Configured' : 'Missing' }}</td></tr>
+                        <tr><th>Public API Exposed</th><td>{{ $status['api_exposed'] ? 'Yes (/api/tally-connector)' : 'No' }}</td></tr>
+                        <tr><th>Auto-Enqueue Observer</th><td>{{ $status['auto_enqueue'] ? 'Registered' : 'Not registered' }}</td></tr>
+                        <tr><th>Pending Queue</th><td>{{ $status['pending'] }}</td></tr>
+                        <tr><th>Failed Queue</th><td>{{ $status['failed'] }}</td></tr>
+                        <tr><th>Xml Templates</th><td>{{ implode(', ', $status['templates']) }}</td></tr>
                     </tbody>
                 </table>
             </div>

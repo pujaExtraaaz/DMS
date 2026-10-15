@@ -33,7 +33,7 @@
 <x-ui.card title="Interest Ledgers" class="xl:col-span-2" id="listing-container" data-dynamic-container>
     <x-ui.table-toolbar
         :search="$search ?? request('search')"
-        search-placeholder="Search customer, invoice, status..."
+        search-placeholder="Search Customer, Invoice, Status..."
         :reset-url="route('interest.index')"
     >
         <x-slot name="filters">
@@ -67,7 +67,7 @@
                 <tr>
                     <x-ui.sortable-th column="as_of_date" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'">Date</x-ui.sortable-th>
                     <x-ui.sortable-th column="customer" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'">Customer</x-ui.sortable-th>
-                    <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Invoice</th>
+                    <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Invoice</th>
                     <x-ui.sortable-th column="overdue_amount" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'" align="right">Overdue</x-ui.sortable-th>
                     <x-ui.sortable-th column="overdue_days" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'" align="right">Days</x-ui.sortable-th>
                     <x-ui.sortable-th column="interest_amount" :current-sort="$sort ?? 'as_of_date'" :current-direction="$direction ?? 'desc'" align="right">Interest</x-ui.sortable-th>

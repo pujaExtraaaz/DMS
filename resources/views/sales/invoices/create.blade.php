@@ -5,12 +5,32 @@
     $productsJson = $products->map(fn($p) => [
         'id' => $p->id,
         'name' => $p->name,
+        'brand_id' => $p->brand_id,
         'base_uom_id' => $p->base_uom_id,
         'selling_price' => (float) $p->selling_price,
         'selling_discount_type' => $p->selling_discount_type ?? 'percent',
         'selling_discount_value' => (float) ($p->selling_discount_value ?? 0),
     ])->values()->toArray();
     $uomsJson = $uoms->map(fn($u) => ['id' => $u->id, 'code' => $u->code, 'name' => $u->name])->values()->toArray();
+    $schemesJson = ($schemes ?? collect())->map(fn($s) => [
+        'id' => $s->id,
+        'code' => $s->code,
+        'name' => $s->name,
+        'scheme_type' => $s->scheme_type,
+        'brand_id' => $s->brand_id,
+        'brand_name' => $s->brand?->name,
+        'product_ids' => $s->products->pluck('product_id')->filter()->map(fn($id) => (int)$id)->values()->toArray(),
+        'starts_on' => optional($s->starts_on)->toDateString(),
+        'ends_on' => optional($s->ends_on)->toDateString(),
+        'basis' => $s->basis,
+        'net_credit_notes' => (bool) $s->net_credit_notes,
+        'slabs' => $s->slabs->map(fn($sl) => [
+            'from_value' => (float) $sl->from_value,
+            'to_value' => $sl->to_value !== null ? (float) $sl->to_value : null,
+            'benefit_percent' => (float) $sl->benefit_percent,
+            'benefit_amount' => (float) $sl->benefit_amount,
+        ])->values()->toArray(),
+    ])->values()->toArray();
 @endphp
 <x-ui.page-header title="Direct Billing" description="Book a tax invoice with per-line discount, universal discount, T&amp;C and e-invoice ready fields.">
     <x-slot name="actions"><x-ui.button variant="secondary" :href="route('invoices.index')">Back</x-ui.button></x-slot>
@@ -18,7 +38,7 @@
 
 <x-ui.card>
     <form method="POST" action="{{ route('invoices.store') }}" class="space-y-6"
-          x-data='invoiceForm(@json($productsJson), @json($uomsJson))' x-init="init()"
+          x-data='invoiceForm(@json($productsJson), @json($uomsJson), @json($schemesJson))' x-init="init()"
           x-on:product-quick-added.window="onProductAdded($event.detail)">
         @csrf
 
@@ -30,7 +50,7 @@
                     @foreach($customers as $c)<option value="{{ $c->id }}" @selected(old('customer_id')==$c->id)>{{ $c->name }}</option>@endforeach
                 </select>
             </div>
-            <x-ui.input name="invoice_date" label="Invoice Date" type="date" :value="now()->toDateString()" required />
+            <x-ui.input name="invoice_date" id="invoice_date" label="Invoice Date" type="date" :value="old('invoice_date', now()->toDateString())" x-model="invoiceDate" required />
             <x-ui.input name="reference_no" label="Reference / Order No" :value="old('reference_no')" />
             <x-ui.input name="vehicle_no" label="Vehicle No" :value="old('vehicle_no')" />
             <div>
@@ -55,7 +75,7 @@
                 <!-- Billing Address Card -->
                 <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                     <div class="flex items-center justify-between">
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Billing Address</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider">Billing Address</label>
                         <span class="text-[11px] text-indigo-600 font-medium">Billed to</span>
                     </div>
                     <select name="billing_address_id" x-model="selectedBillingId" @change="onBillingAddressChange()"
@@ -66,14 +86,14 @@
                         </template>
                     </select>
                     <textarea name="billing_address" x-model="billingSnapshot" rows="3"
-                              placeholder="Billing address snapshot"
+                              placeholder="Billing Address Snapshot"
                               class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                 </div>
 
                 <!-- Delivery Address Card -->
                 <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                     <div class="flex items-center justify-between">
-                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Delivery / Consignee Address</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery / Consignee Address</label>
                         <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium">
                             <input type="checkbox" x-model="sameAsBilling" @change="onSameAsBillingToggle()"
                                    class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
@@ -93,7 +113,7 @@
                         Delivery address matches the selected Billing Address.
                     </div>
                     <textarea name="shipping_address" x-model="shippingSnapshot" rows="3"
-                              placeholder="Delivery address snapshot"
+                              placeholder="Delivery Address Snapshot"
                               class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                 </div>
             </div>
@@ -185,6 +205,9 @@
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Estimated grand total</label>
                 <div class="text-xl font-semibold text-slate-800" x-text="fmt(grandTotal())"></div>
+                <template x-if="selectedSchemeBenefit() > 0">
+                    <p class="text-xs text-emerald-600 font-semibold mt-1" x-text="`Scheme Benefit: ${fmt(selectedSchemeBenefit())} (provisional rebate)`"></p>
+                </template>
                 <p class="text-xs text-slate-500">Server recomputes with tax before saving.</p>
             </div>
         </div>
@@ -201,7 +224,88 @@
                     rows="5"
                     class="block w-full rounded-lg border-gray-300 text-sm"
                 >{{ old('terms_and_conditions', $sellingTermsAndConditions ?? '') }}</textarea>
+            </div>
+        </div>
 
+        <!-- Commercial Scheme Selection -->
+        <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+                <div>
+                    <label class="block text-sm font-bold text-slate-800">Scheme</label>
+                    <p class="text-xs text-slate-500">Optionally apply an eligible commercial scheme to accrue rebate benefits for this invoice.</p>
+                </div>
+                <span class="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700" x-text="`${eligibleSchemes().length} scheme(s) available`"></span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                <div>
+                    <label for="scheme_id" class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Select Scheme</label>
+                    <select name="scheme_id" id="scheme_id" x-model="selectedSchemeId" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">No Scheme</option>
+                        <template x-for="s in eligibleSchemes()" :key="s.id">
+                            <option :value="s.id" x-text="`${s.name} (${s.code}) · ${s.basis === 'quantity' ? 'Quantity Basis' : 'Value Basis'}${s.brand_name ? ' · ' + s.brand_name : ''}`"></option>
+                        </template>
+                    </select>
+
+                    <template x-if="eligibleSchemes().length === 0">
+                        <p class="mt-2 text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                            No eligible schemes available for the current invoice date and selected items. You can proceed without selecting a scheme.
+                        </p>
+                    </template>
+                </div>
+
+                <div>
+                    <template x-if="currentSchemeDetails()">
+                        <div class="bg-white p-3.5 rounded-lg border border-indigo-100 shadow-sm space-y-2 text-xs">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold text-indigo-900" x-text="currentSchemeDetails().scheme.name"></span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700" x-text="currentSchemeDetails().scheme.basis === 'quantity' ? 'Quantity Basis' : 'Value Basis'"></span>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                                <div>
+                                    <span class="text-slate-500">Qualified:</span>
+                                    <span class="font-medium text-slate-800 ml-1" x-text="currentSchemeDetails().scheme.basis === 'quantity' ? `${currentSchemeDetails().qualified} Units` : fmt(currentSchemeDetails().qualified)"></span>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500">Calculated Benefit:</span>
+                                    <span class="font-bold text-emerald-600 ml-1" x-text="fmt(currentSchemeDetails().benefit)"></span>
+                                </div>
+                            </div>
+
+                            <template x-if="currentSchemeDetails().slab">
+                                <div class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">
+                                    <span class="font-medium">Applied Slab:</span>
+                                    <span x-text="`From ${currentSchemeDetails().scheme.basis === 'quantity' ? currentSchemeDetails().slab.from_value + ' units' : fmt(currentSchemeDetails().slab.from_value)}` + (currentSchemeDetails().slab.to_value ? ` to ${currentSchemeDetails().scheme.basis === 'quantity' ? currentSchemeDetails().slab.to_value + ' units' : fmt(currentSchemeDetails().slab.to_value)}` : ' onwards')"></span>
+                                    <span class="text-slate-500" x-text="` · Benefit: ${currentSchemeDetails().slab.benefit_amount > 0 ? fmt(currentSchemeDetails().slab.benefit_amount) : currentSchemeDetails().slab.benefit_percent + '%'}`"></span>
+                                </div>
+                            </template>
+
+                            <template x-if="!currentSchemeDetails().slab && currentSchemeDetails().qualifyingCount > 0">
+                                <div class="text-[11px] text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                                    <span class="font-medium">Minimum slab not reached:</span>
+                                    <span x-text="`Requires minimum ${currentSchemeDetails().scheme.basis === 'quantity' ? currentSchemeDetails().minSlab + ' units' : fmt(currentSchemeDetails().minSlab)}. Current benefit: ₹0.00`"></span>
+                                </div>
+                            </template>
+
+                            <template x-if="currentSchemeDetails().qualifyingCount === 0">
+                                <div class="text-[11px] text-rose-700 bg-rose-50 p-2 rounded border border-rose-200">
+                                    No items in the invoice qualify for this scheme's products or brand.
+                                </div>
+                            </template>
+
+                            <p class="text-[10px] text-slate-400 italic">
+                                * Scheme rebate will be credited via commercial credit note / settlement as per scheme policy.
+                            </p>
+                        </div>
+                    </template>
+
+                    <template x-if="!currentSchemeDetails()">
+                        <div class="h-full flex items-center justify-center p-3 border border-dashed border-slate-200 rounded-lg text-xs text-slate-400 text-center">
+                            Select a scheme from the dropdown to view calculated rebate benefits.
+                        </div>
+                    </template>
+                </div>
             </div>
         </div>
 
@@ -232,11 +336,11 @@
                 <table class="min-w-full divide-y divide-slate-200 text-sm">
                     <thead class="sticky top-0 bg-slate-50">
                         <tr>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Batch No</th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Warehouse</th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Expiry</th>
-                            <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Available</th>
-                            <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Selling ₹</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Batch No</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Warehouse</th>
+                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Expiry</th>
+                            <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Available</th>
+                            <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Selling ₹</th>
                             <th class="px-3 py-2"></th>
                         </tr>
                     </thead>
@@ -260,9 +364,9 @@
 
 @push('scripts')
 <script>
-function invoiceForm(products, uoms) {
+function invoiceForm(products, uoms, schemes = []) {
     return {
-        products, uoms,
+        products, uoms, schemes,
         _seq: 0,
         lines: [],
         universalType: 'flat',
@@ -276,11 +380,17 @@ function invoiceForm(products, uoms) {
         sameAsBilling: true,
         billingSnapshot: '',
         shippingSnapshot: '',
+        selectedSchemeId: '{{ old('scheme_id', '') }}',
+        invoiceDate: '{{ old('invoice_date', now()->toDateString()) }}',
         init() {
             this.addLine();
             const custSelect = document.getElementById('customer_id');
             if (custSelect && custSelect.value) {
                 this.onCustomerChange(custSelect.value);
+            }
+            const dateInput = document.getElementById('invoice_date');
+            if (dateInput && dateInput.value) {
+                this.invoiceDate = dateInput.value;
             }
         },
         async onCustomerChange(id) {
@@ -388,7 +498,7 @@ function invoiceForm(products, uoms) {
             row.discount_value = p.selling_discount_value;
         },
         onProductAdded(p) {
-            this.products.push({ id: p.id, name: p.name, base_uom_id: p.base_uom_id, selling_price: p.selling_price, selling_discount_type: 'percent', selling_discount_value: 0 });
+            this.products.push({ id: p.id, name: p.name, brand_id: p.brand_id, base_uom_id: p.base_uom_id, selling_price: p.selling_price, selling_discount_type: 'percent', selling_discount_value: 0 });
             const empty = this.lines.find(r => ! r.product_id) || this.lines[this.lines.length - 1];
             if (empty) { empty.product_id = p.id; this.onProductChange(this.lines.indexOf(empty)); }
         },
@@ -410,6 +520,91 @@ function invoiceForm(products, uoms) {
         },
         grandTotal() { return Math.max(0, this.subTotal() - this.universalDiscount()); },
         fmt(n) { return '₹ ' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+
+        // Commercial Scheme Helpers
+        eligibleSchemes() {
+            const date = this.invoiceDate;
+            const validLines = this.lines.filter(l => l.product_id && (Number(l.quantity) || 0) > 0);
+
+            return this.schemes.filter(s => {
+                if (s.starts_on && date < s.starts_on) return false;
+                if (s.ends_on && date > s.ends_on) return false;
+
+                if (validLines.length === 0) return true;
+
+                if (s.product_ids && s.product_ids.length > 0) {
+                    return validLines.some(l => s.product_ids.includes(Number(l.product_id)));
+                }
+
+                if (s.brand_id) {
+                    return validLines.some(l => {
+                        const p = this.products.find(x => String(x.id) === String(l.product_id));
+                        return p && Number(p.brand_id) === Number(s.brand_id);
+                    });
+                }
+
+                return true;
+            });
+        },
+
+        currentSchemeDetails() {
+            if (! this.selectedSchemeId) return null;
+            const s = this.schemes.find(x => String(x.id) === String(this.selectedSchemeId));
+            if (! s) return null;
+
+            const validLines = this.lines.filter(l => l.product_id && (Number(l.quantity) || 0) > 0);
+            let qualifying = [];
+
+            if (s.product_ids && s.product_ids.length > 0) {
+                qualifying = validLines.filter(l => s.product_ids.includes(Number(l.product_id)));
+            } else if (s.brand_id) {
+                qualifying = validLines.filter(l => {
+                    const p = this.products.find(x => String(x.id) === String(l.product_id));
+                    return p && Number(p.brand_id) === Number(s.brand_id);
+                });
+            } else {
+                qualifying = validLines;
+            }
+
+            let qualified = 0;
+            if (s.basis === 'quantity') {
+                qualified = qualifying.reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
+            } else {
+                qualified = qualifying.reduce((sum, l) => sum + this.lineTotal(l), 0);
+            }
+
+            const sortedSlabs = (s.slabs || []).slice().sort((a, b) => Number(b.from_value) - Number(a.from_value));
+            const matchedSlab = sortedSlabs.find(sl => {
+                const from = Number(sl.from_value) || 0;
+                const to = (sl.to_value !== null && sl.to_value !== '') ? Number(sl.to_value) : null;
+                return qualified >= from && (to === null || qualified <= to);
+            });
+
+            let benefit = 0;
+            if (matchedSlab) {
+                if (Number(matchedSlab.benefit_amount) > 0) {
+                    benefit = Number(matchedSlab.benefit_amount);
+                } else {
+                    benefit = qualified * (Number(matchedSlab.benefit_percent) || 0) / 100;
+                }
+            }
+
+            const minSlab = sortedSlabs.length > 0 ? Math.min(...sortedSlabs.map(x => Number(x.from_value))) : 0;
+
+            return {
+                scheme: s,
+                qualifyingCount: qualifying.length,
+                qualified: Math.round(qualified * 100) / 100,
+                slab: matchedSlab,
+                benefit: Math.round(benefit * 100) / 100,
+                minSlab: minSlab,
+            };
+        },
+
+        selectedSchemeBenefit() {
+            const det = this.currentSchemeDetails();
+            return det ? det.benefit : 0;
+        },
     }
 }
 </script>

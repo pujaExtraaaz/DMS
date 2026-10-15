@@ -43,8 +43,8 @@ class FinancialYearController extends Controller
                 'is_current' => 'is_current',
                 'is_closed' => 'is_closed',
             ],
-            'starts_on',
-            'desc'
+            'name',
+            'asc'
         );
 
         $items = $query->paginate(15)->withQueryString();

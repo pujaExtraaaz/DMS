@@ -7,7 +7,7 @@
 
 <x-ui.card>
     <form method="POST" action="{{ route('purchasing.orders.receive.store', $order) }}" class="space-y-4">@csrf
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <x-ui.input name="inward_date" label="Inward Date" type="date" :value="old('inward_date', now()->toDateString())" required />
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Warehouse</label>
@@ -16,7 +16,6 @@
                     @foreach($warehouses as $w)<option value="{{ $w->id }}" @selected(old('warehouse_id', $order->warehouse_id)==$w->id)>{{ $w->name }}</option>@endforeach
                 </select>
             </div>
-            <x-ui.input name="supplier_challan_no" label="Supplier Challan" :value="old('supplier_challan_no')" />
         </div>
 
         <div class="overflow-x-auto border rounded-lg">
@@ -35,7 +34,7 @@
                         <th class="px-3 py-2 text-left">Expiry</th>
                         <th class="px-3 py-2 text-left">Batch Selling ₹</th>
                         <th class="px-3 py-2 text-left">Batch MRP ₹</th>
-                        <th class="px-3 py-2 text-left">Serials (comma-sep)</th>
+                        <th class="px-3 py-2 text-left">Serials (Comma-Sep)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -65,7 +64,7 @@
                                 <input type="number" step="0.0001" name="items[{{ $i }}][rejected_qty]" value="0" class="block w-20 rounded-lg border-gray-300 text-sm">
                             </td>
                             <td class="px-3 py-2">
-                                <input type="text" name="items[{{ $i }}][rejection_reason]" class="block w-40 rounded-lg border-gray-300 text-sm" placeholder="If any">
+                                <input type="text" name="items[{{ $i }}][rejection_reason]" class="block w-40 rounded-lg border-gray-300 text-sm" placeholder="If Any">
                             </td>
                             <td class="px-3 py-2"><input type="text" name="items[{{ $i }}][batch_no]" value="{{ old('items.'.$i.'.batch_no', $item->batch_no) }}" class="block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional"></td>
                             <td class="px-3 py-2"><input type="date" name="items[{{ $i }}][expiry_date]" class="block w-36 rounded-lg border-gray-300 text-sm"></td>

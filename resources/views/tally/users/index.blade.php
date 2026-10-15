@@ -5,7 +5,7 @@
         </x-slot:actions>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last login</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last Login</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                     @foreach ($users as $account)
                         <tr>
