@@ -2,7 +2,7 @@
     <x-tally::shell.page title="MSME payables" section="Reports" :description="$company->name">
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Party</th><th>MSME type</th><th>Registration</th><th>Bill</th><th>Due</th><th class="money">Amount</th></tr></thead>
+                <thead><tr><th>Party</th><th>Msme Type</th><th>Registration</th><th>Bill</th><th>Due</th><th class="money">Amount</th></tr></thead>
                 <tbody>
                     @forelse ($bills as $bill)
                         @php $party = $parties->firstWhere('ledger_id', $bill->ledger_id); @endphp

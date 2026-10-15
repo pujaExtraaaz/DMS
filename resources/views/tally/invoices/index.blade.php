@@ -8,7 +8,7 @@
         @endif
         <form class="filters" method="GET" action="{{ tally_route($kind->routeName('index')) }}">
             <x-tally::form.field name="q" label="Search">
-                <x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Number, party, narration" />
+                <x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Number, Party, Narration" />
             </x-form.field>
             <x-tally::form.field name="from" label="From">
                 <x-tally::form.input name="from" type="date" value="{{ $filters['from'] }}" />
@@ -43,7 +43,7 @@
                     <thead>
                         <tr>
                             <th>Date</th>
-                            <th>Invoice number</th>
+                            <th>Invoice Number</th>
                             <th>{{ $kind->partyLabel() }}</th>
                             <th>Narration</th>
                             <th class="money">Amount</th>

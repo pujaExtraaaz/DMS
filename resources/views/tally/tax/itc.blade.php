@@ -20,7 +20,7 @@
         </form>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Period</th><th>Eligibility</th><th>Invoice</th><th class="money">IGST</th><th class="money">CGST</th><th class="money">SGST</th><th>Reason</th></tr></thead>
+                <thead><tr><th>Period</th><th>Eligibility</th><th>Invoice</th><th class="money">Igst</th><th class="money">Cgst</th><th class="money">Sgst</th><th>Reason</th></tr></thead>
                 <tbody>
                     @forelse ($entries as $entry)
                         <tr>

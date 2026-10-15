@@ -37,7 +37,7 @@ class Purchase extends Model
 
     public function supplierParty(): BelongsTo
     {
-        return $this->belongsTo(Customer::class, 'supplier_party_id');
+        return $this->belongsTo(Customer::class, 'supplier_party_id')->withTrashed();
     }
 
     public function warehouse(): BelongsTo

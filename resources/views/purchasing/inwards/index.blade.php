@@ -7,7 +7,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search inward no, supplier..."
+            search-placeholder="Search Inward No, Supplier..."
             :reset-url="route('purchasing.inwards.index')"
         >
             <x-slot name="filters">
@@ -67,12 +67,12 @@
                         <x-ui.sortable-th column="inward_date" :current-sort="$sort ?? request('sort', 'inward_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc">
                             Date
                         </x-ui.sortable-th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">PO</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">PO</th>
                         <x-ui.sortable-th column="supplier" :current-sort="$sort ?? request('sort', 'inward_date')" :current-direction="$direction ?? request('direction', 'desc')">
                             Supplier
                         </x-ui.sortable-th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Warehouse</th>
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Warehouse</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">

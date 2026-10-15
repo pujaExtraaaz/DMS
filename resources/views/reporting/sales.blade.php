@@ -13,7 +13,7 @@
     <form method="GET" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end">
         <x-ui.input name="date_from" type="date" label="From" :value="$dateFrom" />
         <x-ui.input name="date_to" type="date" label="To" :value="$dateTo" />
-        <x-ui.select name="customer_id" label="Party" placeholder="All parties">
+        <x-ui.select name="customer_id" label="Party" placeholder="All Parties">
             <option value=""></option>
             @foreach($customers as $c)
                 <option value="{{ $c->id }}" @selected(request('customer_id')==$c->id)>{{ $c->name }}</option>
@@ -25,25 +25,25 @@
                 <option value="{{ $u->id }}" @selected(request('salesperson_id')==$u->id)>{{ $u->name }}</option>
             @endforeach
         </x-ui.select>
-        <x-ui.select name="branch_id" label="Branch" placeholder="All branches">
+        <x-ui.select name="branch_id" label="Branch" placeholder="All Branches">
             <option value=""></option>
             @foreach($branches as $b)
                 <option value="{{ $b->id }}" @selected(request('branch_id')==$b->id)>{{ $b->name }}</option>
             @endforeach
         </x-ui.select>
-        <x-ui.select name="brand_id" label="Brand" placeholder="All brands">
+        <x-ui.select name="brand_id" label="Brand" placeholder="All Brands">
             <option value=""></option>
             @foreach($brands as $b)
                 <option value="{{ $b->id }}" @selected(request('brand_id')==$b->id)>{{ $b->name }}</option>
             @endforeach
         </x-ui.select>
-        <x-ui.select name="category_id" label="Category" placeholder="All categories">
+        <x-ui.select name="category_id" label="Category" placeholder="All Categories">
             <option value=""></option>
             @foreach($categories as $c)
                 <option value="{{ $c->id }}" @selected(request('category_id')==$c->id)>{{ $c->name }}</option>
             @endforeach
         </x-ui.select>
-        <x-ui.select name="product_id" label="Item" placeholder="All items">
+        <x-ui.select name="product_id" label="Item" placeholder="All Items">
             <option value=""></option>
             @foreach($products as $p)
                 <option value="{{ $p->id }}" @selected(request('product_id')==$p->id)>{{ $p->name }}</option>

@@ -19,7 +19,7 @@
                         <tr>
                             @foreach (array_keys($report['rows'][0]) as $heading)
                                 @if (! str_ends_with($heading, '_id'))
-                                    <th>{{ str_replace('_', ' ', ucfirst($heading)) }}</th>
+                                    <th>{{ Str_Replace('_', ' ', Ucfirst($Heading)) }}</th>
                                 @endif
                             @endforeach
                         </tr>

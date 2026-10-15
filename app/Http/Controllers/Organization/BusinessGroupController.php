@@ -6,8 +6,10 @@ use App\Domains\Organization\Models\BusinessGroup;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
 use App\Support\Traits\SortableAndSearchable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class BusinessGroupController extends Controller
@@ -81,10 +83,57 @@ class BusinessGroupController extends Controller
         return $this->flashSuccess('Business group updated successfully.', 'organization.business-groups.index');
     }
 
-    public function destroy(BusinessGroup $business_group): RedirectResponse
+    public function destroy(Request $request, BusinessGroup $business_group): RedirectResponse|JsonResponse
     {
-        $business_group->delete();
-        return $this->flashSuccess('Business group deleted successfully.', 'organization.business-groups.index');
+        $user = $request->user();
+
+        // Check user permissions before deleting
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) && ! $user->can('organization.manage') && ! $user->can('organization.edit')) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized to delete sister concern group.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized to delete sister concern group.');
+        }
+
+        // Check if group is protected or blocked by dependencies
+        $blockReason = $business_group->getDeleteBlockReason();
+        if ($blockReason) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $blockReason,
+                ], 422);
+            }
+
+            return back()->with('error', $blockReason);
+        }
+
+        $groupName = $business_group->name;
+
+        DB::transaction(function () use ($business_group) {
+            // Safely detach any pivot links and clear direct business_group_id on companies
+            if (\Illuminate\Support\Facades\Schema::hasColumn('companies', 'business_group_id')) {
+                Company::where('business_group_id', $business_group->id)->update(['business_group_id' => null]);
+            }
+
+            $business_group->companies()->detach();
+
+            $business_group->delete();
+        });
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Sister concern group '{$groupName}' deleted successfully.",
+            ]);
+        }
+
+        return $this->flashSuccess("Sister concern group '{$groupName}' deleted successfully.", 'organization.business-groups.index')
+            ->with('success', "Sister concern group '{$groupName}' deleted successfully.");
     }
 
     protected function validated(Request $request, ?BusinessGroup $group = null): array

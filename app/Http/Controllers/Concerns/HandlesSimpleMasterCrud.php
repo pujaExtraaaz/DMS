@@ -29,7 +29,11 @@ trait HandlesSimpleMasterCrud
 
     public function index(Request $request): View
     {
-        $query = $this->masterModel()::query()->latest();
+        $modelInstance = new ($this->masterModel());
+        $hasName = method_exists($modelInstance, 'getFillable') && in_array('name', $modelInstance->getFillable(), true);
+        $query = $hasName
+            ? $this->masterModel()::query()->orderBy('name', 'asc')
+            : $this->masterModel()::query()->latest();
 
         foreach ($this->masterRelations() as $relation) {
             $query->with($relation);

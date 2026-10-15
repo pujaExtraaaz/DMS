@@ -2,7 +2,7 @@
     <x-tally::shell.page title="Keyboard Shortcuts" section="Settings" description="These shortcuts apply across the application. New screens register their actions in the same list.">
         <div class="filters">
             <x-tally::form.field name="shortcut-search" label="Search shortcuts">
-                <input id="shortcut-search" class="input" type="search" placeholder="Name, key, or scope" autocomplete="off">
+                <input id="shortcut-search" class="input" type="search" placeholder="Name, Key, Or Scope" autocomplete="off">
             </x-form.field>
         </div>
 
@@ -21,7 +21,7 @@
                     <tr>
                         <th>Action</th>
                         <th>Scope</th>
-                        <th>Current keys</th>
+                        <th>Current Keys</th>
                         <th>Default</th>
                         <th>Enabled</th>
                         <th></th>

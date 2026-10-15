@@ -57,10 +57,10 @@ trait SortableAndSearchable
             if (is_callable($handler)) {
                 $handler($query, $direction);
             } elseif (is_string($handler)) {
-                $query->orderBy($handler, $direction);
+                $this->applyOrderWithTieBreaker($query, $handler, $direction);
             }
         } else {
-            $query->orderBy($resolvedSort, $direction);
+            $this->applyOrderWithTieBreaker($query, $resolvedSort, $direction);
         }
 
         return [
@@ -69,6 +69,54 @@ trait SortableAndSearchable
             0 => $resolvedSort,
             1 => $direction,
         ];
+    }
+
+    /**
+     * Apply case-insensitive, whitespace-trimmed ordering for text columns,
+     * standard ordering for dates/numerics, with a deterministic secondary tie-breaker.
+     *
+     * @param Builder $query
+     * @param string $column
+     * @param string $direction
+     * @return void
+     */
+    protected function applyOrderWithTieBreaker(Builder $query, string $column, string $direction): void
+    {
+        $direction = strtolower($direction) === 'desc' ? 'desc' : 'asc';
+        $pureCol = str_contains($column, '.') ? substr(strrchr($column, '.'), 1) : $column;
+        $pureColLower = strtolower($pureCol);
+
+        // Check if the column is typically numeric, date, or binary/boolean
+        $isNonText = $pureColLower === 'id'
+            || str_ends_with($pureColLower, '_id')
+            || str_ends_with($pureColLower, '_at')
+            || str_ends_with($pureColLower, '_date')
+            || str_ends_with($pureColLower, '_on')
+            || in_array($pureColLower, [
+                'created_at', 'updated_at', 'deleted_at', 'starts_on', 'ends_on',
+                'due_date', 'po_date', 'invoice_date', 'payment_date', 'date',
+                'amount', 'total', 'grand_total', 'subtotal', 'rate', 'qty',
+                'quantity', 'price', 'balance', 'discount', 'tax', 'tax_amount',
+                'credit', 'debit', 'order_index', 'sort_order', 'priority', 'status',
+                'is_active', 'active', 'is_current', 'is_closed', 'is_default'
+            ], true)
+            || (bool) preg_match('/(_amount|_total|_rate|_qty|_price|_count|_num)$/', $pureColLower);
+
+        if (! $isNonText && preg_match('/^[a-zA-Z0-9_\.]+$/', $column)) {
+            $query->orderByRaw("LOWER(TRIM({$column})) {$direction}");
+        } else {
+            $query->orderBy($column, $direction);
+        }
+
+        // Apply secondary tie-breaker if not already sorting by primary key
+        try {
+            $keyName = $query->getModel()->getQualifiedKeyName();
+            if ($keyName && $column !== $keyName && $pureCol !== $query->getModel()->getKeyName()) {
+                $query->orderBy($keyName, 'asc');
+            }
+        } catch (\Throwable $e) {
+            // Ignore if model or key is not available
+        }
     }
 
     /**

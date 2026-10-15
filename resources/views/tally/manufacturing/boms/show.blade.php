@@ -11,7 +11,7 @@
         <h2>Components</h2>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Component</th><th>Quantity</th><th>Unit</th><th>Extra wastage %</th></tr></thead>
+                <thead><tr><th>Component</th><th>Quantity</th><th>Unit</th><th>Extra Wastage %</th></tr></thead>
                 <tbody>
                     @foreach ($bill->lines as $line)
                         <tr>
@@ -28,7 +28,7 @@
             <h2>By-products</h2>
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Product</th><th>Quantity per finished unit</th></tr></thead>
+                    <thead><tr><th>Product</th><th>Quantity Per Finished Unit</th></tr></thead>
                     <tbody>
                         @foreach ($bill->byproducts as $line)
                             <tr><td>{{ $line->product->name }}</td><td>{{ $line->quantity }}</td></tr>

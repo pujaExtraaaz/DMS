@@ -39,7 +39,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search segment name or description..."
+            search-placeholder="Search Segment Name Or Description..."
             :reset-url="route('crm.leads.segments.index')"
         />
 
@@ -48,11 +48,11 @@
                 <thead class="bg-slate-50">
                     <tr>
                         <x-ui.sortable-th column="name" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Segment</x-ui.sortable-th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Criteria Rules</th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Matching Leads</th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Created By</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Criteria Rules</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Matching Leads</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Created By</th>
                         <x-ui.sortable-th column="updated_at" :current-sort="$sort ?? 'created_at'" :current-direction="$direction ?? 'desc'">Last Updated</x-ui.sortable-th>
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">

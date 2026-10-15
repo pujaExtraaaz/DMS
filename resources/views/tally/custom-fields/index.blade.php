@@ -2,7 +2,7 @@
     <x-tally::shell.page title="Custom fields" section="Settings" :description="$company->name">
         <form method="POST" action="{{ tally_route('books.tally.custom-fields.store') }}" class="form-grid panel">
             @csrf
-            <x-tally::form.field name="entity_type" label="Entity" required><x-tally::form.input name="entity_type" placeholder="voucher" required /></x-tally::form.field>
+            <x-tally::form.field name="entity_type" label="Entity" required><x-tally::form.input name="entity_type" placeholder="Voucher" required /></x-tally::form.field>
             <x-tally::form.field name="field_key" label="Key" required><x-tally::form.input name="field_key" required /></x-tally::form.field>
             <x-tally::form.field name="label" label="Label" required><x-tally::form.input name="label" required /></x-tally::form.field>
             <x-tally::form.field name="field_type" label="Type">

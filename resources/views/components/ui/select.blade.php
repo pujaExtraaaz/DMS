@@ -21,7 +21,7 @@
 <div {{ $attributes->only('class')->merge(['class' => 'space-y-1']) }}>
     @if ($label)
         <label @if($fieldName) for="{{ $fieldName }}" @endif class="block text-sm font-medium text-gray-700">
-            {{ $label }}
+            {{ \App\Support\TitleCase::format($label) }}
             @if ($required)
                 <span class="text-red-500">*</span>
             @endif
@@ -33,13 +33,13 @@
         {{ $attributes->except('class')->merge(['class' => $selectClasses]) }}
     >
         @if ($placeholder)
-            <option value="">{{ $placeholder }}</option>
+            <option value="">{{ \App\Support\TitleCase::format($placeholder) }}</option>
         @endif
         {{ $slot }}
     </select>
 
     @if ($help && ! $hasError)
-        <p class="text-xs text-gray-500">{{ $help }}</p>
+        <p class="text-xs text-gray-500">{{ \App\Support\TitleCase::format($help) }}</p>
     @endif
 
     @if ($hasError)

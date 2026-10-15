@@ -80,16 +80,16 @@
 
             <x-slot name="head">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">
                         Name
                     </th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">
                         Email
                     </th>
-                    <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">
                         Role
                     </th>
-                    <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">
                         Action
                     </th>
                 </tr>

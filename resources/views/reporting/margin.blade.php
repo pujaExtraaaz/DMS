@@ -16,14 +16,14 @@
 <div class="overflow-x-auto">
 <table class="min-w-full divide-y divide-slate-200 text-sm">
 <thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Invoice</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Party</th>
-<th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Sale</th>
-<th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Cost</th>
-<th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Deal Exp</th>
-<th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Gross</th>
-<th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Net</th>
-<th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Net %</th>
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Invoice</th>
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Party</th>
+<th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Sale</th>
+<th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Cost</th>
+<th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Deal Exp</th>
+<th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Gross</th>
+<th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Net</th>
+<th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Net %</th>
 </tr></thead>
 <tbody class="divide-y divide-slate-100">
 @forelse($rows as $row)

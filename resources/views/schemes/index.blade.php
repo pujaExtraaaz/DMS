@@ -7,7 +7,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search schemes by code, name..."
+            placeholder="Search Schemes By Code, Name..."
             :searchValue="request('search')"
             :resetUrl="route('schemes.index')"
         >
@@ -17,6 +17,12 @@
                     @foreach(['draft', 'active', 'finalized', 'cancelled'] as $st)
                         <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst($st) }}</option>
                     @endforeach
+                </select>
+
+                <select name="scheme_type" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>
+                    <option value="">All Types</option>
+                    <option value="brand_based" @selected(request('scheme_type') === 'brand_based')>Brand-Based</option>
+                    <option value="product_based" @selected(request('scheme_type') === 'product_based')>Product-Based</option>
                 </select>
 
                 <select name="brand_id" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>
@@ -36,13 +42,18 @@
                     <x-ui.sortable-th column="brand" label="Brand" :currentSort="$sort" :currentDirection="$direction" />
                     <x-ui.sortable-th column="starts_on" label="Window" :currentSort="$sort" :currentDirection="$direction" />
                     <x-ui.sortable-th column="status" label="Status" :currentSort="$sort" :currentDirection="$direction" />
-                    <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                    <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                 </tr></thead>
                 <tbody class="divide-y divide-slate-100">
                     @forelse($items as $item)
                         <tr class="hover:bg-slate-50">
                             <td class="px-3 py-2 font-mono font-medium text-slate-900">{{ $item->code }}</td>
-                            <td class="px-3 py-2 text-slate-900 font-medium">{{ $item->name }}</td>
+                            <td class="px-3 py-2 text-slate-900 font-medium">
+                                <div>{{ $item->name }}</div>
+                                @if($item->scheme_type)
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700">{{ $item->scheme_type_label }}</span>
+                                @endif
+                            </td>
                             <td class="px-3 py-2 text-slate-600">{{ $item->brand?->name ?: 'All' }}</td>
                             <td class="px-3 py-2 text-slate-600 text-xs">{{ $item->starts_on->format('d M Y') }} – {{ $item->ends_on->format('d M Y') }}</td>
                             <td class="px-3 py-2"><x-ui.badge variant="info">{{ ucfirst($item->status) }}</x-ui.badge></td>

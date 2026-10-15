@@ -537,7 +537,7 @@
             <tr>
                 <th style="width: 28px;" class="text-center">#</th>
                 <th>Product Description</th>
-                <th style="width: 65px;" class="text-center">HSN/SAC</th>
+                <th style="width: 65px;" class="text-center">HSN/Sac</th>
                 <th style="width: 85px;">Batch No</th>
                 <th style="width: 55px;" class="text-right">Qty</th>
                 <th style="width: 45px;" class="text-center">UOM</th>
@@ -647,6 +647,12 @@
                     <td>Grand Total:</td>
                     <td class="text-right font-mono">₹{{ number_format($invoice->grand_total, 2) }}</td>
                 </tr>
+                @if($invoice->scheme && (float) $invoice->scheme_benefit_amount > 0)
+                <tr>
+                    <td style="color: #4f46e5;">Scheme Rebate ({{ $invoice->scheme->name }}):</td>
+                    <td class="text-right font-mono" style="color: #059669; font-weight: 600;">₹{{ number_format($invoice->scheme_benefit_amount, 2) }} <span style="font-size: 9px; color: #64748b; font-weight: normal;">(via credit note)</span></td>
+                </tr>
+                @endif
                 @if((float) $invoice->paid_amount > 0)
                 <tr>
                     <td style="color: #475569;">Paid Amount:</td>

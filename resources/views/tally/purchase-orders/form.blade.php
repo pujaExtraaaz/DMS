@@ -42,10 +42,10 @@
         <table class="data">
             <thead>
                 <tr>
-                    <th>Name of Item</th>
+                    <th>Name Of Item</th>
                     <th class="money">Quantity</th>
                     <th class="money">Rate</th>
-                    <th>per</th>
+                    <th>Per</th>
                     <th class="money">Disc %</th>
                     <th class="money">Amount</th>
                 </tr>

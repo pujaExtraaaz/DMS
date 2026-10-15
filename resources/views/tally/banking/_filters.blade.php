@@ -1,6 +1,6 @@
 <form class="filters" method="GET" action="{{ $action }}">
     <x-tally::form.field name="q" label="Search">
-        <x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Number, narration, reference" />
+        <x-tally::form.input name="q" value="{{ $filters['q'] }}" placeholder="Number, Narration, Reference" />
     </x-form.field>
     <x-tally::form.field name="from" label="From">
         <x-tally::form.input name="from" type="date" value="{{ $filters['from'] }}" />

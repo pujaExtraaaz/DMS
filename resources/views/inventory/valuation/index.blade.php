@@ -12,12 +12,12 @@
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 <x-ui.card title="Set Valuation Method">
 <form method="POST" action="{{ route('inventory.valuation.store') }}" class="space-y-3">@csrf
-<x-ui.select name="company_id" label="Company" required placeholder="Select company">
+<x-ui.select name="company_id" label="Company" required placeholder="Select Company">
 @foreach($companies as $c)
 <option value="{{ $c->id }}" @selected(old('company_id', auth()->user()?->company_id)==$c->id)>{{ $c->name }}</option>
 @endforeach
 </x-ui.select>
-<x-ui.select name="financial_year_id" label="Financial Year" placeholder="All / current">
+<x-ui.select name="financial_year_id" label="Financial Year" placeholder="All / Current">
 <option value=""></option>
 @foreach($financialYears as $fy)
 <option value="{{ $fy->id }}" @selected(old('financial_year_id')==$fy->id)>{{ $fy->name ?? ($fy->starts_on.' → '.$fy->ends_on) }}</option>
@@ -35,7 +35,7 @@
 <div id="listing-container" data-dynamic-container>
 <x-ui.card title="Configured Settings">
 <x-ui.table-toolbar
-    placeholder="Search by company or method..."
+    placeholder="Search By Company Or Method..."
     :searchValue="request('search')"
     :resetUrl="route('inventory.valuation.index')"
 >
@@ -58,7 +58,7 @@
 <table class="min-w-full divide-y divide-slate-200 text-sm">
 <thead class="bg-slate-50"><tr>
 <x-ui.sortable-th column="company" label="Company" :currentSort="$sort" :currentDirection="$direction" />
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">FY</th>
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">FY</th>
 <x-ui.sortable-th column="method" label="Method" :currentSort="$sort" :currentDirection="$direction" />
 <x-ui.sortable-th column="is_active" label="Active" :currentSort="$sort" :currentDirection="$direction" />
 </tr></thead>

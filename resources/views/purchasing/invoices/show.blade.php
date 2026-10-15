@@ -28,6 +28,40 @@
     <x-ui.card><p class="text-xs text-slate-500">Total</p><p class="font-medium">₹{{ number_format($invoice->grand_total, 2) }}</p></x-ui.card>
 </div>
 
+@if($invoice->odAccount)
+    <div class="mb-4 bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+            <div class="p-2.5 rounded-lg bg-indigo-600 text-white shadow-2xs">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-indigo-900">OD Financed Invoice</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-100 text-indigo-800">
+                        OD Utilized
+                    </span>
+                </div>
+                <p class="text-sm font-semibold text-slate-800">
+                    {{ $invoice->odAccount->bank_name }}
+                    <span class="text-slate-500 font-normal font-mono">({{ '•••• ' . substr($invoice->odAccount->account_number, -4) }})</span>
+                </p>
+            </div>
+        </div>
+        <div class="flex items-center gap-6 text-right sm:text-right">
+            <div>
+                <p class="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">OD Utilization Amount</p>
+                <p class="text-base font-bold font-mono text-indigo-700">₹{{ number_format((float) $invoice->grand_total, 2) }}</p>
+            </div>
+            <div>
+                <p class="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Current Available OD Limit</p>
+                <p class="text-base font-bold font-mono text-emerald-600">₹{{ number_format((float) $invoice->odAccount->getAvailableLimit(), 2) }}</p>
+            </div>
+        </div>
+    </div>
+@endif
+
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
     <x-ui.card>
         <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Billing Address</div>

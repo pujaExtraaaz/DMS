@@ -11,7 +11,7 @@
     {{-- Purchases List --}}
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search purchases by number, supplier, or product..."
+            placeholder="Search Purchases By Number, Supplier, Or Product..."
             :searchValue="request('search')"
             :resetUrl="route('inventory.purchases.index')"
         >
@@ -21,7 +21,7 @@
                     name="date_from"
                     value="{{ request('date_from') }}"
                     class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="From date"
+                    placeholder="From Date"
                     data-dynamic-filter
                 />
                 <input
@@ -29,7 +29,7 @@
                     name="date_to"
                     value="{{ request('date_to') }}"
                     class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    placeholder="To date"
+                    placeholder="To Date"
                     data-dynamic-filter
                 />
             </x-slot>

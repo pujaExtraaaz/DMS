@@ -130,7 +130,7 @@
                     :value="old('created_by_name', auth()->user()->name ?? '')"
                     maxlength="100"
                     required
-                    placeholder="Person who created this order"
+                    placeholder="Person Who Created This Order"
                 />
 
             </div>
@@ -235,7 +235,7 @@
                                     step="0.01"
                                     class="discount-value-input h-12 w-full border-0 bg-transparent px-4 text-base font-semibold text-gray-900 outline-none focus:ring-0"
                                     :class="discountType === 'percent' ? 'pl-12 pr-12' : ''"
-                                    :placeholder="discountType === 'flat' ? 'Enter discount amount' : 'Enter discount percentage'"
+                                    :placeholder="Discounttype === 'Flat' ? 'Enter Discount Amount' : 'Enter Discount Percentage'"
                                     @input="discountChanged()"
                                 >
 
@@ -322,7 +322,7 @@
                     <!-- Billing Address Card -->
                     <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                         <div class="flex items-center justify-between">
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Billing Address</label>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider">Billing Address</label>
                             <span class="text-[11px] text-indigo-600 font-medium">Billed to</span>
                         </div>
                         <select name="billing_address_id" x-model="selectedBillingId" @change="onBillingAddressChange()"
@@ -333,14 +333,14 @@
                             </template>
                         </select>
                         <textarea name="billing_address" x-model="billingSnapshot" rows="3"
-                                  placeholder="Billing address snapshot"
+                                  placeholder="Billing Address Snapshot"
                                   class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                     </div>
 
                     <!-- Delivery Address Card -->
                     <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
                         <div class="flex items-center justify-between">
-                            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Delivery / Consignee Address</label>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery / Consignee Address</label>
                             <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium">
                                 <input type="checkbox" x-model="sameAsBilling" @change="onSameAsBillingToggle()"
                                        class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
@@ -360,7 +360,7 @@
                             Delivery address matches the selected Billing Address.
                         </div>
                         <textarea name="shipping_address" x-model="shippingSnapshot" rows="3"
-                                  placeholder="Delivery address snapshot"
+                                  placeholder="Delivery Address Snapshot"
                                   class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                     </div>
                 </div>
@@ -445,7 +445,7 @@
                                                     searchProducts(row, $event.target.value);
                                                     positionProductDropdown(row, $event.target)
                                                 "
-                                                placeholder="Select or search product..."
+                                                placeholder="Select Or Search Product..."
                                             >
 
                                             {{-- Dropdown arrow --}}
@@ -698,7 +698,7 @@
                 name="notes"
                 label="Notes"
                 :value="old('notes')"
-                placeholder="Optional order notes..."
+                placeholder="Optional Order Notes..."
             />
 
 

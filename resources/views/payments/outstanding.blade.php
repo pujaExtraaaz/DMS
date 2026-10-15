@@ -9,7 +9,7 @@
 <div id="listing-container" data-dynamic-container class="lg:col-span-2">
 <x-ui.card title="Ledger Entries">
     <x-ui.table-toolbar
-        placeholder="Search ledger by description, type..."
+        placeholder="Search Ledger By Description, Type..."
         :searchValue="request('search')"
         :resetUrl="route('outstanding.index')"
     >

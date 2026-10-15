@@ -9,7 +9,7 @@
         <x-tally::form.input name="barcode" value="{{ old('barcode', $product->barcode) }}" maxlength="64" />
     </x-form.field>
     <x-tally::form.field name="extra_barcodes" label="More barcodes" class="span-2">
-        <textarea id="extra_barcodes" name="extra_barcodes" class="input" rows="3" placeholder="One barcode per line">{{ old('extra_barcodes', $product->exists ? $product->barcodes->pluck('barcode')->implode("\n") : '') }}</textarea>
+        <textarea id="extra_barcodes" name="extra_barcodes" class="input" rows="3" placeholder="One Barcode Per Line">{{ old('extra_barcodes', $product->exists ? $product->barcodes->pluck('barcode')->implode("\n") : '') }}</textarea>
     </x-form.field>
     <x-tally::form.field name="hsn_sac_id" label="HSN / SAC">
         @include('tally::masters._hsn', [

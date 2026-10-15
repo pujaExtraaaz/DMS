@@ -29,7 +29,7 @@
 </div>
 
 <x-ui.card class="mb-6">
-    <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4 border-b pb-2">Item Reclassification Details</h3>
+    <h3 class="text-sm font-bold text-slate-800 tracking-wider mb-4 border-b pb-2">Item Reclassification Details</h3>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div class="p-4 rounded-xl bg-rose-50/60 border border-rose-200">
             <span class="text-xs font-semibold uppercase text-rose-700 tracking-wider">Source Item (Deducted)</span>
@@ -68,7 +68,7 @@
 <x-ui.card title="Audit Trail: Stock Movements Recorded">
     <div class="overflow-x-auto">
         <table class="min-w-full text-xs divide-y divide-slate-200">
-            <thead class="bg-slate-50 text-slate-600 uppercase font-semibold">
+            <thead class="bg-slate-50 text-slate-600 font-semibold">
                 <tr>
                     <th class="px-4 py-3 text-left">Date / Time</th>
                     <th class="px-4 py-3 text-left">Product</th>

@@ -4,7 +4,7 @@
             <h2>{{ $run->period_start->format('d M Y') }} – {{ $run->period_end->format('d M Y') }}</h2>
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Employee</th><th class="money">Earnings</th><th class="money">PF</th><th class="money">Employer PF</th><th class="money">ESI</th><th class="money">Employer ESI</th><th class="money">Deductions</th><th class="money">Net</th></tr></thead>
+                    <thead><tr><th>Employee</th><th class="money">Earnings</th><th class="money">Pf</th><th class="money">Employer Pf</th><th class="money">Esi</th><th class="money">Employer Esi</th><th class="money">Deductions</th><th class="money">Net</th></tr></thead>
                     <tbody>
                         @foreach ($run->lines as $line)
                             <tr>

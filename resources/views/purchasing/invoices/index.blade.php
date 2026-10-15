@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search invoice no, supplier..."
+            search-placeholder="Search Invoice No, Supplier..."
             :reset-url="route('purchasing.invoices.index')"
         >
             <x-slot name="filters">
@@ -109,7 +109,7 @@
                         <x-ui.sortable-th column="total_amount" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc" align="right">
                             Total
                         </x-ui.sortable-th>
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">

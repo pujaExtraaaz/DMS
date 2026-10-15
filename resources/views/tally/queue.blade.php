@@ -36,11 +36,11 @@
 <div class="overflow-x-auto">
 <table class="min-w-full divide-y divide-slate-200 text-sm">
 <thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">ID</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Document</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Status</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Attempts</th>
-<th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Error</th>
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">ID</th>
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Document</th>
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Status</th>
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Attempts</th>
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Error</th>
 <th class="px-3 py-2"></th>
 </tr></thead>
 <tbody class="divide-y divide-slate-100">

@@ -58,10 +58,10 @@
                     <x-ui.table>
                         <x-slot name="head">
                             <tr>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Order</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Customer</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
-                                <th scope="col" class="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Amount</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-gray-500">Order</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-gray-500">Customer</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-semibold tracking-wider text-gray-500">Status</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-semibold tracking-wider text-gray-500">Amount</th>
                             </tr>
                         </x-slot>
 

@@ -12,7 +12,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search product, SKU or serial..."
+            search-placeholder="Search Product, SKU Or Serial..."
             :reset-url="route('reports.stock')"
         >
             <x-slot name="filters">
@@ -81,7 +81,7 @@
                         <x-ui.sortable-th column="product" :current-sort="$sort ?? 'product'" :current-direction="$direction ?? 'asc'">Product</x-ui.sortable-th>
                         <x-ui.sortable-th column="brand" :current-sort="$sort ?? 'product'" :current-direction="$direction ?? 'asc'">Brand</x-ui.sortable-th>
                         <x-ui.sortable-th column="warehouse" :current-sort="$sort ?? 'product'" :current-direction="$direction ?? 'asc'">Warehouse</x-ui.sortable-th>
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">UOM</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">UOM</th>
                         <x-ui.sortable-th column="quantity" :current-sort="$sort ?? 'product'" :current-direction="$direction ?? 'asc'" align="right">Qty</x-ui.sortable-th>
                     </tr>
                 </thead>

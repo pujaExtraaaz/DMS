@@ -14,7 +14,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search leave requests by reason, employee..."
+            placeholder="Search Leave Requests By Reason, Employee..."
             :searchValue="request('search')"
             :resetUrl="route('hrms.leave-requests.index')"
         >
@@ -43,9 +43,9 @@
                         <x-ui.sortable-th column="leave_type" label="Type" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="from_date" label="Dates" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="days" label="Days" align="center" :currentSort="$sort" :currentDirection="$direction" />
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Reason</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Reason</th>
                         <x-ui.sortable-th column="status" label="Status" align="center" :currentSort="$sort" :currentDirection="$direction" />
-                        <th class="px-3 py-2 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                        <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
             <tbody class="divide-y divide-slate-100">

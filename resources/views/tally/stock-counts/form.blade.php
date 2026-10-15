@@ -28,7 +28,7 @@
             @endphp
             <div class="table-wrap">
                 <table class="data">
-                    <thead><tr><th>Product</th><th>Counted qty</th><th>Unit cost</th></tr></thead>
+                    <thead><tr><th>Product</th><th>Counted Qty</th><th>Unit Cost</th></tr></thead>
                     <tbody>
                         @foreach ($lines as $i => $line)
                             <tr>

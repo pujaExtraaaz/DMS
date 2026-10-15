@@ -15,7 +15,7 @@
             <table class="data">
                 <thead>
                     <tr>
-                        <th>Name</th><th>As of</th><th>Horizon</th><th>Scenario</th>
+                        <th>Name</th><th>As Of</th><th>Horizon</th><th>Scenario</th>
                         <th class="money">Opening</th><th class="money">In</th><th class="money">Out</th><th class="money">Closing</th>
                     </tr>
                 </thead>

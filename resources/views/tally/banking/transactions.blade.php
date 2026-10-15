@@ -12,7 +12,7 @@
                         <th>Voucher</th>
                         <th>Ledger</th>
                         <th>Narration</th>
-                        <th class="money">Book amount</th>
+                        <th class="money">Book Amount</th>
                         <th>Status</th>
                         <th class="money">Difference</th>
                     </tr>

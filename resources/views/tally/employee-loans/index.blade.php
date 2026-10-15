@@ -15,7 +15,7 @@
         </form>
         <div class="table-wrap">
             <table class="data">
-                <thead><tr><th>Employee</th><th>Date</th><th class="money">Principal</th><th class="money">EMI</th><th>Status</th></tr></thead>
+                <thead><tr><th>Employee</th><th>Date</th><th class="money">Principal</th><th class="money">Emi</th><th>Status</th></tr></thead>
                 <tbody>
                     @forelse ($loans as $loan)
                         <tr>

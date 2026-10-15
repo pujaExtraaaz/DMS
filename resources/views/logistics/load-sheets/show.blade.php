@@ -7,7 +7,7 @@
 @if(!$loadSheet->settlement && in_array($loadSheet->status, ['dispatched','delivered','in_transit']))<x-ui.button variant="primary" :href="route('settlements.create', $loadSheet)">Settle</x-ui.button>@endif
 </x-slot></x-ui.page-header>
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-<x-ui.card class="lg:col-span-2" title="Invoices"><x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Invoice</th><th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">Customer</th><th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">Value</th></tr></x-slot>
+<x-ui.card class="lg:col-span-2" title="Invoices"><x-ui.table><x-slot name="head"><tr><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">Invoice</th><th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">Customer</th><th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">Value</th></tr></x-slot>
 @foreach($loadSheet->items as $item)<tr><td class="px-6 py-4 text-sm">{{ $item->invoice->invoice_no }}</td><td class="px-6 py-4 text-sm">{{ $item->invoice->customer->name }}</td><td class="px-6 py-4 text-sm text-right">₹{{ number_format($item->loaded_value, 2) }}</td></tr>@endforeach</x-ui.table></x-ui.card>
 <x-ui.card title="Allocation"><dl class="space-y-2 text-sm">
 <div class="flex justify-between"><dt>Status</dt><dd><x-ui.badge>{{ ucfirst($loadSheet->status) }}</x-ui.badge></dd></div>

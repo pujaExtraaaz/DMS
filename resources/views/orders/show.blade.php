@@ -55,7 +55,7 @@
                             value="{{ old('approved_by_name', auth()->user()->name ?? '') }}"
                             maxlength="100"
                             required
-                            placeholder="Approved by"
+                            placeholder="Approved By"
                             class="w-44 rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                         >
 
@@ -64,7 +64,7 @@
                             name="credit_override_reason"
                             value="{{ old('credit_override_reason') }}"
                             maxlength="1000"
-                            placeholder="Credit override reason (if blocked)"
+                            placeholder="Credit Override Reason (If Blocked)"
                             class="w-64 rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                         >
 
@@ -137,23 +137,23 @@
             <x-ui.table>
                 <x-slot name="head">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">
                             Product
                         </th>
 
-                        <th class="px-6 py-3 text-left text-xs font-semibold uppercase text-gray-500">
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">
                             UOM
                         </th>
 
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">
                             Qty
                         </th>
 
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">
                             Price
                         </th>
 
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-gray-500">
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500">
                             Total
                         </th>
                     </tr>
@@ -195,7 +195,7 @@
                 @endforeach
             </x-ui.table>
             <div class="p-4 border-t border-slate-100 bg-slate-50/50">
-                <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Addresses</h4>
+                <h4 class="text-xs font-bold tracking-wider text-slate-500 mb-2">Addresses</h4>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div class="p-3 bg-white rounded-lg border border-slate-200">
                         <span class="text-xs font-semibold uppercase text-slate-500">Billing Address</span>

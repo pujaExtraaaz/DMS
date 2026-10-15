@@ -16,7 +16,7 @@
                     <tbody>
                         <tr><td>PF</td><td class="money">{{ number_format($employeePf, 2, '.', '') }}</td><td class="money">{{ number_format($employerPf, 2, '.', '') }}</td></tr>
                         <tr><td>ESI</td><td class="money">{{ number_format($employeeEsi, 2, '.', '') }}</td><td class="money">{{ number_format($employerEsi, 2, '.', '') }}</td></tr>
-                        <tr><th>Total</th><th colspan="2" class="money">{{ number_format($total, 2, '.', '') }}</th></tr>
+                        <tr><th>Total</th><th colspan="2" class="money">{{ Number_Format($Total, 2, '.', '') }}</th></tr>
                     </tbody>
                 </table>
             </div>

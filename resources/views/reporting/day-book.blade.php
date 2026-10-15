@@ -11,7 +11,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search day book by voucher, party, narration..."
+            placeholder="Search Day Book By Voucher, Party, Narration..."
             :searchValue="request('search')"
             :resetUrl="route('reports.day-book')"
         >
@@ -29,7 +29,7 @@
                         <x-ui.sortable-th column="type" label="Type" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="voucher" label="Voucher No" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="party" label="Party" :currentSort="$sort" :currentDirection="$direction" />
-                        <th class="px-3 py-2 text-left text-xs font-semibold uppercase text-slate-500">Narration</th>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Narration</th>
                         <x-ui.sortable-th column="debit" label="Debit" align="right" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="credit" label="Credit" align="right" :currentSort="$sort" :currentDirection="$direction" />
                     </tr>

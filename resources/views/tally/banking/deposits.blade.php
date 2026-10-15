@@ -23,7 +23,7 @@
                 </x-form.field>
             </div>
             <table class="data">
-                <thead><tr><th></th><th>Cheque no.</th><th>Date</th><th>Favouring</th><th class="money">Amount</th></tr></thead>
+                <thead><tr><th></th><th>Cheque No.</th><th>Date</th><th>Favouring</th><th class="money">Amount</th></tr></thead>
                 <tbody>
                     @forelse ($cheques as $cheque)
                         <tr>
@@ -42,7 +42,7 @@
         </form>
         <h2>Saved slips</h2>
         <table class="data">
-            <thead><tr><th>Date</th><th>Slip no.</th><th>Bank</th><th class="money">Amount</th><th>Cheques</th></tr></thead>
+            <thead><tr><th>Date</th><th>Slip No.</th><th>Bank</th><th class="money">Amount</th><th>Cheques</th></tr></thead>
             <tbody>
                 @forelse ($slips as $slip)
                     <tr>

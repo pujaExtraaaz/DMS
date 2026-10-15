@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search warehouse name, code, city..."
+            search-placeholder="Search Warehouse Name, Code, City..."
             :reset-url="route('organization.warehouses.index')"
         >
             <x-slot name="filters">
@@ -48,11 +48,11 @@
                         <x-ui.sortable-th column="code" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Code
                         </x-ui.sortable-th>
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Details</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Details</th>
                         <x-ui.sortable-th column="is_active" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Status
                         </x-ui.sortable-th>
-                        <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Actions</th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">

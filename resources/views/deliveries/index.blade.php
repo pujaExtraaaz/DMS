@@ -14,7 +14,7 @@
 
     <x-ui.card>
         <x-ui.table-toolbar
-            placeholder="Search deliveries by customer, invoice, load sheet..."
+            placeholder="Search Deliveries By Customer, Invoice, Load Sheet..."
             :searchValue="request('search')"
             :resetUrl="route('deliveries.index')"
         />
@@ -27,7 +27,7 @@
                         <x-ui.sortable-th column="invoice" label="Invoice" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="loadSheet" label="Load Sheet" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="status" label="Status" :currentSort="$sort" :currentDirection="$direction" />
-                        <th class="px-6 py-3 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                        <th class="px-6 py-3 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">

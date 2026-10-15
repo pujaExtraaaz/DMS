@@ -9,7 +9,7 @@
             <div class="table-wrap">
                 <table class="data">
                     <thead>
-                        <tr><th>Date</th><th>Number</th><th>Finished product</th><th>Quantity</th><th>From</th><th>To</th><th class="money">Material cost</th><th>Status</th></tr>
+                        <tr><th>Date</th><th>Number</th><th>Finished Product</th><th>Quantity</th><th>From</th><th>To</th><th class="money">Material Cost</th><th>Status</th></tr>
                     </thead>
                     <tbody>
                         @foreach ($orders as $order)

@@ -24,5 +24,5 @@
 @endphp
 
 <span {{ $attributes->merge(['class' => 'inline-flex items-center rounded-full font-medium ring-1 ring-inset '.$classes]) }}>
-    {{ $slot }}
+    {!! \App\Support\TitleCase::format((string) $slot) !!}
 </span>

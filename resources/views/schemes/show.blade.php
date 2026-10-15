@@ -17,7 +17,13 @@
 <x-ui.card title="Details">
 <dl class="space-y-2 text-sm">
 <div><span class="text-slate-500">Code:</span> {{ $item->code }}</div>
+@if($item->scheme_type)
+<div><span class="text-slate-500">Scheme Type:</span> <x-ui.badge variant="info">{{ $item->scheme_type_label }}</x-ui.badge></div>
+@endif
 <div><span class="text-slate-500">Brand:</span> {{ $item->brand?->name ?: 'All' }}</div>
+@if($item->products->isNotEmpty())
+<div><span class="text-slate-500">Products:</span> {{ $item->products->map(fn($p) => $p->product?->name)->filter()->join(', ') }}</div>
+@endif
 <div><span class="text-slate-500">Window:</span> {{ $item->starts_on->format('d M Y') }} – {{ $item->ends_on->format('d M Y') }}</div>
 <div><span class="text-slate-500">Basis:</span> {{ ucfirst($item->basis) }}</div>
 <div><span class="text-slate-500">Status:</span> <x-ui.badge variant="info">{{ ucfirst($item->status) }}</x-ui.badge></div>

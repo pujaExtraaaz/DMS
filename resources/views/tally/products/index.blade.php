@@ -5,7 +5,7 @@
         </x-slot:actions>
         <form class="filters" method="GET" action="{{ tally_route('books.tally.products.index') }}">
             <x-tally::form.field name="q" label="Search">
-                <x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name, SKU, barcode" />
+                <x-tally::form.input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name, SKU, Barcode" />
             </x-form.field>
             <x-tally::form.field name="product_group_id" label="Group">
                 <select id="product_group_id" name="product_group_id" class="input">
@@ -40,7 +40,7 @@
                             <th>SKU</th>
                             <th>Group</th>
                             <th>Unit</th>
-                            <th class="money">Sales rate</th>
+                            <th class="money">Sales Rate</th>
                             <th>Status</th>
                             <th></th>
                         </tr>

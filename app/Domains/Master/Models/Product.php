@@ -12,10 +12,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
 class Product extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'company_id',
         'brand_id',
@@ -23,6 +26,10 @@ class Product extends Model
         'sub_category_id',
         'name',
         'sku',
+        'series',
+        'model',
+        'models',
+        'product_type',
         'serial_no',
         'hsn_code',
         'description',
@@ -88,6 +95,35 @@ class Product extends Model
             get: fn (?string $value) => $value !== null ? Str::ucfirst(trim($value)) : null,
             set: fn (?string $value) => $value !== null ? Str::ucfirst(trim($value)) : null,
         );
+    }
+
+    /**
+     * Provide seamless compatibility between 'model' and 'models' access.
+     */
+    public function getModelsAttribute(): ?string
+    {
+        return $this->attributes['model'] ?? null;
+    }
+
+    public function setModelsAttribute(?string $value): void
+    {
+        $this->attributes['model'] = $value;
+    }
+
+    /**
+     * Determine if this product has historical transactions or inventory records.
+     */
+    public function hasHistoricalRecords(): bool
+    {
+        return \App\Domains\Order\Models\OrderItem::where('product_id', $this->id)->exists()
+            || \App\Domains\Purchasing\Models\PurchaseOrderItem::where('product_id', $this->id)->exists()
+            || \App\Domains\Purchasing\Models\PurchaseInwardItem::where('product_id', $this->id)->exists()
+            || \App\Domains\Purchasing\Models\PurchaseInvoiceItem::where('product_id', $this->id)->exists()
+            || \App\Domains\Sales\Models\InvoiceItem::where('product_id', $this->id)->exists()
+            || \App\Domains\Inventory\Models\StockMovement::where('product_id', $this->id)->exists()
+            || \App\Domains\Inventory\Models\ProductSerial::where('product_id', $this->id)->exists()
+            || \App\Domains\Inventory\Models\ProductBatch::where('product_id', $this->id)->exists()
+            || \App\Domains\Inventory\Models\StockLevel::where('product_id', $this->id)->where('quantity', '!=', 0)->exists();
     }
 
     public function company(): BelongsTo

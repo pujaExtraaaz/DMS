@@ -9,7 +9,7 @@
         </x-slot:actions>
         <form method="GET" action="{{ tally_route('books.tally.tax.gstr2b') }}" class="filters">
             <x-tally::form.field name="return_period" label="Return period">
-                <x-tally::form.input name="return_period" value="{{ $returnPeriod }}" placeholder="YYYY-MM" />
+                <x-tally::form.input name="return_period" value="{{ $returnPeriod }}" placeholder="Yyyy-Mm" />
             </x-tally::form.field>
             <button class="btn" type="submit">Filter</button>
         </form>

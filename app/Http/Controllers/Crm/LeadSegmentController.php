@@ -45,8 +45,8 @@ class LeadSegmentController extends Controller
                 'created_at' => 'created_at',
                 'updated_at' => 'updated_at',
             ],
-            'created_at',
-            'desc'
+            'name',
+            'asc'
         );
 
         $segments = $query->paginate(15)->withQueryString();
@@ -128,8 +128,8 @@ class LeadSegmentController extends Controller
                 'status' => 'status',
                 'priority' => 'priority',
             ],
-            'created_at',
-            'desc'
+            'name',
+            'asc'
         );
 
         $leads = $matchingQuery->paginate(15)->withQueryString();
