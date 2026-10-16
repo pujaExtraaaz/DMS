@@ -2,6 +2,8 @@
 
 namespace App\Domains\Organization\Models;
 
+use App\Support\NameCase;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,7 +11,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Branch extends Model
 {
-    use SoftDeletes;
+    use HasUppercaseNames, SoftDeletes;
 
     protected $fillable = [
         'company_id',
@@ -33,11 +35,12 @@ class Branch extends Model
 
     public function getNameAttribute($value): string
     {
+        $val = NameCase::format($value);
         if ($this->trashed()) {
-            return str_contains($value ?? '', '(Archived)') ? (string) $value : "{$value} (Archived)";
+            return str_contains($val ?? '', '(ARCHIVED)') ? (string) $val : "{$val} (ARCHIVED)";
         }
 
-        return (string) $value;
+        return (string) $val;
     }
 
     public function getDisplayNameAttribute(): string

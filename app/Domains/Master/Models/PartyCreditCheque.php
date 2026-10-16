@@ -2,11 +2,14 @@
 
 namespace App\Domains\Master\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PartyCreditCheque extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'customer_id',
         'cheque_number',

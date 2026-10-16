@@ -2,11 +2,14 @@
 
 namespace App\Domains\Crm\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class LeadCampaign extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = ['name', 'external_campaign_id', 'platform', 'is_active'];
 
     protected function casts(): array

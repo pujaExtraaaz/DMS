@@ -161,14 +161,31 @@ class OrderService
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            if (in_array($lockedOrder->status, ['converted'], true) || $lockedOrder->invoice()->exists()) {
+                throw new InvalidArgumentException(
+                    "Cannot edit order '{$lockedOrder->order_no}' because it has already been converted to an invoice."
+                );
+            }
+
+            if ($lockedOrder->status === 'cancelled') {
+                throw new InvalidArgumentException(
+                    "Cannot edit order '{$lockedOrder->order_no}' because it has been cancelled."
+                );
+            }
+
             if (! in_array(
                 $lockedOrder->status,
-                ['draft', 'pending'],
+                ['draft', 'pending', 'approved'],
                 true
             )) {
                 throw new InvalidArgumentException(
-                    'Only draft or pending orders can be edited.'
+                    'Only draft, pending, or approved orders without invoices can be edited.'
                 );
+            }
+
+            $wasApproved = ($lockedOrder->status === 'approved');
+            if ($wasApproved) {
+                $this->releaseReservations($lockedOrder);
             }
 
             $customer = $this->loadCustomer($data['customer_id']);
@@ -200,9 +217,28 @@ class OrderService
                 $data['region_override_reason'] ?? null
             );
 
+            $billingAddress = !empty($data['billing_address_id'])
+                ? \App\Domains\Master\Models\PartyAddress::find($data['billing_address_id'])
+                : null;
+            $shippingAddress = !empty($data['shipping_address_id'])
+                ? \App\Domains\Master\Models\PartyAddress::find($data['shipping_address_id'])
+                : null;
+
+            $billingSnapshot = !empty($data['billing_address'])
+                ? $data['billing_address']
+                : ($billingAddress ? $billingAddress->formatSnapshot() : ($data['customer_id'] != $lockedOrder->customer_id ? $customer->address : $lockedOrder->billing_address));
+
+            $shippingSnapshot = !empty($data['shipping_address'])
+                ? $data['shipping_address']
+                : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $lockedOrder->shipping_address));
+
             $lockedOrder->update([
                 'customer_id' => $customer->id,
                 'warehouse_id' => $data['warehouse_id'] ?? $lockedOrder->warehouse_id,
+                'billing_address_id' => $billingAddress?->id ?? (isset($data['billing_address_id']) ? null : $lockedOrder->billing_address_id),
+                'shipping_address_id' => $shippingAddress?->id ?? (isset($data['shipping_address_id']) ? null : $lockedOrder->shipping_address_id),
+                'billing_address' => $billingSnapshot,
+                'shipping_address' => $shippingSnapshot,
                 'updated_by_name' => $actorName,
                 'order_date' => $data['order_date'],
                 'due_date' => $data['due_date'] ?? null,
@@ -227,6 +263,11 @@ class OrderService
                 ]);
             }
 
+            if ($wasApproved && $lockedOrder->fulfilment_mode === 'warehouse') {
+                $hasBackOrder = $this->reserveWarehouseStock($lockedOrder);
+                $lockedOrder->update(['back_order' => $hasBackOrder]);
+            }
+
             $this->auditLogService->record(
                 $lockedOrder,
                 'updated',
@@ -239,6 +280,49 @@ class OrderService
                 'items.product',
                 'items.uom',
             ]);
+        });
+    }
+
+    public function delete(
+        Order $order,
+        User $actor
+    ): void {
+        DB::transaction(function () use ($order, $actor) {
+            $lockedOrder = Order::query()
+                ->whereKey($order->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (in_array($lockedOrder->status, ['converted'], true) || $lockedOrder->invoice()->exists()) {
+                throw new InvalidArgumentException(
+                    "Cannot delete order '{$lockedOrder->order_no}' because it has already been converted to an invoice. Converted orders cannot be deleted to preserve financial audit trail."
+                );
+            }
+
+            $actorName = $this->auditLogService->actorName(
+                $actor->name
+            );
+
+            // Release any active stock reservations so stock calculations immediately free up
+            $this->releaseReservations($lockedOrder);
+
+            // Record audit log before deleting
+            $this->auditLogService->record(
+                $lockedOrder,
+                'deleted',
+                $actorName
+            );
+
+            // Delete stock reservations for this order
+            StockReservation::query()
+                ->where('order_id', $lockedOrder->id)
+                ->delete();
+
+            // Delete order items
+            $lockedOrder->items()->delete();
+
+            // Delete the order itself
+            $lockedOrder->delete();
         });
     }
 
@@ -454,7 +538,7 @@ class OrderService
         return $hasBackOrder;
     }
 
-    protected function releaseReservations(Order $order): void
+    public function releaseReservations(Order $order): void
     {
         StockReservation::query()
             ->where('order_id', $order->id)

@@ -12,9 +12,20 @@
     $hasError = $error || ($fieldName && $errors->has($fieldName));
     $errorMessage = $error ?? ($fieldName ? $errors->first($fieldName) : null);
 
+    $isNameField = ($fieldName && \App\Support\NameCase::isNameField($fieldName))
+        || $attributes->has('data-is-name')
+        || (isset($label) && str_contains(strtolower($label), 'name') && !str_contains(strtolower($label), 'user') && !str_contains(strtolower($label), 'file'));
+
     $inputClasses = 'block w-full rounded-lg border-gray-300 shadow-sm text-sm placeholder:text-gray-400 focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-500';
+    if ($isNameField) {
+        $inputClasses .= ' uppercase';
+    }
     if ($hasError) {
         $inputClasses .= ' border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500';
+    }
+
+    if ($isNameField && ! $attributes->has('data-is-name')) {
+        $attributes = $attributes->merge(['data-is-name' => 'true']);
     }
 
     if ($attributes->has('placeholder')) {

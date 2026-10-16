@@ -133,6 +133,12 @@ Route::prefix('orders')
             )
             ->name('cancel');
 
+        Route::delete('/{order}', [OrderController::class, 'destroy'])
+            ->middleware(
+                'role_or_permission:super-admin|orders.delete|orders.manage'
+            )
+            ->name('destroy');
+
         Route::get('/{order}', [OrderController::class, 'show'])
             ->middleware(
                 'role_or_permission:super-admin|orders.view|orders.manage'

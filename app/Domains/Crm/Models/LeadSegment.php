@@ -7,13 +7,14 @@ use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Models\User;
 use App\Support\Concerns\ScopeByBranch;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class LeadSegment extends Model
 {
-    use ScopeByBranch;
+    use HasUppercaseNames, ScopeByBranch;
 
     protected $table = 'lead_segments';
 

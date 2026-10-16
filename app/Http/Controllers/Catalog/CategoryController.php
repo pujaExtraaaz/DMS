@@ -11,7 +11,6 @@ use App\Support\CodeGenerator;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
-use App\Support\CodeGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;

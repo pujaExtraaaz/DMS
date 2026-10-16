@@ -50,7 +50,7 @@ class PriceMasterImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            $typeName = trim((string) ($data['customer_type'] ?? 'Retail'));
+            $typeName = \App\Support\NameCase::format((string) ($data['customer_type'] ?? 'RETAIL'));
             $type = $types[strtolower($typeName)] ?? CustomerType::firstOrCreate(['name' => $typeName], ['is_active' => true]);
             if (! $types->has(strtolower($type->name))) $types->put(strtolower($type->name), $type);
 

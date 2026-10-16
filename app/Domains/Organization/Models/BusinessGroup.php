@@ -2,12 +2,15 @@
 
 namespace App\Domains\Organization\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BusinessGroup extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'name',
         'code',

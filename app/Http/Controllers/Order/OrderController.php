@@ -474,16 +474,46 @@ class OrderController extends Controller
         );
     }
 
-    public function edit(Order $order): View
+    public function edit(Order $order): View|RedirectResponse
     {
+        if (in_array($order->status, ['converted'], true) || $order->invoice()->exists()) {
+            return redirect()->route('orders.show', $order)
+                ->with('error', "Converted or invoiced order '{$order->order_no}' cannot be edited to protect financial records.");
+        }
+
+        if ($order->status === 'cancelled') {
+            return redirect()->route('orders.show', $order)
+                ->with('error', "Cancelled order '{$order->order_no}' cannot be edited.");
+        }
+
+        if (! in_array($order->status, ['draft', 'pending', 'approved'], true)) {
+            return redirect()->route('orders.show', $order)
+                ->with('error', 'Only draft, pending, or approved orders without invoices can be edited.');
+        }
+
         $order->load([
             'customer.customerType',
             'items.product',
             'items.uom',
+            'billingAddress',
+            'shippingAddress',
         ]);
+
+        $initialItems = collect(old('items', $order->items->map(function ($item) {
+            return [
+                'product_id' => $item->product_id,
+                'product_name' => $item->product?->name,
+                'product_sku' => $item->product?->sku,
+                'uom_id' => $item->uom_id,
+                'quantity' => (float) $item->quantity,
+                'unit_price' => (float) $item->unit_price,
+                'line_total' => (float) $item->line_total,
+            ];
+        })->all()))->values()->all();
 
         return view('orders.edit', [
             'order' => $order,
+            'initialItems' => $initialItems,
 
             'customers' => Customer::with('customerType')
                 ->where('is_active', true)
@@ -508,13 +538,25 @@ class OrderController extends Controller
         Request $request,
         Order $order
     ): RedirectResponse {
+        if (in_array($order->status, ['converted'], true) || $order->invoice()->exists()) {
+            return $this->flashError(
+                "Converted or invoiced order '{$order->order_no}' cannot be edited."
+            );
+        }
+
+        if ($order->status === 'cancelled') {
+            return $this->flashError(
+                "Cancelled order '{$order->order_no}' cannot be edited."
+            );
+        }
+
         if (! in_array(
             $order->status,
-            ['draft', 'pending'],
+            ['draft', 'pending', 'approved'],
             true
         )) {
             return $this->flashError(
-                'Only draft or pending orders can be edited.'
+                'Only draft, pending, or approved orders without invoices can be edited.'
             );
         }
 
@@ -561,6 +603,26 @@ class OrderController extends Controller
                 'min:0',
             ],
 
+            'billing_address_id' => [
+                'nullable',
+                'exists:party_addresses,id',
+            ],
+
+            'shipping_address_id' => [
+                'nullable',
+                'exists:party_addresses,id',
+            ],
+
+            'billing_address' => [
+                'nullable',
+                'string',
+            ],
+
+            'shipping_address' => [
+                'nullable',
+                'string',
+            ],
+
             'items' => [
                 'required',
                 'array',
@@ -599,10 +661,73 @@ class OrderController extends Controller
         );
 
         return $this->flashSuccess(
-            'Order updated successfully.',
+            "Order {$order->order_no} updated successfully.",
             'orders.show',
             ['order' => $order]
         );
+    }
+
+    public function destroy(
+        Request $request,
+        Order $order
+    ): RedirectResponse|JsonResponse {
+        $user = $request->user();
+        if ($user && ! $user->hasRole('super-admin') &&
+            ! $user->can('orders.manage') &&
+            ! $user->can('orders.delete')) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: You do not have permission to delete orders.',
+                ], 403);
+            }
+            return back()->with('error', 'Unauthorized: You do not have permission to delete orders.');
+        }
+
+        $orderNo = $order->order_no;
+
+        if (in_array($order->status, ['converted'], true) || $order->invoice()->exists()) {
+            $message = "Cannot delete order '{$orderNo}' because it has already been converted to an invoice. Converted orders cannot be deleted to preserve financial audit trail.";
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 422);
+            }
+            return back()->with('error', $message);
+        }
+
+        try {
+            $this->orderService->delete($order, $user ?? auth()->user());
+
+            $message = "Order '{$orderNo}' deleted successfully.";
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                ]);
+            }
+
+            return $this->flashSuccess($message, 'orders.index');
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 422);
+            }
+            return $this->flashError($e->getMessage(), 'orders.index');
+        } catch (\Throwable $e) {
+            report($e);
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to delete order: ' . $e->getMessage(),
+                ], 500);
+            }
+            return $this->flashError('Failed to delete order: ' . $e->getMessage(), 'orders.index');
+        }
     }
 
     public function show(Order $order): View

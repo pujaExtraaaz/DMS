@@ -22,6 +22,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToGroup('web', [
             \App\Http\Middleware\SetUserBranchScope::class,
             \App\Http\Middleware\SyncBooksWorkspace::class,
+            \App\Http\Middleware\UppercaseNameInputs::class,
+        ]);
+
+        $middleware->appendToGroup('api', [
+            \App\Http\Middleware\UppercaseNameInputs::class,
         ]);
 
         $middleware->trustProxies(at: '*');

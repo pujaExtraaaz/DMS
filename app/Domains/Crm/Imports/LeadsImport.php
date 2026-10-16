@@ -72,11 +72,13 @@ class LeadsImport implements ToCollection, WithHeadingRow
             })->toArray();
 
             // Contact Name
-            $contactName = $data['contact_name']
+            $contactName = \App\Support\NameCase::format(
+                $data['contact_name']
                 ?? $data['name']
                 ?? $data['full_name']
                 ?? $data['contact']
-                ?? '';
+                ?? ''
+            );
 
             if (blank($contactName)) {
                 $this->skipped++;
@@ -89,10 +91,12 @@ class LeadsImport implements ToCollection, WithHeadingRow
             }
 
             // Company Name
-            $companyName = $data['company_name']
+            $companyName = \App\Support\NameCase::format(
+                $data['company_name']
                 ?? $data['company']
                 ?? $data['organization']
-                ?? null;
+                ?? null
+            );
 
             // Title
             $title = $data['title'] ?? null;

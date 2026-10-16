@@ -2,10 +2,13 @@
 
 namespace App\Domains\Master\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 
 class TaxRate extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'name',
         'rate',

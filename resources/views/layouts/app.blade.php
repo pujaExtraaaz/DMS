@@ -34,5 +34,6 @@
             </main>
         </div>
         @livewireScripts
+        <script src="{{ asset('js/name-uppercase.js') }}" defer></script>
     </body>
 </html>

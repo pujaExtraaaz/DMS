@@ -8,6 +8,7 @@ use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sales\Models\Quotation;
 use App\Models\User;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'order_no',
         'customer_id',

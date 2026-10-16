@@ -2,12 +2,14 @@
 
 namespace App\Domains\Sales\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
 class EWayBill extends Model
 {
+    use HasUppercaseNames;
     protected static function booted(): void
     {
         static::creating(function (EWayBill $eWayBill) {

@@ -106,3 +106,11 @@ input[type="number"] {
         @apply bg-indigo-600/40 text-white;
     }
 }
+
+/* Name input uppercase formatting */
+input.uppercase,
+textarea.uppercase,
+[data-is-name="true"] {
+    text-transform: uppercase;
+}
+

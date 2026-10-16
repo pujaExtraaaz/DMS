@@ -6,6 +6,7 @@ use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Models\User;
 use App\Support\Concerns\ScopeByBranch;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Employee extends Model
 {
-    use ScopeByBranch;
+    use HasUppercaseNames, ScopeByBranch;
 
     protected $fillable = [
         'company_id', 'branch_id', 'user_id', 'department_id', 'designation_id', 'manager_id',

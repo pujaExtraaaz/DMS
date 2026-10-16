@@ -7,7 +7,7 @@ use App\Http\Controllers\Purchasing\PurchaseInwardController;
 use App\Http\Controllers\Purchasing\PurchaseOrderController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission:super-admin|purchases.view|purchases.create|purchases.edit|purchases.manage|purchase-orders.view|purchase-orders.create|purchase-orders.edit|purchase-orders.manage|inventory.view|inventory.manage')->group(function () {
+Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission:super-admin|purchases.view|purchases.create|purchases.edit|purchases.delete|purchases.manage|purchase-orders.view|purchase-orders.create|purchase-orders.edit|purchase-orders.delete|purchase-orders.manage|inventory.view|inventory.manage')->group(function () {
     Route::get('orders', [PurchaseOrderController::class, 'index'])->name('orders.index');
     Route::get('orders/create', [PurchaseOrderController::class, 'create'])->name('orders.create');
     Route::post('orders', [PurchaseOrderController::class, 'store'])->name('orders.store');
@@ -63,4 +63,7 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
     Route::get('freight-bills/create', [FreightBillController::class, 'create'])->name('freight-bills.create');
     Route::post('freight-bills', [FreightBillController::class, 'store'])->name('freight-bills.store');
     Route::get('freight-bills/{freightBill}', [FreightBillController::class, 'show'])->name('freight-bills.show');
+    Route::get('freight-bills/{freightBill}/edit', [FreightBillController::class, 'edit'])->name('freight-bills.edit');
+    Route::put('freight-bills/{freightBill}', [FreightBillController::class, 'update'])->name('freight-bills.update');
+    Route::delete('freight-bills/{freightBill}', [FreightBillController::class, 'destroy'])->name('freight-bills.destroy');
 });
