@@ -2,12 +2,15 @@
 
 namespace App\Domains\Crm\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MetaLeadForm extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = ['form_id', 'form_name', 'page_id', 'lead_campaign_id', 'is_active'];
 
     protected function casts(): array

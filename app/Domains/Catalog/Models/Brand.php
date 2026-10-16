@@ -5,12 +5,15 @@ namespace App\Domains\Catalog\Models;
 use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Company;
 use App\Support\CodeGenerator;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Brand extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'company_id',
         'name',

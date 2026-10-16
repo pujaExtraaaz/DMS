@@ -39,6 +39,26 @@ class PriceListSync
         }
     }
 
+    public function remove(Model $model): void
+    {
+        if ($model instanceof CustomerType) {
+            $sync = SyncLinks::first(self::KEY, $model);
+            if ($sync) {
+                PriceList::query()->where('id', $sync->target_id)->delete();
+                $sync->delete();
+            }
+
+            return;
+        }
+
+        if ($model instanceof PriceMaster) {
+            $customerType = $model->customerType ?: CustomerType::find($model->customer_type_id);
+            if ($customerType) {
+                $this->pushType($customerType);
+            }
+        }
+    }
+
     public function pushType(CustomerType $type): void
     {
         $type->loadMissing(['priceMasters.product', 'customers']);

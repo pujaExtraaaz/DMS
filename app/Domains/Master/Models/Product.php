@@ -7,6 +7,7 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Organization\Models\Company;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,7 +18,7 @@ use Illuminate\Support\Str;
 
 class Product extends Model
 {
-    use SoftDeletes;
+    use HasUppercaseNames, SoftDeletes;
 
     protected $fillable = [
         'company_id',

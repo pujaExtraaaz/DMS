@@ -3,12 +3,15 @@
 namespace App\Domains\Purchasing\Models;
 
 use App\Models\User;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class FreightBill extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'freight_no',
         'bill_date',

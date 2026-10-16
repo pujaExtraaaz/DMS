@@ -2,11 +2,14 @@
 
 namespace App\Domains\Hrms\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EmployeeKpi extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'employee_id', 'kpi_name', 'period_label', 'target_value',
         'achievement_value', 'rating', 'notes',

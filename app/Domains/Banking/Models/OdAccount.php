@@ -5,6 +5,7 @@ namespace App\Domains\Banking\Models;
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Models\User;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class OdAccount extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'company_id',
         'branch_id',

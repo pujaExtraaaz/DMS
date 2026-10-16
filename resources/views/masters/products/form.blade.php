@@ -15,7 +15,7 @@
         <div>
             <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <x-ui.input name="name" label="Product Name" :value="old('name', $item->name)" required onblur="if(this.value.trim().length > 0){ this.value = this.value.trim().charAt(0).toUpperCase() + this.value.trim().slice(1); }" />
+                <x-ui.input name="name" label="Product Name" :value="old('name', $item->name)" required />
                 <x-ui.input name="sku" label="SKU" :value="old('sku', $item->sku)" required />
                 <x-ui.input name="series" label="Series" :value="old('series', $item->series)" placeholder="E.G. Thinkpad, Galaxy, Xps" />
                 <x-ui.input name="model" label="Model" :value="old('model', $item->model ?? $item->models)" placeholder="E.G. T14 Gen 4, Sm-S928b" />

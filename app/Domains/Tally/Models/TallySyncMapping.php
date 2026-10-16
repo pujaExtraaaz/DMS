@@ -2,10 +2,13 @@
 
 namespace App\Domains\Tally\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 
 class TallySyncMapping extends Model
 {
+    use HasUppercaseNames;
+
     protected $table = 'tally_sync_mappings';
 
     protected $fillable = [

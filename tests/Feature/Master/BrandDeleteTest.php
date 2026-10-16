@@ -48,7 +48,7 @@ class BrandDeleteTest extends TestCase
         $response = $this->actingAs($this->adminUser)->get(route('masters.brands.index'));
 
         $response->assertStatus(200);
-        $response->assertSee('Sony Electronics');
+        $response->assertSee('SONY ELECTRONICS');
         $response->assertSee('data-delete-brand="' . $brand->id . '"', false);
         $response->assertSee('Delete Brand');
         $response->assertSee('Confirm Delete');
@@ -70,7 +70,7 @@ class BrandDeleteTest extends TestCase
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
-            'message' => "Brand 'Standalone Brand' deleted successfully.",
+            'message' => "Brand 'STANDALONE BRAND' deleted successfully.",
         ]);
 
         $this->assertDatabaseMissing('brands', [
@@ -151,7 +151,7 @@ class BrandDeleteTest extends TestCase
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
-            'message' => "Brand 'Samsung Brand' deleted successfully.",
+            'message' => "Brand 'SAMSUNG BRAND' deleted successfully.",
         ]);
 
         // Brand should be deleted
@@ -162,17 +162,17 @@ class BrandDeleteTest extends TestCase
         // Dependent records must NOT be deleted, but rather safely disassociated (brand_id set to null)
         $product->refresh();
         $this->assertNotNull($product);
-        $this->assertEquals('Samsung Galaxy Phone', $product->name);
+        $this->assertEquals('SAMSUNG GALAXY PHONE', $product->name);
         $this->assertNull($product->brand_id);
 
         $category->refresh();
         $this->assertNotNull($category);
-        $this->assertEquals('Smartphones', $category->name);
+        $this->assertEquals('SMARTPHONES', $category->name);
         $this->assertNull($category->brand_id);
 
         $scheme->refresh();
         $this->assertNotNull($scheme);
-        $this->assertEquals('Samsung Q3 Rebate', $scheme->name);
+        $this->assertEquals('SAMSUNG Q3 REBATE', $scheme->name);
         $this->assertNull($scheme->brand_id);
     }
 
@@ -255,21 +255,21 @@ class BrandDeleteTest extends TestCase
         $searchResponse = $this->actingAs($this->adminUser)
             ->get(route('masters.brands.index', ['search' => 'Apple']));
         $searchResponse->assertStatus(200);
-        $searchResponse->assertSee('Apple Electronics');
-        $searchResponse->assertDontSee('Dell Computers');
+        $searchResponse->assertSee('APPLE ELECTRONICS');
+        $searchResponse->assertDontSee('DELL COMPUTERS');
 
         // Status filter test: active only
         $activeResponse = $this->actingAs($this->adminUser)
             ->get(route('masters.brands.index', ['status' => 'active']));
         $activeResponse->assertStatus(200);
-        $activeResponse->assertSee('Apple Electronics');
-        $activeResponse->assertDontSee('Dell Computers');
+        $activeResponse->assertSee('APPLE ELECTRONICS');
+        $activeResponse->assertDontSee('DELL COMPUTERS');
 
         // Status filter test: inactive only
         $inactiveResponse = $this->actingAs($this->adminUser)
             ->get(route('masters.brands.index', ['status' => 'inactive']));
         $inactiveResponse->assertStatus(200);
-        $inactiveResponse->assertDontSee('Apple Electronics');
-        $inactiveResponse->assertSee('Dell Computers');
+        $inactiveResponse->assertDontSee('APPLE ELECTRONICS');
+        $inactiveResponse->assertSee('DELL COMPUTERS');
     }
 }

@@ -25,7 +25,7 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div class="md:col-span-2">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Product name *</label>
-                            <input type="text" x-model="form.name" required class="block w-full rounded-lg border-gray-300 text-sm">
+                            <input type="text" x-model="form.name" @input="form.name = ($event.target.value || '').toUpperCase()" data-is-name="true" required class="block w-full uppercase rounded-lg border-gray-300 text-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">SKU (auto if blank)</label>
@@ -115,6 +115,9 @@
                 close() { this.isOpen = false; },
                 async save() {
                     this.saving = true; this.error = null;
+                    if (this.form.name) {
+                        this.form.name = this.form.name.trim().toUpperCase();
+                    }
                     try {
                         const r = await fetch("{{ route('masters.products.quick-add') }}", {
                             method: 'POST',

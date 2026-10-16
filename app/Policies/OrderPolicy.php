@@ -34,12 +34,36 @@ class OrderPolicy
 
     public function update(User $user, Order $order): bool
     {
-        if (! in_array($order->status, ['draft', 'pending'], true)) {
+        if (in_array($order->status, ['converted', 'cancelled'], true)) {
+            return false;
+        }
+
+        if ($order->invoice()->exists()) {
+            return false;
+        }
+
+        if (! in_array($order->status, ['draft', 'pending', 'approved'], true)) {
             return false;
         }
 
         return $this->hasAny($user, [
             'orders.edit',
+            'orders.manage',
+        ]);
+    }
+
+    public function delete(User $user, Order $order): bool
+    {
+        if (in_array($order->status, ['converted'], true)) {
+            return false;
+        }
+
+        if ($order->invoice()->exists()) {
+            return false;
+        }
+
+        return $this->hasAny($user, [
+            'orders.delete',
             'orders.manage',
         ]);
     }

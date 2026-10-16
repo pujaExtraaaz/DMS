@@ -5,12 +5,15 @@ namespace App\Domains\Inventory\Models;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Organization\Models\Warehouse;
 use App\Models\User;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Purchase extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'purchase_no',
         'purchase_date',

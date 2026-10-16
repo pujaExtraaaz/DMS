@@ -5,12 +5,15 @@ namespace App\Domains\Deal\Models;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Order\Models\Order;
 use App\Domains\Sales\Models\Invoice;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Deal extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'reference',
         'customer_id',

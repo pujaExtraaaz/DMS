@@ -2,11 +2,14 @@
 
 namespace App\Domains\Deal\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ExpenseType extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'name',
         'code',

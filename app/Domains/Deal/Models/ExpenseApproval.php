@@ -3,11 +3,14 @@
 namespace App\Domains\Deal\Models;
 
 use App\Models\User;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ExpenseApproval extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'deal_expense_id',
         'approver_id',

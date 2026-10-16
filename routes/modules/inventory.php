@@ -18,8 +18,14 @@ Route::prefix('inventory')->name('inventory.')->middleware('role_or_permission:s
     Route::get('transfers/stock-availability', [StockTransferController::class, 'stockAvailability'])->name('transfers.stock-availability');
     Route::post('transfers/name-transfer', [StockTransferController::class, 'storeNameTransfer'])->name('transfers.name-transfer');
     Route::get('transfers/reclassifications/{reclassification}', [StockTransferController::class, 'showReclassification'])->name('transfers.reclassifications.show');
+    Route::get('transfers/reclassifications/{reclassification}/edit', [StockTransferController::class, 'editReclassification'])->name('transfers.reclassifications.edit');
+    Route::put('transfers/reclassifications/{reclassification}', [StockTransferController::class, 'updateReclassification'])->name('transfers.reclassifications.update');
+    Route::delete('transfers/reclassifications/{reclassification}', [StockTransferController::class, 'destroyReclassification'])->name('transfers.reclassifications.destroy');
     Route::post('transfers', [StockTransferController::class, 'store'])->name('transfers.store');
     Route::get('transfers/{transfer}', [StockTransferController::class, 'show'])->name('transfers.show');
+    Route::get('transfers/{transfer}/edit', [StockTransferController::class, 'edit'])->name('transfers.edit');
+    Route::put('transfers/{transfer}', [StockTransferController::class, 'update'])->name('transfers.update');
+    Route::delete('transfers/{transfer}', [StockTransferController::class, 'destroy'])->name('transfers.destroy');
     Route::post('transfers/{transfer}/dispatch', [StockTransferController::class, 'dispatch'])->name('transfers.dispatch');
     Route::post('transfers/{transfer}/receive', [StockTransferController::class, 'receive'])->name('transfers.receive');
 
@@ -27,6 +33,9 @@ Route::prefix('inventory')->name('inventory.')->middleware('role_or_permission:s
     Route::get('adjustments/create', [StockAdjustmentController::class, 'create'])->name('adjustments.create');
     Route::post('adjustments', [StockAdjustmentController::class, 'store'])->name('adjustments.store');
     Route::get('adjustments/{adjustment}', [StockAdjustmentController::class, 'show'])->name('adjustments.show');
+    Route::get('adjustments/{adjustment}/edit', [StockAdjustmentController::class, 'edit'])->name('adjustments.edit');
+    Route::put('adjustments/{adjustment}', [StockAdjustmentController::class, 'update'])->name('adjustments.update');
+    Route::delete('adjustments/{adjustment}', [StockAdjustmentController::class, 'destroy'])->name('adjustments.destroy');
 
     Route::get('batches/{product}', BatchLookupController::class)->name('batches.lookup');
 

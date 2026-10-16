@@ -53,7 +53,7 @@ class ProductsImport implements ToCollection, WithHeadingRow
                 $this->errors[] = ['row' => $rowNo, 'field' => 'name', 'message' => 'Name is required'];
                 continue;
             }
-            $name = Str::ucfirst($name);
+            $name = \App\Support\NameCase::format($name);
 
             $uomCode = strtoupper((string) ($data['uom_code'] ?? $data['uom'] ?? ''));
             $uom = $uomsByCode[$uomCode] ?? null;

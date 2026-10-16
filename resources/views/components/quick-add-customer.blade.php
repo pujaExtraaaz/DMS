@@ -53,8 +53,8 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Customer Name *</label>
-                        <input type="text" x-model="form.name" required placeholder="Business Or Customer Name"
-                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <input type="text" x-model="form.name" name="name" data-is-name="true" required placeholder="Business Or Customer Name"
+                               class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
                     <div>
                         <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Customer Code</label>
