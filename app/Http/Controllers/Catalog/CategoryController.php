@@ -7,14 +7,11 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Master\Models\Product;
 use App\Http\Controllers\Controller;
-<<<<<<< HEAD
 use App\Support\CodeGenerator;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Database\QueryException;
-=======
-use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
->>>>>>> aa321ea5d5d641e2b160405edaf720832da9a01f
+use App\Support\CodeGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +61,7 @@ class CategoryController extends Controller
         return view('masters.categories.form', [
             'item' => new Category,
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'previewCode' => CodeGenerator::forCategory(),
         ]);
     }
 
@@ -90,21 +88,24 @@ class CategoryController extends Controller
             } catch (QueryException $e) {
                 $isDuplicate = isset($e->errorInfo[1]) && $e->errorInfo[1] === 1062;
                 $message = $e->getMessage();
+
                 $isCodeDuplicate = $isDuplicate && (
-                    str_contains($message, 'categories_code_unique')
-                    || str_contains($message, 'categories.code')
-                    || str_contains($message, "for key 'code'")
+                    str_contains($message, 'categories_code_unique') ||
+                    str_contains($message, 'categories.code') ||
+                    str_contains($message, "for key 'code'")
                 );
 
-                if ($isCodeDuplicate && $attempt < $maxAttempts) {
-                    usleep(random_int(10000, 30000));
-                    continue;
+                if ($isCodeDuplicate) {
+                    if ($attempt < $maxAttempts) {
+                        usleep(random_int(10000, 30000));
+                        continue;
+                    }
+
+                    return back()->withInput()->withErrors(['code' => 'Unable to generate a unique category code due to concurrent requests. Please try again.']);
                 }
 
-                if ($isCodeDuplicate) {
-                    return back()->withInput()->withErrors([
-                        'code' => 'Unable to generate a unique category code due to concurrent requests. Please try again.',
-                    ]);
+                if ($isDuplicate) {
+                    return back()->withInput()->withErrors(['name' => 'Category with this name or code already exists.']);
                 }
 
                 throw $e;
@@ -133,11 +134,6 @@ class CategoryController extends Controller
 
     public function destroy(Request $request, Category $category): RedirectResponse|JsonResponse
     {
-<<<<<<< HEAD
-        $category->delete();
-
-        return $this->flashSuccess('Category deleted successfully.', 'masters.categories.index');
-=======
         $user = $request->user();
 
         // Enforce existing authentication and authorization rules
@@ -233,22 +229,28 @@ class CategoryController extends Controller
 
             return $this->flashError('Failed to delete category: ' . $e->getMessage(), 'masters.categories.index');
         }
->>>>>>> aa321ea5d5d641e2b160405edaf720832da9a01f
     }
 
     protected function validated(Request $request, ?Category $category = null): array
     {
-        if ($request->has('name')) {
-            $request->merge(['name' => trim((string) $request->input('name'))]);
-        }
-
-        $data = $request->validate([
+        $rules = [
             'brand_id' => 'nullable|exists:brands,id',
             'name' => 'required|string|max:255',
             'is_active' => 'boolean',
-        ]);
+        ];
+
+        if ($category) {
+            $rules['code'] = 'nullable|string|max:30|unique:categories,code,'.$category->id;
+        }
+
+        $data = $request->validate($rules);
         $data['is_active'] = $request->boolean('is_active');
 
+        if ($category) {
+            $data['code'] = $category->code;
+        } else {
+            unset($data['code']);
+        }
         return $data;
     }
 }
