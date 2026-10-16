@@ -5,12 +5,15 @@ namespace App\Domains\Target\Models;
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TargetPeriod extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'name',
         'period_type',

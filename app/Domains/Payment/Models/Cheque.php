@@ -4,12 +4,15 @@ namespace App\Domains\Payment\Models;
 
 use App\Domains\Master\Models\Customer;
 use App\Models\User;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Cheque extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'cheque_no',
         'customer_id',

@@ -7,8 +7,10 @@ use App\Domains\Master\Models\PriceMaster;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 use App\Support\Traits\SortableAndSearchable;
@@ -87,11 +89,76 @@ class PriceMasterController extends Controller
         return $this->flashSuccess('Price updated successfully.', 'masters.price-masters.index');
     }
 
-    public function destroy(PriceMaster $priceMaster): RedirectResponse
+    public function destroy(Request $request, PriceMaster $priceMaster): RedirectResponse|JsonResponse
     {
-        $priceMaster->delete();
+        $user = $request->user() ?? auth()->user();
 
-        return $this->flashSuccess('Price deleted successfully.', 'masters.price-masters.index');
+        // Enforce authorization
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) &&
+            ! $user->can('masters.manage') &&
+            ! $user->can('masters.edit') &&
+            ! $user->can('masters.delete') &&
+            ! $user->can('price-master.manage') &&
+            ! $user->can('price-master.edit') &&
+            ! $user->can('price-master.delete')) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: You do not have permission to delete price list records.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: You do not have permission to delete price list records.');
+        }
+
+        $priceMaster->loadMissing(['customerType', 'product', 'uom']);
+
+        // Multi-tenancy check (company boundary)
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && $priceMaster->product?->company_id && (int) $priceMaster->product->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This price record belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This price record belongs to another company.');
+        }
+
+        $productName = $priceMaster->product?->name ?? 'Product';
+        $customerTypeName = $priceMaster->customerType?->name ?? 'Customer Type';
+        $rateFormatted = '₹' . number_format((float) $priceMaster->rate, 2);
+
+        try {
+            DB::transaction(function () use ($priceMaster) {
+                // Delete only this specific PriceMaster record
+                $priceMaster->delete();
+            });
+
+            $message = "Price record for {$productName} ({$customerTypeName} - {$rateFormatted}) deleted successfully.";
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                ]);
+            }
+
+            return $this->flashSuccess($message, 'masters.price-masters.index')
+                ->with('success', $message);
+        } catch (\Throwable $e) {
+            report($e);
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to delete price record: ' . $e->getMessage(),
+                ], 500);
+            }
+
+            return $this->flashError('Failed to delete price record: ' . $e->getMessage(), 'masters.price-masters.index')
+                ->with('error', 'Failed to delete price record: ' . $e->getMessage());
+        }
     }
 
     protected function validated(Request $request): array

@@ -22,6 +22,17 @@ class FreightBillSync
         }
     }
 
+    public function remove(Model $model): void
+    {
+        if ($model instanceof FreightBill) {
+            $sync = SyncLinks::first(self::KEY, $model);
+            if ($sync) {
+                LandedCostVoucher::query()->where('id', $sync->target_id)->delete();
+                $sync->delete();
+            }
+        }
+    }
+
     public function push(FreightBill $bill): void
     {
         $bill->loadMissing(['allocations.allocatable', 'landedCosts.purchaseInvoice']);

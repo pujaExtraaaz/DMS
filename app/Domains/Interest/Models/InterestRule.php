@@ -3,12 +3,15 @@
 namespace App\Domains\Interest\Models;
 
 use App\Domains\Master\Models\Customer;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class InterestRule extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'name',
         'customer_id',

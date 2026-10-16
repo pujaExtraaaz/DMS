@@ -48,14 +48,14 @@ class PartiesImport implements ToCollection, WithHeadingRow
             $rowNo = $index + 2;
             $data = collect($row)->mapWithKeys(fn($v, $k) => [strtolower((string) $k) => $v])->toArray();
 
-            $name = trim((string) ($data['name'] ?? ''));
+            $name = \App\Support\NameCase::format((string) ($data['name'] ?? ''));
             if ($name === '') {
                 $this->skipped++;
                 $this->errors[] = ['row' => $rowNo, 'field' => 'name', 'message' => 'Name is required'];
                 continue;
             }
 
-            $typeName = trim((string) ($data['classification'] ?? $data['customer_type'] ?? 'Retail'));
+            $typeName = \App\Support\NameCase::format((string) ($data['classification'] ?? $data['customer_type'] ?? 'RETAIL'));
 
             $type = $types[strtolower($typeName)] ?? null;
 
@@ -140,10 +140,10 @@ class PartiesImport implements ToCollection, WithHeadingRow
                 $this->created++;
             }
 
-            // Optional child contact/address rows in the same sheet:
             if (filled($data['contact_name'] ?? null) || filled($data['contact_phone'] ?? null)) {
+                $contactName = \App\Support\NameCase::format((string) ($data['contact_name'] ?? ''));
                 PartyContact::updateOrCreate(
-                    ['customer_id' => $customer->id, 'phone' => (string) ($data['contact_phone'] ?? ''), 'name' => (string) ($data['contact_name'] ?? '')],
+                    ['customer_id' => $customer->id, 'phone' => (string) ($data['contact_phone'] ?? ''), 'name' => $contactName],
                     [
                        'level' => match (strtolower(trim((string) ($data['level'] ?? 'party')))) {
                             'primary', 'party' => 'party',

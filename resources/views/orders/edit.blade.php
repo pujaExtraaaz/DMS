@@ -1,11 +1,21 @@
 @extends('layouts.dms')
 
-@section('title', 'Edit Order '.$order->order_no)
+@section('title', 'Edit Order ' . $order->order_no)
 
 @section('content')
+
+<div
+    x-data="orderEditor()"
+    x-init="init()"
+    @keydown.window="handleShortcut($event)"
+    @click.window="closeProductDropdowns($event)"
+    class="space-y-6"
+>
+
+    {{-- Page Header --}}
     <x-ui.page-header
-        :title="'Edit '.$order->order_no"
-        description="Edit this order before approval."
+        :title="'Edit ' . $order->order_no"
+        description="Update order details, customer addresses, quantities and items."
     >
         <x-slot name="actions">
             <x-ui.button
@@ -17,44 +27,74 @@
         </x-slot>
     </x-ui.page-header>
 
-    <x-ui.card>
-        <form
-            method="POST"
-            action="{{ route('orders.update', $order) }}"
-            class="space-y-6"
-        >
-            @csrf
-            @method('PUT')
+    {{-- Validation Errors --}}
+    @if ($errors->any())
+        <x-ui.alert type="error">
+            <ul class="list-disc list-inside space-y-1 text-sm">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </x-ui.alert>
+    @endif
 
+    {{-- Order Form --}}
+    <form
+        method="POST"
+        action="{{ route('orders.update', $order) }}"
+        @submit="beforeSubmit"
+        class="space-y-6"
+    >
+        @csrf
+        @method('PUT')
+
+        {{-- ORDER DETAILS --}}
+        <x-ui.card title="Order Details">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">
-                        Customer
+                {{-- Customer --}}
+                <div class="space-y-1">
+                    <label for="customer_id" class="block text-sm font-medium text-slate-700">
+                        Customer <span class="text-red-500">*</span>
                     </label>
 
-                    <input
-                        type="text"
-                        value="{{ $order->customer->name }} ({{ $order->customer->code }})"
-                        readonly
-                        class="mt-1 block w-full rounded-lg border-gray-300 bg-gray-50 text-sm"
-                    >
-
-                    <input
-                        type="hidden"
+                    <select
                         name="customer_id"
-                        value="{{ $order->customer_id }}"
+                        id="customer_id"
+                        required
+                        class="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500 @error('customer_id') border-red-300 text-red-900 @enderror"
+                        x-model="customerId"
+                        @change="customerChanged()"
                     >
+                        <option value="">Select customer</option>
+                        @foreach($customers as $customer)
+                            <option
+                                value="{{ $customer->id }}"
+                                @selected(old('customer_id', $order->customer_id) == $customer->id)
+                            >
+                                {{ $customer->name }}
+                                @if($customer->code)
+                                    ({{ $customer->code }})
+                                @endif
+                            </option>
+                        @endforeach
+                    </select>
+
+                    @error('customer_id')
+                        <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                    @enderror
                 </div>
 
+                {{-- Order Date --}}
                 <x-ui.input
                     name="order_date"
                     label="Order Date"
                     type="date"
                     :value="old('order_date', $order->order_date->toDateString())"
-                    max="{{ now()->toDateString() }}"
+                    :max="now()->toDateString()"
                     required
                 />
 
+                {{-- Due Date --}}
                 <x-ui.input
                     name="due_date"
                     label="Due Date"
@@ -62,112 +102,744 @@
                     :value="old('due_date', optional($order->due_date)->toDateString())"
                 />
 
+                {{-- Fulfilment Mode --}}
                 <x-ui.select name="fulfilment_mode" label="Fulfilment Mode" required>
-                    <option value="van" @selected(old('fulfilment_mode', $order->fulfilment_mode ?? 'van')==='van')">Van / Load Sheet</option>
-                    <option value="warehouse" @selected(old('fulfilment_mode', $order->fulfilment_mode)==='warehouse')">Warehouse Reservation</option>
+                    <option value="van" @selected(old('fulfilment_mode', $order->fulfilment_mode ?? 'van')==='van')>Van / Load Sheet</option>
+                    <option value="warehouse" @selected(old('fulfilment_mode', $order->fulfilment_mode)==='warehouse')>Warehouse Reservation</option>
                 </x-ui.select>
 
-                <x-ui.input
-                    name="discount_amount"
-                    label="Discount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    :value="old('discount_amount', $order->discount_amount)"
-                />
-
+                {{-- Edited By --}}
                 <x-ui.input
                     name="updated_by_name"
                     label="Edited By"
-                    :value="old('updated_by_name', auth()->user()?->name)"
-                    maxlength="120"
+                    :value="old('updated_by_name', auth()->user()?->name ?? '')"
+                    maxlength="100"
                     required
+                    placeholder="Person updating this order"
                 />
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                {{-- Discount --}}
+                <div class="w-full md:max-w-lg">
+                    <div class="mb-2 flex items-center justify-between">
+                        <label class="block text-sm font-semibold text-gray-800">
+                            Discount
+                        </label>
+                        <span
+                            class="text-xs font-medium text-gray-400"
+                            x-text="discountType === 'flat' ? 'Fixed amount' : 'Percentage'"
+                        ></span>
+                    </div>
+
+                    <div class="rounded-xl border border-gray-200 bg-white p-1.5 shadow-sm">
+                        <div class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1">
+                            <button
+                                type="button"
+                                @click="discountType = 'flat'; discountChanged();"
+                                :class="discountType === 'flat' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-500 hover:text-gray-700'"
+                                class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition"
+                            >
+                                <span class="text-sm font-bold">₹</span>
+                                <span>Flat</span>
+                            </button>
+                            <button
+                                type="button"
+                                @click="discountType = 'percent'; discountChanged();"
+                                :class="discountType === 'percent' ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-gray-200' : 'text-gray-500 hover:text-gray-700'"
+                                class="inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition"
+                            >
+                                <span class="text-sm font-bold">%</span>
+                                <span>Percent</span>
+                            </button>
+                        </div>
+
+                        <div class="mt-2">
+                            <div class="relative flex items-center overflow-hidden rounded-lg border border-gray-300 bg-white transition focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100">
+                                <span
+                                    x-show="discountType === 'flat'"
+                                    x-cloak
+                                    class="flex h-12 w-12 shrink-0 items-center justify-center border-r border-gray-200 bg-gray-50 text-base font-semibold text-gray-600"
+                                >₹</span>
+
+                                <input
+                                    type="number"
+                                    name="discount_value"
+                                    x-model="discountValue"
+                                    min="0"
+                                    :max="discountType === 'percent' ? 100 : null"
+                                    step="0.01"
+                                    class="h-12 w-full border-0 bg-transparent px-4 text-base font-semibold text-gray-900 outline-none focus:ring-0"
+                                    @input="discountChanged()"
+                                >
+
+                                <span
+                                    x-show="discountType === 'percent'"
+                                    x-cloak
+                                    class="flex h-12 w-12 shrink-0 items-center justify-center border-l border-gray-200 bg-gray-50 text-base font-semibold text-gray-600"
+                                >%</span>
+                            </div>
+                        </div>
+
+                        <div
+                            x-show="discountAmount > 0"
+                            x-cloak
+                            class="mt-3 flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-2.5"
+                        >
+                            <span class="text-xs font-medium text-indigo-700">Applied discount</span>
+                            <span class="text-sm font-bold text-indigo-700">₹<span x-text="formatMoney(discountAmount)"></span></span>
+                        </div>
+                    </div>
+
+                    <input type="hidden" name="discount_amount" x-model="discountAmount">
+                </div>
+            </div>
+
+            <!-- Party Addresses Selection -->
+            <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4 mt-6" x-show="customerId" x-cloak>
+                <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Billing &amp; Delivery Addresses</span>
+                    <span class="text-xs text-slate-500" x-text="addressesLoading ? 'Loading addresses...' : `${partyAddresses.length} address(es) available`"></span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Billing Address Card -->
+                    <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider">Billing Address</label>
+                            <span class="text-[11px] text-indigo-600 font-medium">Billed to</span>
+                        </div>
+                        <select name="billing_address_id" x-model="selectedBillingId" @change="onBillingAddressChange()"
+                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Default Address</option>
+                            <template x-for="addr in partyAddresses" :key="addr.id">
+                                <option :value="addr.id" x-text="`${addr.label} — ${addr.full_address}`"></option>
+                            </template>
+                        </select>
+                        <textarea name="billing_address" x-model="billingSnapshot" rows="3"
+                                  placeholder="Billing Address Snapshot"
+                                  class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                    </div>
+
+                    <!-- Delivery Address Card -->
+                    <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery / Consignee Address</label>
+                            <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium">
+                                <input type="checkbox" x-model="sameAsBilling" @change="onSameAsBillingToggle()"
+                                       class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span>Same as Billing Address</span>
+                            </label>
+                        </div>
+                        <div x-show="!sameAsBilling">
+                            <select name="shipping_address_id" x-model="selectedShippingId" @change="onShippingAddressChange()"
+                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="">Default Delivery Address</option>
+                                <template x-for="addr in partyAddresses" :key="addr.id">
+                                    <option :value="addr.id" x-text="`${addr.label} — ${addr.full_address}`"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div x-show="sameAsBilling" class="text-xs text-slate-500 italic py-1">
+                            Delivery address matches the selected Billing Address.
+                        </div>
+                        <textarea name="shipping_address" x-model="shippingSnapshot" rows="3"
+                                  placeholder="Delivery Address Snapshot"
+                                  class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                    </div>
+                </div>
+            </div>
+        </x-ui.card>
+
+        {{-- PRODUCTS --}}
+        <x-ui.card title="Products">
+            <div class="mb-4 rounded-lg bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+                Prices are recalculated on the server upon saving. The displayed price is a live preview.
             </div>
 
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm">
-                    <thead class="border-b bg-gray-50">
-                        <tr>
+                    <thead>
+                        <tr class="border-b bg-gray-50">
                             <th class="px-3 py-3 text-left">Product</th>
-                            <th class="px-3 py-3 text-left">UOM</th>
-                            <th class="px-3 py-3 text-right">Quantity</th>
+                            <th class="px-3 py-3 text-left">Unit</th>
+                            <th class="px-3 py-3 text-right">Qty</th>
                             <th class="px-3 py-3 text-right">Price</th>
                             <th class="px-3 py-3 text-right">Total</th>
+                            <th class="px-3 py-3"></th>
                         </tr>
                     </thead>
 
                     <tbody>
-                        @foreach($order->items as $index => $item)
-                            <tr class="border-b">
-                                <td class="px-3 py-3">
-                                    {{ $item->product->name }}
-                                    <input
-                                        type="hidden"
-                                        name="items[{{ $index }}][product_id]"
-                                        value="{{ $item->product_id }}"
-                                    >
+                        <template x-for="(row, index) in rows" :key="row.key">
+                            <tr class="border-b" :class="row.productResultsOpen ? 'relative z-[100]' : 'relative z-0'">
+                                {{-- Product Search / Select --}}
+                                <td class="px-3 py-3 min-w-[300px]">
+                                    <div class="relative">
+                                        <div class="relative">
+                                            <input
+                                                type="text"
+                                                autocomplete="off"
+                                                class="product-search block w-full rounded-lg border-gray-300 pr-10 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                                x-model="row.productLabel"
+                                                @focus="openProductDropdown(row, $event.target)"
+                                                @input="
+                                                    searchProducts(row, $event.target.value);
+                                                    positionProductDropdown(row, $event.target)
+                                                "
+                                                placeholder="Select or Search Product..."
+                                            >
+
+                                            <button
+                                                type="button"
+                                                @mousedown.prevent="toggleProductDropdown(row)"
+                                                class="product-dropdown-arrow absolute inset-y-0 right-0 flex w-10 items-center justify-center text-gray-400 hover:text-gray-600"
+                                                tabindex="-1"
+                                            >
+                                                <svg class="h-4 w-4 transition-transform" :class="row.productResultsOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </button>
+                                        </div>
+
+                                        <input type="hidden" :name="`items[${index}][product_id]`" x-model="row.productId">
+
+                                        {{-- Dropdown --}}
+                                        <div x-cloak x-show="row.productResultsOpen"
+                                             :style="`position: fixed; top: ${row.productDropdownTop}px; left: ${row.productDropdownLeft}px; width: ${row.productDropdownWidth}px; z-index: 999999;`"
+                                             class="product-dropdown max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl ring-1 ring-black/5">
+                                            <div x-show="row.productResults.length === 0" class="px-4 py-3 text-sm text-gray-500">
+                                                No products found.
+                                            </div>
+
+                                            <template x-for="product in row.productResults" :key="product.id">
+                                                <button
+                                                    type="button"
+                                                    @mousedown.prevent="selectProduct(row, product)"
+                                                    class="block w-full border-b border-gray-100 px-4 py-2.5 text-left transition last:border-b-0 hover:bg-indigo-50"
+                                                >
+                                                    <div class="flex items-center justify-between gap-3">
+                                                        <div class="min-w-0">
+                                                            <div class="truncate font-medium text-gray-900" x-text="product.name"></div>
+                                                            <div class="mt-0.5 text-xs text-gray-500" x-text="product.sku ? 'SKU: ' + product.sku : 'No SKU'"></div>
+                                                        </div>
+                                                        <span class="shrink-0 rounded bg-gray-100 px-2 py-1 text-xs text-gray-500" x-text="product.base_uom_name || ''"></span>
+                                                    </div>
+                                                </button>
+                                            </template>
+                                        </div>
+                                    </div>
                                 </td>
 
-                                <td class="px-3 py-3">
-                                    {{ $item->uom->code }}
-                                    <input
-                                        type="hidden"
-                                        name="items[{{ $index }}][uom_id]"
-                                        value="{{ $item->uom_id }}"
+                                {{-- UOM --}}
+                                <td class="px-3 py-3 min-w-[180px]">
+                                    <select
+                                        :name="`items[${index}][uom_id]`"
+                                        x-model="row.uomId"
+                                        @change="resolvePrice(row)"
+                                        :disabled="!row.productId || row.uoms.length === 0"
+                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-gray-100"
                                     >
+                                        <option value="">Select Unit</option>
+                                        <template x-for="uom in row.uoms" :key="uom.id">
+                                            <option :value="uom.id" x-text="uom.label" :selected="String(uom.id) === String(row.uomId)"></option>
+                                        </template>
+                                    </select>
                                 </td>
 
-                                <td class="px-3 py-3">
+                                {{-- Quantity --}}
+                                <td class="px-3 py-3 min-w-[120px]">
                                     <input
                                         type="number"
-                                        name="items[{{ $index }}][quantity]"
-                                        value="{{ old("items.$index.quantity", $item->quantity) }}"
                                         min="0.0001"
                                         step="0.0001"
-                                        class="block w-full rounded-lg border-gray-300 text-sm text-right"
-                                        required
+                                        :name="`items[${index}][quantity]`"
+                                        x-model="row.quantity"
+                                        @input="quantityChanged(row)"
+                                        class="block w-full rounded-lg border-gray-300 text-sm text-right focus:border-indigo-500 focus:ring-indigo-500"
                                     >
                                 </td>
 
-                                <td class="px-3 py-3 text-right">
-                                    ₹{{ number_format($item->unit_price, 2) }}
-
-                                    <input
-                                        type="hidden"
-                                        name="items[{{ $index }}][unit_price]"
-                                        value="{{ $item->unit_price }}"
-                                    >
+                                {{-- Price --}}
+                                <td class="px-3 py-3 min-w-[140px] text-right">
+                                    <div class="flex items-center justify-end gap-1 font-mono">
+                                        <span class="text-gray-400">₹</span>
+                                        <span x-text="row.priceLoading ? '...' : (row.unitPrice ? formatMoney(row.unitPrice) : '0.00')" class="font-medium text-gray-900"></span>
+                                    </div>
+                                    <input type="hidden" :name="`items[${index}][unit_price]`" x-model="row.unitPrice">
                                 </td>
 
-                                <td class="px-3 py-3 text-right">
-                                    ₹{{ number_format($item->line_total, 2) }}
+                                {{-- Total --}}
+                                <td class="px-3 py-3 min-w-[140px] text-right font-medium">
+                                    <span class="font-mono text-gray-900">₹<span x-text="formatMoney(row.lineTotal)"></span></span>
+                                </td>
+
+                                {{-- Remove Action --}}
+                                <td class="px-3 py-3 text-center">
+                                    <button
+                                        type="button"
+                                        @click="removeRow(index)"
+                                        :disabled="rows.length <= 1"
+                                        class="text-red-500 hover:text-red-700 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                                        title="Remove line"
+                                    >
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
                                 </td>
                             </tr>
-                        @endforeach
+                        </template>
                     </tbody>
                 </table>
             </div>
 
-            <x-ui.input
-                name="notes"
-                label="Notes"
-                :value="old('notes', $order->notes)"
-            />
-
-            <div class="flex gap-3">
-                <x-ui.button type="submit" variant="primary">
-                    Save Changes
-                </x-ui.button>
-
-                <x-ui.button
+            <div class="mt-4 flex items-center justify-between">
+                <button
                     type="button"
-                    variant="secondary"
-                    :href="route('orders.show', $order)"
+                    @click="addRow()"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm"
                 >
-                    Cancel
-                </x-ui.button>
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Product Line
+                </button>
+
+                <div class="text-right space-y-1">
+                    <div class="text-xs text-gray-500">Estimated Total (excl. final tax &amp; scheme)</div>
+                    <div class="text-lg font-bold text-gray-900">
+                        ₹<span x-text="formatMoney(Math.max(0, grandTotal - discountAmount))"></span>
+                    </div>
+                </div>
             </div>
-        </form>
-    </x-ui.card>
+        </x-ui.card>
+
+        {{-- Notes & Actions --}}
+        <x-ui.card>
+            <div class="space-y-4">
+                <div>
+                    <label for="notes" class="block text-sm font-medium text-slate-700 mb-1">
+                        Notes
+                    </label>
+                    <textarea
+                        id="notes"
+                        name="notes"
+                        rows="3"
+                        placeholder="Add any internal order notes..."
+                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    >{{ old('notes', $order->notes) }}</textarea>
+                </div>
+
+                <div class="flex items-center gap-3 pt-2">
+                    <x-ui.button type="submit" variant="primary">
+                        Save Changes
+                    </x-ui.button>
+
+                    <x-ui.button
+                        type="button"
+                        variant="secondary"
+                        :href="route('orders.show', $order)"
+                    >
+                        Cancel
+                    </x-ui.button>
+                </div>
+            </div>
+        </x-ui.card>
+    </form>
+</div>
+
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('orderEditor', () => ({
+        customerId: @json(old('customer_id', $order->customer_id)),
+        products: {{ Illuminate\Support\Js::from(
+            $products->map(fn ($product) => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'sku' => $product->sku,
+                'base_uom_name' => $product->baseUom?->name,
+            ])->values()
+        ) }},
+        discountType: 'flat',
+        discountValue: @json(old('discount_value', (float)$order->discount_amount)),
+        discountAmount: @json(old('discount_amount', (float)$order->discount_amount)),
+        rows: [],
+        submitting: false,
+        nextKey: 1,
+        partyAddresses: [],
+        addressesLoading: false,
+        selectedBillingId: @json(old('billing_address_id', $order->billing_address_id ?? '')),
+        selectedShippingId: @json(old('shipping_address_id', $order->shipping_address_id ?? '')),
+        sameAsBilling: @json(empty($order->shipping_address_id) || $order->billing_address_id == $order->shipping_address_id),
+        billingSnapshot: @json(old('billing_address', $order->billing_address ?? '')),
+        shippingSnapshot: @json(old('shipping_address', $order->shipping_address ?? '')),
+
+        async init() {
+            if (this.customerId) {
+                await this.fetchCustomerAddresses();
+            }
+
+            const initialItems = @json($initialItems);
+            if (initialItems.length > 0) {
+                for (const item of initialItems) {
+                    const row = this.emptyRow();
+                    row.productId = item.product_id || '';
+                    row.productLabel = item.product_name
+                        ? `${item.product_name}${item.product_sku ? ' (' + item.product_sku + ')' : ''}`
+                        : '';
+                    row.selectedProductLabel = row.productLabel;
+                    row.uomId = String(item.uom_id || '');
+                    row.quantity = item.quantity || 1;
+                    row.unitPrice = item.unit_price ? Number(item.unit_price).toFixed(2) : '';
+                    row.lineTotal = item.line_total ? Number(item.line_total) : (Number(row.quantity) * Number(row.unitPrice || 0));
+                    this.rows.push(row);
+                    if (row.productId) {
+                        this.loadUoms(row, row.uomId);
+                    }
+                }
+            } else {
+                this.rows.push(this.emptyRow());
+            }
+
+            window.addEventListener('scroll', () => {
+                this.rows.forEach(row => {
+                    if (!row.productResultsOpen) return;
+                    const input = document.querySelector('.product-search:focus');
+                    if (input) this.positionProductDropdown(row, input);
+                });
+            }, true);
+
+            window.addEventListener('resize', () => {
+                this.rows.forEach(row => {
+                    if (!row.productResultsOpen) return;
+                    const input = document.querySelector('.product-search:focus');
+                    if (input) this.positionProductDropdown(row, input);
+                });
+            });
+        },
+
+        emptyRow() {
+            return {
+                key: this.nextKey++,
+                productId: '',
+                productLabel: '',
+                selectedProductLabel: '',
+                productResults: [],
+                productResultsOpen: false,
+                productDropdownTop: 0,
+                productDropdownLeft: 0,
+                productDropdownWidth: 0,
+                uomId: '',
+                uoms: [],
+                quantity: 1,
+                unitPrice: '',
+                lineTotal: 0,
+                priceLoading: false,
+                priceTimer: null,
+            };
+        },
+
+        customerChanged() {
+            this.fetchCustomerAddresses();
+            this.rows.forEach(row => {
+                if (row.productId && row.uomId && Number(row.quantity) > 0) {
+                    this.resolvePrice(row);
+                }
+            });
+        },
+
+        async fetchCustomerAddresses() {
+            if (!this.customerId) {
+                this.partyAddresses = [];
+                this.billingSnapshot = '';
+                this.shippingSnapshot = '';
+                return;
+            }
+            this.addressesLoading = true;
+            try {
+                const res = await fetch(`{{ url('/masters/customers') }}/${this.customerId}/addresses`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    this.partyAddresses = data.addresses || [];
+                    if (!this.selectedBillingId) {
+                        this.selectedBillingId = data.default_billing_id || (this.partyAddresses[0]?.id ?? '');
+                    }
+                    if (!this.selectedShippingId) {
+                        this.selectedShippingId = data.default_delivery_id || this.selectedBillingId;
+                    }
+                    if (!this.billingSnapshot) {
+                        this.onBillingAddressChange();
+                    }
+                    if (!this.shippingSnapshot) {
+                        if (this.sameAsBilling) {
+                            this.shippingSnapshot = this.billingSnapshot;
+                        } else {
+                            this.onShippingAddressChange();
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load party addresses:', e);
+            } finally {
+                this.addressesLoading = false;
+            }
+        },
+
+        onBillingAddressChange() {
+            const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedBillingId));
+            if (addr) {
+                this.billingSnapshot = addr.snapshot || addr.full_address;
+            }
+            if (this.sameAsBilling) {
+                this.selectedShippingId = this.selectedBillingId;
+                this.shippingSnapshot = this.billingSnapshot;
+            }
+        },
+
+        onShippingAddressChange() {
+            const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedShippingId));
+            if (addr) {
+                this.shippingSnapshot = addr.snapshot || addr.full_address;
+            }
+        },
+
+        onSameAsBillingToggle() {
+            if (this.sameAsBilling) {
+                this.selectedShippingId = this.selectedBillingId;
+                this.shippingSnapshot = this.billingSnapshot;
+            } else {
+                this.onShippingAddressChange();
+            }
+        },
+
+        addRow() {
+            this.rows.push(this.emptyRow());
+            this.$nextTick(() => {
+                const inputs = document.querySelectorAll('.product-search');
+                const lastInput = inputs[inputs.length - 1];
+                lastInput?.focus();
+            });
+        },
+
+        removeRow(index) {
+            if (this.rows.length <= 1) return;
+            this.rows.splice(index, 1);
+            this.discountChanged();
+        },
+
+        openProductDropdown(row, input = null) {
+            row.productResults = [...this.products];
+            row.productResultsOpen = true;
+            this.$nextTick(() => {
+                this.positionProductDropdown(row, input);
+            });
+        },
+
+        positionProductDropdown(row, input = null) {
+            if (!input) {
+                input = this.$root.querySelector('.product-search:focus');
+            }
+            if (!input) return;
+            const rect = input.getBoundingClientRect();
+            row.productDropdownTop = rect.bottom + 4;
+            row.productDropdownLeft = rect.left;
+            row.productDropdownWidth = rect.width;
+        },
+
+        toggleProductDropdown(row, event) {
+            if (row.productResultsOpen) {
+                row.productResultsOpen = false;
+                return;
+            }
+            this.openProductDropdown(row, event?.currentTarget?.closest('td')?.querySelector('.product-search'));
+        },
+
+        closeProductDropdowns(event) {
+            const clickedProductInput = event.target.closest('.product-search');
+            const clickedProductDropdown = event.target.closest('.product-dropdown');
+            const clickedProductArrow = event.target.closest('.product-dropdown-arrow');
+            if (clickedProductInput || clickedProductDropdown || clickedProductArrow) return;
+            this.rows.forEach(row => { row.productResultsOpen = false; });
+        },
+
+        async searchProducts(row, term) {
+            term = String(term || '').trim().toLowerCase();
+            if (row.productId && row.productLabel !== row.selectedProductLabel) {
+                row.productId = '';
+                row.uomId = '';
+                row.uoms = [];
+                row.unitPrice = '';
+                row.lineTotal = 0;
+            }
+            if (term === '') {
+                row.productResults = [...this.products];
+            } else {
+                row.productResults = this.products.filter(product => {
+                    const name = String(product.name || '').toLowerCase();
+                    const sku = String(product.sku || '').toLowerCase();
+                    return name.includes(term) || sku.includes(term);
+                });
+            }
+            row.productResultsOpen = true;
+        },
+
+        async selectProduct(row, product) {
+            row.productId = product.id;
+            row.productLabel = product.label || `${product.name}${product.sku ? ' (' + product.sku + ')' : ''}`;
+            row.selectedProductLabel = row.productLabel;
+            row.productResultsOpen = false;
+            row.productResults = [];
+            row.uomId = '';
+            row.unitPrice = '';
+            row.lineTotal = 0;
+            row.uoms = [];
+            await this.loadUoms(row);
+        },
+
+        async loadUoms(row, preservedUomId = null) {
+            if (!row.productId) {
+                row.uoms = [];
+                row.uomId = '';
+                return;
+            }
+            try {
+                const url = @json(route('orders.search.uoms')) + '?product_id=' + encodeURIComponent(row.productId);
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                });
+                if (!response.ok) throw new Error('UOM lookup failed.');
+                row.uoms = await response.json();
+                if (preservedUomId) {
+                    row.uomId = String(preservedUomId);
+                } else if (row.uoms.length === 1) {
+                    row.uomId = String(row.uoms[0].id);
+                    await this.resolvePrice(row);
+                }
+            } catch (error) {
+                console.error(error);
+                row.uoms = [];
+                row.uomId = '';
+            }
+        },
+
+        quantityChanged(row) {
+            this.updateTotal(row);
+            clearTimeout(row.priceTimer);
+            row.priceTimer = setTimeout(() => {
+                this.resolvePrice(row);
+            }, 250);
+        },
+
+        async resolvePrice(row) {
+            this.updateTotal(row);
+            if (!this.customerId || !row.productId || !row.uomId || Number(row.quantity) <= 0) {
+                return;
+            }
+            row.priceLoading = true;
+            try {
+                const params = new URLSearchParams({
+                    customer_id: this.customerId,
+                    product_id: row.productId,
+                    uom_id: row.uomId,
+                    quantity: row.quantity,
+                });
+                const response = await fetch(@json(route('orders.resolve-price')) + '?' + params.toString(), {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || 'Price lookup failed.');
+                if (data.found) {
+                    row.unitPrice = Number(data.unit_price).toFixed(2);
+                }
+                this.updateTotal(row);
+            } catch (error) {
+                console.error(error);
+            } finally {
+                row.priceLoading = false;
+            }
+        },
+
+        discountChanged() {
+            let value = Number(this.discountValue || 0);
+            if (!Number.isFinite(value) || value < 0) value = 0;
+            if (this.discountType === 'percent') {
+                if (value > 100) { value = 100; this.discountValue = 100; }
+                const subtotal = this.rows.reduce((total, row) => total + Number(row.lineTotal || 0), 0);
+                this.discountAmount = Math.round(subtotal * value / 100 * 100) / 100;
+                return;
+            }
+            this.discountAmount = Math.round(value * 100) / 100;
+        },
+
+        updateTotal(row) {
+            const quantity = Number(row.quantity || 0);
+            const unitPrice = Number(row.unitPrice || 0);
+            row.lineTotal = Number.isFinite(quantity) && Number.isFinite(unitPrice) ? quantity * unitPrice : 0;
+            this.discountChanged();
+        },
+
+        get grandTotal() {
+            return this.rows.reduce((total, row) => total + Number(row.lineTotal || 0), 0);
+        },
+
+        formatMoney(value) {
+            return Number(value || 0).toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+        },
+
+        handleShortcut(event) {
+            const tag = document.activeElement?.tagName;
+            const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag);
+            if (event.ctrlKey && event.key === 'Enter') {
+                event.preventDefault();
+                document.querySelector('form')?.requestSubmit();
+                return;
+            }
+            if (event.key.toLowerCase() === 'a' && !typing) {
+                event.preventDefault();
+                this.addRow();
+            }
+        },
+
+        beforeSubmit(event) {
+            this.discountChanged();
+            if (this.submitting) {
+                event.preventDefault();
+                return;
+            }
+            if (!this.customerId) {
+                event.preventDefault();
+                alert('Please select a customer.');
+                return;
+            }
+            if (this.rows.length === 0) {
+                event.preventDefault();
+                alert('Please add at least one product.');
+                return;
+            }
+            const hasEmptyLine = this.rows.some(row => !row.productId || !row.uomId || Number(row.quantity) <= 0);
+            if (hasEmptyLine) {
+                event.preventDefault();
+                alert('Please complete every product line.');
+                return;
+            }
+            this.submitting = true;
+        }
+    }));
+});
+</script>
+@endpush

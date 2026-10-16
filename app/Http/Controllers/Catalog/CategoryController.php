@@ -7,14 +7,8 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Master\Models\Product;
 use App\Http\Controllers\Controller;
-<<<<<<< HEAD
-use App\Support\CodeGenerator;
-use App\Support\Traits\SortableAndSearchable;
-use Illuminate\Database\QueryException;
-=======
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
->>>>>>> aa321ea5d5d641e2b160405edaf720832da9a01f
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -133,11 +127,6 @@ class CategoryController extends Controller
 
     public function destroy(Request $request, Category $category): RedirectResponse|JsonResponse
     {
-<<<<<<< HEAD
-        $category->delete();
-
-        return $this->flashSuccess('Category deleted successfully.', 'masters.categories.index');
-=======
         $user = $request->user();
 
         // Enforce existing authentication and authorization rules
@@ -233,7 +222,6 @@ class CategoryController extends Controller
 
             return $this->flashError('Failed to delete category: ' . $e->getMessage(), 'masters.categories.index');
         }
->>>>>>> aa321ea5d5d641e2b160405edaf720832da9a01f
     }
 
     protected function validated(Request $request, ?Category $category = null): array

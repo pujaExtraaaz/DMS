@@ -2,13 +2,14 @@
 
 namespace App\Domains\Organization\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Warehouse extends Model
 {
-    use SoftDeletes;
+    use HasUppercaseNames, SoftDeletes;
 
     protected $fillable = [
         'company_id',

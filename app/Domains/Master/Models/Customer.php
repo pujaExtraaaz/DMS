@@ -5,6 +5,7 @@ namespace App\Domains\Master\Models;
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Models\User;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Customer extends Model
 {
-    use SoftDeletes;
+    use HasUppercaseNames, SoftDeletes;
 
     protected $fillable = [
         'company_id',
@@ -36,6 +37,7 @@ class Customer extends Model
         'credit_status',
         'credit_period_basis',
         'interest_rate',
+        'shipping_name',
         'is_active',
     ];
 

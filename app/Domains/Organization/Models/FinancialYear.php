@@ -2,11 +2,14 @@
 
 namespace App\Domains\Organization\Models;
 
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FinancialYear extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'company_id',
         'name',

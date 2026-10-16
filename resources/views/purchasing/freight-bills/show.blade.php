@@ -4,6 +4,9 @@
 <x-ui.page-header :title="$freightBill->freight_no">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('purchasing.freight-bills.index')">Back</x-ui.button>
+        @if($freightBill->status !== 'allocated')
+            <x-ui.button variant="primary" :href="route('purchasing.freight-bills.edit', $freightBill)">Edit</x-ui.button>
+        @endif
     </x-slot>
 </x-ui.page-header>
 <div class="grid grid-cols-1 md:grid-cols-4 gap-4">

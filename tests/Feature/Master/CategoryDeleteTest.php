@@ -56,7 +56,7 @@ class CategoryDeleteTest extends TestCase
         $response = $this->actingAs($this->adminUser)->get(route('masters.categories.index'));
 
         $response->assertStatus(200);
-        $response->assertSee('Headphones');
+        $response->assertSee('HEADPHONES');
         $response->assertSee('data-delete-category="' . $category->id . '"', false);
         $response->assertSee('Delete Category');
         $response->assertSee('Confirm Delete');
@@ -78,7 +78,7 @@ class CategoryDeleteTest extends TestCase
         $response->assertStatus(200);
         $response->assertJson([
             'success' => true,
-            'message' => "Category 'Standalone Category' deleted successfully.",
+            'message' => "Category 'STANDALONE CATEGORY' deleted successfully.",
             'archived' => false,
         ]);
 
@@ -280,22 +280,22 @@ class CategoryDeleteTest extends TestCase
         $searchResponse = $this->actingAs($this->adminUser)
             ->get(route('masters.categories.index', ['search' => 'Smart']));
         $searchResponse->assertStatus(200);
-        $searchResponse->assertSee('Smart Home');
-        $searchResponse->assertDontSee('Legacy Cables');
+        $searchResponse->assertSee('SMART HOME');
+        $searchResponse->assertDontSee('LEGACY CABLES');
 
         // Status filter: active
         $activeResponse = $this->actingAs($this->adminUser)
             ->get(route('masters.categories.index', ['status' => 'active']));
         $activeResponse->assertStatus(200);
-        $activeResponse->assertSee('Smart Home');
-        $activeResponse->assertDontSee('Legacy Cables');
+        $activeResponse->assertSee('SMART HOME');
+        $activeResponse->assertDontSee('LEGACY CABLES');
 
         // Status filter: inactive
         $inactiveResponse = $this->actingAs($this->adminUser)
             ->get(route('masters.categories.index', ['status' => 'inactive']));
         $inactiveResponse->assertStatus(200);
-        $inactiveResponse->assertDontSee('Smart Home');
-        $inactiveResponse->assertSee('Legacy Cables');
+        $inactiveResponse->assertDontSee('SMART HOME');
+        $inactiveResponse->assertSee('LEGACY CABLES');
     }
 }
 

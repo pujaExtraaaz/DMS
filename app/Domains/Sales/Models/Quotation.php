@@ -5,12 +5,15 @@ namespace App\Domains\Sales\Models;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Order\Models\Order;
 use App\Models\User;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Quotation extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'quotation_no',
         'customer_id',

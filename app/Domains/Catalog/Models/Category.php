@@ -3,13 +3,15 @@
 namespace App\Domains\Catalog\Models;
 
 use App\Domains\Master\Models\Product;
-use App\Support\CodeGenerator;
+use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Category extends Model
 {
+    use HasUppercaseNames;
+
     protected $fillable = [
         'brand_id',
         'name',
