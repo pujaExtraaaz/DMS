@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Catalog;
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
 use App\Http\Controllers\Controller;
+use App\Support\CodeGenerator;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 use App\Support\Traits\SortableAndSearchable;
@@ -55,12 +58,52 @@ class CategoryController extends Controller
         return view('masters.categories.form', [
             'item' => new Category,
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'previewCode' => CodeGenerator::forCategory(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        Category::create($this->validated($request));
+        $data = $this->validated($request);
+
+        $maxAttempts = 5;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                DB::transaction(function () use ($data) {
+                    $payload = $data;
+                    $payload['code'] = CodeGenerator::forCategory();
+
+                    return Category::create($payload);
+                });
+                break;
+            } catch (QueryException $e) {
+                $isDuplicate = isset($e->errorInfo[1]) && $e->errorInfo[1] === 1062;
+                $message = $e->getMessage();
+
+                $isCodeDuplicate = $isDuplicate && (
+                    str_contains($message, 'categories_code_unique') ||
+                    str_contains($message, 'categories.code') ||
+                    str_contains($message, "for key 'code'")
+                );
+
+                if ($isCodeDuplicate) {
+                    if ($attempt < $maxAttempts) {
+                        usleep(random_int(10000, 30000));
+                        continue;
+                    }
+
+                    return back()->withInput()->withErrors(['code' => 'Unable to generate a unique category code due to concurrent requests. Please try again.']);
+                }
+
+                if ($isDuplicate) {
+                    return back()->withInput()->withErrors(['name' => 'Category with this name or code already exists.']);
+                }
+
+                throw $e;
+            }
+        }
+
         return $this->flashSuccess('Category created successfully.', 'masters.categories.index');
     }
 
@@ -74,7 +117,11 @@ class CategoryController extends Controller
 
     public function update(Request $request, Category $category): RedirectResponse
     {
-        $category->update($this->validated($request, $category));
+        $data = $this->validated($request, $category);
+        $data['code'] = $category->code;
+
+        $category->update($data);
+
         return $this->flashSuccess('Category updated successfully.', 'masters.categories.index');
     }
 
@@ -86,13 +133,25 @@ class CategoryController extends Controller
 
     protected function validated(Request $request, ?Category $category = null): array
     {
-        $data = $request->validate([
+        $rules = [
             'brand_id' => 'nullable|exists:brands,id',
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:30|unique:categories,code'.($category ? ','.$category->id : ''),
             'is_active' => 'boolean',
-        ]);
+        ];
+
+        if ($category) {
+            $rules['code'] = 'nullable|string|max:30|unique:categories,code,'.$category->id;
+        }
+
+        $data = $request->validate($rules);
         $data['is_active'] = $request->boolean('is_active');
+
+        if ($category) {
+            $data['code'] = $category->code;
+        } else {
+            unset($data['code']);
+        }
+
         return $data;
     }
 }

@@ -5,7 +5,24 @@
 <x-ui.card><form method="POST" action="{{ $item->exists ? route('masters.categories.update', $item) : route('masters.categories.store') }}" class="space-y-4 max-w-xl">@csrf @if($item->exists) @method('PUT') @endif
 <x-ui.select name="brand_id" label="Brand" placeholder="Select"><option value=""></option>@foreach($brands as $b)<option value="{{ $b->id }}" @selected(old('brand_id', $item->brand_id)==$b->id)>{{ $b->name }}</option>@endforeach</x-ui.select>
 <x-ui.input name="name" label="Name" :value="old('name', $item->name)" required />
-<x-ui.input name="code" label="Code" :value="old('code', $item->code)" required />
+@if($item->exists)
+    <x-ui.input name="code" label="Code" :value="old('code', $item->code)" readonly title="Code is auto generated" class="cursor-help" />
+@else
+    <div class="space-y-1">
+        <label for="code" class="block text-sm font-medium text-gray-700">Code</label>
+        <input
+            id="code"
+            type="text"
+            value="{{ $previewCode }}"
+            readonly
+            title="Code is auto generated"
+            class="block w-full cursor-help rounded-lg border-gray-300 bg-gray-50 text-gray-500 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+    </div>
+    @error('code')
+        <p class="text-xs text-red-600 -mt-2">{{ $message }}</p>
+    @enderror
+@endif
 <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600"> Active</label>
 <x-ui.button type="submit" variant="primary">Save</x-ui.button></form></x-ui.card>
 @endsection
