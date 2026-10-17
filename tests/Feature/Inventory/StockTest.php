@@ -96,13 +96,13 @@ class StockTest extends TestCase
         $response = $this->actingAs($this->user)->get(route('inventory.stock.index'));
 
         $response->assertStatus(200);
-        $response->assertSee('Solar Inverter 5kVA');
+        $response->assertSee('SOLAR INVERTER 5KVA');
         $response->assertSee('INV-5000');
         $response->assertSee('SN: SN-INV-99');
-        $response->assertSee('Apex Brand');
-        $response->assertSee('Electronics');
+        $response->assertSee('APEX BRAND');
+        $response->assertSee('ELECTRONICS');
         $response->assertSee('Midnight Blue');
-        $response->assertSee('Main Warehouse');
+        $response->assertSee('MAIN WAREHOUSE');
         $response->assertSee('PCS');
         $response->assertSee('25.00');
         $response->assertSee('In Stock');
@@ -145,7 +145,7 @@ class StockTest extends TestCase
         $response->assertStatus(200);
         $stockLevels = $response->viewData('stockLevels');
         $this->assertCount(1, $stockLevels);
-        $this->assertEquals('Low Stock Product', $stockLevels->first()->product->name);
+        $this->assertEquals('LOW STOCK PRODUCT', $stockLevels->first()->product->name);
         $response->assertSee('Low Stock');
     }
 
@@ -188,15 +188,16 @@ class StockTest extends TestCase
         $response->assertStatus(200);
         $brandLevels = $response->viewData('stockLevels');
         $this->assertCount(1, $brandLevels);
-        $this->assertEquals('Alpha Device', $brandLevels->first()->product->name);
+        $this->assertEquals('ALPHA DEVICE', $brandLevels->first()->product->name);
 
         // Filter by search
         $searchResponse = $this->actingAs($this->user)->get(route('inventory.stock.index', ['search' => 'Sensor']));
         $searchResponse->assertStatus(200);
         $searchLevels = $searchResponse->viewData('stockLevels');
         $this->assertCount(1, $searchLevels);
-        $this->assertEquals('Beta Sensor', $searchLevels->first()->product->name);
+        $this->assertEquals('BETA SENSOR', $searchLevels->first()->product->name);
     }
+
 
     public function test_stock_page_displays_recent_movements(): void
     {
@@ -222,7 +223,7 @@ class StockTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('Recent Stock Movements');
-        $response->assertSee('Movement Test Product');
+        $response->assertSee('MOVEMENT TEST PRODUCT');
         $response->assertSee('purchase');
         $response->assertSee('100.00');
     }
@@ -261,18 +262,18 @@ class StockTest extends TestCase
         $ascResponse = $this->actingAs($this->user)->get(route('inventory.stock.index', ['sort' => 'product', 'direction' => 'asc']));
         $ascResponse->assertStatus(200);
         $ascLevels = $ascResponse->viewData('stockLevels');
-        $this->assertEquals('Apple Cable', $ascLevels->first()->product->name);
+        $this->assertEquals('APPLE CABLE', $ascLevels->first()->product->name);
 
         // Descending by product name
         $descResponse = $this->actingAs($this->user)->get(route('inventory.stock.index', ['sort' => 'product', 'direction' => 'desc']));
         $descResponse->assertStatus(200);
         $descLevels = $descResponse->viewData('stockLevels');
-        $this->assertEquals('Zebra Scanner', $descLevels->first()->product->name);
+        $this->assertEquals('ZEBRA SCANNER', $descLevels->first()->product->name);
 
         // Sorting by quantity
         $qtyResponse = $this->actingAs($this->user)->get(route('inventory.stock.index', ['sort' => 'quantity', 'direction' => 'desc']));
         $qtyResponse->assertStatus(200);
         $qtyLevels = $qtyResponse->viewData('stockLevels');
-        $this->assertEquals('Zebra Scanner', $qtyLevels->first()->product->name);
+        $this->assertEquals('ZEBRA SCANNER', $qtyLevels->first()->product->name);
     }
 }

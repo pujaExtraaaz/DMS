@@ -38,9 +38,9 @@ class UomConversionService
         return $this->fromBaseQuantity($product, $baseQuantity, $toUom);
     }
 
-    protected function getConversionFactor(Product $product, Uom $uom): float
+    public function getConversionFactor(Product $product, Uom $uom): float
     {
-        if ($product->base_uom_id === $uom->id) {
+        if ((int) $product->base_uom_id === (int) $uom->id) {
             return 1.0;
         }
 
@@ -49,8 +49,12 @@ class UomConversionService
             ->where('uom_id', $uom->id)
             ->first();
 
-        if ($productUom) {
+        if ($productUom && (float) $productUom->conversion_factor > 0) {
             return (float) $productUom->conversion_factor;
+        }
+
+        if ((int) ($product->alternate_uom_id ?? 0) === (int) $uom->id && (float) ($product->conversion_factor ?? 0) > 0) {
+            return (float) $product->conversion_factor;
         }
 
         // Standard metric fallback conversions

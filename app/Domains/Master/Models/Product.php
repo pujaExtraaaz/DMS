@@ -7,6 +7,7 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Organization\Models\Company;
+use App\Support\TitleCase;
 use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -31,16 +32,32 @@ class Product extends Model
         'model',
         'models',
         'product_type',
+        'product_type_id',
         'serial_no',
         'hsn_code',
         'description',
         'specification',
+        'warranty',
+        'height_cm',
+        'length_cm',
+        'width_cm',
+        'height_in',
+        'length_in',
+        'width_in',
+        'net_weight',
+        'weight_unit',
         'base_uom_id',
+        'alternate_uom_id',
+        'conversion_factor',
         'tax_rate',
         'selling_price',
         'trade_price',
         'purchase_price',
         'calculation_mrp',
+        'alt_purchase_price',
+        'alt_trade_price',
+        'alt_selling_price',
+        'alt_calculation_mrp',
         'mrp_calculation_rules',
         'discount_percent',
         'discount_type',
@@ -70,11 +87,23 @@ class Product extends Model
     protected function casts(): array
     {
         return [
+            'height_cm' => 'decimal:2',
+            'length_cm' => 'decimal:2',
+            'width_cm' => 'decimal:2',
+            'height_in' => 'decimal:2',
+            'length_in' => 'decimal:2',
+            'width_in' => 'decimal:2',
+            'net_weight' => 'decimal:3',
+            'conversion_factor' => 'decimal:4',
             'tax_rate' => 'decimal:2',
             'selling_price' => 'decimal:2',
             'trade_price' => 'decimal:2',
             'purchase_price' => 'decimal:2',
             'calculation_mrp' => 'decimal:2',
+            'alt_purchase_price' => 'decimal:2',
+            'alt_trade_price' => 'decimal:2',
+            'alt_selling_price' => 'decimal:2',
+            'alt_calculation_mrp' => 'decimal:2',
             'mrp_calculation_rules' => 'array',
             'discount_percent' => 'decimal:2',
             'discount_value' => 'decimal:2',
@@ -87,14 +116,13 @@ class Product extends Model
     }
 
     /**
-     * Standardize product name so the first character is always uppercase,
-     * preserving all internal casing, numbers, and punctuation.
+     * Standardize product name to Title Case formatting.
      */
     protected function name(): Attribute
     {
         return Attribute::make(
-            get: fn (?string $value) => $value !== null ? Str::ucfirst(trim($value)) : null,
-            set: fn (?string $value) => $value !== null ? Str::ucfirst(trim($value)) : null,
+            get: fn (?string $value) => $value !== null ? TitleCase::format(trim($value)) : null,
+            set: fn (?string $value) => $value !== null ? TitleCase::format(trim($value)) : null,
         );
     }
 
@@ -109,6 +137,46 @@ class Product extends Model
     public function setModelsAttribute(?string $value): void
     {
         $this->attributes['model'] = $value;
+    }
+
+    public function getHeightInAttribute($value): ?float
+    {
+        if ($value !== null && $value !== '') {
+            return (float) $value;
+        }
+        return $this->height_cm ? round((float) $this->height_cm / 2.54, 2) : null;
+    }
+
+    public function getLengthInAttribute($value): ?float
+    {
+        if ($value !== null && $value !== '') {
+            return (float) $value;
+        }
+        return $this->length_cm ? round((float) $this->length_cm / 2.54, 2) : null;
+    }
+
+    public function getWidthInAttribute($value): ?float
+    {
+        if ($value !== null && $value !== '') {
+            return (float) $value;
+        }
+        return $this->width_cm ? round((float) $this->width_cm / 2.54, 2) : null;
+    }
+
+    public function getFormattedDimensionsCmAttribute(): string
+    {
+        if ($this->length_cm && $this->width_cm && $this->height_cm) {
+            return "{$this->length_cm} × {$this->width_cm} × {$this->height_cm} CM";
+        }
+        return '—';
+    }
+
+    public function getFormattedDimensionsInAttribute(): string
+    {
+        if ($this->length_in && $this->width_in && $this->height_in) {
+            return "{$this->length_in} × {$this->width_in} × {$this->height_in} in";
+        }
+        return '—';
     }
 
     /**
@@ -147,9 +215,19 @@ class Product extends Model
         return $this->belongsTo(SubCategory::class);
     }
 
+    public function productType(): BelongsTo
+    {
+        return $this->belongsTo(ProductType::class, 'product_type_id');
+    }
+
     public function baseUom(): BelongsTo
     {
         return $this->belongsTo(Uom::class, 'base_uom_id');
+    }
+
+    public function alternateUom(): BelongsTo
+    {
+        return $this->belongsTo(Uom::class, 'alternate_uom_id');
     }
 
     public function productUoms(): HasMany

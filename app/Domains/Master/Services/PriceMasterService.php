@@ -5,6 +5,7 @@ namespace App\Domains\Master\Services;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\PriceMaster;
 use App\Domains\Master\Models\Product;
+use App\Domains\Master\Models\ProductUom;
 use App\Domains\Master\Models\Uom;
 
 class PriceMasterService
@@ -29,6 +30,20 @@ class PriceMasterService
 
         if ($price && $price->rate > 0) {
             return (string) number_format((float) $price->rate, 2, '.', '');
+        }
+
+        // 2. Direct match on ProductUom or Product alternate selling price
+        $productUom = ProductUom::query()
+            ->where('product_id', $product->id)
+            ->where('uom_id', $uom->id)
+            ->first();
+
+        if ($productUom && (float) $productUom->selling_price > 0) {
+            return (string) number_format((float) $productUom->selling_price, 2, '.', '');
+        }
+
+        if ((int) ($product->alternate_uom_id ?? 0) === (int) $uom->id && (float) ($product->alt_selling_price ?? 0) > 0) {
+            return (string) number_format((float) $product->alt_selling_price, 2, '.', '');
         }
 
         // 2. Base UOM PriceMaster match converted to target UOM

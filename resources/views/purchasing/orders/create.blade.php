@@ -464,7 +464,7 @@
                 <input type="text"
                        id="po-dropdown-search-box"
                        class="block w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 bg-white placeholder-gray-400"
-                       placeholder="Search Product By Name Or SKU..."
+                       placeholder="Search Product By Name Or Part Number..."
                        autocomplete="off"
                        oninput="handleDropdownFilter(this.value)"
                        onkeydown="handleDropdownSearchKeydown(event)">
@@ -688,7 +688,7 @@ function renderDropdownItems(items, selectedId, totalMatches) {
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div class="font-medium text-slate-700">No products found for this brand</div>
-                <div class="text-[11px] text-slate-400 mt-0.5">Try searching with a different name or SKU</div>
+                <div class="text-[11px] text-slate-400 mt-0.5">Try searching with a different name or Part Number</div>
             </div>
         `;
         highlightedIndex = -1;
@@ -705,7 +705,7 @@ function renderDropdownItems(items, selectedId, totalMatches) {
                  data-index="${index}">
                 <div class="min-w-0 pr-2">
                     <div class="font-medium text-slate-800 truncate">${escapeHtml(p.name)}</div>
-                    <div class="text-[11px] text-slate-400 mt-0.5">${p.sku ? 'SKU: ' + escapeHtml(p.sku) : 'No SKU'}</div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">${p.sku ? 'Part No: ' + escapeHtml(p.sku) : 'No Part Number'}</div>
                 </div>
                 <div class="shrink-0 text-right">
                     <span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 rounded px-1.5 py-0.5">

@@ -409,7 +409,7 @@
                 <input type="text"
                        id="po-dropdown-search-box"
                        class="block w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 bg-white placeholder-gray-400"
-                       placeholder="Search Product By Name Or SKU..."
+                       placeholder="Search Product By Name Or Part Number..."
                        autocomplete="off"
                        oninput="handleDropdownFilter(this.value)"
                        onkeydown="handleDropdownSearchKeydown(event)">
@@ -634,7 +634,7 @@ function handleDropdownFilter(query, selectedIdOverride = null) {
                  onmouseenter="highlightPoDropdownItem(${idx})">
                 <div class="min-w-0 pr-2">
                     <div class="truncate ${isSelected ? 'text-indigo-900 font-medium' : 'text-gray-900'}">${escapeHtml(p.name)}</div>
-                    ${p.sku ? `<div class="text-[10px] text-gray-400 truncate">SKU: ${escapeHtml(p.sku)}</div>` : ''}
+                    ${p.sku ? `<div class="text-[10px] text-gray-400 truncate">Part No: ${escapeHtml(p.sku)}</div>` : ''}
                 </div>
                 <div class="text-right shrink-0">
                     <span class="text-[11px] font-mono text-gray-600">₹${p.purchase_price.toFixed(2)}</span>

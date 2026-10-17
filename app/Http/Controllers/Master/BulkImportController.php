@@ -31,14 +31,14 @@ class BulkImportController extends Controller
     public function template(string $type): StreamedResponse
     {
         $columns = match ($type) {
-            'products' => ['name', 'sku', 'hsn_code', 'uom_code', 'brand', 'category', 'color_variant',
+            'products' => ['name', 'part_number', 'hsn_code', 'uom_code', 'brand', 'category',
                             'purchase_price', 'selling_price', 'trade_price', 'mrp', 'tax_rate',
                             'sender_warranty_months', 'customer_warranty_months', 'discount_percent'],
             'parties' => ['name', 'code', 'party_type', 'classification', 'area', 'route',
                           'phone', 'email', 'gstin', 'address', 'state', 'pincode',
                           'credit_limit', 'credit_days', 'interest_rate',
                           'contact_name', 'contact_phone', 'contact_email', 'contact_role'],
-            'price-master' => ['customer_type', 'sku', 'uom_code', 'rate', 'min_qty'],
+            'price-master' => ['customer_type', 'part_number', 'uom_code', 'rate', 'min_qty'],
             'leads' => ['contact_name', 'company_name', 'title', 'email', 'secondary_email',
                         'mobile', 'second_mobile_number', 'phone', 'landline',
                         'sales_person', 'tag', 'sub_category',
@@ -47,7 +47,7 @@ class BulkImportController extends Controller
         };
 
         $sample = match ($type) {
-            'products' => ['Widget X', '', '84713010', 'PCS', 'Acme', 'Widgets', 'Red', 100, 150, 130, 175, 18, 12, 24, 0],
+            'products' => ['Widget X', '', '84713010', 'PCS', 'Acme', 'Widgets', 100, 150, 130, 175, 18, 12, 24, 0],
             'parties' => ['Sample Distributor', '', 'sundry_debtors', 'Retail', 'Zone A', 'Route 1', '9999999999', 'ops@sample.co', '', '#12, MG Road', 'Karnataka', '560001', 50000, 30, 18, 'Ravi', '9999888877', 'ravi@sample.co', 'Owner'],
             'price-master' => ['Retail', 'PROD-1-00001', 'PCS', 150, 0],
             'leads' => ['Anand Verma', 'Apex Tech Solutions', 'Director', 'anand@apextech.in', 'billing@apextech.in', '9820011223', '9820099887', '022-26543210', '022-26543211', 'Admin', 'VIP', 'Electronics', 'Plot 42, MIDC, Andheri East', 'Mumbai', 'Maharashtra', '400093'],

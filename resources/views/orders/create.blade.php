@@ -526,8 +526,8 @@
                                                             <div
                                                                 class="mt-0.5 text-xs text-gray-500"
                                                                 x-text="product.sku
-                                                                    ? 'SKU: ' + product.sku
-                                                                    : 'No SKU'"
+                                                                    ? 'Part No: ' + product.sku
+                                                                    : 'No Part Number'"
                                                             ></div>
 
                                                         </div>
