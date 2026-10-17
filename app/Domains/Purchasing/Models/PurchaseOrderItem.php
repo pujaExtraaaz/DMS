@@ -20,6 +20,7 @@ class PurchaseOrderItem extends Model
         'line_total',
         'weight',
         'batch_no',
+        'serial_no',
         'cgst_percent',
         'sgst_percent',
         'cgst_amount',
