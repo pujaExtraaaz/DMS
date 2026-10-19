@@ -40,24 +40,14 @@
             installPrompt: null,
             showInstall: false,
             toggleCollapsed() {
-                // In Accounting workspace: chevron toggles the Books (second) sidebar only.
-                if (this.hasBooksAside) {
-                    this.booksAsideCollapsed = !this.booksAsideCollapsed;
-                    sessionStorage.setItem('booksAsideCollapsed', this.booksAsideCollapsed ? 'true' : 'false');
-                    return;
-                }
+                // Chevron always collapses the main DMS sidebar; Accounting Books aside stays open.
                 this.sidebarCollapsed = !this.sidebarCollapsed;
                 localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
             },
             init() {
-                // Books aside defaults open when entering Accounting workspace.
-                // Only honour a prior collapse if the user toggled it this session (sessionStorage).
-                if (this.hasBooksAside) {
-                    this.booksAsideCollapsed = sessionStorage.getItem('booksAsideCollapsed') === 'true';
-                } else {
-                    this.booksAsideCollapsed = false;
-                    sessionStorage.removeItem('booksAsideCollapsed');
-                }
+                // Keep Accounting Books column visible whenever the workspace is active.
+                this.booksAsideCollapsed = false;
+                sessionStorage.removeItem('booksAsideCollapsed');
                 window.addEventListener('beforeinstallprompt', (e) => {
                     e.preventDefault();
                     this.installPrompt = e;
@@ -103,7 +93,7 @@
                             <span class="sr-only">Toggle sidebar</span>
                             <svg
                                 class="h-5 w-5 transition-transform duration-300"
-                                :class="(hasBooksAside ? booksAsideCollapsed : sidebarCollapsed) ? 'rotate-180' : ''"
+                                :class="sidebarCollapsed ? 'rotate-180' : ''"
                                 fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
                             >
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
