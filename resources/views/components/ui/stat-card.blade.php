@@ -34,7 +34,7 @@
 @endphp
 
 <div {{ $attributes->merge([
-    'class' => 'relative w-full min-w-0 h-[170px] rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200'
+    'class' => 'relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200'
 ]) }}>
 
     {{-- Header --}}
@@ -56,9 +56,9 @@
 
     </div>
 
-    {{-- Main KPI value --}}
-    <div class="mt-3 min-w-0">
-        <p class="min-w-0 truncate text-3xl font-bold leading-none tracking-tight text-slate-900 sm:text-4xl">
+    {{-- Main KPI value — smaller type so large amounts (e.g. stock value) stay fully visible --}}
+    <div class="mt-3 min-w-0 flex-1">
+        <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl">
             {{ $value }}
         </p>
     </div>

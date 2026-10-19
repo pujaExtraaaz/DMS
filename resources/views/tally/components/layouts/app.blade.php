@@ -28,17 +28,36 @@
     <div
         x-data="{
             sidebarOpen: false,
-            sidebarCollapsed: localStorage.getItem('dmsSidebarCollapsed') === 'true',
+            sidebarCollapsed: (function () {
+                if ({{ books_show_aside() ? 'true' : 'false' }}) {
+                    const booksMain = sessionStorage.getItem('booksMainSidebarCollapsed');
+                    return booksMain === null ? true : booksMain === 'true';
+                }
+                return localStorage.getItem('dmsSidebarCollapsed') === 'true';
+            })(),
             booksAsideCollapsed: false,
             hasBooksAside: {{ books_show_aside() ? 'true' : 'false' }},
             toggleCollapsed() {
-                // Chevron always collapses the main DMS sidebar; Accounting Books aside stays open.
+                // Chevron toggles the main DMS sidebar; Accounting Books aside stays open.
                 this.sidebarCollapsed = !this.sidebarCollapsed;
-                localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
+                if (this.hasBooksAside) {
+                    sessionStorage.setItem('booksMainSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
+                } else {
+                    localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
+                }
             },
             init() {
                 this.booksAsideCollapsed = false;
                 sessionStorage.removeItem('booksAsideCollapsed');
+
+                if (this.hasBooksAside) {
+                    // Entering Accounting (Books): main sidebar starts collapsed; > still expands it.
+                    const booksMain = sessionStorage.getItem('booksMainSidebarCollapsed');
+                    this.sidebarCollapsed = booksMain === null ? true : booksMain === 'true';
+                } else {
+                    sessionStorage.removeItem('booksMainSidebarCollapsed');
+                    this.sidebarCollapsed = localStorage.getItem('dmsSidebarCollapsed') === 'true';
+                }
             }
         }"
         class="flex h-[100dvh] w-full overflow-hidden"
