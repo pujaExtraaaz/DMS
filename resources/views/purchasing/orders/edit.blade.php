@@ -132,6 +132,7 @@
     <th class="px-3 py-2 text-left w-44">Brand</th>
     <th class="px-3 py-2 text-left min-w-[250px]">Product</th>
     <th class="px-3 py-2 text-left">Batch Name</th>
+    <th class="px-3 py-2 text-left">Serial No</th>
     <th class="px-3 py-2 text-left">UOM</th>
     <th class="px-3 py-2 text-left">Qty</th>
     <th class="px-3 py-2 text-left">Unit Cost</th>
@@ -150,6 +151,7 @@
                     'product_id' => $it->product_id,
                     'batch_no' => $it->batch_no,
                     'batch_name' => $it->batch_no,
+                    'serial_no' => $it->serial_no,
                     'uom_id' => $it->uom_id,
                     'quantity' => (float)$it->quantity,
                     'unit_cost' => (float)$it->unit_cost,
@@ -166,6 +168,7 @@
                     'product_id' => null,
                     'batch_no' => '',
                     'batch_name' => '',
+                    'serial_no' => '',
                     'uom_id' => null,
                     'quantity' => 1,
                     'unit_cost' => 0,
@@ -237,6 +240,9 @@
         <td class="px-3 py-2">
             <input type="text" name="items[{{ $idx }}][batch_no]" list="po-batch-list-{{ $idx }}" class="po-batch-input block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional" value="{{ $rowItem['batch_no'] ?? $rowItem['batch_name'] ?? '' }}">
             <datalist id="po-batch-list-{{ $idx }}"></datalist>
+        </td>
+        <td class="px-3 py-2">
+            <input type="text" name="items[{{ $idx }}][serial_no]" class="po-serial-input block w-32 rounded-lg border-gray-300 text-sm" placeholder="Optional" maxlength="100" value="{{ $rowItem['serial_no'] ?? '' }}">
         </td>
         <td class="px-3 py-2">
             <select name="items[{{ $idx }}][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
@@ -959,7 +965,7 @@ function addPoRow() {
             input.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
         } else if (input.name.includes('[quantity]')) {
             input.value = '1';
-        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]')) {
+        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]') || input.name.includes('[serial_no]')) {
             input.value = '';
         } else {
             input.value = '0';

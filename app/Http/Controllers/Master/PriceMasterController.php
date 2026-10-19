@@ -7,13 +7,14 @@ use App\Domains\Master\Models\PriceMaster;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\SortableAndSearchable;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
-
-use App\Support\Traits\SortableAndSearchable;
 
 class PriceMasterController extends Controller
 {
@@ -67,9 +68,91 @@ class PriceMasterController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        PriceMaster::create($this->validated($request));
+        $validated = $request->validate([
+            'customer_type_id' => 'required|exists:customer_types,id',
+            'lines' => 'required|array|min:1',
+            'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.uom_id' => 'nullable|exists:uoms,id',
+            'lines.*.rate' => 'nullable|numeric|min:0',
+            'lines.*.min_qty' => 'nullable|numeric|min:0',
+        ]);
 
-        return $this->flashSuccess('Price created successfully.', 'masters.price-masters.index');
+        $lines = collect($validated['lines'] ?? [])
+            ->filter(fn ($row) => filled($row['product_id'] ?? null)
+                || filled($row['uom_id'] ?? null)
+                || filled($row['rate'] ?? null)
+                || filled($row['min_qty'] ?? null))
+            ->values();
+
+        if ($lines->isEmpty()) {
+            throw ValidationException::withMessages([
+                'lines' => 'Add at least one product with UOM and rate.',
+            ]);
+        }
+
+        $errors = [];
+        foreach ($lines as $index => $row) {
+            if (! filled($row['product_id'] ?? null)) {
+                $errors["lines.{$index}.product_id"] = 'Product is required.';
+            }
+            if (! filled($row['uom_id'] ?? null)) {
+                $errors["lines.{$index}.uom_id"] = 'UOM is required.';
+            }
+            $rate = $row['rate'] ?? null;
+            if ($rate === null || $rate === '') {
+                $errors["lines.{$index}.rate"] = 'Rate is required.';
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        // Detect duplicates within the submitted form
+        $seen = [];
+        foreach ($lines as $index => $row) {
+            $minQty = $row['min_qty'] ?? null;
+            $key = implode('|', [
+                (string) $validated['customer_type_id'],
+                (string) $row['product_id'],
+                (string) $row['uom_id'],
+                $minQty === null || $minQty === '' ? '' : (string) $minQty,
+            ]);
+            if (isset($seen[$key])) {
+                throw ValidationException::withMessages([
+                    "lines.{$index}.product_id" => 'Duplicate product / UOM / min qty combination in this form.',
+                ]);
+            }
+            $seen[$key] = true;
+        }
+
+        try {
+            DB::transaction(function () use ($validated, $lines) {
+                foreach ($lines as $row) {
+                    PriceMaster::create([
+                        'customer_type_id' => $validated['customer_type_id'],
+                        'product_id' => $row['product_id'],
+                        'uom_id' => $row['uom_id'],
+                        'rate' => $row['rate'],
+                        'min_qty' => filled($row['min_qty'] ?? null) ? $row['min_qty'] : null,
+                    ]);
+                }
+            });
+        } catch (QueryException $e) {
+            if ($this->isUniqueConstraintViolation($e)) {
+                throw ValidationException::withMessages([
+                    'lines' => 'One or more prices already exist for this customer type, product, UOM, and min qty.',
+                ]);
+            }
+            throw $e;
+        }
+
+        $count = $lines->count();
+
+        return $this->flashSuccess(
+            $count === 1 ? 'Price created successfully.' : "{$count} prices created successfully.",
+            'masters.price-masters.index'
+        );
     }
 
     public function show(PriceMaster $priceMaster): RedirectResponse
@@ -84,7 +167,16 @@ class PriceMasterController extends Controller
 
     public function update(Request $request, PriceMaster $priceMaster): RedirectResponse
     {
-        $priceMaster->update($this->validated($request));
+        try {
+            $priceMaster->update($this->validated($request));
+        } catch (QueryException $e) {
+            if ($this->isUniqueConstraintViolation($e)) {
+                throw ValidationException::withMessages([
+                    'product_id' => 'A price already exists for this customer type, product, UOM, and min qty.',
+                ]);
+            }
+            throw $e;
+        }
 
         return $this->flashSuccess('Price updated successfully.', 'masters.price-masters.index');
     }
@@ -176,8 +268,18 @@ class PriceMasterController extends Controller
     {
         return [
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
-            'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku']),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
         ];
+    }
+
+    protected function isUniqueConstraintViolation(QueryException $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'price_master_unique')
+            || str_contains($message, 'Duplicate entry')
+            || str_contains($message, 'UNIQUE constraint failed')
+            || (string) $e->getCode() === '23000';
     }
 }

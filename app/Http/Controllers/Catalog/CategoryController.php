@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Catalog;
 
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
-use App\Domains\Catalog\Models\SubCategory;
-use App\Domains\Master\Models\Product;
 use App\Http\Controllers\Controller;
 use App\Support\CodeGenerator;
 use App\Support\Traits\SortableAndSearchable;
@@ -22,8 +20,12 @@ class CategoryController extends Controller
 
     public function index(Request $request): View
     {
-        $query = Category::query()->with('brand')
-            ->when($request->filled('brand_id'), fn ($q) => $q->where('brand_id', $request->brand_id))
+        $query = Category::query()
+            ->with('brand')
+            ->when(
+                $request->filled('brand_id'),
+                fn ($q) => $q->where('brand_id', $request->brand_id)
+            )
             ->when($request->filled('status'), function ($q) use ($request) {
                 if ($request->status === 'active') {
                     $q->where('is_active', true);
@@ -32,7 +34,11 @@ class CategoryController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'code', 'detail']);
+        $this->applySearch(
+            $query,
+            $request->input('search'),
+            ['name', 'code', 'detail']
+        );
 
         $sortData = $this->applySorting(
             $query,
@@ -49,7 +55,9 @@ class CategoryController extends Controller
             'search' => $request->string('search'),
             'status' => $request->string('status'),
             'brandId' => $request->input('brand_id'),
-            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'brands' => Brand::where('is_active', true)
+                ->orderBy('name')
+                ->get(),
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
         ]);
@@ -59,7 +67,9 @@ class CategoryController extends Controller
     {
         return view('masters.categories.form', [
             'item' => new Category,
-            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'brands' => Brand::where('is_active', true)
+                ->orderBy('name')
+                ->get(),
             'previewCode' => CodeGenerator::forCategory(),
         ]);
     }
@@ -73,75 +83,114 @@ class CategoryController extends Controller
             try {
                 DB::transaction(function () use ($data) {
                     $payload = $data;
+
+                    // Generate the category code using the selected brand's company.
                     unset($payload['code']);
 
                     $companyId = ! empty($payload['brand_id'])
-                        ? Brand::query()->whereKey($payload['brand_id'])->value('company_id')
+                        ? Brand::query()
+                            ->whereKey($payload['brand_id'])
+                            ->value('company_id')
                         : null;
 
-                    $payload['code'] = CodeGenerator::forCategory($companyId ? (int) $companyId : null);
+                    $payload['code'] = CodeGenerator::forCategory(
+                        $companyId ? (int) $companyId : null
+                    );
 
-                    return Category::create($payload);
+                    Category::create($payload);
                 });
+
                 break;
             } catch (QueryException $e) {
-                $isDuplicate = isset($e->errorInfo[1]) && $e->errorInfo[1] === 1062;
+                $isDuplicate = isset($e->errorInfo[1])
+                    && (int) $e->errorInfo[1] === 1062;
+
                 $message = $e->getMessage();
 
                 $isCodeDuplicate = $isDuplicate && (
-                    str_contains($message, 'categories_code_unique') ||
-                    str_contains($message, 'categories.code') ||
-                    str_contains($message, "for key 'code'")
+                    str_contains($message, 'categories_code_unique')
+                    || str_contains($message, 'categories.code')
+                    || str_contains($message, "for key 'code'")
                 );
 
-                if ($isCodeDuplicate) {
-                    if ($attempt < $maxAttempts) {
-                        usleep(random_int(10000, 30000));
-                        continue;
-                    }
+                // Retry if another request generated the same category code.
+                if ($isCodeDuplicate && $attempt < $maxAttempts) {
+                    usleep(random_int(10000, 30000));
 
-                    return back()->withInput()->withErrors(['code' => 'Unable to generate a unique category code due to concurrent requests. Please try again.']);
+                    continue;
+                }
+
+                if ($isCodeDuplicate) {
+                    return back()
+                        ->withInput()
+                        ->withErrors([
+                            'code' => 'Unable to generate a unique category code. Please try again.',
+                        ]);
                 }
 
                 if ($isDuplicate) {
-                    return back()->withInput()->withErrors(['name' => 'Category with this name or code already exists.']);
+                    return back()
+                        ->withInput()
+                        ->withErrors([
+                            'name' => 'Category with this name or code already exists.',
+                        ]);
                 }
 
                 throw $e;
             }
         }
 
-        return $this->flashSuccess('Category created successfully.', 'masters.categories.index');
+        return $this->flashSuccess(
+            'Category created successfully.',
+            'masters.categories.index'
+        );
     }
 
     public function edit(Category $category): View
     {
         return view('masters.categories.form', [
             'item' => $category,
-            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'brands' => Brand::where('is_active', true)
+                ->orderBy('name')
+                ->get(),
         ]);
     }
 
-    public function update(Request $request, Category $category): RedirectResponse
-    {
+    public function update(
+        Request $request,
+        Category $category
+    ): RedirectResponse {
         $data = $this->validated($request, $category);
         $data['code'] = $category->code;
+
         $category->update($data);
 
-        return $this->flashSuccess('Category updated successfully.', 'masters.categories.index');
+        return $this->flashSuccess(
+            'Category updated successfully.',
+            'masters.categories.index'
+        );
     }
 
-    public function destroy(Request $request, Category $category): RedirectResponse|JsonResponse
-    {
+    public function destroy(
+        Request $request,
+        Category $category
+    ): RedirectResponse|JsonResponse {
         $user = $request->user();
 
-        // Enforce existing authentication and authorization rules
-        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) &&
-            ! $user->can('masters.manage') &&
-            ! $user->can('masters.edit') &&
-            ! $user->can('masters.delete') &&
-            ! $user->can('products.manage') &&
-            ! $user->can('products.edit')) {
+        // Preserve the existing authorization rules.
+        if (
+            $user
+            && ! $user->hasAnyRole([
+                'super-admin',
+                'owner',
+                'client-admin',
+            ])
+            && ! $user->can('masters.manage')
+            && ! $user->can('masters.edit')
+            && ! $user->can('masters.delete')
+            && ! $user->can('products.manage')
+            && ! $user->can('products.edit')
+        ) {
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json([
                     'success' => false,
@@ -149,11 +198,20 @@ class CategoryController extends Controller
                 ], 403);
             }
 
-            return back()->with('error', 'Unauthorized: You do not have permission to delete categories.');
+            return back()->with(
+                'error',
+                'Unauthorized: You do not have permission to delete categories.'
+            );
         }
 
-        // Multi-tenancy check if brand is associated and user is restricted
-        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && $category->brand?->company_id && (int) $category->brand->company_id !== (int) $user->company_id) {
+        // Prevent users from deleting categories belonging to another company.
+        if (
+            $user
+            && ! $user->hasAnyRole(['super-admin', 'client-admin'])
+            && $user->company_id
+            && $category->brand?->company_id
+            && (int) $category->brand->company_id !== (int) $user->company_id
+        ) {
             if ($request->wantsJson() || $request->ajax()) {
                 return response()->json([
                     'success' => false,
@@ -161,7 +219,10 @@ class CategoryController extends Controller
                 ], 403);
             }
 
-            return back()->with('error', 'Unauthorized: This category belongs to another company.');
+            return back()->with(
+                'error',
+                'Unauthorized: This category belongs to another company.'
+            );
         }
 
         $categoryName = $category->name;
@@ -171,20 +232,25 @@ class CategoryController extends Controller
             $hasProducts = $category->products()->exists();
 
             if ($hasSubCategories || $hasProducts) {
-                // Safe archival strategy: archive category and its subcategories to preserve
-                // historical products, transactions, and inventory references intact.
+                // Archive records that have dependencies to preserve history.
                 DB::transaction(function () use ($category) {
                     $category->update(['is_active' => false]);
-                    $category->subCategories()->update(['is_active' => false]);
+
+                    $category->subCategories()->update([
+                        'is_active' => false,
+                    ]);
                 });
 
                 $dependencies = [];
+
                 if ($hasSubCategories) {
                     $dependencies[] = 'subcategories';
                 }
+
                 if ($hasProducts) {
                     $dependencies[] = 'products';
                 }
+
                 $depText = implode(' and ', $dependencies);
 
                 $message = "Category '{$categoryName}' is linked to {$depText} and has been safely archived to preserve historical records.";
@@ -197,10 +263,13 @@ class CategoryController extends Controller
                     ]);
                 }
 
-                return $this->flashSuccess($message, 'masters.categories.index');
+                return $this->flashSuccess(
+                    $message,
+                    'masters.categories.index'
+                );
             }
 
-            // No dependencies: safely permanent delete
+            // Permanently delete only when there are no dependent records.
             DB::transaction(function () use ($category) {
                 $category->delete();
             });
@@ -215,7 +284,10 @@ class CategoryController extends Controller
                 ]);
             }
 
-            return $this->flashSuccess($message, 'masters.categories.index');
+            return $this->flashSuccess(
+                $message,
+                'masters.categories.index'
+            );
         } catch (\Throwable $e) {
             report($e);
 
@@ -226,12 +298,17 @@ class CategoryController extends Controller
                 ], 500);
             }
 
-            return $this->flashError('Failed to delete category: ' . $e->getMessage(), 'masters.categories.index');
+            return $this->flashError(
+                'Failed to delete category: ' . $e->getMessage(),
+                'masters.categories.index'
+            );
         }
     }
 
-    protected function validated(Request $request, ?Category $category = null): array
-    {
+    protected function validated(
+        Request $request,
+        ?Category $category = null
+    ): array {
         $rules = [
             'brand_id' => 'nullable|exists:brands,id',
             'name' => 'required|string|max:255',
@@ -239,7 +316,7 @@ class CategoryController extends Controller
         ];
 
         if ($category) {
-            $rules['code'] = 'nullable|string|max:30|unique:categories,code,'.$category->id;
+            $rules['code'] = 'nullable|string|max:30|unique:categories,code,' . $category->id;
         }
 
         $data = $request->validate($rules);
@@ -250,6 +327,7 @@ class CategoryController extends Controller
         } else {
             unset($data['code']);
         }
+
         return $data;
     }
 }

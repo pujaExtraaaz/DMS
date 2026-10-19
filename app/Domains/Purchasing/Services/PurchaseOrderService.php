@@ -200,6 +200,7 @@ class PurchaseOrderService
                     'line_total' => $line + $tax,
                     'weight' => $item['weight'] ?? null,
                     'batch_no' => $item['batch_no'] ?? null,
+                    'serial_no' => filled($item['serial_no'] ?? null) ? trim((string) $item['serial_no']) : null,
                 ]);
             }
 
@@ -432,6 +433,7 @@ class PurchaseOrderService
                     'line_total' => $line + $tax,
                     'weight' => $item['weight'] ?? null,
                     'batch_no' => $item['batch_no'] ?? null,
+                    'serial_no' => filled($item['serial_no'] ?? null) ? trim((string) $item['serial_no']) : null,
                 ]);
             }
 
@@ -1319,6 +1321,7 @@ class PurchaseOrderService
                     : ((float) ($item['tax_percent'] ?? 0) / 2),
                 'weight' => isset($item['weight']) ? (float) $item['weight'] : null,
                 'batch_no' => $item['batch_no'] ?? $item['batch_number'] ?? $item['batch_name'] ?? null,
+                'serial_no' => filled($item['serial_no'] ?? null) ? trim((string) $item['serial_no']) : null,
                 'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
                 'batch_mrp' => isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
                 'serials' => ! empty($item['serials'])

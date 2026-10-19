@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search PO No, Supplier, Notes..."
+            search-placeholder="Search PO no, supplier, serial no, notes..."
             :reset-url="route('purchasing.orders.index')"
         >
             <x-slot name="filters">
@@ -114,6 +114,7 @@
                         <x-ui.sortable-th column="supplier" :current-sort="$sort ?? request('sort', 'po_date')" :current-direction="$direction ?? request('direction', 'desc')">
                             Supplier
                         </x-ui.sortable-th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Serial No</th>
                         <x-ui.sortable-th column="status" :current-sort="$sort ?? request('sort', 'po_date')" :current-direction="$direction ?? request('direction', 'desc')">
                             Status
                         </x-ui.sortable-th>
@@ -129,6 +130,15 @@
                             <td class="px-4 py-3 font-medium text-slate-900 font-mono text-xs">{{ $order->po_no }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $order->po_date?->format('d M Y') }}</td>
                             <td class="px-4 py-3 text-slate-900 font-medium">{{ $order->supplier?->name }}</td>
+                            <td class="px-4 py-3 font-mono text-xs text-slate-700">
+                                @php
+                                    $serialNos = $order->items
+                                        ->pluck('serial_no')
+                                        ->filter(fn ($s) => filled($s))
+                                        ->values();
+                                @endphp
+                                {{ $serialNos->isNotEmpty() ? $serialNos->implode(', ') : '—' }}
+                            </td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-800">
                                     {{ str_replace('_', ' ', ucfirst($order->status)) }}
@@ -186,7 +196,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="p-0">
+                            <td colspan="7" class="p-0">
                                 <x-ui.empty-state
                                     title="No purchase orders found"
                                     description="Try clearing search or filters to see more results."

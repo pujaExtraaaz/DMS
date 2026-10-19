@@ -32,7 +32,7 @@ class PurchaseOrderController extends Controller
     public function index(Request $request): View|Response
     {
         $query = PurchaseOrder::query()
-            ->with(['supplier', 'warehouse', 'creator'])
+            ->with(['supplier', 'warehouse', 'creator', 'items'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_id', $request->supplier_id))
             ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
@@ -43,7 +43,10 @@ class PurchaseOrderController extends Controller
             $query,
             $request->input('search'),
             ['po_no', 'notes'],
-            ['supplier' => ['name', 'code']]
+            [
+                'supplier' => ['name', 'code'],
+                'items' => ['serial_no'],
+            ]
         );
 
         $allowedSorts = [
@@ -127,6 +130,7 @@ class PurchaseOrderController extends Controller
             'items.*.weight' => 'nullable|numeric|min:0',
             'items.*.batch_no' => 'nullable|string|max:60',
             'items.*.batch_name' => 'nullable|string|max:60',
+            'items.*.serial_no' => 'nullable|string|max:100',
         ]);
 
         $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
@@ -254,6 +258,7 @@ class PurchaseOrderController extends Controller
             'items.*.weight' => 'nullable|numeric|min:0',
             'items.*.batch_no' => 'nullable|string|max:60',
             'items.*.batch_name' => 'nullable|string|max:60',
+            'items.*.serial_no' => 'nullable|string|max:100',
         ]);
 
         $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();

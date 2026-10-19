@@ -10,6 +10,7 @@ use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\CustomerType;
 use App\Domains\Master\Models\Route;
 use App\Domains\Master\Services\GstLookupService;
+use App\Domains\Master\Services\IfscLookupService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\AuditLogService;
@@ -32,6 +33,7 @@ class CustomerController extends Controller
 
     public function __construct(
         protected GstLookupService $gstLookupService,
+        protected IfscLookupService $ifscLookupService,
         protected AuditLogService $auditLogService
     ) {}
 
@@ -293,7 +295,7 @@ class CustomerController extends Controller
 
     public function edit(Customer $customer): View
     {
-        $customer->load(['contacts', 'addresses', 'bankAccounts', 'creditCheques']);
+        $customer->load(['contacts', 'addresses', 'bankAccounts']);
 
         $addresses = $customer->activeAddresses()->get()->map(function ($a) {
             return [
@@ -486,11 +488,21 @@ class CustomerController extends Controller
         }
     }
 
-    public function show(Customer $customer): RedirectResponse
-    {
-        // Dedicated show view is not used; open the edit form instead.
-        return redirect()->route('masters.customers.edit', $customer);
-    }
+    public function show(Customer $customer): View|RedirectResponse
+{
+    $customer->load([
+        'customerType',
+        'area',
+        'route',
+        'salesperson',
+        'salesManager',
+        'contacts',
+        'addresses',
+        'bankAccounts',
+    ]);
+
+    return view('masters.customers.show', compact('customer'));
+}
 
     /**
      * Search GSTIN and return parsed vendor details.
@@ -507,6 +519,26 @@ class CustomerController extends Controller
         }
 
         $result = $this->gstLookupService->search((string) $gstin);
+        $status = ! empty($result['success']) ? 200 : ($result['status_code'] ?? 422);
+
+        return response()->json($result, $status);
+    }
+
+    /**
+     * Look up bank / branch details from an IFSC code.
+     */
+    public function ifscLookup(Request $request): JsonResponse
+    {
+        $ifsc = $request->input('ifsc', $request->query('ifsc'));
+
+        if (! $ifsc) {
+            return response()->json([
+                'success' => false,
+                'message' => 'IFSC parameter is required.',
+            ], 422);
+        }
+
+        $result = $this->ifscLookupService->lookup((string) $ifsc);
         $status = ! empty($result['success']) ? 200 : ($result['status_code'] ?? 422);
 
         return response()->json($result, $status);
@@ -657,15 +689,6 @@ class CustomerController extends Controller
             'bank_accounts.*.account_type' => 'nullable|in:current,savings',
             'bank_accounts.*.ifsc_code' => 'nullable|string|max:20',
             'bank_accounts.*.is_primary' => 'nullable|boolean',
-            'credit_cheques' => 'nullable|array',
-            'credit_cheques.*.cheque_number' => 'nullable|string|max:50',
-            'credit_cheques.*.bank_name' => 'nullable|string|max:255',
-            'credit_cheques.*.branch_name' => 'nullable|string|max:255',
-            'credit_cheques.*.cheque_date' => 'nullable|date',
-            'credit_cheques.*.amount' => 'nullable|numeric|min:0',
-            'credit_cheques.*.cheque_type' => 'nullable|in:regular,security,pdc',
-            'credit_cheques.*.status' => 'nullable|in:pending,received,deposited,cleared,cancelled,bounced',
-            'credit_cheques.*.notes' => 'nullable|string',
         ];
 
         $validator = Validator::make($request->all(), $rules);
@@ -736,7 +759,7 @@ class CustomerController extends Controller
             }
         }
 
-        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['credit_cheques'], $data['pan'], $data['lead_id']);
+        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['pan'], $data['lead_id']);
 
         return $data;
     }
@@ -785,26 +808,6 @@ class CustomerController extends Controller
         $customer->bankAccounts()->delete();
         foreach ($bankAccounts as $row) {
             $customer->bankAccounts()->create($row);
-        }
-
-        // 4. Credit Cheques
-        $creditCheques = collect($request->input('credit_cheques', []))
-            ->filter(fn ($row) => filled($row['cheque_number'] ?? null))
-            ->map(fn ($row) => [
-                'cheque_number' => $row['cheque_number'],
-                'bank_name' => $row['bank_name'] ?? null,
-                'branch_name' => $row['branch_name'] ?? null,
-                'cheque_date' => $row['cheque_date'] ?? null,
-                'amount' => (float) ($row['amount'] ?? 0),
-                'cheque_type' => $row['cheque_type'] ?? 'regular',
-                'status' => in_array($row['status'] ?? '', ['pending', 'received', 'deposited', 'cleared', 'cancelled', 'bounced'], true) ? $row['status'] : 'pending',
-                'notes' => $row['notes'] ?? null,
-            ])
-            ->values();
-
-        $customer->creditCheques()->delete();
-        foreach ($creditCheques as $row) {
-            $customer->creditCheques()->create($row);
         }
     }
 
