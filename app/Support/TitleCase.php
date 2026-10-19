@@ -164,6 +164,11 @@ class TitleCase
                 return $token;
             }
 
+            // 4. Preserve intentional CamelCase / PascalCase brand names (e.g., OmniCore, TitanFlow, ThinkPad, YouTube)
+            if (preg_match('/^[A-Z][a-z]+[A-Z]/', $token)) {
+                return $token;
+            }
+
             // 3. Handle apostrophes (e.g. supplier's, o'connor)
             if (str_contains($token, "'")) {
                 $parts = explode("'", $token);

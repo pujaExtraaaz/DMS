@@ -260,7 +260,7 @@
                 <div class="relative">
                     <input type="text"
                            class="po-product-search block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-14 bg-slate-100 text-slate-400 cursor-not-allowed"
-                           placeholder="Select Brand First"
+                           placeholder="Select brand first"
                            autocomplete="off"
                            value=""
                            disabled

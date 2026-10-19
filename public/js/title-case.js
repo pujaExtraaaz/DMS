@@ -267,6 +267,11 @@
                 return token;
             }
 
+            // 4. Preserve intentional CamelCase / PascalCase brand names (e.g., OmniCore, TitanFlow, ThinkPad, YouTube)
+            if (/^[A-Z][a-z]+[A-Z]/.test(token)) {
+                return token;
+            }
+
             // 3. Handle apostrophes (e.g. supplier's, o'connor)
             if (token.includes("'")) {
                 const parts = token.split("'");
