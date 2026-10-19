@@ -64,6 +64,11 @@ class CodeGenerator
         return self::next(\App\Domains\Hrms\Models\Employee::class, 'EMP', $companyId, 'employee_code');
     }
 
+    public static function forInterCompanyTransaction(): string
+    {
+        return self::next(\App\Domains\Organization\Models\InterCompanyTransaction::class, 'ICT', null, 'transaction_no');
+    }
+
     protected static function next(string $modelClass, string $prefix, ?int $companyId, string $column): string
     {
         $scope = $companyId ? (string) $companyId : 'GLOBAL';
