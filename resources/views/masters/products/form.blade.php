@@ -26,9 +26,9 @@
       enctype="multipart/form-data"
       x-data="productCatalogManager({
           uoms: @js($uomOptions),
-          brands: @js($brands->map(fn($b) => ['id' => (string) $b->id, 'name' => $b->name, 'code' => (string) ($b->code ?? '')])->values()),
-          categories: @js($categories->map(fn($c) => ['id' => (string) $c->id, 'brand_id' => $c->brand_id ? (string) $c->brand_id : null, 'name' => $c->name, 'code' => (string) ($c->code ?? '')])->values()),
-          subCategories: @js($subCategories->map(fn($sc) => ['id' => (string) $sc->id, 'category_id' => $sc->category_id ? (string) $sc->category_id : null, 'name' => $sc->name, 'code' => (string) ($sc->code ?? '')])->values()),
+          brands: @js($brands->map(fn($b) => ['id' => (string) $b->id, 'name' => $b->name])->values()),
+          categories: @js($categories->map(fn($c) => ['id' => (string) $c->id, 'brand_id' => $c->brand_id ? (string) $c->brand_id : null, 'name' => $c->name])->values()),
+          subCategories: @js($subCategories->map(fn($sc) => ['id' => (string) $sc->id, 'category_id' => $sc->category_id ? (string) $sc->category_id : null, 'name' => $sc->name])->values()),
           initialBaseUomId: '{{ old('base_uom_id', $item->base_uom_id ?? '') }}',
           initialAltUomId: '{{ old('alternate_uom_id', $item->alternate_uom_id ?? ($primaryAlt?->uom_id ?? '')) }}',
           initialConversionFactor: '{{ old('conversion_factor', $item->conversion_factor ?? ($primaryAlt?->conversion_factor ?? 1)) }}',

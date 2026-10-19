@@ -255,37 +255,43 @@ class AvitDigitalDemoSeeder extends Seeder
     protected function seedBrandsCategories(): void
     {
         $this->brands['avit'] = Brand::query()->updateOrCreate(
-            ['company_id' => $this->company->id, 'code' => 'AVIT'],
-            ['name' => 'Avit', 'detail' => 'House brand', 'is_active' => true],
+            ['company_id' => $this->company->id, 'name' => 'Avit'],
+            ['detail' => 'House brand', 'is_active' => true],
         );
         $this->brands['partner'] = Brand::query()->updateOrCreate(
-            ['company_id' => $this->company->id, 'code' => 'PRTNR'],
-            ['name' => 'Partner Brands', 'detail' => 'Third-party brands', 'is_active' => true],
+            ['company_id' => $this->company->id, 'name' => 'Partner Brands'],
+            ['detail' => 'Third-party brands', 'is_active' => true],
         );
 
         $this->categories['it'] = Category::query()->updateOrCreate(
-            ['brand_id' => $this->brands['avit']->id, 'code' => 'IT'],
-            ['name' => 'IT Peripherals', 'is_active' => true],
+            ['brand_id' => $this->brands['avit']->id, 'name' => 'IT Peripherals'],
+            ['is_active' => true],
         );
         $this->categories['office'] = Category::query()->updateOrCreate(
-            ['brand_id' => $this->brands['partner']->id, 'code' => 'OFF'],
-            ['name' => 'Office Supplies', 'is_active' => true],
+            ['brand_id' => $this->brands['partner']->id, 'name' => 'Office Supplies'],
+            ['is_active' => true],
         );
 
         SubCategory::query()->updateOrCreate(
-            ['category_id' => $this->categories['it']->id, 'code' => 'KB'],
-            ['name' => 'Keyboards & Mice', 'is_active' => true],
+            ['category_id' => $this->categories['it']->id, 'name' => 'Keyboards & Mice'],
+            ['is_active' => true],
         );
         SubCategory::query()->updateOrCreate(
-            ['category_id' => $this->categories['office']->id, 'code' => 'PAPER'],
-            ['name' => 'Paper & Stationery', 'is_active' => true],
+            ['category_id' => $this->categories['office']->id, 'name' => 'Paper & Stationery'],
+            ['is_active' => true],
         );
     }
 
     protected function seedProducts(): void
     {
-        $kbSub = SubCategory::query()->where('code', 'KB')->value('id');
-        $paperSub = SubCategory::query()->where('code', 'PAPER')->value('id');
+        $kbSub = SubCategory::query()
+            ->where('category_id', $this->categories['it']->id)
+            ->where('name', 'Keyboards & Mice')
+            ->value('id');
+        $paperSub = SubCategory::query()
+            ->where('category_id', $this->categories['office']->id)
+            ->where('name', 'Paper & Stationery')
+            ->value('id');
 
         $definitions = [
             [

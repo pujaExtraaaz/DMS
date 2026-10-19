@@ -41,7 +41,7 @@ class BrandSync
         $code = SyncNames::unique(
             ProductGroup::query()->where('company_id', $company->id),
             'code',
-            SyncNames::code($brand->code ?: $brand->name),
+            SyncNames::code($brand->name),
             $group?->id
         );
 

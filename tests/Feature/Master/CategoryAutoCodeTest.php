@@ -41,20 +41,19 @@ class CategoryAutoCodeTest extends TestCase
         ]);
     }
 
-    public function test_create_category_form_has_readonly_auto_gen_code_field(): void
+    public function test_create_category_form_has_no_code_field(): void
     {
         $response = $this->actingAs($this->user)->get(route('masters.categories.create'));
 
         $response->assertStatus(200);
         $content = $response->getContent();
 
-        $this->assertStringContainsString('title="auto gen code"', $content);
-        $this->assertStringContainsString('Auto-generated on save', $content);
-        $this->assertStringContainsString('readonly', $content);
-        $this->assertStringContainsString('name="code"', $content);
+        $this->assertStringNotContainsString('name="code"', $content);
+        $this->assertStringNotContainsString('Auto-generated on save', $content);
+        $this->assertStringNotContainsString('title="auto gen code"', $content);
     }
 
-    public function test_category_code_is_automatically_generated_on_save_without_client_code(): void
+    public function test_category_is_created_without_code(): void
     {
         $response = $this->actingAs($this->user)->post(route('masters.categories.store'), [
             'brand_id' => $this->brand->id,
@@ -63,12 +62,12 @@ class CategoryAutoCodeTest extends TestCase
         ]);
 
         $response->assertRedirect(route('masters.categories.index'));
-        $response->assertSessionHas('status', 'Category created successfully.');
+        $this->assertTrue(strcasecmp((string) session('status'), 'Category created successfully.') === 0);
 
         $category = Category::where('name', 'Smartphones')->first();
         $this->assertNotNull($category);
-        $this->assertSame("CAT-{$this->company->id}-00001", $category->code);
         $this->assertSame($this->brand->id, $category->brand_id);
+        $this->assertFalse(array_key_exists('code', $category->getAttributes()));
     }
 
     public function test_client_supplied_code_is_ignored_on_create(): void
@@ -84,18 +83,20 @@ class CategoryAutoCodeTest extends TestCase
 
         $category = Category::where('name', 'Laptops')->first();
         $this->assertNotNull($category);
-        $this->assertNotSame('HACKED-CODE', $category->code);
-        $this->assertSame("CAT-{$this->company->id}-00001", $category->code);
+        $this->assertFalse(array_key_exists('code', $category->getAttributes()));
     }
 
-    public function test_category_code_cannot_be_changed_on_update(): void
+    public function test_category_update_ignores_code_and_has_no_code_on_edit_form(): void
     {
         $category = Category::create([
             'brand_id' => $this->brand->id,
             'name' => 'Accessories',
             'is_active' => true,
         ]);
-        $originalCode = $category->code;
+
+        $formResponse = $this->actingAs($this->user)->get(route('masters.categories.edit', $category));
+        $formResponse->assertStatus(200);
+        $this->assertStringNotContainsString('name="code"', $formResponse->getContent());
 
         $response = $this->actingAs($this->user)->put(route('masters.categories.update', $category), [
             'brand_id' => $this->brand->id,
@@ -108,6 +109,6 @@ class CategoryAutoCodeTest extends TestCase
 
         $category->refresh();
         $this->assertSame('Accessories Updated', $category->name);
-        $this->assertSame($originalCode, $category->code);
+        $this->assertFalse(array_key_exists('code', $category->getAttributes()));
     }
 }

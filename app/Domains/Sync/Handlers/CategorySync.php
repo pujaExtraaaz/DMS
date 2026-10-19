@@ -48,7 +48,7 @@ class CategorySync
         $code = SyncNames::unique(
             ProductGroup::query()->where('company_id', $company->id),
             'code',
-            SyncNames::code($category->code ?: $category->name),
+            SyncNames::code($category->name),
             $group?->id
         );
 

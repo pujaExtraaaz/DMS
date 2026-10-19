@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search Sub Category Name, Code..."
+            search-placeholder="Search Sub Category Name..."
             :reset-url="route('masters.sub-categories.index')"
         >
             <x-slot name="filters">
@@ -45,9 +45,6 @@
                         <x-ui.sortable-th column="name" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Name
                         </x-ui.sortable-th>
-                        <x-ui.sortable-th column="code" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
-                            Code
-                        </x-ui.sortable-th>
                         <th scope="col" class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Category</th>
                         <x-ui.sortable-th column="is_active" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Status
@@ -59,7 +56,6 @@
                     @forelse($items as $item)
                         <tr class="hover:bg-slate-50/75 transition-colors">
                             <td class="px-4 py-3 font-medium text-slate-900">{{ $item->name }}</td>
-                            <td class="px-4 py-3 text-slate-600 font-mono text-xs">{{ $item->code }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->category?->name ?: '—' }}</td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {{ $item->is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
@@ -70,7 +66,7 @@
                                 <div class="flex items-center justify-end gap-1.5">
                                     <x-ui.button variant="secondary" size="sm" :href="route('masters.sub-categories.edit', $item)" title="Edit Sub Category" aria-label="Edit Sub Category">Edit</x-ui.button>
                                     <button type="button"
-                                            @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}', '{{ addslashes($item->code) }}')"
+                                            @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}')"
                                             :disabled="isDeleting"
                                             class="inline-flex items-center gap-1 font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 shadow-xs px-2.5 py-1.5 text-xs"
                                             title="Delete Sub Category"
@@ -86,7 +82,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="p-0">
+                            <td colspan="4" class="p-0">
                                 <x-ui.empty-state
                                     title="No matching sub categories found"
                                     description="Try clearing search or filters to see more results."
@@ -155,10 +151,6 @@
                                         <span class="font-medium">Sub Category Name:</span>
                                         <span class="font-semibold text-slate-900" x-text="deletingSubCategoryName"></span>
                                     </div>
-                                    <div class="flex justify-between items-center text-slate-600">
-                                        <span class="font-medium">Code:</span>
-                                        <span class="font-mono text-slate-700" x-text="deletingSubCategoryCode"></span>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -210,17 +202,15 @@ function subCategoryIndex() {
         isDeleting: false,
         deletingSubCategoryId: null,
         deletingSubCategoryName: '',
-        deletingSubCategoryCode: '',
         notification: {
             show: false,
             type: 'success',
             message: '',
         },
 
-        promptDelete(id, name, code) {
+        promptDelete(id, name) {
             this.deletingSubCategoryId = id;
             this.deletingSubCategoryName = name;
-            this.deletingSubCategoryCode = code;
             this.showDeleteModal = true;
         },
 
@@ -229,7 +219,6 @@ function subCategoryIndex() {
             this.showDeleteModal = false;
             this.deletingSubCategoryId = null;
             this.deletingSubCategoryName = '';
-            this.deletingSubCategoryCode = '';
         },
 
         async executeDelete() {

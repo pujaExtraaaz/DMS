@@ -66,12 +66,12 @@ class ProductsImport implements ToCollection, WithHeadingRow
             $sku = trim((string) ($data['part_number'] ?? $data['part_no'] ?? $data['partnumber'] ?? $data['sku'] ?? '')) ?: CodeGenerator::forProduct($companyId);
 
             $brand = filled($data['brand'] ?? null)
-                ? ($brands[strtolower((string) $data['brand'])] ?? Brand::create(['company_id' => $companyId, 'name' => trim((string) $data['brand']), 'code' => CodeGenerator::forBrand($companyId), 'is_active' => true]))
+                ? ($brands[strtolower((string) $data['brand'])] ?? Brand::create(['company_id' => $companyId, 'name' => trim((string) $data['brand']), 'is_active' => true]))
                 : null;
             if ($brand && ! $brands->has(strtolower($brand->name))) $brands->put(strtolower($brand->name), $brand);
 
             $category = filled($data['category'] ?? null)
-                ? ($categories[strtolower((string) $data['category'])] ?? Category::create(['company_id' => $companyId, 'brand_id' => $brand?->id, 'name' => trim((string) $data['category']), 'code' => strtoupper('CAT-'.substr(md5($data['category']), 0, 6)), 'is_active' => true]))
+                ? ($categories[strtolower((string) $data['category'])] ?? Category::create(['brand_id' => $brand?->id, 'name' => trim((string) $data['category']), 'is_active' => true]))
                 : null;
             if ($category && ! $categories->has(strtolower($category->name))) $categories->put(strtolower($category->name), $category);
 
