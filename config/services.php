@@ -98,4 +98,10 @@ return [
         'timeout' => (int) env('GST_API_TIMEOUT', 15),
         'verify_ssl' => filter_var(env('GST_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN),
     ],
+
+    // Public IFSC → bank/branch lookup (default: Razorpay IFSC directory)
+    'ifsc' => [
+        'api_url' => env('IFSC_API_URL', 'https://ifsc.razorpay.com'),
+        'timeout' => (int) env('IFSC_API_TIMEOUT', 10),
+    ],
 ];

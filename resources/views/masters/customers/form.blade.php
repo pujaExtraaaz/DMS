@@ -9,18 +9,18 @@
         'account_number' => '',
         'account_type' => 'current',
         'ifsc_code' => '',
+        '_ifsc_status' => '',
+        '_ifsc_message' => '',
+        '_ifsc_loading' => false,
     ];
     $initialBankAccounts = old('bank_accounts', ($item->exists && $item->relationLoaded('bankAccounts') && $item->bankAccounts->isNotEmpty()) ? $item->bankAccounts->toArray() : [$defaultBankAccount]);
-
-    $defaultCreditCheque = [
-        'cheque_number' => '',
-        'bank_name' => '',
-        'branch_name' => '',
-        'cheque_date' => '',
-        'amount' => '',
-        'cheque_type' => 'regular',
-    ];
-    $initialCreditCheques = old('credit_cheques', ($item->exists && $item->relationLoaded('creditCheques') && $item->creditCheques->isNotEmpty()) ? $item->creditCheques->toArray() : [$defaultCreditCheque]);
+    $initialBankAccounts = collect($initialBankAccounts)->map(function ($row) use ($defaultBankAccount) {
+        return array_merge($defaultBankAccount, is_array($row) ? $row : [], [
+            '_ifsc_status' => '',
+            '_ifsc_message' => '',
+            '_ifsc_loading' => false,
+        ]);
+    })->values()->all();
 
     $defaultAddress = [
         'id' => null,
@@ -564,12 +564,20 @@
         </div>
 
         <div class="space-y-4">
-            <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-700">Bank Accounts</h3>
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-700">Bank Accounts</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Enter IFSC to auto-fill bank and branch. Account number and type are entered manually.</p>
+                </div>
                 <button type="button" @click="addBankAccount()"
-                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
+                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shrink-0">
                     + Add Bank Account
                 </button>
+            </div>
+
+            <div class="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-sky-800">
+                Security / credit / PDC cheques are recorded under
+                <a href="{{ route('cheques.create') }}" target="_blank" class="font-semibold underline hover:text-sky-950">Receivables → Cheque Register → Record Cheque</a>.
             </div>
 
             <div class="space-y-3">
@@ -582,9 +590,19 @@
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Account Holder Name</label>
-                                <input type="text" :name="`bank_accounts[${idx}][account_holder_name]`" x-model="acc.account_holder_name"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <label class="block text-xs font-medium text-slate-700 mb-1">IFSC Code</label>
+                                <div class="relative">
+                                    <input type="text" :name="`bank_accounts[${idx}][ifsc_code]`" x-model="acc.ifsc_code" maxlength="11"
+                                           @input="acc.ifsc_code = (acc.ifsc_code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11); onIfscInput(idx)"
+                                           @blur="lookupIfsc(idx)"
+                                           placeholder="e.g. HDFC0001234"
+                                           class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-10">
+                                    <span x-show="acc._ifsc_loading" class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs" x-cloak>…</span>
+                                </div>
+                                <p x-show="acc._ifsc_message" x-cloak
+                                   class="mt-1 text-[11px]"
+                                   :class="acc._ifsc_status === 'ok' ? 'text-emerald-600' : (acc._ifsc_status === 'error' ? 'text-rose-600' : 'text-slate-500')"
+                                   x-text="acc._ifsc_message"></p>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Bank Name</label>
@@ -594,6 +612,11 @@
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Branch Name</label>
                                 <input type="text" :name="`bank_accounts[${idx}][branch_name]`" x-model="acc.branch_name"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Account Holder Name</label>
+                                <input type="text" :name="`bank_accounts[${idx}][account_holder_name]`" x-model="acc.account_holder_name"
                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                             <div>
@@ -607,69 +630,6 @@
                                         class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                                     <option value="current">Current Account</option>
                                     <option value="savings">Savings Account</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">IFSC Code</label>
-                                <input type="text" :name="`bank_accounts[${idx}][ifsc_code]`" x-model="acc.ifsc_code" maxlength="20"
-                                       class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                        </div>
-                    </div>
-                </template>
-            </div>
-        </div>
-
-        <div class="space-y-4">
-            <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-700">Security / Credit Cheques (PDC)</h3>
-                <button type="button" @click="addCreditCheque()"
-                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
-                    + Add Cheque
-                </button>
-            </div>
-
-            <div class="space-y-3">
-                <template x-for="(chq, idx) in creditCheques" :key="idx">
-                    <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Cheque #${idx + 1}`"></span>
-                            <button type="button" x-show="creditCheques.length > 1" @click="creditCheques.splice(idx, 1)"
-                                    class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">Remove</button>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Cheque Number</label>
-                                <input type="text" :name="`credit_cheques[${idx}][cheque_number]`" x-model="chq.cheque_number"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Bank Name</label>
-                                <input type="text" :name="`credit_cheques[${idx}][bank_name]`" x-model="chq.bank_name"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Branch</label>
-                                <input type="text" :name="`credit_cheques[${idx}][branch_name]`" x-model="chq.branch_name"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Cheque Date</label>
-                                <input type="date" :name="`credit_cheques[${idx}][cheque_date]`" x-model="chq.cheque_date"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Amount (₹)</label>
-                                <input type="number" step="0.01" :name="`credit_cheques[${idx}][amount]`" x-model="chq.amount"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Cheque Type</label>
-                                <select :name="`credit_cheques[${idx}][cheque_type]`" x-model="chq.cheque_type"
-                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                                    <option value="regular">Regular</option>
-                                    <option value="security">Security Cheque</option>
-                                    <option value="pdc">Post-Dated Cheque (PDC)</option>
                                 </select>
                             </div>
                         </div>
@@ -906,8 +866,9 @@ function partyFormController() {
             pincode: {!! json_encode(old('pincode', $item->pincode ?? '')) !!},
         },
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
-        creditCheques: {!! json_encode($initialCreditCheques) !!},
         addresses: {!! json_encode($initialAddresses) !!},
+        _ifscTimers: {},
+        _ifscLastFetched: {},
         stateCities: {!! json_encode($stateCities ?? \App\Support\IndianCities::all()) !!},
         statesList: {!! json_encode($stateOptions ?? \App\Support\IndianStates::options()) !!},
 
@@ -989,23 +950,76 @@ function partyFormController() {
 
         addBankAccount() {
             this.bankAccounts.push({
-                account_holder_name: '',
+                account_holder_name: (this.form.name || '').trim(),
                 bank_name: '',
                 branch_name: '',
                 account_number: '',
                 account_type: 'current',
-                ifsc_code: ''
+                ifsc_code: '',
+                _ifsc_status: '',
+                _ifsc_message: '',
+                _ifsc_loading: false,
             });
         },
-        addCreditCheque() {
-            this.creditCheques.push({
-                cheque_number: '',
-                bank_name: '',
-                branch_name: '',
-                cheque_date: '',
-                amount: '',
-                cheque_type: 'regular'
-            });
+        onIfscInput(idx) {
+            const acc = this.bankAccounts[idx];
+            if (!acc) return;
+            acc._ifsc_status = '';
+            acc._ifsc_message = '';
+            if (this._ifscTimers[idx]) {
+                clearTimeout(this._ifscTimers[idx]);
+            }
+            this._ifscTimers[idx] = setTimeout(() => this.lookupIfsc(idx), 450);
+        },
+        async lookupIfsc(idx) {
+            const acc = this.bankAccounts[idx];
+            if (!acc) return;
+
+            const ifsc = (acc.ifsc_code || '').toUpperCase().trim();
+            if (ifsc.length === 0) {
+                acc._ifsc_status = '';
+                acc._ifsc_message = '';
+                return;
+            }
+            if (ifsc.length !== 11) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'IFSC must be 11 characters.';
+                return;
+            }
+            if (this._ifscLastFetched[idx] === ifsc && acc.bank_name) {
+                return;
+            }
+            if (acc._ifsc_loading) {
+                return;
+            }
+
+            acc._ifsc_loading = true;
+            acc._ifsc_status = '';
+            acc._ifsc_message = 'Looking up bank details…';
+
+            try {
+                const response = await fetch(`{{ route('masters.customers.ifsc-lookup') }}?ifsc=${encodeURIComponent(ifsc)}`);
+                const data = await response.json();
+
+                if (data.success && data.bank) {
+                    acc.bank_name = data.bank.bank_name || acc.bank_name;
+                    acc.branch_name = data.bank.branch_name || acc.branch_name;
+                    if (!acc.account_holder_name || !String(acc.account_holder_name).trim()) {
+                        acc.account_holder_name = (this.form.name || '').trim();
+                    }
+                    this._ifscLastFetched[idx] = ifsc;
+                    acc._ifsc_status = 'ok';
+                    acc._ifsc_message = data.message || 'Bank and branch filled from IFSC.';
+                } else {
+                    acc._ifsc_status = 'error';
+                    acc._ifsc_message = data.message || 'Could not look up this IFSC.';
+                }
+            } catch (err) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'Unable to reach IFSC lookup service.';
+            } finally {
+                acc._ifsc_loading = false;
+            }
         },
         applyExtractedGstinFields(extracted = null, gstin = '') {
             const source = extracted || {};

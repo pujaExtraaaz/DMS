@@ -29,8 +29,9 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::resource('products', ProductController::class);
         Route::resource('price-masters', PriceMasterController::class);
 
-        // GST lookup & quick-add endpoints for Party/Customer
+        // GST / IFSC lookup & quick-add endpoints for Party/Customer
         Route::match(['get', 'post'], 'customers/gst-lookup', [CustomerController::class, 'gstLookup'])->name('customers.gst-lookup');
+        Route::match(['get', 'post'], 'customers/ifsc-lookup', [CustomerController::class, 'ifscLookup'])->name('customers.ifsc-lookup');
         Route::post('customers/quick-add', [CustomerController::class, 'quickAdd'])->name('customers.quick-add');
         Route::get('customers/{customer}/addresses', [CustomerController::class, 'addresses'])->name('customers.addresses');
         Route::get('cities', [CustomerController::class, 'cities'])->name('cities');

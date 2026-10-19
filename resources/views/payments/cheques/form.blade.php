@@ -7,17 +7,21 @@
 <x-ui.card>
 <form method="POST" action="{{ route('cheques.store') }}" class="space-y-4 max-w-3xl">
     @csrf
+    <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        Use this screen to record <span class="font-semibold text-slate-800">security</span>, <span class="font-semibold text-slate-800">credit</span>, and <span class="font-semibold text-slate-800">PDC</span> cheques for a party (moved from Party master).
+    </div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <x-ui.input name="cheque_no" label="Cheque No" :value="old('cheque_no')" required />
         <x-ui.select name="customer_id" label="Party" required>
             <option value="">Select party</option>
             @foreach($customers as $customer)
-                <option value="{{ $customer->id }}" @selected(old('customer_id')==$customer->id)>{{ $customer->name }}</option>
+                <option value="{{ $customer->id }}" @selected((string) old('customer_id', request('customer_id')) === (string) $customer->id)>{{ $customer->name }}</option>
             @endforeach
         </x-ui.select>
-        <x-ui.select name="purpose" label="Purpose" required>
-            <option value="pdc" @selected(old('purpose', $item->purpose)==='pdc')">PDC</option>
-            <option value="security" @selected(old('purpose', $item->purpose)==='security')">Security</option>
+        <x-ui.select name="purpose" label="Cheque Type / Purpose" required>
+            <option value="security" @selected(old('purpose', $item->purpose)==='security')">Security Cheque</option>
+            <option value="credit" @selected(old('purpose', $item->purpose)==='credit')">Credit Cheque</option>
+            <option value="pdc" @selected(old('purpose', $item->purpose)==='pdc')">Post-Dated Cheque (PDC)</option>
         </x-ui.select>
         <x-ui.select name="direction" label="Direction" required>
             <option value="received_from_client" @selected(old('direction', $item->direction)==='received_from_client')">Received from client</option>

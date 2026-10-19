@@ -617,6 +617,7 @@
                     $hsn = $item->product?->hsn_code ?: '—';
                     $brand = $item->product?->brand?->name;
                     $batch = $item->batch_no ?? $item->batch_name;
+                    $serialNo = $item->serial_no ?? null;
 
                     $taxP = (float) $item->tax_percent;
                     $cgstP = (float) ($item->cgst_percent ?? 0);
@@ -634,11 +635,13 @@
                     <td class="text-center">{{ $idx + 1 }}</td>
                     <td class="text-left">
                         <div class="item-name">{{ $item->product?->name ?: 'Item #' . ($idx + 1) }}</div>
-                        @if($brand || $batch)
+                        @if($brand || $batch || $serialNo)
                             <div class="item-sub">
                                 @if($brand)<span>Brand: <strong>{{ $brand }}</strong></span>@endif
-                                @if($brand && $batch) &nbsp;|&nbsp; @endif
+                                @if($brand && ($batch || $serialNo)) &nbsp;|&nbsp; @endif
                                 @if($batch)<span>Batch: <strong>{{ $batch }}</strong></span>@endif
+                                @if($batch && $serialNo) &nbsp;|&nbsp; @endif
+                                @if($serialNo)<span>Serial: <strong>{{ $serialNo }}</strong></span>@endif
                             </div>
                         @endif
                         @if($item->product?->sku && $item->product->sku !== $item->product?->name)

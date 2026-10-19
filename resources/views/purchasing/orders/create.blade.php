@@ -119,6 +119,7 @@
     <th class="px-3 py-2 text-left w-44">Brand</th>
     <th class="px-3 py-2 text-left min-w-[250px]">Product</th>
     <th class="px-3 py-2 text-left">Batch Name</th>
+    <th class="px-3 py-2 text-left">Serial No</th>
     <th class="px-3 py-2 text-left">UOM</th>
     <th class="px-3 py-2 text-left">Qty</th>
     <th class="px-3 py-2 text-left">Unit Cost</th>
@@ -193,6 +194,9 @@
             <td class="px-3 py-2">
                 <input type="text" name="items[{{ $idx }}][batch_no]" list="po-batch-list-{{ $idx }}" class="po-batch-input block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional" value="{{ $oldItem['batch_no'] ?? $oldItem['batch_name'] ?? '' }}">
                 <datalist id="po-batch-list-{{ $idx }}"></datalist>
+            </td>
+            <td class="px-3 py-2">
+                <input type="text" name="items[{{ $idx }}][serial_no]" class="po-serial-input block w-32 rounded-lg border-gray-300 text-sm" placeholder="Optional" maxlength="100" value="{{ $oldItem['serial_no'] ?? '' }}">
             </td>
             <td class="px-3 py-2">
                 <select name="items[{{ $idx }}][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
@@ -294,6 +298,9 @@
         <td class="px-3 py-2">
             <input type="text" name="items[0][batch_no]" list="po-batch-list-0" class="po-batch-input block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional">
             <datalist id="po-batch-list-0"></datalist>
+        </td>
+        <td class="px-3 py-2">
+            <input type="text" name="items[0][serial_no]" class="po-serial-input block w-32 rounded-lg border-gray-300 text-sm" placeholder="Optional" maxlength="100">
         </td>
         <td class="px-3 py-2">
             <select name="items[0][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
@@ -1015,7 +1022,7 @@ function addPoRow() {
             input.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
         } else if (input.name.includes('[quantity]')) {
             input.value = '1';
-        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]')) {
+        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]') || input.name.includes('[serial_no]')) {
             input.value = '';
         } else {
             input.value = '0';

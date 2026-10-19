@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Catalog;
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
 use App\Http\Controllers\Controller;
+use App\Support\CodeGenerator;
+use App\Support\Traits\SortableAndSearchable;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
-
-use App\Support\Traits\SortableAndSearchable;
 
 class CategoryController extends Controller
 {
@@ -60,7 +62,43 @@ class CategoryController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        Category::create($this->validated($request));
+        $data = $this->validated($request);
+        $companyId = auth()->user()?->company_id;
+        $maxAttempts = 5;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                DB::transaction(function () use ($data, $companyId) {
+                    $payload = $data;
+                    $payload['code'] = CodeGenerator::forCategory($companyId);
+
+                    return Category::create($payload);
+                });
+                break;
+            } catch (QueryException $e) {
+                $isDuplicate = isset($e->errorInfo[1]) && (int) $e->errorInfo[1] === 1062;
+                $message = $e->getMessage();
+                $isCodeDuplicate = $isDuplicate && (
+                    str_contains($message, 'categories_code_unique')
+                    || str_contains($message, 'categories.code')
+                    || str_contains($message, "for key 'code'")
+                );
+
+                if ($isCodeDuplicate && $attempt < $maxAttempts) {
+                    usleep(random_int(10000, 30000));
+                    continue;
+                }
+
+                if ($isCodeDuplicate) {
+                    return back()->withInput()->withErrors([
+                        'code' => 'Unable to generate a unique category code. Please try again.',
+                    ]);
+                }
+
+                throw $e;
+            }
+        }
+
         return $this->flashSuccess('Category created successfully.', 'masters.categories.index');
     }
 
@@ -74,25 +112,41 @@ class CategoryController extends Controller
 
     public function update(Request $request, Category $category): RedirectResponse
     {
-        $category->update($this->validated($request, $category));
+        $data = $this->validated($request, $category);
+        $data['code'] = $category->code;
+        $category->update($data);
+
         return $this->flashSuccess('Category updated successfully.', 'masters.categories.index');
     }
 
     public function destroy(Category $category): RedirectResponse
     {
         $category->delete();
+
         return $this->flashSuccess('Category deleted successfully.', 'masters.categories.index');
     }
 
     protected function validated(Request $request, ?Category $category = null): array
     {
-        $data = $request->validate([
+        $rules = [
             'brand_id' => 'nullable|exists:brands,id',
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:30|unique:categories,code'.($category ? ','.$category->id : ''),
             'is_active' => 'boolean',
-        ]);
+        ];
+
+        if ($category) {
+            $rules['code'] = 'nullable|string|max:30|unique:categories,code,'.$category->id;
+        }
+
+        $data = $request->validate($rules);
         $data['is_active'] = $request->boolean('is_active');
+
+        if ($category) {
+            $data['code'] = $category->code;
+        } else {
+            unset($data['code']);
+        }
+
         return $data;
     }
 }
