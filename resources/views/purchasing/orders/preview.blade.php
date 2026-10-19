@@ -642,7 +642,7 @@
                             </div>
                         @endif
                         @if($item->product?->sku && $item->product->sku !== $item->product?->name)
-                            <div class="item-sub">SKU: {{ $item->product->sku }}</div>
+                            <div class="item-sub">Part No: {{ $item->product->sku }}</div>
                         @endif
                     </td>
                     <td class="text-center" style="font-size: 8.5px;">{{ $hsn }}</td>

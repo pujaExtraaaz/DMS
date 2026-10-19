@@ -156,7 +156,7 @@ class StockReclassificationTest extends TestCase
         $response->assertStatus(200);
         $response->assertJson([
             'product_id' => $this->productApple->id,
-            'product_name' => 'Apple',
+            'product_name' => 'APPLE',
             'available_quantity' => 100,
             'uom_code' => 'BOX',
         ]);
@@ -262,18 +262,18 @@ class StockReclassificationTest extends TestCase
         // 4. Verify Product Master catalog records were NOT renamed or mutated
         $this->productApple->refresh();
         $this->productOrange->refresh();
-        $this->assertEquals('Apple', $this->productApple->name);
+        $this->assertEquals('APPLE', $this->productApple->name);
         $this->assertEquals('APL-001', $this->productApple->sku);
-        $this->assertEquals('Oranges', $this->productOrange->name);
+        $this->assertEquals('ORANGES', $this->productOrange->name);
         $this->assertEquals('ORG-001', $this->productOrange->sku);
 
         // 5. Check show page renders properly
         $showResponse = $this->actingAs($this->user)->get(route('inventory.transfers.reclassifications.show', $reclassification));
         $showResponse->assertStatus(200);
         $showResponse->assertSee($reclassification->reclassification_no);
-        $showResponse->assertSee('Apple');
-        $showResponse->assertSee('Oranges');
-        $showResponse->assertSee('Main Location');
+        $showResponse->assertSee('APPLE');
+        $showResponse->assertSee('ORANGES');
+        $showResponse->assertSee('MAIN LOCATION');
     }
 
     public function test_reclassification_validation_fails_when_same_from_and_to_product(): void

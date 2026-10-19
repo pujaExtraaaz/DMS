@@ -8,6 +8,7 @@ use App\Http\Controllers\Master\DeliveryPersonController;
 use App\Http\Controllers\Master\DriverController;
 use App\Http\Controllers\Master\PriceMasterController;
 use App\Http\Controllers\Master\ProductController;
+use App\Http\Controllers\Master\ProductTypeController;
 use App\Http\Controllers\Master\QuickAddProductController;
 use App\Http\Controllers\Master\RouteController;
 use App\Http\Controllers\Master\UomController;
@@ -18,6 +19,9 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
     Route::post('customer-types/quick-store', [CustomerTypeController::class, 'quickStore'])->name('customer-types.quick-store');
     Route::get('customer-types/list', [CustomerTypeController::class, 'list'])->name('customer-types.list');
     Route::resource('customer-types', CustomerTypeController::class);
+    Route::post('product-types/quick-store', [ProductTypeController::class, 'quickStore'])->name('product-types.quick-store');
+    Route::get('product-types/list', [ProductTypeController::class, 'list'])->name('product-types.list');
+    Route::resource('product-types', ProductTypeController::class);
     Route::resource('areas', AreaController::class);
     Route::resource('routes', RouteController::class);
     Route::resource('uoms', UomController::class);

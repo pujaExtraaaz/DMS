@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search Name, SKU, Serial No, Series, Model..."
+            search-placeholder="Search Name, Part Number, Serial No, Model..."
             :reset-url="route('masters.products.index')"
         >
             <x-slot name="filters">
@@ -60,10 +60,7 @@
                             Name
                         </x-ui.sortable-th>
                         <x-ui.sortable-th column="sku" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
-                            SKU
-                        </x-ui.sortable-th>
-                        <x-ui.sortable-th column="series" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
-                            Series
+                            Part Number
                         </x-ui.sortable-th>
                         <x-ui.sortable-th column="model" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Models
@@ -82,7 +79,6 @@
                             <td class="px-4 py-3 font-mono text-xs text-slate-600">{{ $item->serial_no ?: '—' }}</td>
                             <td class="px-4 py-3 font-medium text-slate-900">{{ $item->name }}</td>
                             <td class="px-4 py-3 font-mono text-xs text-slate-600">{{ $item->sku }}</td>
-                            <td class="px-4 py-3 text-slate-600">{{ $item->series ?: '—' }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->models ?: ($item->model ?: '—') }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->product_type ?: '—' }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->baseUom?->code ?? '—' }}</td>
@@ -178,7 +174,7 @@
                                         <span class="font-semibold text-slate-900" x-text="deletingProductName"></span>
                                     </div>
                                     <div class="flex justify-between items-center text-slate-600">
-                                        <span class="font-medium">SKU:</span>
+                                        <span class="font-medium">Part Number:</span>
                                         <span class="font-mono text-slate-700" x-text="deletingProductSku"></span>
                                     </div>
                                     <div class="flex justify-between items-center text-slate-600">

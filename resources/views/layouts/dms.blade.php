@@ -26,7 +26,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <link rel="stylesheet" href="{{ asset('css/pwa-mobile.css') }}">
     <style>
-        input.uppercase, textarea.uppercase, [data-is-name="true"] { text-transform: uppercase; }
+        input.uppercase, textarea.uppercase { text-transform: uppercase; }
     </style>
     @livewireStyles
 </head>
@@ -203,7 +203,7 @@
 
     @livewireScripts
     <script src="{{ asset('js/dynamic-tables.js') }}" defer></script>
-    <script src="{{ asset('js/name-uppercase.js') }}" defer></script>
+    <script src="{{ asset('js/title-case.js') }}" defer></script>
     @stack('scripts')
     @include('partials.sync-conflict')
 </body>

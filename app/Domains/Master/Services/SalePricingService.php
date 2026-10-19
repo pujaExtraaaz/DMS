@@ -21,7 +21,9 @@ class SalePricingService
             $product = Product::findOrFail($item['product_id']);
             $uom = Uom::findOrFail($item['uom_id']);
             $quantity = (float) $item['quantity'];
-            $unitPrice = $this->priceMasterService->resolvePrice($customer, $product, $uom, $quantity);
+            $unitPrice = (isset($item['unit_price']) && (float) $item['unit_price'] > 0)
+                ? (string) number_format((float) $item['unit_price'], 2, '.', '')
+                : $this->priceMasterService->resolvePrice($customer, $product, $uom, $quantity);
 
             if ($unitPrice === null) {
                 throw ValidationException::withMessages([

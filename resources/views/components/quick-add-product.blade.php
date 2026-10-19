@@ -25,11 +25,11 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div class="md:col-span-2">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Product name *</label>
-                            <input type="text" x-model="form.name" @input="form.name = ($event.target.value || '').toUpperCase()" data-is-name="true" required class="block w-full uppercase rounded-lg border-gray-300 text-sm">
+                            <input type="text" x-model="form.name" data-is-name="true" required class="block w-full rounded-lg border-gray-300 text-sm">
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">SKU (auto if blank)</label>
-                            <input type="text" x-model="form.sku" class="block w-full rounded-lg border-gray-300 text-sm">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Part Number (auto if blank)</label>
+                            <input type="text" x-model="form.sku" placeholder="Enter Part Number" class="block w-full rounded-lg border-gray-300 text-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">HSN Code</label>
@@ -57,10 +57,6 @@
                                 <option value="">—</option>
                                 <template x-for="c in options.categories" :key="c.id"><option :value="c.id" x-text="c.name"></option></template>
                             </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Color / Variant</label>
-                            <input type="text" x-model="form.color_variant" class="block w-full rounded-lg border-gray-300 text-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Tax %</label>
@@ -104,7 +100,7 @@
                 saving: false,
                 error: null,
                 options: { brands: [], categories: [], uoms: [] },
-                form: { name: '', sku: '', hsn_code: '', base_uom_id: '', brand_id: '', category_id: '', color_variant: '', tax_rate: 0, purchase_price: 0, selling_price: 0, calculation_mrp: 0 },
+                form: { name: '', sku: '', hsn_code: '', base_uom_id: '', brand_id: '', category_id: '', tax_rate: 0, purchase_price: 0, selling_price: 0, calculation_mrp: 0 },
                 async init() {
                     try {
                         const r = await fetch("{{ route('masters.products.quick-add.options') }}", { headers: { Accept: 'application/json' } });
@@ -116,7 +112,7 @@
                 async save() {
                     this.saving = true; this.error = null;
                     if (this.form.name) {
-                        this.form.name = this.form.name.trim().toUpperCase();
+                        this.form.name = typeof window.dmsToTitleCase === 'function' ? window.dmsToTitleCase(this.form.name.trim()) : this.form.name.trim();
                     }
                     try {
                         const r = await fetch("{{ route('masters.products.quick-add') }}", {
@@ -128,7 +124,7 @@
                         if (! r.ok) { this.error = data.message || (data.errors ? Object.values(data.errors).flat().join(' ') : 'Failed to save.'); this.saving = false; return; }
                         window.dispatchEvent(new CustomEvent('product-quick-added', { detail: data.product }));
                         this.isOpen = false;
-                        this.form = { name: '', sku: '', hsn_code: '', base_uom_id: '', brand_id: '', category_id: '', color_variant: '', tax_rate: 0, purchase_price: 0, selling_price: 0, calculation_mrp: 0 };
+                        this.form = { name: '', sku: '', hsn_code: '', base_uom_id: '', brand_id: '', category_id: '', tax_rate: 0, purchase_price: 0, selling_price: 0, calculation_mrp: 0 };
                     } catch (e) { this.error = 'Network error while saving.'; }
                     finally { this.saving = false; }
                 },

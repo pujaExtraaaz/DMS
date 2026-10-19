@@ -129,7 +129,7 @@
         </div>
         <div class="min-w-0 h-full">
         <x-ui.stat-card
-            label="Low Stock SKUs"
+            label="Low Stock Part Numbers"
             value="{{ $stats['low_stock'] ?? 0 }}"
             change="{{ ($stats['pending_deliveries'] ?? 0).' pending deliveries' }}"
             change-type="warning"

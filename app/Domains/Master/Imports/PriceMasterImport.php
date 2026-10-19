@@ -34,11 +34,11 @@ class PriceMasterImport implements ToCollection, WithHeadingRow
             $rowNo = $index + 2;
             $data = collect($row)->mapWithKeys(fn($v, $k) => [strtolower((string) $k) => $v])->toArray();
 
-            $sku = trim((string) ($data['sku'] ?? ''));
+            $sku = trim((string) ($data['part_number'] ?? $data['part_no'] ?? $data['partnumber'] ?? $data['sku'] ?? ''));
             $product = $products[strtolower($sku)] ?? null;
             if (! $product) {
                 $this->skipped++;
-                $this->errors[] = ['row' => $rowNo, 'field' => 'sku', 'message' => "Product with SKU '{$sku}' not found"];
+                $this->errors[] = ['row' => $rowNo, 'field' => 'part_number', 'message' => "Product with Part Number '{$sku}' not found"];
                 continue;
             }
 

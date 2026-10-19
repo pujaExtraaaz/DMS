@@ -177,7 +177,7 @@
                                        @focus="sourceOpen = true"
                                        @input="sourceOpen = true"
                                        @click.outside="sourceOpen = false"
-                                       placeholder="Type Product Name Or SKU..."
+                                       placeholder="Type Product Name Or Part Number..."
                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
                                 <button type="button" x-show="sourceProductId" @click="clearSource()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold">&times;</button>
                             </div>
@@ -190,7 +190,7 @@
                                          class="p-2.5 hover:bg-indigo-50 cursor-pointer text-xs flex items-center justify-between">
                                         <div>
                                             <span class="font-medium text-slate-800" x-text="p.name"></span>
-                                            <span class="text-slate-400 text-[11px] block" x-text="'SKU: ' + (p.sku || '—')"></span>
+                                            <span class="text-slate-400 text-[11px] block" x-text="'Part No: ' + (p.sku || '—')"></span>
                                         </div>
                                         <span class="text-[11px] text-slate-500 font-mono" x-text="p.base_uom ? p.base_uom.code : ''"></span>
                                     </div>
@@ -246,7 +246,7 @@
                                        @focus="destOpen = true"
                                        @input="destOpen = true"
                                        @click.outside="destOpen = false"
-                                       placeholder="Type Destination Product Name Or SKU..."
+                                       placeholder="Type Destination Product Name Or Part Number..."
                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
                                 <button type="button" x-show="destProductId" @click="clearDest()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold">&times;</button>
                             </div>
@@ -259,7 +259,7 @@
                                          class="p-2.5 hover:bg-indigo-50 cursor-pointer text-xs flex items-center justify-between">
                                         <div>
                                             <span class="font-medium text-slate-800" x-text="p.name"></span>
-                                            <span class="text-slate-400 text-[11px] block" x-text="'SKU: ' + (p.sku || '—')"></span>
+                                            <span class="text-slate-400 text-[11px] block" x-text="'Part No: ' + (p.sku || '—')"></span>
                                         </div>
                                         <span class="text-[11px] text-slate-500 font-mono" x-text="p.base_uom ? p.base_uom.code : ''"></span>
                                     </div>
@@ -301,7 +301,7 @@
                             <input type="text"
                                    name="notes"
                                    x-model="notes"
-                                   placeholder="E.G. Corrected SKU Naming, Grade Reclassification, Repackaged..."
+                                   placeholder="E.G. Corrected Part Number Naming, Grade Reclassification, Repackaged..."
                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         </div>
                     </div>

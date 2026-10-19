@@ -5,7 +5,7 @@ namespace App\Support;
 class NameCase
 {
     /**
-     * Fields that explicitly represent names and must always be formatted in uppercase.
+     * Fields that explicitly represent names and must always be formatted in Title Case.
      */
     protected static array $explicitNameFields = [
         'name',
@@ -39,10 +39,21 @@ class NameCase
         'form_name',
         'tally_name',
         'batch_name',
+        'product_type',
+        'product_type_name',
+        'classification',
+        'customer_type',
+        'department',
+        'designation',
+        'leave_type',
+        'expense_type',
+        'city',
+        'state',
+        'country',
     ];
 
     /**
-     * Technical and non-name fields that must NOT be converted to uppercase.
+     * Technical and non-name fields that must NOT be converted to Title Case.
      */
     protected static array $excludedFields = [
         'username',
@@ -68,9 +79,11 @@ class NameCase
         'gstin',
         'pan',
         'sku',
+        'part_number',
         'hsn_code',
         'code',
         'serial_no',
+        'batch_no',
         'token',
         'url',
         'slug',
@@ -78,10 +91,12 @@ class NameCase
         'q',
         '_token',
         '_method',
+        'api_key',
+        'secret',
     ];
 
     /**
-     * Convert a name value to FULL UPPERCASE LETTERS.
+     * Convert a value to Title Case.
      */
     public static function format(?string $value): ?string
     {
@@ -94,11 +109,11 @@ class NameCase
             return '';
         }
 
-        return mb_strtoupper($trimmed, 'UTF-8');
+        return TitleCase::format($trimmed);
     }
 
     /**
-     * Determine if a field name represents a name field that requires uppercase formatting.
+     * Determine if a field name represents a field that requires Title Case formatting.
      */
     public static function isNameField(string $fieldName): bool
     {
@@ -130,4 +145,3 @@ class NameCase
         return false;
     }
 }
-

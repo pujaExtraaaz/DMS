@@ -356,8 +356,10 @@ class OrderController extends Controller
                     'id' => $uom->id,
                     'name' => $uom->name,
                     'code' => $uom->code,
-                    'conversion_factor' => $productUom->conversion_factor,
+                    'conversion_factor' => (float) $productUom->conversion_factor,
                     'is_base' => (bool) $productUom->is_base,
+                    'selling_price' => $productUom->selling_price,
+                    'purchase_price' => $productUom->purchase_price,
                     'label' => $uom->name . ' (' . $uom->code . ')',
                 ];
             })
