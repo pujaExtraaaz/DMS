@@ -22,8 +22,15 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::resource('financial-years', FinancialYearController::class)->except(['show']);
     Route::post('financial-years/{financial_year}/set-current', [FinancialYearController::class, 'setCurrent'])->name('financial-years.set-current');
     Route::post('financial-years/{financial_year}/close', [FinancialYearController::class, 'close'])->name('financial-years.close');
-    Route::post('financial-years/{financial_year}/reopen', [FinancialYearController::class, 'reopen'])->name('financial-years.reopen');
-    Route::resource('business-groups', BusinessGroupController::class)->except(['show']);
+    Route::get('sister-concerns', [\App\Http\Controllers\Organization\SisterConcernController::class, 'dashboard'])->name('sister-concerns.dashboard');
+    Route::get('sister-concerns/dashboard', [\App\Http\Controllers\Organization\SisterConcernController::class, 'dashboard'])->name('sister-concerns.dashboard.redirect');
+    Route::get('sister-concerns/companies', [\App\Http\Controllers\Organization\SisterConcernController::class, 'companies'])->name('sister-concerns.companies');
+    Route::get('sister-concerns/transactions', [\App\Http\Controllers\Organization\SisterConcernController::class, 'transactions'])->name('sister-concerns.transactions');
+    Route::post('sister-concerns/transactions', [\App\Http\Controllers\Organization\InterCompanyTransactionController::class, 'store'])->name('sister-concerns.transactions.store');
+    Route::get('sister-concerns/transactions/{transaction}', [\App\Http\Controllers\Organization\InterCompanyTransactionController::class, 'show'])->name('sister-concerns.transactions.show');
+    Route::put('sister-concerns/transactions/{transaction}', [\App\Http\Controllers\Organization\InterCompanyTransactionController::class, 'update'])->name('sister-concerns.transactions.update');
+    Route::delete('sister-concerns/transactions/{transaction}', [\App\Http\Controllers\Organization\InterCompanyTransactionController::class, 'destroy'])->name('sister-concerns.transactions.destroy');
+    Route::resource('business-groups', BusinessGroupController::class);
 });
 
 Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|products.delete')->group(function () {

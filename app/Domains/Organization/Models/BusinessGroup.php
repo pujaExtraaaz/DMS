@@ -4,6 +4,7 @@ namespace App\Domains\Organization\Models;
 
 use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -14,13 +15,31 @@ class BusinessGroup extends Model
     protected $fillable = [
         'name',
         'code',
+        'parent_company_id',
+        'incorporation_date',
+        'headquarters',
+        'country',
+        'industry',
+        'website',
+        'email',
+        'phone',
+        'logo_emoji',
         'description',
+        'notes',
         'is_active',
     ];
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return [
+            'is_active' => 'boolean',
+            'incorporation_date' => 'date:Y-m-d',
+        ];
+    }
+
+    public function parentCompany(): BelongsTo
+    {
+        return $this->belongsTo(Company::class, 'parent_company_id');
     }
 
     public function companies(): BelongsToMany

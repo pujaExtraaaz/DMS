@@ -41,15 +41,67 @@ class Company extends Model
         'selling_terms_and_conditions',
         'due_date_basis',
         'logo_path',
+        'company_type',
+        'incorporation_no',
+        'incorporation_date',
+        'logo_emoji',
+        'iec_code',
+        'city',
+        'country',
+        'nature_of_business',
+        'authorized_capital',
+        'paid_up_capital',
+        'annual_turnover',
+        'financial_year',
+        'accounting_software',
+        'branches_count_manual',
+        'employees_count_manual',
+        'relationship_type',
+        'shareholding_percentage',
+        'compliance_status',
         'is_active',
         'is_default',
+        'cin_number',
+        'msme_reg_no',
     ];
+
+    protected $appends = [
+        'cin_number',
+        'msme_reg_no',
+    ];
+
+    public function getCinNumberAttribute(): ?string
+    {
+        return $this->attributes['cin'] ?? null;
+    }
+
+    public function setCinNumberAttribute(?string $value): void
+    {
+        $this->attributes['cin'] = $value;
+    }
+
+    public function getMsmeRegNoAttribute(): ?string
+    {
+        return $this->attributes['msme_registration_no'] ?? null;
+    }
+
+    public function setMsmeRegNoAttribute(?string $value): void
+    {
+        $this->attributes['msme_registration_no'] = $value;
+    }
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
             'is_default' => 'boolean',
+            'incorporation_date' => 'date:Y-m-d',
+            'authorized_capital' => 'decimal:2',
+            'paid_up_capital' => 'decimal:2',
+            'annual_turnover' => 'decimal:2',
+            'shareholding_percentage' => 'decimal:2',
+            'branches_count_manual' => 'integer',
+            'employees_count_manual' => 'integer',
             'od_limit' => 'decimal:2',
             'interest_rate' => 'decimal:2',
             'additional_details' => 'array',
