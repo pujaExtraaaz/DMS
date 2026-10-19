@@ -28,35 +28,28 @@
     <div
         x-data="{
             sidebarOpen: false,
-            sidebarCollapsed: (function () {
-                if ({{ books_show_aside() ? 'true' : 'false' }}) {
-                    const booksMain = sessionStorage.getItem('booksMainSidebarCollapsed');
-                    return booksMain === null ? true : booksMain === 'true';
-                }
-                return localStorage.getItem('dmsSidebarCollapsed') === 'true';
-            })(),
+            sidebarCollapsed: {{ books_show_aside() ? 'true' : 'localStorage.getItem(\'dmsSidebarCollapsed\') === \'true\'' }},
+            sidebarAnimate: false,
             booksAsideCollapsed: false,
             hasBooksAside: {{ books_show_aside() ? 'true' : 'false' }},
             toggleCollapsed() {
-                // Chevron toggles the main DMS sidebar; Accounting Books aside stays open.
+                // Animate only on explicit chevron click — never on page load / module change.
+                this.sidebarAnimate = true;
                 this.sidebarCollapsed = !this.sidebarCollapsed;
-                if (this.hasBooksAside) {
-                    sessionStorage.setItem('booksMainSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
-                } else {
+                if (! this.hasBooksAside) {
                     localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
                 }
             },
             init() {
                 this.booksAsideCollapsed = false;
                 sessionStorage.removeItem('booksAsideCollapsed');
+                sessionStorage.removeItem('booksMainSidebarCollapsed');
 
                 if (this.hasBooksAside) {
-                    // Entering Accounting (Books): main sidebar starts collapsed; > still expands it.
-                    const booksMain = sessionStorage.getItem('booksMainSidebarCollapsed');
-                    this.sidebarCollapsed = booksMain === null ? true : booksMain === 'true';
+                    this.sidebarCollapsed = true;
                 } else {
-                    sessionStorage.removeItem('booksMainSidebarCollapsed');
                     this.sidebarCollapsed = localStorage.getItem('dmsSidebarCollapsed') === 'true';
+                    this.sidebarAnimate = true;
                 }
             }
         }"

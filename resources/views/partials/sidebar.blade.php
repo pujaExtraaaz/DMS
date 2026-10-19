@@ -31,14 +31,17 @@
 @php
     // Strict tenant: never fall back to another company's row when the user has no company_id.
     $activeCompany = \App\Domains\Organization\Models\Company::find(auth()->user()?->company_id);
+    // Accounting Books: paint already collapsed so module navigations do not re-animate the rail.
+    $booksWorkspaceAside = books_show_aside();
 @endphp
 
 <aside
     :class="[
         sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-64',
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+        sidebarAnimate ? 'transition-all duration-300' : ''
     ]"
-    class="dms-sidebar fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col h-[100dvh] shrink-0 border-r border-slate-800/50 transition-all duration-300 lg:static lg:translate-x-0"
+    class="dms-sidebar fixed inset-y-0 left-0 z-50 flex -translate-x-full flex-col h-[100dvh] shrink-0 border-r border-slate-800/50 lg:static lg:translate-x-0 {{ $booksWorkspaceAside ? 'lg:w-[72px]' : 'w-64' }}"
 >
     <div class="flex h-16 shrink-0 items-center justify-between border-b border-slate-700/60 px-4">
         <a href="{{ route('dashboard') }}" class="flex min-w-0 items-center gap-3">
