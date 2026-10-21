@@ -52,6 +52,11 @@ class BusinessGroup extends Model
         return $this->hasMany(CompanyGroupLink::class);
     }
 
+    public function customers(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Master\Models\Customer::class);
+    }
+
     public function isDefault(): bool
     {
         return strcasecmp(trim($this->code ?? ''), 'DEFAULT') === 0

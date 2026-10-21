@@ -80,7 +80,7 @@
             @include('partials.books-aside')
         @endif
 
-        <div class="relative z-0 flex flex-1 flex-col min-w-0 h-[100dvh] overflow-hidden bg-slate-100">
+        <div class="relative flex flex-1 flex-col min-w-0 h-[100dvh] overflow-hidden bg-slate-100">
             <header class="shrink-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-sm pt-[env(safe-area-inset-top)]">
                 <div class="flex items-center justify-between h-14 sm:h-16 px-3 sm:px-6 lg:px-8">
                     <div class="flex items-center gap-2 sm:gap-3 min-w-0">

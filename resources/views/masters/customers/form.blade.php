@@ -3,24 +3,27 @@
 
 @php
     $defaultBankAccount = [
+        'id' => null,
         'account_holder_name' => '',
         'bank_name' => '',
         'branch_name' => '',
         'account_number' => '',
         'account_type' => 'current',
         'ifsc_code' => '',
+        'is_primary' => true,
     ];
-    $initialBankAccounts = old('bank_accounts', ($item->exists && $item->relationLoaded('bankAccounts') && $item->bankAccounts->isNotEmpty()) ? $item->bankAccounts->toArray() : [$defaultBankAccount]);
-
-    $defaultCreditCheque = [
-        'cheque_number' => '',
-        'bank_name' => '',
-        'branch_name' => '',
-        'cheque_date' => '',
-        'amount' => '',
-        'cheque_type' => 'regular',
-    ];
-    $initialCreditCheques = old('credit_cheques', ($item->exists && $item->relationLoaded('creditCheques') && $item->creditCheques->isNotEmpty()) ? $item->creditCheques->toArray() : [$defaultCreditCheque]);
+    $initialBankAccounts = old('bank_accounts', ($item->exists && $item->relationLoaded('bankAccounts') && $item->bankAccounts->isNotEmpty()) 
+        ? $item->bankAccounts->map(fn ($b) => [
+            'id' => $b->id,
+            'account_holder_name' => $b->account_holder_name ?? '',
+            'bank_name' => $b->bank_name ?? '',
+            'branch_name' => $b->branch_name ?? '',
+            'account_number' => $b->account_number ?? '',
+            'account_type' => $b->account_type ?? 'current',
+            'ifsc_code' => $b->ifsc_code ?? '',
+            'is_primary' => (bool) ($b->is_primary),
+        ])->toArray() 
+        : [$defaultBankAccount]);
 
     $defaultAddress = [
         'id' => null,
@@ -56,6 +59,8 @@
             })->toArray()
             : [$defaultAddress]
     ));
+
+    $initialBusinessGroupId = old('business_group_id', $item->business_group_id ?? request('selected_group_id', request('business_group_id')));
 @endphp
 
 @section('content')
@@ -179,6 +184,154 @@
                             <option value="{{ $val }}" @selected(old('party_type', $item->party_type_key ?? 'sundry_debtors')===$val)>{{ $label }}</option>
                         @endforeach
                     </select>
+                </div>
+
+                {{-- Business Group (Linked from Sister Concern) --}}
+                <div class="relative">
+                    <div class="flex items-center justify-between mb-1">
+                        <label for="business_group_id_display" class="block text-xs font-semibold text-slate-700 tracking-wider">
+                            Business Group
+                        </label>
+                        <a href="{{ route('organization.business-groups.index', ['return_url' => url()->current()]) }}"
+                           class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 hover:underline focus:outline-none"
+                           title="Create new business group in Sister Concern">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            + Add
+                        </a>
+                    </div>
+
+                    {{-- Hidden input for Form submission --}}
+                    <input type="hidden" name="business_group_id" :value="selectedBusinessGroupId || ''">
+
+                    {{-- Dropdown Container --}}
+                    <div class="relative w-full"
+                         x-ref="businessGroupContainer"
+                         @click.outside="closeBusinessGroupDropdown()">
+                        
+                        <!-- Trigger Input / Button -->
+                        <button type="button"
+                                id="business_group_id_display"
+                                x-ref="bgTriggerButton"
+                                @click="toggleBusinessGroupDropdown()"
+                                :class="businessGroupDropdownOpen ? 'ring-2 ring-indigo-500 border-indigo-500' : 'border-gray-300 hover:border-gray-400'"
+                                class="relative w-full rounded-lg border bg-white py-2 pl-3 pr-2 text-left text-sm shadow-xs focus:outline-none transition flex items-center justify-between">
+                            <div class="flex items-center gap-2 truncate flex-1 mr-2">
+                                <template x-if="selectedBusinessGroup">
+                                    <div class="flex items-center gap-1.5 truncate">
+                                        <span class="text-sm" x-text="selectedBusinessGroup.logo_emoji || '🏢'"></span>
+                                        <span class="font-medium text-slate-800 truncate" x-text="selectedBusinessGroup.name"></span>
+                                        <span class="text-[11px] text-slate-500 font-mono bg-slate-100 px-1 py-0.5 rounded border border-slate-200" x-text="selectedBusinessGroup.code"></span>
+                                    </div>
+                                </template>
+                                <template x-if="!selectedBusinessGroup">
+                                    <span class="text-slate-400">Select Business Group (optional)</span>
+                                </template>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <template x-if="selectedBusinessGroupId">
+                                    <span @click.stop="clearBusinessGroup()" title="Clear selection"
+                                          class="p-0.5 text-slate-400 hover:text-rose-500 rounded cursor-pointer transition">
+                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                    </span>
+                                </template>
+                                <svg class="h-4 w-4 text-slate-400 transition-transform duration-150"
+                                     :class="businessGroupDropdownOpen ? 'rotate-180 text-indigo-600' : ''"
+                                     viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                        </button>
+
+                        <!-- Dropdown Menu Popover -->
+                        <div x-show="businessGroupDropdownOpen"
+                             x-cloak
+                             x-transition:enter="transition ease-out duration-100"
+                             x-transition:enter-start="opacity-0 translate-y-1"
+                             x-transition:enter-end="opacity-100 translate-y-0"
+                             x-transition:leave="transition ease-in duration-75"
+                             x-transition:leave-start="opacity-100 translate-y-0"
+                             x-transition:leave-end="opacity-0 translate-y-1"
+                             class="absolute left-0 right-0 z-50 rounded-lg bg-white shadow-lg ring-1 ring-black/5 border border-slate-200 overflow-hidden flex flex-col focus:outline-none"
+                             :class="dropdownPlacement === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'"
+                             style="max-height: 280px; display: none;">
+                            
+                            <!-- Search Field -->
+                            <div class="p-2 border-b border-slate-100 bg-slate-50/80 sticky top-0 z-10">
+                                <div class="relative">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
+                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                        </svg>
+                                    </div>
+                                    <input type="text"
+                                           x-ref="businessGroupSearchInput"
+                                           x-model="businessGroupSearch"
+                                           @keydown="onBusinessGroupKeyDown($event)"
+                                           placeholder="Search Business Group by name or code..."
+                                           class="block w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                </div>
+                            </div>
+
+                            <!-- Options List -->
+                            <div class="overflow-y-auto py-1 divide-y divide-slate-50 max-h-48 text-xs">
+                                <div @click="clearBusinessGroup()"
+                                     class="p-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-slate-500 italic text-[11px] transition">
+                                    <span>-- None / No Business Group --</span>
+                                    <span x-show="!selectedBusinessGroupId" class="text-indigo-600 font-bold">✓</span>
+                                </div>
+
+                                <template x-for="(g, idx) in filteredBusinessGroups" :key="g.id">
+                                    <div @click="selectBusinessGroup(g)"
+                                         @mouseenter="highlightedGroupIndex = idx"
+                                         class="p-2.5 cursor-pointer flex items-center justify-between transition-colors"
+                                         :class="{
+                                             'bg-indigo-50 text-indigo-900 font-semibold': String(selectedBusinessGroupId) === String(g.id),
+                                             'bg-slate-100/70': highlightedGroupIndex === idx && String(selectedBusinessGroupId) !== String(g.id),
+                                             'text-slate-800 hover:bg-slate-50': String(selectedBusinessGroupId) !== String(g.id)
+                                         }">
+                                        <div class="flex items-center gap-2 truncate">
+                                            <span class="text-sm font-emoji" x-text="g.logo_emoji || '🏢'"></span>
+                                            <span class="truncate" x-text="g.name"></span>
+                                            <span class="font-mono text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded" x-text="g.code"></span>
+                                        </div>
+                                        <span x-show="String(selectedBusinessGroupId) === String(g.id)" class="text-indigo-600 font-bold ml-2">✓</span>
+                                    </div>
+                                </template>
+
+                                <div x-show="!loadingBusinessGroups && filteredBusinessGroups.length === 0" class="p-4 text-center text-slate-400 space-y-2">
+                                    <p class="text-[11px]">No business groups match "<span class="font-medium text-slate-600" x-text="businessGroupSearch"></span>"</p>
+                                    <a href="{{ route('organization.business-groups.index', ['return_url' => url()->current()]) }}"
+                                       class="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
+                                        + Add New Business Group
+                                    </a>
+                                </div>
+
+                                <div x-show="loadingBusinessGroups" class="p-3 text-center text-slate-400 flex items-center justify-center gap-2">
+                                    <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                    <span>Loading business groups...</span>
+                                </div>
+
+                                <div x-show="businessGroupError" class="p-2.5 bg-rose-50 text-rose-700 text-[11px] flex items-center justify-between">
+                                    <span x-text="businessGroupError"></span>
+                                    <button type="button" @click="refreshBusinessGroups(true)" class="underline font-semibold ml-2">Retry</button>
+                                </div>
+                            </div>
+
+                            <!-- Footer with quick link -->
+                            <div class="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                                <span x-text="`${filteredBusinessGroups.length} group${filteredBusinessGroups.length === 1 ? '' : 's'} available`"></span>
+                                <a href="{{ route('organization.business-groups.index', ['return_url' => url()->current()]) }}"
+                                   class="text-indigo-600 hover:text-indigo-900 font-semibold hover:underline inline-flex items-center gap-0.5">
+                                    Manage Groups &rarr;
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    @error('business_group_id')
+                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                    @enderror
                 </div>
 
                 <div>
@@ -378,7 +531,7 @@
                                             </div>
                                         </div>
                                         <ul x-ref="optionsList" class="max-h-48 overflow-y-auto py-1 text-sm divide-y divide-slate-50">
-                                            <template x-for="(st, sIdx) in filteredStates" :key="st.code || st.name">
+                                            <template x-for="(st, sIdx) in filteredStates" :key="st.code">
                                                 <li :data-index="sIdx"
                                                     @click="selectState(st)"
                                                     @mouseenter="highlightedIndex = sIdx"
@@ -388,8 +541,11 @@
                                                         'text-slate-700': addr.state !== st.name && highlightedIndex !== sIdx
                                                     }"
                                                     class="cursor-pointer select-none px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-100 transition-colors">
-                                                    <span x-text="st.name"></span>
-                                                    <span class="text-[11px] font-mono text-slate-400 font-normal" x-text="st.code ? `(${st.code})` : ''"></span>
+                                                    <div class="flex items-center gap-2">
+                                                        <span x-text="st.name"></span>
+                                                        <span class="text-[10px] text-slate-400 font-mono" x-text="`(${st.code})`"></span>
+                                                    </div>
+                                                    <span x-show="addr.state === st.name" class="text-indigo-600 font-bold">✓</span>
                                                 </li>
                                             </template>
                                             <template x-if="filteredStates.length === 0">
@@ -577,9 +733,21 @@
                     <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
                         <div class="flex items-center justify-between">
                             <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Bank Account #${idx + 1}`"></span>
-                            <button type="button" x-show="bankAccounts.length > 1" @click="bankAccounts.splice(idx, 1)"
-                                    class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">Remove</button>
+                            <div class="flex items-center gap-4">
+                                <label class="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-slate-700">
+                                    <input type="radio" name="default_bank_account_radio" :checked="acc.is_primary" @change="setDefaultBankAccount(idx)"
+                                           class="text-indigo-600 focus:ring-indigo-500">
+                                    <span>Default Account</span>
+                                </label>
+                                <button type="button" x-show="bankAccounts.length > 1" @click="removeBankAccount(idx)"
+                                        class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">Remove</button>
+                            </div>
                         </div>
+
+                        <!-- Hidden fields to submit to backend -->
+                        <input type="hidden" :name="`bank_accounts[${idx}][id]`" :value="acc.id || ''">
+                        <input type="hidden" :name="`bank_accounts[${idx}][is_primary]`" :value="acc.is_primary ? 1 : 0">
+
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Account Holder Name</label>
@@ -620,65 +788,7 @@
             </div>
         </div>
 
-        <div class="space-y-4">
-            <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-700">Security / Credit Cheques (PDC)</h3>
-                <button type="button" @click="addCreditCheque()"
-                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
-                    + Add Cheque
-                </button>
-            </div>
-
-            <div class="space-y-3">
-                <template x-for="(chq, idx) in creditCheques" :key="idx">
-                    <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Cheque #${idx + 1}`"></span>
-                            <button type="button" x-show="creditCheques.length > 1" @click="creditCheques.splice(idx, 1)"
-                                    class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">Remove</button>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Cheque Number</label>
-                                <input type="text" :name="`credit_cheques[${idx}][cheque_number]`" x-model="chq.cheque_number"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Bank Name</label>
-                                <input type="text" :name="`credit_cheques[${idx}][bank_name]`" x-model="chq.bank_name"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Branch</label>
-                                <input type="text" :name="`credit_cheques[${idx}][branch_name]`" x-model="chq.branch_name"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Cheque Date</label>
-                                <input type="date" :name="`credit_cheques[${idx}][cheque_date]`" x-model="chq.cheque_date"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Amount (₹)</label>
-                                <input type="number" step="0.01" :name="`credit_cheques[${idx}][amount]`" x-model="chq.amount"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Cheque Type</label>
-                                <select :name="`credit_cheques[${idx}][cheque_type]`" x-model="chq.cheque_type"
-                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                                    <option value="regular">Regular</option>
-                                    <option value="security">Security Cheque</option>
-                                    <option value="pdc">Post-Dated Cheque (PDC)</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </template>
-            </div>
-        </div>
-
-        <label class="flex items-center gap-2 text-sm">
+        <label class="flex items-center gap-2 text-sm pt-2">
             <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600"> Active
         </label>
 
@@ -780,6 +890,218 @@
 <script>
 function partyFormController() {
     return {
+        // Business Group state
+        businessGroups: {!! json_encode($businessGroups ?? []) !!},
+        selectedBusinessGroupId: {!! json_encode((string) ($initialBusinessGroupId ?? '')) !!},
+        selectedBusinessGroup: null,
+        businessGroupSearch: '',
+        businessGroupDropdownOpen: false,
+        loadingBusinessGroups: false,
+        businessGroupError: '',
+        highlightedGroupIndex: 0,
+        dropdownPlacement: 'bottom',
+
+        init() {
+            if (this.selectedBusinessGroupId) {
+                this.selectBusinessGroupById(this.selectedBusinessGroupId);
+            }
+            window.addEventListener('resize', () => {
+                if (this.businessGroupDropdownOpen) {
+                    this.updateDropdownPlacement();
+                }
+            });
+            window.addEventListener('scroll', () => {
+                if (this.businessGroupDropdownOpen) {
+                    this.updateDropdownPlacement();
+                }
+            }, true);
+        },
+
+        toggleBusinessGroupDropdown() {
+            this.businessGroupDropdownOpen = !this.businessGroupDropdownOpen;
+            if (this.businessGroupDropdownOpen) {
+                this.businessGroupSearch = '';
+                this.highlightedGroupIndex = 0;
+                this.updateDropdownPlacement();
+                this.$nextTick(() => {
+                    this.$refs.businessGroupSearchInput?.focus();
+                });
+                if (!this.businessGroups || this.businessGroups.length === 0) {
+                    this.refreshBusinessGroups();
+                }
+            }
+        },
+
+        closeBusinessGroupDropdown() {
+            this.businessGroupDropdownOpen = false;
+        },
+
+        updateDropdownPlacement() {
+            this.$nextTick(() => {
+                const container = this.$refs.businessGroupContainer;
+                if (!container) return;
+                const rect = container.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const spaceBelow = viewportHeight - rect.bottom;
+                const minSpaceNeeded = 260;
+
+                if (spaceBelow < minSpaceNeeded && rect.top > minSpaceNeeded) {
+                    this.dropdownPlacement = 'top';
+                } else {
+                    this.dropdownPlacement = 'bottom';
+                }
+            });
+        },
+
+        get filteredBusinessGroups() {
+            if (!Array.isArray(this.businessGroups)) {
+                return [];
+            }
+            const q = (this.businessGroupSearch || '').trim().toLowerCase();
+            if (!q) {
+                return this.businessGroups;
+            }
+            return this.businessGroups.filter(g => {
+                const name = (g.name || '').toLowerCase();
+                const code = (g.code || '').toLowerCase();
+                return name.includes(q) || code.includes(q);
+            });
+        },
+
+        selectBusinessGroup(group) {
+            if (!group) {
+                this.clearBusinessGroup();
+                return;
+            }
+            this.selectedBusinessGroup = group;
+            this.selectedBusinessGroupId = String(group.id);
+            this.businessGroupSearch = '';
+            this.businessGroupError = '';
+            this.closeBusinessGroupDropdown();
+        },
+
+        selectBusinessGroupById(id) {
+            if (!id) {
+                this.clearBusinessGroup();
+                return;
+            }
+            const found = (this.businessGroups || []).find(g => String(g.id) === String(id));
+            if (found) {
+                this.selectedBusinessGroup = found;
+                this.selectedBusinessGroupId = String(found.id);
+            } else {
+                this.fetchBusinessGroupById(id);
+            }
+        },
+
+        clearBusinessGroup() {
+            this.selectedBusinessGroup = null;
+            this.selectedBusinessGroupId = '';
+            this.businessGroupSearch = '';
+            this.closeBusinessGroupDropdown();
+        },
+
+        async refreshBusinessGroups(showIndicator = true) {
+            if (showIndicator) {
+                this.loadingBusinessGroups = true;
+            }
+            this.businessGroupError = '';
+
+            try {
+                let url = "{{ route('masters.customers.business-groups') }}";
+                if (this.selectedBusinessGroupId) {
+                    url += `?include_id=${encodeURIComponent(this.selectedBusinessGroupId)}`;
+                }
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const result = await response.json();
+                if (response.ok && result.success && Array.isArray(result.data)) {
+                    this.businessGroups = result.data;
+                    if (this.selectedBusinessGroupId) {
+                        const found = this.businessGroups.find(g => String(g.id) === String(this.selectedBusinessGroupId));
+                        if (found) {
+                            this.selectedBusinessGroup = found;
+                        }
+                    }
+                } else {
+                    this.businessGroupError = result.message || 'Failed to load business groups.';
+                }
+            } catch (e) {
+                this.businessGroupError = 'Network error fetching business groups.';
+            } finally {
+                this.loadingBusinessGroups = false;
+            }
+        },
+
+        async fetchBusinessGroupById(id) {
+            try {
+                const url = `{{ route('masters.customers.business-groups') }}?include_id=${encodeURIComponent(id)}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const result = await response.json();
+                if (response.ok && result.success && Array.isArray(result.data)) {
+                    this.businessGroups = result.data;
+                    const found = this.businessGroups.find(g => String(g.id) === String(id));
+                    if (found) {
+                        this.selectedBusinessGroup = found;
+                        this.selectedBusinessGroupId = String(found.id);
+                    }
+                }
+            } catch (e) {
+                // Silently ignore background fetch failure
+            }
+        },
+
+        onBusinessGroupKeyDown(event) {
+            const list = this.filteredBusinessGroups;
+            if (!this.businessGroupDropdownOpen) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
+                    event.preventDefault();
+                    this.toggleBusinessGroupDropdown();
+                }
+                return;
+            }
+
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedGroupIndex = (this.highlightedGroupIndex + 1) % list.length;
+                    this.scrollActiveGroupIntoView();
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedGroupIndex = (this.highlightedGroupIndex - 1 + list.length) % list.length;
+                    this.scrollActiveGroupIntoView();
+                }
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (list.length > 0 && list[this.highlightedGroupIndex]) {
+                    this.selectBusinessGroup(list[this.highlightedGroupIndex]);
+                }
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.closeBusinessGroupDropdown();
+            }
+        },
+
+        scrollActiveGroupIntoView() {
+            this.$nextTick(() => {
+                const el = this.$refs.businessGroupContainer?.querySelector(`[data-index="${this.highlightedGroupIndex}"]`);
+                if (el) {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        },
+
         searchingGst: false,
         gstFeedback: {
             type: '',
@@ -906,7 +1228,6 @@ function partyFormController() {
             pincode: {!! json_encode(old('pincode', $item->pincode ?? '')) !!},
         },
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
-        creditCheques: {!! json_encode($initialCreditCheques) !!},
         addresses: {!! json_encode($initialAddresses) !!},
         stateCities: {!! json_encode($stateCities ?? \App\Support\IndianCities::all()) !!},
         statesList: {!! json_encode($stateOptions ?? \App\Support\IndianStates::options()) !!},
@@ -929,7 +1250,7 @@ function partyFormController() {
                 city: '',
                 state: this.form.state || '',
                 pincode: '',
-                type: 'delivery',
+                type: 'both',
                 is_default_billing: !hasBilling,
                 is_default_delivery: !hasDelivery
             });
@@ -952,6 +1273,9 @@ function partyFormController() {
         setDefaultBilling(index) {
             this.addresses.forEach((addr, i) => {
                 addr.is_default_billing = (i === index);
+                if (i === index && addr.type === 'delivery') {
+                    addr.type = 'both';
+                }
             });
             this.syncPrimaryAddress();
         },
@@ -959,6 +1283,9 @@ function partyFormController() {
         setDefaultDelivery(index) {
             this.addresses.forEach((addr, i) => {
                 addr.is_default_delivery = (i === index);
+                if (i === index && addr.type === 'billing') {
+                    addr.type = 'both';
+                }
             });
         },
 
@@ -988,25 +1315,34 @@ function partyFormController() {
         },
 
         addBankAccount() {
+            const hasPrimary = this.bankAccounts.some(b => b.is_primary);
             this.bankAccounts.push({
-                account_holder_name: '',
+                id: null,
+                account_holder_name: this.form.name || '',
                 bank_name: '',
                 branch_name: '',
                 account_number: '',
                 account_type: 'current',
-                ifsc_code: ''
+                ifsc_code: '',
+                is_primary: !hasPrimary
             });
         },
-        addCreditCheque() {
-            this.creditCheques.push({
-                cheque_number: '',
-                bank_name: '',
-                branch_name: '',
-                cheque_date: '',
-                amount: '',
-                cheque_type: 'regular'
+
+        removeBankAccount(idx) {
+            if (this.bankAccounts.length <= 1) return;
+            const wasPrimary = this.bankAccounts[idx].is_primary;
+            this.bankAccounts.splice(idx, 1);
+            if (wasPrimary && this.bankAccounts.length > 0) {
+                this.setDefaultBankAccount(0);
+            }
+        },
+
+        setDefaultBankAccount(index) {
+            this.bankAccounts.forEach((acc, i) => {
+                acc.is_primary = (i === index);
             });
         },
+
         applyExtractedGstinFields(extracted = null, gstin = '') {
             const source = extracted || {};
             const derivedPan = (source.pan || (gstin.length >= 12 ? gstin.substring(2, 12) : '') || '').trim();
@@ -1155,7 +1491,6 @@ function partyFormController() {
                 }
 
                 if (data.success && data.party) {
-                    // Auto-overwrite GST identity/address fields — no confirmation popups.
                     if (data.party.name) this.form.name = String(data.party.name).trim();
                     if (data.party.pan) this.form.pan = String(data.party.pan).trim();
                     if (data.party.state) this.form.state = String(data.party.state).trim();
@@ -1348,35 +1683,20 @@ function cityDropdown(addr, stateCities) {
         open: false,
         search: '',
         highlightedIndex: 0,
-        get availableCities() {
-            if (!addr.state) return [];
-            const mapping = (stateCities && typeof stateCities === 'object') ? stateCities : {};
-            let list = mapping[addr.state] || [];
-            if (!list || !list.length) {
-                const lower = addr.state.toLowerCase();
-                for (const [st, cities] of Object.entries(mapping)) {
-                    if (st.toLowerCase() === lower) {
-                        list = cities;
-                        break;
-                    }
-                }
-            }
-            const copy = Array.isArray(list) ? [...list] : [];
-            if (addr.city && !copy.some(c => c.toLowerCase() === addr.city.toLowerCase())) {
-                copy.unshift(addr.city);
-            }
-            return copy;
+        get isDisabled() {
+            return !addr.state;
+        },
+        get cities() {
+            if (!addr.state || !stateCities) return [];
+            return stateCities[addr.state] || [];
         },
         get filteredCities() {
-            const list = this.availableCities;
+            const list = this.cities;
             if (!this.search || !this.search.trim()) {
                 return list;
             }
             const q = this.search.toLowerCase().trim();
             return list.filter(c => c.toLowerCase().includes(q));
-        },
-        get isDisabled() {
-            return !addr.state;
         },
         toggle() {
             if (this.isDisabled) return;
@@ -1402,15 +1722,14 @@ function cityDropdown(addr, stateCities) {
                 this.$refs.triggerButton?.focus();
             });
         },
-        selectCity(city) {
-            addr.city = city;
+        selectCity(cityName) {
+            addr.city = cityName;
             this.close();
             this.$nextTick(() => {
                 this.$refs.triggerButton?.focus();
             });
         },
         onKeyDown(event) {
-            if (this.isDisabled) return;
             const list = this.filteredCities;
             if (!this.open) {
                 if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {

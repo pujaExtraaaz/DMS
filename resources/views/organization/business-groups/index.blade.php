@@ -9,6 +9,24 @@
         'tabCounts' => $tabCounts ?? [],
     ])
 
+    @if(request('return_url'))
+        <div class="mb-4 bg-purple-50/90 border border-purple-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-purple-900 shadow-2xs">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                </div>
+                <div>
+                    <span class="font-bold">Returning to Party Form</span>
+                    <p class="text-purple-700 text-[11px]">Create a Business Group here, then return to Create Party to select it in the Business Group dropdown.</p>
+                </div>
+            </div>
+            <a href="{{ request('return_url') }}"
+               class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white text-purple-700 border border-purple-200 font-semibold rounded-xl hover:bg-purple-100 hover:text-purple-900 transition shadow-2xs shrink-0">
+                &larr; Back to Party Form
+            </a>
+        </div>
+    @endif
+
     {{-- Main Content Card --}}
     <div class="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {{-- Toolbar: Search, Counter & Add Button --}}
@@ -161,34 +179,35 @@
                                     </button>
 
                                     {{-- Edit Action --}}
-                                    <button type="button"
-                                            @click="openEditModal({{ json_encode($item) }})"
-                                            class="inline-flex items-center gap-1 font-semibold rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 shadow-2xs transition"
-                                            title="Edit Business Group"
-                                            aria-label="Edit Business Group">
+                                    <a href="{{ route('organization.business-groups.edit', $item) }}"
+                                       @click.prevent="openEditModal({{ json_encode($item) }})"
+                                       class="inline-flex items-center gap-1 font-semibold rounded-lg px-2.5 py-1.5 text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 shadow-2xs transition cursor-pointer"
+                                       title="Edit Business Group"
+                                       aria-label="Edit Business Group">
                                         <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                         </svg>
                                         <span>Edit</span>
-                                    </button>
+                                    </a>
 
                                     {{-- Delete Action --}}
                                     @if($item->isDefault())
                                         <button type="button"
                                                 disabled
                                                 class="inline-flex items-center gap-1 font-medium rounded-lg opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 px-2 py-1.5 text-xs"
-                                                title="Default Group cannot be deleted."
-                                                aria-label="Default Group is protected from deletion">
+                                                title="Default Group cannot be deleted as it is a required system group."
+                                                aria-label="Default Group cannot be deleted as it is a required system group.">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                                             </svg>
                                         </button>
                                     @else
                                         <button type="button"
+                                                data-delete-group="{{ $item->id }}"
                                                 @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}', '{{ addslashes($item->code) }}', {{ (int) ($item->calculated_companies_count ?? $item->links_count) }})"
                                                 class="inline-flex items-center gap-1 font-medium rounded-lg text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1.5 text-xs transition"
-                                                title="Delete Business Group"
-                                                aria-label="Delete Business Group">
+                                                title="Delete Sister Concern Group"
+                                                aria-label="Delete Sister Concern Group">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                             </svg>
@@ -232,14 +251,16 @@
     {{-- ========================================================================= --}}
     {{-- MODAL 1: ADD / EDIT BUSINESS GROUP MODAL                                  --}}
     {{-- ========================================================================= --}}
-    <div x-show="isFormModalOpen"
-         x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto"
-         aria-labelledby="form-modal-title"
-         role="dialog"
-         aria-modal="true">
-        <div class="flex items-center justify-center min-h-screen p-4 text-center">
-            {{-- Backdrop --}}
+    <template x-teleport="body">
+        <div x-show="isFormModalOpen"
+             x-cloak
+             class="fixed inset-0 z-[100] overflow-y-auto"
+             aria-labelledby="form-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="closeFormModal()">
+
+            {{-- Fullscreen Backdrop covering whole window including sidebar --}}
             <div x-show="isFormModalOpen"
                  x-transition:enter="ease-out duration-300"
                  x-transition:enter-start="opacity-0"
@@ -247,21 +268,24 @@
                  x-transition:leave="ease-in duration-200"
                  x-transition:leave-start="opacity-100"
                  x-transition:leave-end="opacity-0"
-                 class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
                  @click="closeFormModal()"></div>
 
-            {{-- Dialog Panel --}}
-            <div x-show="isFormModalOpen"
-                 x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 scale-95"
-                 x-transition:enter-end="opacity-100 scale-100"
-                 x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 scale-100"
-                 x-transition:leave-end="opacity-0 scale-95"
-                 class="relative inline-block w-full max-w-4xl bg-white rounded-2xl text-left shadow-2xl transform transition-all border border-slate-200 overflow-hidden my-6">
+            <div class="relative flex min-h-screen items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">
+                {{-- Dialog Panel --}}
+                <div x-show="isFormModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="pointer-events-auto relative w-full max-h-[88vh] flex flex-col bg-white rounded-2xl text-left shadow-2xl border border-slate-200 overflow-hidden my-auto"
+                     style="width: min(1100px, calc(100vw - 32px)); max-width: min(1100px, calc(100vw - 32px));"
+                     @click.stop>
 
                 {{-- Fixed Header --}}
-                <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div class="shrink-0 px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/95 backdrop-blur-xs sticky top-0 z-10">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-xl bg-purple-50 border border-purple-100 text-purple-700 flex items-center justify-center text-xl shadow-2xs font-emoji">
                             <span x-text="form.logo_emoji || '🏢'"></span>
@@ -281,9 +305,9 @@
                     </button>
                 </div>
 
-                {{-- Scrollable Form Body --}}
-                <form @submit.prevent="submitForm()" class="flex flex-col">
-                    <div class="p-6 space-y-6 max-h-[calc(85vh-130px)] overflow-y-auto">
+                {{-- Scrollable Form Body and Sticky Footer inside Form --}}
+                <form @submit.prevent="submitForm()" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+                    <div class="flex-1 overflow-y-auto p-6 space-y-6">
 
                         {{-- Section A: Group Details --}}
                         <div>
@@ -295,36 +319,36 @@
                                 <span class="text-[11px] text-slate-400 font-normal">* Indicates required fields</span>
                             </div>
 
-                            {{-- 3-Column Grid for Desktop --}}
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {{-- 3-Column Grid for Desktop, 2-Column for Medium, 1-Column for Small --}}
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
                                 {{-- 1. Group Name --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">
                                         Group Name <span class="text-red-500">*</span>
                                     </label>
                                     <input type="text"
                                            x-model="form.name"
                                            placeholder="e.g., Avit Digital Group"
-                                           class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"
+                                           class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"
                                            :class="errors.name ? 'border-red-300 ring-1 ring-red-400 bg-red-50/20' : ''">
                                     <p x-show="errors.name" class="text-[11px] text-red-600 mt-0.5" x-text="errors.name"></p>
                                 </div>
 
                                 {{-- 2. Group Code --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">
                                         Group Code <span class="text-red-500">*</span>
                                     </label>
                                     <input type="text"
                                            x-model="form.code"
                                            placeholder="e.g., ADG-01"
-                                           class="w-full rounded-xl border-slate-200 text-xs font-mono focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400 uppercase"
+                                           class="w-full rounded-xl border-slate-200 text-xs sm:text-sm font-mono py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400 uppercase"
                                            :class="errors.code ? 'border-red-300 ring-1 ring-red-400 bg-red-50/20' : ''">
                                     <p x-show="errors.code" class="text-[11px] text-red-600 mt-0.5" x-text="errors.code"></p>
                                 </div>
 
                                 {{-- 3. Parent Company --}}
-                                <div class="space-y-1 relative" @click.outside="parentCompanyDropdownOpen = false">
+                                <div class="space-y-1.5 relative" @click.outside="parentCompanyDropdownOpen = false">
                                     <label class="block text-xs font-semibold text-slate-700">
                                         Parent Company <span class="text-red-500">*</span>
                                     </label>
@@ -334,12 +358,13 @@
                                                @focus="parentCompanyDropdownOpen = true"
                                                @input="parentCompanyDropdownOpen = true"
                                                placeholder="Search Parent Company..."
-                                               class="w-full rounded-xl border-slate-200 text-xs pr-8 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"
+                                               class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 pl-3 pr-8 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"
                                                :class="errors.parent_company_id ? 'border-red-300 ring-1 ring-red-400 bg-red-50/20' : ''">
                                         <button type="button"
                                                 x-show="form.parent_company_id"
                                                 @click="clearParentCompany()"
-                                                class="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600">
+                                                class="absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400 hover:text-slate-600"
+                                                title="Clear selection">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                         </button>
                                     </div>
@@ -364,30 +389,30 @@
                                 </div>
 
                                 {{-- 4. Incorporation Date --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Incorporation Date</label>
                                     <input type="date"
                                            x-model="form.incorporation_date"
-                                           class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs">
+                                           class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs">
                                 </div>
 
                                 {{-- 5. Headquarters --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Headquarters (HQ)</label>
                                     <input type="text"
                                            x-model="form.headquarters"
                                            placeholder="e.g., Mumbai, Maharashtra"
-                                           class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
+                                           class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
                                 </div>
 
                                 {{-- 6. Country --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Country</label>
                                     <input type="text"
                                            x-model="form.country"
                                            placeholder="e.g., India"
                                            list="country-suggestions"
-                                           class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
+                                           class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
                                     <datalist id="country-suggestions">
                                         <option value="India">
                                         <option value="United States">
@@ -400,13 +425,13 @@
                                 </div>
 
                                 {{-- 7. Industry --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Industry</label>
                                     <input type="text"
                                            x-model="form.industry"
                                            placeholder="e.g., Technology & Electronics"
                                            list="industry-suggestions"
-                                           class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
+                                           class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
                                     <datalist id="industry-suggestions">
                                         <option value="Technology & Consumer Electronics">
                                         <option value="Manufacturing & Industrial">
@@ -420,53 +445,53 @@
                                 </div>
 
                                 {{-- 8. Website --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Website</label>
                                     <input type="text"
                                            x-model="form.website"
                                            placeholder="e.g., https://avitdigital.com"
-                                           class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"
+                                           class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"
                                            :class="errors.website ? 'border-red-300 ring-1 ring-red-400 bg-red-50/20' : ''">
                                     <p x-show="errors.website" class="text-[11px] text-red-600 mt-0.5" x-text="errors.website"></p>
                                 </div>
 
                                 {{-- 9. Email --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Email</label>
                                     <input type="email"
                                            x-model="form.email"
                                            placeholder="e.g., corporate@avitdigital.com"
-                                           class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"
+                                           class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"
                                            :class="errors.email ? 'border-red-300 ring-1 ring-red-400 bg-red-50/20' : ''">
                                     <p x-show="errors.email" class="text-[11px] text-red-600 mt-0.5" x-text="errors.email"></p>
                                 </div>
 
                                 {{-- 10. Phone --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Phone</label>
                                     <input type="text"
                                            x-model="form.phone"
                                            placeholder="e.g., +91 98765 43210"
-                                           class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
+                                           class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
                                 </div>
 
                                 {{-- 11. Group Logo (Emoji) --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Group Logo (Emoji)</label>
-                                    <div class="flex items-center gap-2">
-                                        <div class="w-9 h-9 shrink-0 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center text-lg font-emoji shadow-2xs">
+                                    <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                                        <div class="w-10 h-10 shrink-0 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center text-xl font-emoji shadow-2xs">
                                             <span x-text="form.logo_emoji || '🏢'"></span>
                                         </div>
                                         <input type="text"
                                                x-model="form.logo_emoji"
                                                maxlength="10"
-                                               placeholder="Emoji or symbol"
-                                               class="w-24 rounded-xl border-slate-200 text-xs font-emoji text-center focus:border-purple-500 focus:ring-purple-500 shadow-2xs">
-                                        <div class="flex items-center gap-1 overflow-x-auto scrollbar-none py-1">
+                                               placeholder="Emoji"
+                                               class="w-16 shrink-0 rounded-xl border-slate-200 text-xs font-emoji text-center focus:border-purple-500 focus:ring-purple-500 shadow-2xs py-2 px-1">
+                                        <div class="flex items-center gap-1 flex-wrap">
                                             <template x-for="emo in ['🏢','🏭','💼','⚡','🌐','🏬','📦','🚀','🏥','🛒','🏗️']" :key="emo">
                                                 <button type="button"
                                                         @click="form.logo_emoji = emo"
-                                                        class="w-6 h-6 rounded hover:bg-purple-100 flex items-center justify-center text-sm transition"
+                                                        class="w-7 h-7 rounded-lg hover:bg-purple-100 flex items-center justify-center text-sm transition"
                                                         :title="emo">
                                                     <span x-text="emo"></span>
                                                 </button>
@@ -476,10 +501,10 @@
                                 </div>
 
                                 {{-- 12. Status --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Status</label>
                                     <select x-model="form.is_active"
-                                            class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs">
+                                            class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs">
                                         <option :value="1">Active</option>
                                         <option :value="0">Inactive</option>
                                     </select>
@@ -494,23 +519,23 @@
                                 <h4 class="text-xs font-bold uppercase tracking-wide text-slate-700">Description & Notes</h4>
                             </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
                                 {{-- Description --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Description</label>
                                     <textarea x-model="form.description"
                                               rows="3"
                                               placeholder="Brief summary or portfolio profile of the corporate group..."
-                                              class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"></textarea>
+                                              class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"></textarea>
                                 </div>
 
                                 {{-- Notes --}}
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <label class="block text-xs font-semibold text-slate-700">Notes</label>
                                     <textarea x-model="form.notes"
                                               rows="3"
                                               placeholder="Internal governance, statutory or financial remarks..."
-                                              class="w-full rounded-xl border-slate-200 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"></textarea>
+                                              class="w-full rounded-xl border-slate-200 text-xs sm:text-sm py-2 px-3 focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400"></textarea>
                                 </div>
                             </div>
                         </div>
@@ -525,7 +550,7 @@
                                 <span class="text-[11px] text-slate-400">Select sister companies attached to this group</span>
                             </div>
 
-                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-36 overflow-y-auto p-3 rounded-xl border border-slate-200 bg-slate-50/50">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-40 overflow-y-auto p-3 rounded-xl border border-slate-200 bg-slate-50/50">
                                 <template x-for="comp in allCompanies" :key="comp.id">
                                     <label class="flex items-center gap-2 text-xs p-1.5 rounded-lg hover:bg-white transition cursor-pointer select-none">
                                         <input type="checkbox"
@@ -543,7 +568,7 @@
                     </div>
 
                     {{-- Fixed Footer --}}
-                    <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between sticky bottom-0 z-10">
+                    <div class="shrink-0 px-6 py-4 bg-slate-50/95 backdrop-blur-xs border-t border-slate-100 flex items-center justify-between sticky bottom-0 z-10">
                         <div>
                             <p x-show="formErrorSummary" class="text-xs text-red-600 font-semibold" x-text="formErrorSummary"></p>
                         </div>
@@ -551,12 +576,12 @@
                             <button type="button"
                                     @click="closeFormModal()"
                                     :disabled="isSaving"
-                                    class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
+                                    class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
                                 Cancel
                             </button>
                             <button type="submit"
                                     :disabled="isSaving"
-                                    class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 text-xs font-semibold shadow-xs transition disabled:opacity-50 disabled:cursor-not-allowed">
+                                    class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 text-xs font-semibold shadow-xs transition disabled:opacity-50 disabled:cursor-not-allowed">
                                 <svg x-show="isSaving" class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -569,18 +594,21 @@
 
             </div>
         </div>
-    </div>
+    </template>
 
     {{-- ========================================================================= --}}
     {{-- MODAL 2: VIEW BUSINESS GROUP DETAILS MODAL                                --}}
     {{-- ========================================================================= --}}
-    <div x-show="isViewModalOpen"
-         x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto"
-         aria-labelledby="view-modal-title"
-         role="dialog"
-         aria-modal="true">
-        <div class="flex items-center justify-center min-h-screen p-4 text-center">
+    <template x-teleport="body">
+        <div x-show="isViewModalOpen"
+             x-cloak
+             class="fixed inset-0 z-[100] overflow-y-auto"
+             aria-labelledby="view-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="isViewModalOpen = false">
+
+            {{-- Fullscreen Backdrop --}}
             <div x-show="isViewModalOpen"
                  x-transition:enter="ease-out duration-300"
                  x-transition:enter-start="opacity-0"
@@ -588,20 +616,23 @@
                  x-transition:leave="ease-in duration-200"
                  x-transition:leave-start="opacity-100"
                  x-transition:leave-end="opacity-0"
-                 class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
                  @click="isViewModalOpen = false"></div>
 
-            <div x-show="isViewModalOpen"
-                 x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 scale-95"
-                 x-transition:enter-end="opacity-100 scale-100"
-                 x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 scale-100"
-                 x-transition:leave-end="opacity-0 scale-95"
-                 class="relative inline-block w-full max-w-3xl bg-white rounded-2xl text-left shadow-2xl transform transition-all border border-slate-200 overflow-hidden my-6">
+            <div class="relative flex min-h-screen items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">
+                <div x-show="isViewModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="pointer-events-auto relative w-full max-w-3xl max-h-[88vh] flex flex-col bg-white rounded-2xl text-left shadow-2xl border border-slate-200 overflow-hidden my-auto"
+                     style="width: min(800px, calc(100vw - 32px)); max-width: min(800px, calc(100vw - 32px));"
+                     @click.stop>
 
                 {{-- Header with Purple Theme --}}
-                <div class="px-6 py-5 bg-gradient-to-r from-purple-800 to-indigo-900 text-white flex items-center justify-between">
+                <div class="shrink-0 px-6 py-5 bg-gradient-to-r from-purple-800 to-indigo-900 text-white flex items-center justify-between sticky top-0 z-10">
                     <div class="flex items-center gap-3">
                         <div class="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-2xl font-emoji">
                             <span x-text="viewGroup?.logo_emoji || '🏢'"></span>
@@ -624,7 +655,7 @@
                 </div>
 
                 {{-- Details Content --}}
-                <div class="p-6 space-y-5 max-h-[70vh] overflow-y-auto text-xs">
+                <div class="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
                     {{-- Key Info Cards --}}
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
@@ -726,7 +757,7 @@
                 </div>
 
                 {{-- Footer --}}
-                <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+                <div class="shrink-0 px-6 py-3.5 bg-slate-50/95 backdrop-blur-xs border-t border-slate-100 flex items-center justify-end gap-2 sticky bottom-0 z-10">
                     <button type="button"
                             @click="isViewModalOpen = false"
                             class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
@@ -741,18 +772,21 @@
                 </div>
             </div>
         </div>
-    </div>
+    </template>
 
     {{-- ========================================================================= --}}
     {{-- MODAL 3: DELETE CONFIRMATION MODAL                                        --}}
     {{-- ========================================================================= --}}
-    <div x-show="showDeleteModal"
-         x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto"
-         aria-labelledby="delete-modal-title"
-         role="dialog"
-         aria-modal="true">
-        <div class="flex items-center justify-center min-h-screen p-4 text-center">
+    <template x-teleport="body">
+        <div x-show="showDeleteModal"
+             x-cloak
+             class="fixed inset-0 z-[100] overflow-y-auto"
+             aria-labelledby="delete-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="cancelDelete()">
+
+            {{-- Fullscreen Backdrop --}}
             <div x-show="showDeleteModal"
                  x-transition:enter="ease-out duration-300"
                  x-transition:enter-start="opacity-0"
@@ -760,67 +794,70 @@
                  x-transition:leave="ease-in duration-200"
                  x-transition:leave-start="opacity-100"
                  x-transition:leave-end="opacity-0"
-                 class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
                  @click="cancelDelete()"></div>
 
-            <div x-show="showDeleteModal"
-                 x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 scale-95"
-                 x-transition:enter-end="opacity-100 scale-100"
-                 x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 scale-100"
-                 x-transition:leave-end="opacity-0 scale-95"
-                 class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:max-w-md w-full border border-slate-200 p-6 my-6">
-                <div class="sm:flex sm:items-start">
-                    <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-2xl bg-red-100 sm:mx-0 sm:h-10 sm:w-10 text-red-600">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                    </div>
-                    <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                        <h3 class="text-base font-bold text-slate-900" id="delete-modal-title">Delete Business Group</h3>
-                        <div class="mt-2 space-y-2">
-                            <p class="text-xs text-slate-600">
-                                Are you sure you want to delete this business group? This action cannot be undone.
-                            </p>
-                            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1.5 text-xs">
-                                <div class="flex items-center justify-between">
-                                    <span class="text-slate-500 font-medium">Group Name:</span>
-                                    <span class="text-slate-900 font-bold" x-text="deletingGroupName"></span>
-                                </div>
-                                <div class="flex items-center justify-between">
-                                    <span class="text-slate-500 font-medium">Group Code:</span>
-                                    <span class="font-mono text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[11px]" x-text="deletingGroupCode"></span>
-                                </div>
-                                <div class="flex items-center justify-between">
-                                    <span class="text-slate-500 font-medium">Attached Companies:</span>
-                                    <span class="text-slate-900 font-bold" x-text="deletingGroupCompanies + ' companies'"></span>
+            <div class="relative flex min-h-screen items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">
+                <div x-show="showDeleteModal"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="pointer-events-auto relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl sm:max-w-md w-full border border-slate-200 p-6 my-auto"
+                     @click.stop>
+                    <div class="sm:flex sm:items-start">
+                        <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-2xl bg-red-100 sm:mx-0 sm:h-10 sm:w-10 text-red-600">
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                            <h3 class="text-base font-bold text-slate-900" id="delete-modal-title">Delete Sister Concern Group</h3>
+                            <div class="mt-2 space-y-2">
+                                <p class="text-xs text-slate-600">
+                                    Are you sure you want to delete this group? This action cannot be undone.
+                                </p>
+                                <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1.5 text-xs">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-500 font-medium">Group Name:</span>
+                                        <span class="text-slate-900 font-bold" x-text="deletingGroupName"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-500 font-medium">Group Code:</span>
+                                        <span class="font-mono text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[11px]" x-text="deletingGroupCode"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-500 font-medium">Attached Companies:</span>
+                                        <span class="text-slate-900 font-bold" x-text="deletingGroupCompanies + ' companies'"></span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="mt-5 flex flex-row-reverse gap-2.5">
-                    <button type="button"
-                            @click="executeDelete()"
-                            :disabled="isDeleting"
-                            class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span x-show="!isDeleting">Delete Group</span>
-                        <span x-show="isDeleting" class="inline-flex items-center gap-1.5">
-                            <svg class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            Deleting...
-                        </span>
-                    </button>
-                    <button type="button"
-                            @click="cancelDelete()"
-                            :disabled="isDeleting"
-                            class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
-                        Cancel
-                    </button>
+                    <div class="mt-5 flex flex-row-reverse gap-2.5">
+                        <button type="button"
+                                @click="executeDelete()"
+                                :disabled="isDeleting"
+                                class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span x-show="!isDeleting">Delete</span>
+                            <span x-show="isDeleting" class="inline-flex items-center gap-1.5">
+                                <svg class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                Deleting...
+                            </span>
+                        </button>
+                        <button type="button"
+                                @click="cancelDelete()"
+                                :disabled="isDeleting"
+                                class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </template>
 
     {{-- Notification Toast --}}
     <div x-show="notification.show"

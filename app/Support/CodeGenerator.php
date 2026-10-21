@@ -39,6 +39,11 @@ class CodeGenerator
         return self::next(SubCategory::class, 'SCAT', $companyId, 'code');
     }
 
+    public static function forProductType(?int $companyId = null): string
+    {
+        return self::next(\App\Domains\Master\Models\ProductType::class, 'PT', $companyId, 'code');
+    }
+
     public static function forProduct(?int $companyId = null): string
     {
         return self::next(Product::class, 'PROD', $companyId, 'sku');

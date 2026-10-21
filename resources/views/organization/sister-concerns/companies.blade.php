@@ -254,14 +254,16 @@
     {{-- ========================================================================= --}}
     {{-- MODAL 1: ADD / EDIT SISTER CONCERN MODAL (All 5 Required Sections)        --}}
     {{-- ========================================================================= --}}
-    <div x-show="isFormModalOpen"
-         x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto"
-         aria-labelledby="company-modal-title"
-         role="dialog"
-         aria-modal="true">
-        <div class="flex items-center justify-center min-h-screen p-4 text-center">
-            {{-- Visible Backdrop --}}
+    <template x-teleport="body">
+        <div x-show="isFormModalOpen"
+             x-cloak
+             class="fixed inset-0 z-[100] overflow-y-auto"
+             aria-labelledby="company-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="closeFormModal()">
+
+            {{-- Fullscreen Backdrop --}}
             <div x-show="isFormModalOpen"
                  x-transition:enter="ease-out duration-300"
                  x-transition:enter-start="opacity-0"
@@ -269,21 +271,24 @@
                  x-transition:leave="ease-in duration-200"
                  x-transition:leave-start="opacity-100"
                  x-transition:leave-end="opacity-0"
-                 class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
                  @click="closeFormModal()"></div>
 
-            {{-- Dialog Panel --}}
-            <div x-show="isFormModalOpen"
-                 x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 scale-95"
-                 x-transition:enter-end="opacity-100 scale-100"
-                 x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 scale-100"
-                 x-transition:leave-end="opacity-0 scale-95"
-                 class="relative inline-block w-full max-w-5xl bg-white rounded-2xl text-left shadow-2xl transform transition-all border border-slate-200 overflow-hidden my-6">
+            <div class="relative flex min-h-screen items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">
+                {{-- Dialog Panel --}}
+                <div x-show="isFormModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="pointer-events-auto relative w-full max-h-[88vh] flex flex-col bg-white rounded-2xl text-left shadow-2xl border border-slate-200 overflow-hidden my-auto"
+                     style="width: min(1100px, calc(100vw - 32px)); max-width: min(1100px, calc(100vw - 32px));"
+                     @click.stop>
 
                 {{-- Fixed Modal Header --}}
-                <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+                <div class="shrink-0 px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white/95 backdrop-blur-xs sticky top-0 z-10">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-xl bg-purple-50 border border-purple-100 text-purple-700 flex items-center justify-center text-xl shadow-2xs font-emoji">
                             <span x-text="form.logo_emoji || '🏢'"></span>
@@ -303,9 +308,9 @@
                     </button>
                 </div>
 
-                {{-- Vertically Scrollable Form Body --}}
-                <form @submit.prevent="submitForm()" class="flex flex-col">
-                    <div class="p-6 space-y-6 max-h-[calc(86vh-130px)] overflow-y-auto">
+                {{-- Form Shell with Scrollable Body and Sticky Footer --}}
+                <form @submit.prevent="submitForm()" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+                    <div class="flex-1 overflow-y-auto p-6 space-y-6">
 
                         {{-- ============================================================= --}}
                         {{-- 1. COMPANY INFORMATION                                        --}}
@@ -421,7 +426,7 @@
                                                maxlength="10"
                                                placeholder="Emoji or symbol"
                                                class="w-20 rounded-xl border-slate-200 text-xs font-emoji text-center focus:border-purple-500 focus:ring-purple-500 shadow-2xs">
-                                        <div class="flex items-center gap-1 overflow-x-auto scrollbar-none py-1">
+                                        <div class="flex items-center gap-1 flex-wrap py-1">
                                             <template x-for="emo in ['🏢','🏭','💼','⚡','🌐','🏬','📦','🚀','🏥','🛒','🏗️']" :key="emo">
                                                 <button type="button"
                                                         @click="form.logo_emoji = emo"
@@ -771,8 +776,8 @@
 
                     </div>
 
-                    {{-- Fixed Modal Footer --}}
-                    <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between sticky bottom-0 z-10">
+                    {{-- Sticky Modal Footer --}}
+                    <div class="shrink-0 px-6 py-4 bg-slate-50/95 backdrop-blur-xs border-t border-slate-100 flex items-center justify-between sticky bottom-0 z-10">
                         <div>
                             <p x-show="formErrorSummary" class="text-xs text-red-600 font-semibold" x-text="formErrorSummary"></p>
                         </div>
@@ -798,18 +803,21 @@
 
             </div>
         </div>
-    </div>
+    </template>
 
     {{-- ========================================================================= --}}
     {{-- MODAL 2: VIEW SISTER CONCERN DETAILS MODAL                                --}}
     {{-- ========================================================================= --}}
-    <div x-show="isViewModalOpen"
-         x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto"
-         aria-labelledby="view-company-modal-title"
-         role="dialog"
-         aria-modal="true">
-        <div class="flex items-center justify-center min-h-screen p-4 text-center">
+    <template x-teleport="body">
+        <div x-show="isViewModalOpen"
+             x-cloak
+             class="fixed inset-0 z-[100] overflow-y-auto"
+             aria-labelledby="view-company-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="isViewModalOpen = false">
+
+            {{-- Fullscreen Backdrop --}}
             <div x-show="isViewModalOpen"
                  x-transition:enter="ease-out duration-300"
                  x-transition:enter-start="opacity-0"
@@ -817,21 +825,24 @@
                  x-transition:leave="ease-in duration-200"
                  x-transition:leave-start="opacity-100"
                  x-transition:leave-end="opacity-0"
-                 class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
                  @click="isViewModalOpen = false"></div>
 
-            <div x-show="isViewModalOpen"
-                 x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 scale-95"
-                 x-transition:enter-end="opacity-100 scale-100"
-                 x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 scale-100"
-                 x-transition:leave-end="opacity-0 scale-95"
-                 class="relative inline-block w-full max-w-4xl bg-white rounded-2xl text-left shadow-2xl transform transition-all border border-slate-200 overflow-hidden my-6">
+            <div class="relative flex min-h-screen items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">
+                <div x-show="isViewModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="pointer-events-auto relative w-full max-h-[88vh] flex flex-col bg-white rounded-2xl text-left shadow-2xl border border-slate-200 overflow-hidden my-auto"
+                     style="width: min(960px, calc(100vw - 32px)); max-width: min(960px, calc(100vw - 32px));"
+                     @click.stop>
 
-                {{-- Purple Header --}}
-                <div class="px-6 py-5 bg-gradient-to-r from-purple-800 to-indigo-900 text-white flex items-center justify-between">
-                    <div class="flex items-center gap-3">
+                    {{-- Purple Header --}}
+                    <div class="shrink-0 px-6 py-5 bg-gradient-to-r from-purple-800 to-indigo-900 text-white flex items-center justify-between sticky top-0 z-10">
+                        <div class="flex items-center gap-3">
                         <div class="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-2xl font-emoji">
                             <span x-text="viewCompany?.logo_emoji || '🏢'"></span>
                         </div>
@@ -855,7 +866,7 @@
                 </div>
 
                 {{-- Body Details --}}
-                <div class="p-6 space-y-6 max-h-[75vh] overflow-y-auto text-xs">
+                <div class="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
                     {{-- 4 Stat Cards --}}
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
@@ -927,7 +938,7 @@
                 </div>
 
                 {{-- View Modal Footer --}}
-                <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+                <div class="shrink-0 px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 sticky bottom-0 z-10">
                     <button type="button"
                             @click="isViewModalOpen = false"
                             class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
@@ -942,18 +953,21 @@
                 </div>
             </div>
         </div>
-    </div>
+    </template>
 
     {{-- ========================================================================= --}}
     {{-- MODAL 3: DELETE CONFIRMATION MODAL                                        --}}
     {{-- ========================================================================= --}}
-    <div x-show="showDeleteModal"
-         x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto"
-         aria-labelledby="delete-company-modal-title"
-         role="dialog"
-         aria-modal="true">
-        <div class="flex items-center justify-center min-h-screen p-4 text-center">
+    <template x-teleport="body">
+        <div x-show="showDeleteModal"
+             x-cloak
+             class="fixed inset-0 z-[100] overflow-y-auto"
+             aria-labelledby="delete-company-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="cancelDelete()">
+
+            {{-- Fullscreen Backdrop --}}
             <div x-show="showDeleteModal"
                  x-transition:enter="ease-out duration-300"
                  x-transition:enter-start="opacity-0"
@@ -961,63 +975,66 @@
                  x-transition:leave="ease-in duration-200"
                  x-transition:leave-start="opacity-100"
                  x-transition:leave-end="opacity-0"
-                 class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
                  @click="cancelDelete()"></div>
 
-            <div x-show="showDeleteModal"
-                 x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 scale-95"
-                 x-transition:enter-end="opacity-100 scale-100"
-                 x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 scale-100"
-                 x-transition:leave-end="opacity-0 scale-95"
-                 class="relative inline-block bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:max-w-md w-full border border-slate-200 p-6 my-6">
-                <div class="sm:flex sm:items-start">
-                    <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-2xl bg-red-100 sm:mx-0 sm:h-10 sm:w-10 text-red-600">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                    </div>
-                    <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                        <h3 class="text-base font-bold text-slate-900" id="delete-company-modal-title">Delete Sister Concern</h3>
-                        <div class="mt-2 space-y-2">
-                            <p class="text-xs text-slate-600">
-                                Are you sure you want to delete this sister concern company? This action cannot be undone.
-                            </p>
-                            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1.5 text-xs">
-                                <div class="flex items-center justify-between">
-                                    <span class="text-slate-500 font-medium">Company Name:</span>
-                                    <span class="text-slate-900 font-bold" x-text="deletingCompanyName"></span>
-                                </div>
-                                <div class="flex items-center justify-between">
-                                    <span class="text-slate-500 font-medium">Company Code:</span>
-                                    <span class="font-mono text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[11px]" x-text="deletingCompanyCode"></span>
+            <div class="relative flex min-h-screen items-center justify-center p-4 sm:p-6 pointer-events-none">
+                <div x-show="showDeleteModal"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="pointer-events-auto relative w-full sm:max-w-md bg-white rounded-2xl text-left overflow-hidden shadow-2xl border border-slate-200 p-6 my-auto"
+                     @click.stop>
+                    <div class="sm:flex sm:items-start">
+                        <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-2xl bg-red-100 sm:mx-0 sm:h-10 sm:w-10 text-red-600">
+                            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                            <h3 class="text-base font-bold text-slate-900" id="delete-company-modal-title">Delete Sister Concern</h3>
+                            <div class="mt-2 space-y-2">
+                                <p class="text-xs text-slate-600">
+                                    Are you sure you want to delete this sister concern company? This action cannot be undone.
+                                </p>
+                                <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1.5 text-xs">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-500 font-medium">Company Name:</span>
+                                        <span class="text-slate-900 font-bold" x-text="deletingCompanyName"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-slate-500 font-medium">Company Code:</span>
+                                        <span class="font-mono text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[11px]" x-text="deletingCompanyCode"></span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div class="mt-5 flex flex-row-reverse gap-2.5">
-                    <button type="button"
-                            @click="executeDelete()"
-                            :disabled="isDeleting"
-                            class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span x-show="!isDeleting">Delete Company</span>
-                        <span x-show="isDeleting" class="inline-flex items-center gap-1.5">
-                            <svg class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            Deleting...
-                        </span>
-                    </button>
-                    <button type="button"
-                            @click="cancelDelete()"
-                            :disabled="isDeleting"
-                            class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
-                        Cancel
-                    </button>
+                    <div class="mt-5 flex flex-row-reverse gap-2.5">
+                        <button type="button"
+                                @click="executeDelete()"
+                                :disabled="isDeleting"
+                                class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span x-show="!isDeleting">Delete Company</span>
+                            <span x-show="isDeleting" class="inline-flex items-center gap-1.5">
+                                <svg class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                Deleting...
+                            </span>
+                        </button>
+                        <button type="button"
+                                @click="cancelDelete()"
+                                :disabled="isDeleting"
+                                class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </template>
 
     {{-- Notification Toast --}}
     <div x-show="notification.show"
