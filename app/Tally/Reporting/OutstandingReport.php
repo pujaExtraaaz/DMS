@@ -41,6 +41,10 @@ class OutstandingReport
      */
     private function report(Company $company, string $asOf, ?int $branchId, bool $receivable, ?int $ledgerId = null): array
     {
+        if (! $company->usesBillWise()) {
+            return $this->ledgerBalances($company, $asOf, $branchId, $receivable, $ledgerId);
+        }
+
         $ledgers = $company->ledgers()->with('accountGroup.parent')->orderBy('name')
             ->when($ledgerId, fn ($query) => $query->whereKey($ledgerId))
             ->get();
@@ -107,6 +111,73 @@ class OutstandingReport
             'advances' => Money::format($advances),
             'net' => Money::format($total - $advances),
             'overdue' => Money::format($overdue),
+        ];
+    }
+
+    /**
+     * One row per party from the ledger balance when bill-wise tracking is off.
+     *
+     * @return array{rows: list<array<string, string>>, total: string, advances: string, net: string, overdue: string}
+     */
+    private function ledgerBalances(Company $company, string $asOf, ?int $branchId, bool $receivable, ?int $ledgerId): array
+    {
+        $year = $company->financialYears()
+            ->whereDate('start_date', '<=', $asOf)
+            ->whereDate('end_date', '>=', $asOf)
+            ->first()
+            ?? $company->financialYears()->orderByDesc('start_date')->first();
+
+        if (! $year) {
+            return [
+                'rows' => [],
+                'total' => '0.00',
+                'advances' => '0.00',
+                'net' => '0.00',
+                'overdue' => '0.00',
+            ];
+        }
+
+        $rows = [];
+        $total = 0;
+
+        foreach (app(LedgerBalances::class)->asOn($company, $branchId, $year, $asOf) as $balance) {
+            $ledger = $balance['ledger'];
+
+            if (! $this->matchesParty($ledger, $receivable)) {
+                continue;
+            }
+
+            if ($ledgerId && (int) $ledger->id !== $ledgerId) {
+                continue;
+            }
+
+            $cents = $receivable ? (int) $balance['debit'] : (int) $balance['credit'];
+
+            if ($cents <= 0) {
+                continue;
+            }
+
+            $total += $cents;
+            $rows[] = [
+                'bill_id' => '',
+                'party' => $ledger->name,
+                'bill_number' => 'Ledger',
+                'bill_date' => \Illuminate\Support\Carbon::parse($asOf)->format('d M Y'),
+                'due_date' => '—',
+                'original' => Money::format($cents),
+                'paid' => '0.00',
+                'outstanding' => Money::format($cents),
+                'overdue' => '0',
+                'side' => $receivable ? 'Dr' : 'Cr',
+            ];
+        }
+
+        return [
+            'rows' => $rows,
+            'total' => Money::format($total),
+            'advances' => '0.00',
+            'net' => Money::format($total),
+            'overdue' => '0.00',
         ];
     }
 

@@ -81,6 +81,8 @@ class InvoiceService
                 }
             }
 
+            $built = $this->applyRoundOff($company, $built);
+
             $attributes = [
                 'invoice_date' => $date,
                 'party_ledger_id' => $party->id,
@@ -93,6 +95,7 @@ class InvoiceService
                 'discount_total' => $built['discount_total'],
                 'tax_total' => $built['tax_total'],
                 'grand_total' => $built['grand_total'],
+                'round_off' => $built['round_off'] ?? '0.00',
                 'invoice_category' => $category,
                 'billing_mode' => in_array(($input['billing_mode'] ?? 'goods'), ['goods', 'advance', 'milestone'], true)
                     ? ($input['billing_mode'] ?? 'goods')
@@ -267,6 +270,13 @@ class InvoiceService
             $party,
             $this->math->compile($stored, true),
         );
+        if ($invoice->invoice_category === 'bill_of_supply') {
+            $built['tax_total'] = '0.00';
+            $built['grand_total'] = Money::format(
+                Money::cents($built['subtotal']) - Money::cents($built['discount_total'])
+            );
+        }
+        $built = $this->applyRoundOff($invoice->company, $built);
 
         if (Money::cents($built['grand_total']) !== Money::cents((string) $invoice->grand_total)) {
             throw ValidationException::withMessages([
@@ -313,6 +323,29 @@ class InvoiceService
         app(\Tally\Receivables\CreditNoteAllocation::class)->apply($posted->fresh(['voucher']));
 
         return $invoice;
+    }
+
+    /**
+     * Nearest-rupee rounding when the company has named a round-off ledger.
+     * The stored difference is posted to that ledger when the invoice is posted.
+     *
+     * @param  array<string, mixed>  $built
+     * @return array<string, mixed>
+     */
+    private function applyRoundOff(Company $company, array $built): array
+    {
+        $built['round_off'] = '0.00';
+
+        if (! $company->round_off_ledger_id) {
+            return $built;
+        }
+
+        $cents = Money::cents((string) $built['grand_total']);
+        $rounded = (int) (round($cents / 100) * 100);
+        $built['round_off'] = Money::format($rounded - $cents);
+        $built['grand_total'] = Money::format($rounded);
+
+        return $built;
     }
 
     private function registrationId(Company $company, Branch $branch, string $date): ?int

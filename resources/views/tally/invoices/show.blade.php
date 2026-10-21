@@ -3,8 +3,10 @@
         <x-slot:actions>
             <a class="btn btn-primary" href="{{ tally_route($kind->routeName('print'), $invoice) }}" target="_blank">Print</a>
             <a class="btn" href="{{ tally_route($kind->routeName('pdf'), $invoice) }}">Download PDF</a>
-            <a class="btn" href="{{ tally_route($kind->routeName('einvoice'), $invoice) }}">E-invoice JSON</a>
-            <a class="btn" href="{{ tally_route($kind->routeName('eway'), $invoice) }}">E-way bill JSON</a>
+            @if (in_array($kind->value, ['sales', 'purchase'], true))
+                <a class="btn" href="{{ tally_route($kind->routeName('einvoice'), $invoice) }}">E-Invoice</a>
+                <a class="btn" href="{{ tally_route($kind->routeName('eway'), $invoice) }}">E-Way Bill</a>
+            @endif
             @if ($invoice->isDraft())
                 <a class="btn" href="{{ tally_route($kind->routeName('edit'), $invoice) }}">Edit</a>
                 @if ($kind->value === 'proforma')
@@ -37,7 +39,6 @@
             <a class="btn" href="{{ tally_route($kind->routeName('index')) }}">Back</a>
         </x-slot:actions>
 
-        <p class="form-note">E-invoice JSON and e-way bill JSON are the upload files for this invoice. This screen does not issue an IRN or an e-way bill number.</p>
         @if ($errors->any())
             <p class="flash is-error" role="alert">{{ $errors->first() }}</p>
         @endif

@@ -8,6 +8,28 @@
      data-order-status='@json($orderStatusBreakdown)'
      data-payment-methods='@json($paymentMethods)'>
 
+    {{-- Hero header --}}
+    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-6 sm:p-8 text-white shadow-xl">
+        <div class="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.03\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-50"></div>
+        <div class="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            <div>
+                <p class="text-indigo-300 text-sm font-medium">{{ now()->format('l, F j, Y') }}</p>
+                <h2 class="mt-1 text-2xl sm:text-3xl font-bold tracking-tight">Good {{ now()->hour < 12 ? 'morning' : (now()->hour < 17 ? 'afternoon' : 'evening') }}, {{ Auth::user()->name }}</h2>
+                <p class="mt-2 text-slate-300 text-sm max-w-xl">Here's what's happening across your distribution network today.</p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                @can('orders.book')
+                    <x-ui.button variant="primary" href="{{ route('orders.create') }}" class="!bg-white !text-indigo-700 hover:!bg-indigo-50 shadow-lg">+ New Order</x-ui.button>
+                @endcan
+                @hasanyrole('super-admin|client-admin|finance|sales-manager')
+                    <x-ui.button variant="secondary" href="{{ route('invoices.create') }}" class="!bg-white/10 !text-white !border-white/20 hover:!bg-white/20">Direct Billing</x-ui.button>
+                @endhasanyrole
+                @hasanyrole('owner|super-admin|client-admin|sales-manager|finance')
+                    <x-ui.button variant="ghost" href="{{ route('reports.sales') }}" class="!text-white hover:!bg-white/10">View Reports</x-ui.button>
+                @endhasanyrole
+            </div>
+        </div>
+    </div>
     <x-ui.card class="mb-4">
         <form method="GET" class="flex flex-wrap gap-3 items-end">
             <div>
@@ -32,29 +54,6 @@
             <span class="rounded-full bg-emerald-50 text-emerald-700 px-3 py-1">Margin stub: ₹{{ number_format($stats['margin_stub'] ?? 0, 0) }}</span>
         </div>
     </x-ui.card>
-
-    {{-- Hero header --}}
-    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-6 sm:p-8 text-white shadow-xl">
-        <div class="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.03\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-50"></div>
-        <div class="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div>
-                <p class="text-indigo-300 text-sm font-medium">{{ now()->format('l, F j, Y') }}</p>
-                <h2 class="mt-1 text-2xl sm:text-3xl font-bold tracking-tight">Good {{ now()->hour < 12 ? 'morning' : (now()->hour < 17 ? 'afternoon' : 'evening') }}, {{ Auth::user()->name }}</h2>
-                <p class="mt-2 text-slate-300 text-sm max-w-xl">Here's what's happening across your distribution network today.</p>
-            </div>
-            <div class="flex flex-wrap gap-3">
-                @can('orders.book')
-                    <x-ui.button variant="primary" href="{{ route('orders.create') }}" class="!bg-white !text-indigo-700 hover:!bg-indigo-50 shadow-lg">+ New Order</x-ui.button>
-                @endcan
-                @hasanyrole('super-admin|client-admin|finance|sales-manager')
-                    <x-ui.button variant="secondary" href="{{ route('invoices.create') }}" class="!bg-white/10 !text-white !border-white/20 hover:!bg-white/20">Direct Billing</x-ui.button>
-                @endhasanyrole
-                @hasanyrole('owner|super-admin|client-admin|sales-manager|finance')
-                    <x-ui.button variant="ghost" href="{{ route('reports.sales') }}" class="!text-white hover:!bg-white/10">View Reports</x-ui.button>
-                @endhasanyrole
-            </div>
-        </div>
-    </div>
 
     {{-- KPI cards --}}
     @php

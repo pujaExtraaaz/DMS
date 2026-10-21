@@ -299,7 +299,7 @@
     </div>
     <p class="form-note">Totals here are a guide. The server rejects an unbalanced post and a ledger that does not belong on this voucher.</p>
 
-    @if (in_array($voucher->voucher_type, [\Tally\Accounting\VoucherType::Receipt, \Tally\Accounting\VoucherType::Payment], true))
+    @if (in_array($voucher->voucher_type, [\Tally\Accounting\VoucherType::Receipt, \Tally\Accounting\VoucherType::Payment], true) && ($company === null || $company->usesBillWise()))
         <details class="tally-more">
         <summary>Adjust against bills</summary>
         <p class="form-note">Optional. Enter an amount against a bill for a partial or full settlement. Any remainder is kept as an advance.</p>

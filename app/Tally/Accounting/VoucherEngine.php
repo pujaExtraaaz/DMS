@@ -571,7 +571,7 @@ class VoucherEngine
                 continue;
             }
 
-            $role = $this->roleError($type, $ledger, $debit, $credit);
+            $role = $this->roleError($company, $type, $ledger, $debit, $credit);
 
             if ($role) {
                 $errors["entries.$index.ledger_id"] = $role;
@@ -581,6 +581,10 @@ class VoucherEngine
 
             $centreId = $entry['cost_centre_id'] ?? null;
             $centreId = $centreId === '' || $centreId === null ? null : (int) $centreId;
+
+            if (! $company->usesCostCentres()) {
+                $centreId = null;
+            }
 
             if ($centreId) {
                 $centre = CostCentre::query()
@@ -654,6 +658,15 @@ class VoucherEngine
             $errors['entries'] = 'Add at least one ledger line.';
         }
 
+        if ($post && $errors === [] && $debitCents !== $creditCents) {
+            $balanced = $this->balanceWithRoundOff($company, $lines, $debitCents, $creditCents, $hasDebit, $hasCredit, $rate);
+            $lines = $balanced['lines'];
+            $debitCents = $balanced['debit'];
+            $creditCents = $balanced['credit'];
+            $hasDebit = $balanced['hasDebit'];
+            $hasCredit = $balanced['hasCredit'];
+        }
+
         if ($post && $errors === [] && ($debitCents !== $creditCents || ! $hasDebit || ! $hasCredit)) {
             $errors['entries'] = 'Total debit must equal total credit before the voucher can be posted.';
         }
@@ -682,8 +695,12 @@ class VoucherEngine
         return [$debit, $credit];
     }
 
-    private function roleError(VoucherType $type, Ledger $ledger, int $debit, int $credit): ?string
+    private function roleError(Company $company, VoucherType $type, Ledger $ledger, int $debit, int $credit): ?string
     {
+        if ((int) ($company->round_off_ledger_id ?? 0) === (int) $ledger->id) {
+            return null;
+        }
+
         $cash = $ledger->isCashOrBank();
 
         return match ($type) {
@@ -741,7 +758,7 @@ class VoucherEngine
             ]);
         }
 
-        if ($financialYear->company_id !== $company->id || ! $financialYear->is_active || $financialYear->is_closed) {
+        if ($financialYear->company_id !== $company->id || ! $financialYear->is_active || ($financialYear->is_closed && $company->locksClosedYear())) {
             throw ValidationException::withMessages([
                 'financial_year_id' => 'Select an open financial year of the current company.',
             ]);
@@ -813,10 +830,74 @@ class VoucherEngine
     }
 
     /**
+     * A difference of ₹1.00 or less posts to the company round-off ledger.
+     *
+     * @param  list<array<string, mixed>>  $lines
+     * @return array{lines: list<array<string, mixed>>, debit: int, credit: int, hasDebit: bool, hasCredit: bool}
+     */
+    private function balanceWithRoundOff(Company $company, array $lines, int $debitCents, int $creditCents, bool $hasDebit, bool $hasCredit, float $rate): array
+    {
+        $difference = $debitCents - $creditCents;
+        $ledgerId = (int) ($company->round_off_ledger_id ?? 0);
+
+        if ($ledgerId === 0 || $difference === 0 || abs($difference) > 100) {
+            return compact('lines') + [
+                'debit' => $debitCents,
+                'credit' => $creditCents,
+                'hasDebit' => $hasDebit,
+                'hasCredit' => $hasCredit,
+            ];
+        }
+
+        $ledger = Ledger::query()
+            ->where('company_id', $company->id)
+            ->whereKey($ledgerId)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $ledger) {
+            return compact('lines') + [
+                'debit' => $debitCents,
+                'credit' => $creditCents,
+                'hasDebit' => $hasDebit,
+                'hasCredit' => $hasCredit,
+            ];
+        }
+
+        $debit = $difference < 0 ? -$difference : 0;
+        $credit = $difference > 0 ? $difference : 0;
+        $lines[] = [
+            'ledger_id' => $ledger->id,
+            'line_number' => count($lines) + 1,
+            'debit' => Money::format($debit),
+            'credit' => Money::format($credit),
+            'base_debit' => Money::format((int) round($debit * $rate)),
+            'base_credit' => Money::format((int) round($credit * $rate)),
+            'narration' => 'Round off',
+            'reference' => null,
+            'cost_centre_id' => null,
+            'business_unit_id' => null,
+            'department_id' => null,
+        ];
+
+        return [
+            'lines' => $lines,
+            'debit' => $debitCents + $debit,
+            'credit' => $creditCents + $credit,
+            'hasDebit' => $hasDebit || $debit > 0,
+            'hasCredit' => $hasCredit || $credit > 0,
+        ];
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $rows
      */
     private function allocate(Voucher $voucher, VoucherType $type, array $rows): void
     {
+        if (! $voucher->company?->usesBillWise()) {
+            return;
+        }
+
         if (! in_array($type, [VoucherType::Receipt, VoucherType::Payment, VoucherType::Journal, VoucherType::CreditNote], true)) {
             return;
         }

@@ -108,14 +108,6 @@
             <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Party Code</label>
-                    <input type="text" name="code" value="{{ old('code', $item->code ?? '') }}" readonly
-                           class="block w-full rounded-lg border-gray-300 bg-gray-100 text-gray-700 text-sm font-mono cursor-not-allowed focus:ring-0 focus:border-gray-300"
-                           placeholder="Auto-Generated On Save">
-                    <p class="mt-1 text-xs text-gray-500">Auto-generated party code</p>
-                </div>
-
-                <div>
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GSTIN</label>
                     <div class="flex gap-2">
                         <input type="text" name="gstin" x-model="form.gstin" maxlength="15"

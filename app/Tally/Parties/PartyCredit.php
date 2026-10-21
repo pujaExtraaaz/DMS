@@ -37,9 +37,18 @@ class PartyCredit
         $exposure = $this->billWiseExposureCents($party) + Money::cents((string) $invoice->grand_total);
 
         if ($exposure > $limit) {
+            $message = 'This invoice would take '.$party->name.' over the credit limit of '.Money::format($limit)
+                .' (bill-wise exposure '.Money::format($exposure - Money::cents((string) $invoice->grand_total)).').';
+            $action = (string) $this->preferences->get($invoice->company, null, 'sales.credit_limit_action');
+
+            if ($action === 'warn') {
+                session()->flash('warning', $message);
+
+                return;
+            }
+
             throw ValidationException::withMessages([
-                'party_ledger_id' => 'This invoice would take '.$party->name.' over the credit limit of '.Money::format($limit)
-                    .' (bill-wise exposure '.Money::format($exposure - Money::cents((string) $invoice->grand_total)).').',
+                'party_ledger_id' => $message,
             ]);
         }
     }

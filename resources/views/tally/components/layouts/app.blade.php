@@ -116,6 +116,9 @@
                     @if (session('status'))
                         <x-ui.alert type="success" :message="session('status')" />
                     @endif
+                    @if (session('warning'))
+                        <x-ui.alert type="warning" :message="session('warning')" />
+                    @endif
                     @if (session('error'))
                         <x-ui.alert type="error" :message="session('error')" />
                     @endif

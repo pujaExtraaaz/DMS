@@ -121,6 +121,10 @@ class Company extends AccountingModel
         'financial_year_end',
         'books_beginning_from',
         'accounting_basis',
+        'use_cost_centres',
+        'use_bill_wise',
+        'lock_closed_financial_year',
+        'default_credit_days',
         'inventory_valuation_method',
         'retained_earnings_ledger_id',
         'customer_advance_ledger_id',
@@ -129,6 +133,7 @@ class Company extends AccountingModel
         'retention_ledger_id',
         'commission_expense_ledger_id',
         'commission_payable_ledger_id',
+        'round_off_ledger_id',
         'collection_reminder_days_before',
         'collection_reminder_days_after',
         'currency_symbol',
@@ -151,6 +156,35 @@ class Company extends AccountingModel
             'allow_negative_stock' => 'boolean',
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * A company created before these columns were filled still behaves as it does today.
+     */
+    public function featureEnabled(string $attribute, bool $default = true): bool
+    {
+        $value = $this->getAttribute($attribute);
+
+        if ($value === null) {
+            return $default;
+        }
+
+        return ! in_array($value, [false, 0, '0', 'false'], true);
+    }
+
+    public function usesCostCentres(): bool
+    {
+        return $this->featureEnabled('use_cost_centres');
+    }
+
+    public function usesBillWise(): bool
+    {
+        return $this->featureEnabled('use_bill_wise');
+    }
+
+    public function locksClosedYear(): bool
+    {
+        return $this->featureEnabled('lock_closed_financial_year');
     }
 
     public function branches(): HasMany

@@ -53,4 +53,31 @@ class PeriodLockServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         $service->assertDateOpen($company, '2025-04-15', $year);
     }
+
+    public function test_closed_year_is_blocked_only_when_the_company_locks_it(): void
+    {
+        $company = $this->makeCompany(['name' => 'Lock Co 3']);
+        $year = FinancialYear::query()->create([
+            'company_id' => $company->id,
+            'name' => 'Closed FY',
+            'start_date' => '2025-04-01',
+            'end_date' => '2026-03-31',
+            'is_active' => true,
+            'is_closed' => true,
+        ]);
+        $service = app(PeriodLockService::class);
+
+        $company->update(['lock_closed_financial_year' => true]);
+        $company->refresh();
+
+        try {
+            $service->assertDateOpen($company, '2025-05-01', $year);
+            $this->fail('A locked closed year should reject the date.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('closed', $exception->validator->errors()->first('voucher_date'));
+        }
+
+        $company->update(['lock_closed_financial_year' => false]);
+        $service->assertDateOpen($company->fresh(), '2025-05-01', $year);
+    }
 }

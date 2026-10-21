@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search Name, Code, Phone, GSTIN..."
+            search-placeholder="Search Name, Phone, GSTIN..."
             :reset-url="route('masters.customers.index')"
         >
             <x-slot name="filters">
@@ -66,9 +66,6 @@
                     <x-ui.sortable-th column="name" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                         Party Name
                     </x-ui.sortable-th>
-                    <x-ui.sortable-th column="code" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
-                        Code
-                    </x-ui.sortable-th>
                     <x-ui.sortable-th column="party_type" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                         Party Type
                     </x-ui.sortable-th>
@@ -89,7 +86,6 @@
                             {{ $item->name }}
                         </a>
                     </td>
-                    <td class="px-6 py-4 text-sm font-mono text-slate-600">{{ $item->code }}</td>
                     <td class="px-6 py-4 text-sm">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
                             {{ $item->party_type_key === 'sundry_creditors' ? 'bg-amber-100 text-amber-800' : ($item->party_type_key === 'both' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800') }}">
@@ -103,7 +99,7 @@
                         <div class="flex items-center justify-end gap-2">
                             <x-ui.button variant="ghost" size="sm" :href="route('masters.customers.edit', $item)">Edit</x-ui.button>
                             <button type="button"
-                                    @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}', '{{ addslashes($item->code) }}')"
+                                    @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}')"
                                     data-delete-customer="{{ $item->id }}"
                                     data-delete-party="{{ $item->id }}"
                                     class="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 transition border border-transparent hover:border-red-200"
@@ -122,7 +118,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="p-0">
+                    <td colspan="6" class="p-0">
                         <x-ui.empty-state
                             title="No matching parties found"
                             description="Try clearing search or filters to see more results."
@@ -189,10 +185,6 @@
                                         <span class="font-medium">Party Name:</span>
                                         <span class="font-semibold text-slate-900" x-text="deletingPartyName"></span>
                                     </div>
-                                    <div class="flex justify-between items-center text-slate-600">
-                                        <span class="font-medium">Party Code:</span>
-                                        <span class="font-mono text-slate-700" x-text="deletingPartyCode"></span>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -244,17 +236,15 @@ function partyIndex() {
         isDeleting: false,
         deletingPartyId: null,
         deletingPartyName: '',
-        deletingPartyCode: '',
         notification: {
             show: false,
             type: 'success',
             message: '',
         },
 
-        promptDelete(id, name, code) {
+        promptDelete(id, name) {
             this.deletingPartyId = id;
             this.deletingPartyName = name;
-            this.deletingPartyCode = code;
             this.showDeleteModal = true;
         },
 
@@ -263,7 +253,6 @@ function partyIndex() {
             this.showDeleteModal = false;
             this.deletingPartyId = null;
             this.deletingPartyName = '';
-            this.deletingPartyCode = '';
         },
 
         async executeDelete() {

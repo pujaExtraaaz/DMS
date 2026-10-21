@@ -7,7 +7,7 @@ namespace Tally\Support;
  */
 final class IndianCurrency
 {
-    public static function format(mixed $amount): string
+    public static function format(mixed $amount, string $symbol = '₹'): string
     {
         $raw = trim((string) $amount);
 
@@ -28,10 +28,21 @@ final class IndianCurrency
             $whole = $rest.','.$last;
         }
 
-        return ($negative ? '-' : '').'₹'.$whole.'.'.$fraction;
+        return ($negative ? '-' : '').$symbol.$whole.'.'.$fraction;
     }
 
-    public static function words(mixed $amount): string
+    public static function majorUnit(?string $formalName): string
+    {
+        $name = trim((string) $formalName);
+
+        if ($name === '' || in_array(strtoupper($name), ['INR', 'INDIAN RUPEE', 'INDIAN RUPEES'], true)) {
+            return 'rupees';
+        }
+
+        return strtolower($name);
+    }
+
+    public static function words(mixed $amount, string $major = 'rupees', string $minor = 'paise'): string
     {
         $raw = str_replace([',', '₹', ' '], '', trim((string) $amount));
         $negative = str_starts_with($raw, '-');
@@ -48,10 +59,10 @@ final class IndianCurrency
         [$whole, $fraction] = explode('.', $raw, 2);
         $rupees = (int) $whole;
         $paise = (int) substr(str_pad($fraction, 2, '0'), 0, 2);
-        $text = self::indianWords($rupees).' rupees';
+        $text = self::indianWords($rupees).' '.$major;
 
         if ($paise > 0) {
-            $text .= ' and '.self::indianWords($paise).' paise';
+            $text .= ' and '.self::indianWords($paise).' '.$minor;
         }
 
         return ($negative ? 'Minus ' : '').ucfirst($text).' only';

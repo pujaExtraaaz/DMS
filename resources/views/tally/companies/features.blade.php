@@ -19,7 +19,21 @@
                 @if ($section === 'accounting')
                     <p class="gateway-group">Accounting Features</p>
                     @include('tally::companies._yesno', ['name' => 'sales_enforce_credit_limit', 'label' => 'Enforce credit limit', 'value' => $creditLimit, 'options' => ['No', 'Yes'], 'values' => ['0', '1'], 'autofocus' => true])
+                    @include('tally::companies._yesno', ['name' => 'sales_credit_limit_action', 'label' => 'When the limit is crossed', 'value' => $creditAction, 'options' => ['Block', 'Warn'], 'values' => ['block', 'warn']])
                     @include('tally::companies._yesno', ['name' => 'print_amount_in_words', 'label' => 'Print amount in words', 'value' => $amountInWords, 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    @include('tally::companies._yesno', ['name' => 'use_cost_centres', 'label' => 'Use cost centres', 'value' => $company->usesCostCentres(), 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    @include('tally::companies._yesno', ['name' => 'use_bill_wise', 'label' => 'Bill-wise outstanding', 'value' => $company->usesBillWise(), 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    @include('tally::companies._yesno', ['name' => 'lock_closed_financial_year', 'label' => 'Lock a closed financial year', 'value' => $company->locksClosedYear(), 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    <x-tally::form.field name="display_date_format" label="Date format">
+                        <select id="display_date_format" name="display_date_format" class="input">
+                            @foreach (['d M Y' => '01 Oct 2026', 'd/m/Y' => '01/10/2026', 'Y-m-d' => '2026-10-01'] as $format => $sample)
+                                <option value="{{ $format }}" @selected(old('display_date_format', $dateFormat) === $format)>{{ $sample }}</option>
+                            @endforeach
+                        </select>
+                    </x-tally::form.field>
+                    <x-tally::form.field name="dashboard_as_on" label="Dashboard as-on date">
+                        <x-tally::form.input name="dashboard_as_on" type="date" value="{{ old('dashboard_as_on', $dashboardAsOn) }}" />
+                    </x-tally::form.field>
                     @include('tally::companies._yesno', [
                         'name' => 'accounting_basis',
                         'label' => 'Reporting basis',
@@ -27,27 +41,30 @@
                         'options' => ['Accrual', 'Cash'],
                         'values' => ['accrual', 'cash'],
                     ])
-                    <x-tally::form.field name="retained_earnings_ledger_id" label="Retained earnings ledger id">
-                        <input class="input" name="retained_earnings_ledger_id" value="{{ old('retained_earnings_ledger_id', $company->retained_earnings_ledger_id) }}" inputmode="numeric">
+                    <x-tally::form.field name="currency_symbol" label="Currency symbol">
+                        <input class="input" name="currency_symbol" value="{{ old('currency_symbol', $company->currency_symbol ?: '₹') }}" maxlength="8">
                     </x-tally::form.field>
-                    <x-tally::form.field name="customer_advance_ledger_id" label="Customer advance ledger id">
-                        <input class="input" name="customer_advance_ledger_id" value="{{ old('customer_advance_ledger_id', $company->customer_advance_ledger_id) }}" inputmode="numeric">
+                    <x-tally::form.field name="currency_formal_name" label="Currency formal name">
+                        <input class="input" name="currency_formal_name" value="{{ old('currency_formal_name', $company->currency_formal_name ?: 'INR') }}" maxlength="20">
                     </x-tally::form.field>
-                    <x-tally::form.field name="bad_debt_ledger_id" label="Bad debt ledger id">
-                        <input class="input" name="bad_debt_ledger_id" value="{{ old('bad_debt_ledger_id', $company->bad_debt_ledger_id) }}" inputmode="numeric">
+                    <x-tally::form.field name="default_credit_days" label="Default credit days for a new customer">
+                        <input class="input" name="default_credit_days" value="{{ old('default_credit_days', $company->default_credit_days) }}" inputmode="numeric">
                     </x-tally::form.field>
-                    <x-tally::form.field name="doubtful_debt_ledger_id" label="Doubtful debt provision ledger id">
-                        <input class="input" name="doubtful_debt_ledger_id" value="{{ old('doubtful_debt_ledger_id', $company->doubtful_debt_ledger_id) }}" inputmode="numeric">
+                    <x-tally::form.field name="sales_terms" label="Sales terms">
+                        <textarea class="input" name="sales_terms" rows="3" maxlength="2000">{{ old('sales_terms', $company->sales_terms) }}</textarea>
                     </x-tally::form.field>
-                    <x-tally::form.field name="retention_ledger_id" label="Retention ledger id">
-                        <input class="input" name="retention_ledger_id" value="{{ old('retention_ledger_id', $company->retention_ledger_id) }}" inputmode="numeric">
+                    <x-tally::form.field name="purchase_terms" label="Purchase terms">
+                        <textarea class="input" name="purchase_terms" rows="3" maxlength="2000">{{ old('purchase_terms', $company->purchase_terms) }}</textarea>
                     </x-tally::form.field>
-                    <x-tally::form.field name="commission_expense_ledger_id" label="Commission expense ledger id">
-                        <input class="input" name="commission_expense_ledger_id" value="{{ old('commission_expense_ledger_id', $company->commission_expense_ledger_id) }}" inputmode="numeric">
-                    </x-tally::form.field>
-                    <x-tally::form.field name="commission_payable_ledger_id" label="Commission payable ledger id">
-                        <input class="input" name="commission_payable_ledger_id" value="{{ old('commission_payable_ledger_id', $company->commission_payable_ledger_id) }}" inputmode="numeric">
-                    </x-tally::form.field>
+                    @include('tally::companies._ledger', ['name' => 'retained_earnings_ledger_id', 'label' => 'Retained earnings', 'company' => $company, 'ledgers' => $ledgerOptions['retained_earnings_ledger_id'], 'empty' => 'No capital ledger'])
+                    @include('tally::companies._ledger', ['name' => 'customer_advance_ledger_id', 'label' => 'Customer advance', 'company' => $company, 'ledgers' => $ledgerOptions['customer_advance_ledger_id'], 'empty' => 'No current liability ledger'])
+                    @include('tally::companies._ledger', ['name' => 'bad_debt_ledger_id', 'label' => 'Bad debt', 'company' => $company, 'ledgers' => $ledgerOptions['bad_debt_ledger_id'], 'empty' => 'No indirect expense ledger'])
+                    @include('tally::companies._ledger', ['name' => 'doubtful_debt_ledger_id', 'label' => 'Doubtful debt provision', 'company' => $company, 'ledgers' => $ledgerOptions['doubtful_debt_ledger_id'], 'empty' => 'No current liability ledger'])
+                    @include('tally::companies._ledger', ['name' => 'retention_ledger_id', 'label' => 'Retention', 'company' => $company, 'ledgers' => $ledgerOptions['retention_ledger_id'], 'empty' => 'No current liability ledger'])
+                    @include('tally::companies._ledger', ['name' => 'commission_expense_ledger_id', 'label' => 'Commission expense', 'company' => $company, 'ledgers' => $ledgerOptions['commission_expense_ledger_id'], 'empty' => 'No indirect expense ledger'])
+                    @include('tally::companies._ledger', ['name' => 'commission_payable_ledger_id', 'label' => 'Commission payable', 'company' => $company, 'ledgers' => $ledgerOptions['commission_payable_ledger_id'], 'empty' => 'No current liability ledger'])
+                    @include('tally::companies._ledger', ['name' => 'round_off_ledger_id', 'label' => 'Round off', 'company' => $company, 'ledgers' => $ledgerOptions['round_off_ledger_id'], 'empty' => 'No indirect income or expense ledger'])
+                    <p class="form-note">With a round-off ledger, an invoice total rounds to the nearest rupee and the paisa posts to that ledger. A voucher that is off by ₹1.00 or less uses the same ledger.</p>
                     <x-tally::form.field name="collection_reminder_days_before" label="Reminder days before due">
                         <input class="input" name="collection_reminder_days_before" value="{{ old('collection_reminder_days_before', $company->collection_reminder_days_before) }}" inputmode="numeric">
                     </x-tally::form.field>

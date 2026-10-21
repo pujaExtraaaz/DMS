@@ -82,7 +82,7 @@
                     <x-tally::form.input name="credit_limit" value="{{ old('credit_limit', $party->credit_limit) }}" />
                 </x-tally::form.field>
                 <x-tally::form.field name="credit_days" label="Credit days">
-                    <x-tally::form.input name="credit_days" value="{{ old('credit_days', $party->credit_days) }}" />
+                    <x-tally::form.input name="credit_days" value="{{ old('credit_days', $party->credit_days ?? $company->default_credit_days) }}" />
                 </x-tally::form.field>
                 <x-tally::form.field name="default_discount_percent" label="Default discount %">
                     <x-tally::form.input name="default_discount_percent" value="{{ old('default_discount_percent', $party->default_discount_percent) }}" />

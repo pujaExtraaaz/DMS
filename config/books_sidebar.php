@@ -20,13 +20,9 @@ return [
             'label' => 'Company & Foundation',
             'accent' => '#3b82f6',
             'items' => [
-                ['label' => 'Company Profile', 'route' => 'books.tally.companies.index', 'active' => ['books.tally.companies.*'], 'keywords' => 'company foundation'],
-                ['label' => 'Branches & Locations', 'route' => 'books.tally.locations.index', 'active' => ['books.tally.locations.*', 'books.tally.branches.*'], 'keywords' => 'branch location'],
-                ['label' => 'Financial Years', 'route' => 'books.tally.financial-years.current', 'active' => ['books.tally.financial-years.*'], 'keywords' => 'fy year'],
                 ['label' => 'Chart of Accounts', 'route' => 'books.tally.account-groups.index', 'active' => ['books.tally.account-groups.*', 'books.tally.ledgers.*'], 'keywords' => 'groups ledgers coa'],
                 ['label' => 'Ledgers', 'route' => 'books.tally.ledgers.index', 'active' => ['books.tally.ledgers.*'], 'keywords' => 'accounts'],
-                ['label' => 'Accounting Settings', 'route' => 'books.tally.preferences.edit', 'active' => ['books.tally.preferences.*', 'books.tally.companies.features'], 'keywords' => 'preferences features settings'],
-                ['label' => 'Company Features', 'route' => 'books.tally.companies.features', 'active' => ['books.tally.companies.features'], 'keywords' => 'modules features'],
+                ['label' => 'Company Features', 'route' => 'books.tally.companies.features', 'active' => ['books.tally.companies.features', 'books.tally.preferences.*'], 'keywords' => 'modules features settings preferences'],
             ],
         ],
         [
@@ -62,7 +58,6 @@ return [
                 ['label' => 'Payment Batches', 'route' => 'books.tally.payment-batches.index', 'active' => ['books.tally.payment-batches.*'], 'keywords' => 'batch payment'],
                 ['label' => 'Supplier Outstanding', 'route' => 'books.tally.reports.supplier-ageing', 'active' => ['books.tally.reports.supplier-ageing'], 'keywords' => 'ap ageing outstanding'],
                 ['label' => 'Supplier Statements', 'route' => 'books.tally.reports.supplier-statement', 'active' => ['books.tally.reports.supplier-statement'], 'keywords' => 'supplier statement'],
-                ['label' => 'Landed Cost', 'route' => 'books.tally.landed-costs.index', 'active' => ['books.tally.landed-costs.*'], 'keywords' => 'landed'],
                 ['label' => 'Expense Claims', 'route' => 'books.tally.expense-claims.index', 'active' => ['books.tally.expense-claims.*'], 'keywords' => 'expense claim'],
                 ['label' => 'Prepaid Expenses', 'route' => 'books.tally.prepaid-expenses.index', 'active' => ['books.tally.prepaid-expenses.*'], 'keywords' => 'prepaid'],
                 ['label' => 'Accrued Expenses', 'route' => 'books.tally.accrued-expenses.index', 'active' => ['books.tally.accrued-expenses.*'], 'keywords' => 'accrual'],

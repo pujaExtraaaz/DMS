@@ -7,7 +7,6 @@ use Tally\Context\WorkspaceContext;
 use Tally\Documents\DocumentPdf;
 use Tally\Documents\TradingDocument;
 use Tally\Models\PriceList;
-use Tally\Tax\GstReturnFile;
 use Tally\Http\Requests\InvoiceRequest;
 use Tally\Invoicing\InvoiceKind;
 use Tally\Invoicing\InvoiceNumberer;
@@ -23,7 +22,7 @@ use Tally\Support\Queries\DateRange;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
+use Tally\Tax\SupplyType;
 
 class InvoiceController extends Controller
 {
@@ -183,8 +182,7 @@ class InvoiceController extends Controller
             $request->input('action') === 'post',
         );
 
-        return redirect()
-            ->route($kind->routeName('show'), $invoice)
+        return tally_redirect($kind->routeName('show'), $invoice)
             ->with('status', $invoice->isPosted() ? $kind->documentLabel().' posted.' : $kind->documentLabel().' saved as draft.');
     }
 
@@ -199,18 +197,18 @@ class InvoiceController extends Controller
         ]);
     }
 
-    public function einvoice(Request $request, Invoice $invoice, GstReturnFile $files): Response
+    public function einvoice(Request $request, Invoice $invoice): View
     {
         $this->guardKind($request, $invoice);
 
-        return $this->jsonDownload($files->einvoice($invoice), 'einvoice-'.$invoice->invoice_number.'.json');
+        return view('tally::invoices.e-invoice', $this->statutoryDocument($invoice));
     }
 
-    public function eway(Request $request, Invoice $invoice, GstReturnFile $files): Response
+    public function eway(Request $request, Invoice $invoice): View
     {
         $this->guardKind($request, $invoice);
 
-        return $this->jsonDownload($files->eway($invoice), 'eway-'.$invoice->invoice_number.'.json');
+        return view('tally::invoices.e-way-bill', $this->statutoryDocument($invoice));
     }
 
     public function print(Request $request, Invoice $invoice, TradingDocument $documents): View
@@ -255,8 +253,7 @@ class InvoiceController extends Controller
         if ($invoice->isCancelled()) {
             app(\Tally\Audit\AuditLogger::class)->record('change_blocked', 'accounting', $invoice, 'A cancelled invoice cannot be changed.');
 
-            return redirect()
-                ->route($invoice->kind->routeName('show'), $invoice)
+            return tally_redirect($invoice->kind->routeName('show'), $invoice)
                 ->with('error', 'A cancelled invoice cannot be changed.');
         }
 
@@ -319,8 +316,7 @@ class InvoiceController extends Controller
             $invoice,
         );
 
-        return redirect()
-            ->route($invoice->kind->routeName('show'), $invoice)
+        return tally_redirect($invoice->kind->routeName('show'), $invoice)
             ->with('status', $invoice->isPosted() ? $invoice->kind->documentLabel().' posted.' : 'Draft updated.');
     }
 
@@ -329,8 +325,7 @@ class InvoiceController extends Controller
         $this->guardKind($request, $invoice);
         $invoice = $invoices->post($invoice, $request->user(), $request->boolean('force_duplicate'));
 
-        return redirect()
-            ->route($invoice->kind->routeName('show'), $invoice)
+        return tally_redirect($invoice->kind->routeName('show'), $invoice)
             ->with('status', $invoice->kind->documentLabel().' posted.');
     }
 
@@ -339,8 +334,7 @@ class InvoiceController extends Controller
         $this->guardKind($request, $invoice);
         $invoices->cancel($invoice);
 
-        return redirect()
-            ->route($invoice->kind->routeName('show'), $invoice)
+        return tally_redirect($invoice->kind->routeName('show'), $invoice)
             ->with('status', $invoice->kind->documentLabel().' cancelled.');
     }
 
@@ -384,8 +378,7 @@ class InvoiceController extends Controller
 
         $invoice->update(['status' => \Tally\Accounting\VoucherStatus::Cancelled, 'cancelled_at' => now()]);
 
-        return redirect()
-            ->route(InvoiceKind::Sales->routeName('show'), $tax)
+        return tally_redirect(InvoiceKind::Sales->routeName('show'), $tax)
             ->with('status', 'Pro forma converted to tax invoice '.$tax->invoice_number.'.');
     }
 
@@ -480,14 +473,94 @@ class InvoiceController extends Controller
     }
 
     /**
-     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
      */
-    private function jsonDownload(array $payload, string $filename): Response
+    private function statutoryDocument(Invoice $invoice): array
     {
-        return response(json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), 200, [
-            'Content-Type' => 'application/json',
-            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
-        ]);
+        $invoice->loadMissing(['company', 'party', 'lines.product', 'lines.hsnSac', 'lines.taxRate']);
+
+        $company = $invoice->company;
+        $ledger = $invoice->party;
+        $party = $ledger
+            ? \Tally\Models\Party::query()->where('ledger_id', $ledger->id)->first()
+            : null;
+        $purchase = in_array($invoice->kind, [InvoiceKind::Purchase, InvoiceKind::DebitNote], true);
+        $companyParty = [
+            'name' => $company->legal_name ?: $company->name,
+            'gstin' => $company->gstin ?: '—',
+            'address' => $company->address ?: '—',
+            'state' => $company->state ?: '—',
+            'pincode' => $company->pincode ?: '—',
+            'phone' => $company->phone ?: $company->mobile,
+        ];
+        $counterParty = [
+            'name' => $party?->legal_name ?: $ledger?->name ?: '—',
+            'gstin' => $party?->gstin ?: '—',
+            'address' => $party?->billing_address ?: $party?->shipping_address ?: '—',
+            'state' => $party?->state ?: '—',
+            'pincode' => '—',
+            'phone' => $party?->phone ?: $party?->mobile,
+        ];
+        $tax = round((float) $invoice->tax_total, 2);
+        $intra = $invoice->supply_type !== SupplyType::Inter;
+        $cgst = $intra ? round($tax / 2, 2) : 0.0;
+        $lines = [];
+        foreach ($invoice->lines as $line) {
+            $qty = (float) $line->quantity;
+            $rate = (float) $line->rate;
+            $discount = (float) $line->discount;
+            $lineTax = (float) $line->tax_amount;
+            $taxable = max(0, round(($qty * $rate) - $discount, 2));
+            $gstRate = $line->taxRate
+                ? (float) $line->taxRate->igst_rate ?: ((float) $line->taxRate->cgst_rate + (float) $line->taxRate->sgst_rate)
+                : null;
+            if ($gstRate === null && $taxable > 0) {
+                $gstRate = round(($lineTax / $taxable) * 100, 2);
+            }
+            $lines[] = [
+                'name' => $line->item_name,
+                'hsn' => $line->hsnSac?->code ?: '—',
+                'qty' => $this->trimNumber((string) $line->quantity),
+                'rate' => number_format($rate, 2),
+                'discount' => number_format($discount, 2),
+                'taxable' => number_format($taxable, 2),
+                'gst' => number_format((float) $gstRate, 2),
+                'tax' => number_format($lineTax, 2),
+                'total' => number_format((float) $line->line_total, 2),
+            ];
+        }
+
+        return [
+            'purchase' => $purchase,
+            'documentTitle' => $invoice->kind === InvoiceKind::Sales
+                ? 'Tax Invoice'
+                : $invoice->kind->documentLabel(),
+            'number' => $invoice->invoice_number,
+            'date' => $invoice->invoice_date->format(app(\Tally\Preferences\PreferenceStore::class)->dateFormat($company, request()->user())),
+            'reference' => $invoice->reference_number,
+            'place' => $invoice->place_of_supply,
+            'supply' => $invoice->supply_type?->label(),
+            'narration' => $invoice->narration,
+            'seller' => $purchase ? $counterParty : $companyParty,
+            'buyer' => $purchase ? $companyParty : $counterParty,
+            'lines' => $lines,
+            'subtotal' => number_format((float) $invoice->subtotal, 2),
+            'discount' => number_format((float) $invoice->discount_total, 2),
+            'cgst' => number_format($cgst, 2),
+            'sgst' => number_format($intra ? round($tax - $cgst, 2) : 0, 2),
+            'igst' => number_format($intra ? 0 : $tax, 2),
+            'tax' => number_format($tax, 2),
+            'grand' => number_format((float) $invoice->grand_total, 2),
+            'currencySymbol' => $company->currency_symbol ?: '₹',
+            'currencyName' => $company->currency_formal_name ?: 'INR',
+            'words' => app(\Tally\Preferences\PreferenceStore::class)->enabled($company, 'print.amount_in_words')
+                ? \Tally\Support\IndianCurrency::words((float) $invoice->grand_total, \Tally\Support\IndianCurrency::majorUnit($company->currency_formal_name))
+                : null,
+            'irn' => 'MANUAL-'.strtoupper(substr(hash('sha256', $invoice->invoice_number), 0, 16)),
+            'ewayNo' => 'MANUAL-'.strtoupper(substr(hash('sha256', $invoice->invoice_number.'eway'), 0, 12)),
+            'back' => tally_route($invoice->kind->routeName('show'), $invoice),
+            'terms' => $purchase ? ($company->purchase_terms ?: null) : ($company->sales_terms ?: null),
+        ];
     }
 
     private function trimNumber(string $value): string

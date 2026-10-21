@@ -71,6 +71,7 @@ class NameCase
         'column_name',
         'hostname',
         'domain_name',
+        'currency_formal_name',
         'email',
         'secondary_email',
         'contact_email',

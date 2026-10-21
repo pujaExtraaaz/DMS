@@ -22,6 +22,11 @@ class BillService
             return;
         }
 
+        $voucher->loadMissing('company');
+        if ($voucher->company && ! $voucher->company->usesBillWise()) {
+            return;
+        }
+
         $voucher->loadMissing(['entries.ledger.accountGroup', 'financialYear']);
 
         foreach ($voucher->entries as $entry) {

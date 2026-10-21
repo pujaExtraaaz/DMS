@@ -2,6 +2,7 @@
 
 namespace Tally\Http\Controllers;
 
+use Tally\Accounting\FeatureLedgerOptions;
 use Tally\Context\WorkspaceContext;
 use Tally\Preferences\PreferenceStore;
 use Tally\Tax\GstRegistrationType;
@@ -9,6 +10,7 @@ use Tally\Tax\TaxPricing;
 use Tally\Tax\TaxRounding;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class CompanyFeaturesController extends Controller
@@ -45,6 +47,10 @@ class CompanyFeaturesController extends Controller
             'esiCeiling' => (string) $preferences->get($company, null, 'payroll.esi_ceiling'),
             'employerPfRate' => (string) $preferences->get($company, null, 'payroll.pf_employer_rate'),
             'employerEsiRate' => (string) $preferences->get($company, null, 'payroll.esi_employer_rate'),
+            'creditAction' => (string) $preferences->get($company, null, 'sales.credit_limit_action') ?: 'block',
+            'dateFormat' => $preferences->dateFormat($company, $request->user()),
+            'dashboardAsOn' => (string) $preferences->get($company, $request->user(), 'dashboard.as_on'),
+            'ledgerOptions' => app(FeatureLedgerOptions::class)->forCompany($company),
         ]);
     }
 
@@ -61,22 +67,42 @@ class CompanyFeaturesController extends Controller
         if ($section === 'accounting') {
             $request->validate([
                 'sales_enforce_credit_limit' => ['required', 'boolean'],
+                'sales_credit_limit_action' => ['required', 'in:block,warn'],
                 'print_amount_in_words' => ['required', 'boolean'],
+                'use_cost_centres' => ['required', 'boolean'],
+                'use_bill_wise' => ['required', 'boolean'],
+                'lock_closed_financial_year' => ['required', 'boolean'],
                 'accounting_basis' => ['nullable', 'in:accrual,cash'],
-                'retained_earnings_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
-                'customer_advance_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
-                'bad_debt_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
-                'doubtful_debt_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
-                'retention_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
-                'commission_expense_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
-                'commission_payable_ledger_id' => ['nullable', 'integer', 'exists:acct_ledgers,id'],
+                'currency_symbol' => ['required', 'string', 'max:8'],
+                'currency_formal_name' => ['required', 'string', 'max:20'],
+                'sales_terms' => ['nullable', 'string', 'max:2000'],
+                'purchase_terms' => ['nullable', 'string', 'max:2000'],
+                'default_credit_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
+                ...app(FeatureLedgerOptions::class)->rules($company),
                 'collection_reminder_days_before' => ['nullable', 'integer', 'min:0', 'max:365'],
                 'collection_reminder_days_after' => ['nullable', 'integer', 'min:0', 'max:365'],
+                'display_date_format' => ['required', 'in:d M Y,d/m/Y,Y-m-d'],
+                'dashboard_as_on' => ['nullable', 'date'],
             ]);
             $preferences->put($company, null, 'sales.enforce_credit_limit', $request->boolean('sales_enforce_credit_limit'));
+            $preferences->put($company, null, 'sales.credit_limit_action', $request->input('sales_credit_limit_action') === 'warn' ? 'warn' : 'block');
             $preferences->put($company, null, 'print.amount_in_words', $request->boolean('print_amount_in_words'));
+            $preferences->put(null, $request->user(), 'display.date_format', $request->input('display_date_format'));
+            $asOn = $request->input('dashboard_as_on') ?: '';
+            $preferences->put(null, $request->user(), 'dashboard.as_on', $asOn);
+            $preferences->put($company, null, 'dashboard.as_on', $asOn);
+            $symbol = trim((string) $request->input('currency_symbol')) ?: '₹';
+            $formal = trim((string) $request->input('currency_formal_name')) ?: 'INR';
             $company->update([
                 'accounting_basis' => $request->input('accounting_basis', $company->accounting_basis ?? 'accrual'),
+                'use_cost_centres' => $request->boolean('use_cost_centres'),
+                'use_bill_wise' => $request->boolean('use_bill_wise'),
+                'lock_closed_financial_year' => $request->boolean('lock_closed_financial_year'),
+                'currency_symbol' => $symbol,
+                'currency_formal_name' => $formal,
+                'sales_terms' => trim((string) $request->input('sales_terms')) ?: null,
+                'purchase_terms' => trim((string) $request->input('purchase_terms')) ?: null,
+                'default_credit_days' => $request->filled('default_credit_days') ? (int) $request->input('default_credit_days') : null,
                 'retained_earnings_ledger_id' => $request->input('retained_earnings_ledger_id') ?: null,
                 'customer_advance_ledger_id' => $request->input('customer_advance_ledger_id') ?: null,
                 'bad_debt_ledger_id' => $request->input('bad_debt_ledger_id') ?: null,
@@ -84,6 +110,7 @@ class CompanyFeaturesController extends Controller
                 'retention_ledger_id' => $request->input('retention_ledger_id') ?: null,
                 'commission_expense_ledger_id' => $request->input('commission_expense_ledger_id') ?: null,
                 'commission_payable_ledger_id' => $request->input('commission_payable_ledger_id') ?: null,
+                'round_off_ledger_id' => $request->input('round_off_ledger_id') ?: null,
                 'collection_reminder_days_before' => $request->input('collection_reminder_days_before') !== null && $request->input('collection_reminder_days_before') !== ''
                     ? (int) $request->input('collection_reminder_days_before')
                     : null,
@@ -91,6 +118,10 @@ class CompanyFeaturesController extends Controller
                     ? (int) $request->input('collection_reminder_days_after')
                     : null,
             ]);
+
+            if (Schema::hasTable('acct_currencies')) {
+                $company->currencies()->where('is_base', true)->update(['symbol' => $symbol]);
+            }
 
             return back()->with('status', 'Accounting features saved.');
         }

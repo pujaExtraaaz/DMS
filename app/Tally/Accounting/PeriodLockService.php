@@ -43,7 +43,7 @@ class PeriodLockService
             ]);
         }
 
-        if ($year?->is_closed) {
+        if ($year?->is_closed && $company->locksClosedYear()) {
             throw ValidationException::withMessages([
                 'voucher_date' => 'Financial year '.$year->name.' is closed.',
             ]);

@@ -194,10 +194,6 @@
                         </button>
                     </div>
 
-                    @unless(request()->routeIs('help.*'))
-                        <x-ui.screen-help />
-                    @endunless
-
                     @yield('content')
                 </div>
             </main>

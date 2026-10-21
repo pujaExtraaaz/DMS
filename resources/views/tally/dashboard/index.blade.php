@@ -3,13 +3,14 @@
         $company = $workspace->company();
         $branch = $workspace->branch();
         $year = $workspace->financialYear();
-        $money = function (?string $value): string {
+        $symbol = $company?->currency_symbol ?: '₹';
+        $money = function (?string $value) use ($symbol): string {
             $value = trim((string) ($value ?: '0.00'));
             if ($value === '') {
                 $value = '0.00';
             }
 
-            return str_starts_with($value, '₹') ? $value : '₹'.$value;
+            return str_starts_with($value, $symbol) ? $value : $symbol.$value;
         };
     @endphp
 

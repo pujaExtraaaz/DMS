@@ -28,6 +28,8 @@ class InvoiceAccounting
     public function entries(Invoice $invoice): array
     {
         $grand = Money::cents((string) $invoice->grand_total);
+        $roundOff = Money::cents((string) ($invoice->round_off ?? '0'));
+        $exactGrand = $grand - $roundOff;
         $taxLines = $this->taxLines($invoice);
         $taxCents = 0;
 
@@ -35,13 +37,13 @@ class InvoiceAccounting
             $taxCents += Money::cents($line['debit']) + Money::cents($line['credit']);
         }
 
-        if ($taxCents > $grand) {
+        if ($taxCents > $exactGrand && $taxCents > $grand) {
             throw ValidationException::withMessages([
                 'lines' => 'Tax cannot exceed the invoice total.',
             ]);
         }
 
-        $accountCents = $grand - $taxCents;
+        $accountCents = $exactGrand - $taxCents;
         $debitParty = $invoice->kind->debitsParty();
         $narration = $invoice->narration;
         $reference = $invoice->invoice_number;
@@ -76,22 +78,39 @@ class InvoiceAccounting
             $retentionLine = $this->line((int) $retentionLedgerId, 0, $retention, $narration, $reference);
 
             return array_values(array_filter(
-                [$party, $account, $retentionLine, ...$taxLines],
-                fn (array $line) => Money::cents($line['debit']) > 0 || Money::cents($line['credit']) > 0,
+                [$party, $account, $retentionLine, $this->roundOffLine($invoice, $roundOff, $narration, $reference), ...$taxLines],
+                fn (?array $line) => $line && (Money::cents($line['debit']) > 0 || Money::cents($line['credit']) > 0),
             ));
         }
 
         $party = $this->line($invoice->party_ledger_id, $debitParty ? $grand : 0, $debitParty ? 0 : $grand, $narration, $reference);
         $account = $this->line($accountLedgerId, $debitParty ? 0 : $accountCents, $debitParty ? $accountCents : 0, $narration, $reference);
 
+        $roundOffLine = $this->roundOffLine($invoice, $roundOff, $narration, $reference);
         $lines = $debitParty
-            ? [$party, $account, ...$taxLines]
-            : [$account, $party, ...$taxLines];
+            ? [$party, $account, $roundOffLine, ...$taxLines]
+            : [$account, $party, $roundOffLine, ...$taxLines];
 
         return array_values(array_filter(
             $lines,
-            fn (array $line) => Money::cents($line['debit']) > 0 || Money::cents($line['credit']) > 0,
+            fn (?array $line) => $line && (Money::cents($line['debit']) > 0 || Money::cents($line['credit']) > 0),
         ));
+    }
+
+    /**
+     * @return array{ledger_id: int, debit: string, credit: string, narration: ?string, reference: string}|null
+     */
+    private function roundOffLine(Invoice $invoice, int $roundOff, ?string $narration, string $reference): ?array
+    {
+        $ledgerId = (int) ($invoice->company?->round_off_ledger_id ?? 0);
+
+        if ($roundOff === 0 || $ledgerId === 0) {
+            return null;
+        }
+
+        return $roundOff > 0
+            ? $this->line($ledgerId, 0, $roundOff, $narration, $reference)
+            : $this->line($ledgerId, -$roundOff, 0, $narration, $reference);
     }
 
     /**

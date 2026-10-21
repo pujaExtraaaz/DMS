@@ -311,6 +311,22 @@
             </div>
         @endif
 
+        <a
+            href="{{ route('guide') }}"
+            class="{{ $sectionBtn }} {{ request()->routeIs('guide') ? 'bg-slate-800/60 text-slate-300' : '' }}"
+            x-show="!$root.sidebarCollapsed"
+            x-cloak
+        >
+            <span>12 · Guide</span>
+        </a>
+        <a
+            href="{{ route('guide') }}"
+            class="flex items-center justify-center rounded-xl px-2 py-2 text-[10px] font-bold uppercase tracking-[0.12em] {{ request()->routeIs('guide') ? 'bg-slate-800/60 text-slate-300' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-300' }} transition"
+            x-show="$root.sidebarCollapsed"
+            x-cloak
+            title="Guide"
+        >12</a>
+
         {{-- User Section: Profile, Users & Roles, Log Out --}}
         <div class="border-t border-slate-700/60 pt-3 mt-3 space-y-2">
             <a href="{{ route('profile.edit') }}" class="{{ $itemClass }} text-slate-300 hover:bg-slate-800/80 hover:text-white">

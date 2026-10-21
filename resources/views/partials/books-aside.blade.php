@@ -37,7 +37,7 @@
             continue;
         }
         $hasActive = collect($items)->contains(fn ($i) => $i['isActive']);
-        if ($hasActive) {
+        if ($hasActive && $activeCategoryKey === null) {
             $activeCategoryKey = $category['key'];
         }
         $categories[] = [
@@ -74,13 +74,20 @@ window.booksAqNavFactory = window.booksAqNavFactory || function booksAqNavFactor
             // Only expand the active category (or first) — restoring every prior open group
             // made the Books column look overcrowded / “cooked”.
             this._categories.forEach((c) => { this.openMap[c.key] = false; });
-            const preferred = this._activeKey
+            let preferred = this._activeKey
                 || (this._categories.find((c) => c.hasActive)?.key)
                 || this._categories[0]?.key
                 || null;
+            const savedHref = sessionStorage.getItem('booksAsideHref');
+            const savedCat = sessionStorage.getItem('booksAsideCat');
+            if (savedCat && savedHref && this.samePage(savedHref)) {
+                preferred = savedCat;
+            }
+            this._preferred = preferred;
             if (preferred) {
                 this.openMap[preferred] = true;
             }
+            this.$nextTick(() => requestAnimationFrame(() => this.restoreScroll()));
             this.$watch('query', () => { this.selectedIndex = 0; });
             this._onKey = (e) => {
                 if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
@@ -108,6 +115,42 @@ window.booksAqNavFactory = window.booksAqNavFactory || function booksAqNavFactor
             const willOpen = !this.openMap[key];
             Object.keys(this.openMap).forEach((k) => { this.openMap[k] = false; });
             this.openMap[key] = willOpen;
+        },
+        samePage(href) {
+            try {
+                return new URL(href, window.location.origin).pathname === window.location.pathname;
+            } catch (e) {
+                return false;
+            }
+        },
+        rememberScroll(event) {
+            const nav = this.$refs.booksNav;
+            if (nav) sessionStorage.setItem('booksAsideScroll', String(nav.scrollTop));
+            const link = event?.target?.closest?.('a.books-aside__item');
+            const cat = link?.closest('[data-books-cat]');
+            if (link?.href) sessionStorage.setItem('booksAsideHref', link.href);
+            if (cat) sessionStorage.setItem('booksAsideCat', cat.getAttribute('data-books-cat'));
+        },
+        restoreScroll() {
+            const nav = this.$refs.booksNav;
+            if (!nav) return;
+            const saved = sessionStorage.getItem('booksAsideScroll');
+            if (saved !== null && saved !== '') {
+                nav.scrollTop = Number(saved) || 0;
+            }
+            const scope = this._preferred
+                ? nav.querySelector('[data-books-cat="' + this._preferred + '"]')
+                : null;
+            const active = (scope && scope.querySelector('.books-aside__item.is-active'))
+                || nav.querySelector('.books-aside__item.is-active');
+            if (!active || active.offsetHeight === 0) return;
+            const navRect = nav.getBoundingClientRect();
+            const itemRect = active.getBoundingClientRect();
+            const padding = 8;
+            if (itemRect.top < navRect.top + padding || itemRect.bottom > navRect.bottom - padding) {
+                const delta = (itemRect.top + itemRect.height / 2) - (navRect.top + nav.clientHeight / 2);
+                nav.scrollTop = Math.max(0, nav.scrollTop + delta);
+            }
         },
         move(delta) {
             const len = this.filtered.length;
@@ -150,7 +193,7 @@ window.booksAqNavFactory = window.booksAqNavFactory || function booksAqNavFactor
         </div>
 
         @if($gatewayItems !== [])
-            <div class="books-aside__gateway">
+            <div class="books-aside__gateway" @click="sessionStorage.setItem('booksAsideScroll', '0'); sessionStorage.removeItem('booksAsideCat'); sessionStorage.removeItem('booksAsideHref')">
                 @foreach($gatewayItems as $g)
                     <a href="{{ $g['url'] }}" class="books-aside__gateway-link {{ $g['isActive'] ? 'is-active' : '' }}">{{ $g['label'] }}</a>
                 @endforeach
@@ -201,7 +244,7 @@ window.booksAqNavFactory = window.booksAqNavFactory || function booksAqNavFactor
             </template>
         </div>
 
-        <nav class="books-aside__nav" x-show="query.trim().length === 0" aria-label="Accounting categories">
+        <nav class="books-aside__nav" x-ref="booksNav" x-show="query.trim().length === 0" @click.capture="rememberScroll($event)" aria-label="Accounting categories">
             @foreach($categories as $category)
                 <div class="books-aside__cat" data-books-cat="{{ $category['key'] }}">
                     <button

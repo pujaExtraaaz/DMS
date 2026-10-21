@@ -22,6 +22,7 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::resource('financial-years', FinancialYearController::class)->except(['show']);
     Route::post('financial-years/{financial_year}/set-current', [FinancialYearController::class, 'setCurrent'])->name('financial-years.set-current');
     Route::post('financial-years/{financial_year}/close', [FinancialYearController::class, 'close'])->name('financial-years.close');
+    Route::post('financial-years/{financial_year}/reopen', [FinancialYearController::class, 'reopen'])->name('financial-years.reopen');
     Route::get('sister-concerns', [\App\Http\Controllers\Organization\SisterConcernController::class, 'dashboard'])->name('sister-concerns.dashboard');
     Route::get('sister-concerns/dashboard', [\App\Http\Controllers\Organization\SisterConcernController::class, 'dashboard'])->name('sister-concerns.dashboard.redirect');
     Route::get('sister-concerns/companies', [\App\Http\Controllers\Organization\SisterConcernController::class, 'companies'])->name('sister-concerns.companies');
