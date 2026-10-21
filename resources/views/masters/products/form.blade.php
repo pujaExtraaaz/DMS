@@ -59,27 +59,6 @@
             <!-- Model -->
             <x-ui.input name="model" label="Model" :value="old('model', $item->model ?? $item->models)" placeholder="E.G. T14 Gen 4, Sm-S928b" />
 
-            @if($item->exists)
-            <!-- Product Type (Editable for existing products, managed under Masters -> Product Types) -->
-            <div class="space-y-1">
-                <label for="product_type_id" class="block text-sm font-medium text-gray-700">
-                    Product Type
-                </label>
-                <select name="product_type_id" id="product_type_id" class="block w-full rounded-lg border-gray-300 shadow-2xs text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">-- Select Product Type --</option>
-                    @foreach($productTypes ?? [] as $pt)
-                        <option value="{{ $pt->id }}" @selected(old('product_type_id', $item->product_type_id) == $pt->id || old('product_type', $item->product_type) == $pt->name)>
-                            {{ $pt->name }}
-                        </option>
-                    @endforeach
-                </select>
-                <p class="text-[11px] text-slate-400">Configured under <a href="{{ route('masters.product-types.index') }}" class="text-indigo-600 hover:underline">Masters &rarr; Product Types</a>.</p>
-                @error('product_type_id')
-                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-            @endif
-
             <!-- Base UOM (Searchable Dropdown) -->
             <div class="space-y-2">
                 <div class="space-y-1 relative" @click.outside="closeUomDropdown()">
@@ -453,6 +432,22 @@
                 @enderror
             </div>
 
+            <div class="space-y-1 md:col-span-2">
+                <label for="product_type_id" class="block text-sm font-medium text-gray-700">Product Type</label>
+                <select name="product_type_id" id="product_type_id" class="block w-full rounded-lg border-gray-300 shadow-2xs text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <option value="">Select product type</option>
+                    @foreach($productTypes ?? [] as $pt)
+                        <option value="{{ $pt->id }}" @selected(old('product_type_id', $item->product_type_id) == $pt->id || old('product_type', $item->product_type) == $pt->name)>
+                            {{ $pt->name }}@if($pt->track_serial) — serial numbers @endif
+                        </option>
+                    @endforeach
+                </select>
+                <p class="text-[11px] text-slate-500">Use the brand, category, and sub-category above, then choose the product type. The list includes every active type.</p>
+                @error('product_type_id')
+                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+
             <!-- HSN Code -->
             <x-ui.input name="hsn_code" label="HSN Code" :value="old('hsn_code', $item->hsn_code)" placeholder="E.G. 85285200" />
 
@@ -474,7 +469,6 @@
             @endphp
             <div class="md:col-span-2 space-y-1" x-data="{
                 options: [
-                    { value: 'serial', label: 'Serial-wise' },
                     { value: 'batch', label: 'Batch-wise' }
                 ],
                 selected: @json($selectedTracking),
@@ -511,6 +505,13 @@
                     }
                 }
             }">
+                <label class="flex items-start gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 cursor-pointer">
+                    <input type="checkbox" name="tracking_type[]" value="serial" @checked(in_array('serial', $selectedTracking, true)) class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                    <span>
+                        <span class="block text-sm font-semibold text-slate-800">Track serial numbers</span>
+                        <span class="block text-xs text-slate-600">Saved on this product. Purchase invoices then show a serial number box for this item without turning it on again.</span>
+                    </span>
+                </label>
                 <label class="block text-sm font-medium text-slate-700">Tracking Type</label>
                 <div class="rounded-xl border border-slate-200 p-4 bg-slate-50/50 space-y-3">
                     <!-- Search input for tracking type -->

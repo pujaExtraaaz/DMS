@@ -495,12 +495,21 @@ class ProductController extends Controller
 
         $trackingType = $request->input('tracking_type');
         if (is_array($trackingType)) {
-            $cleaned = array_values(array_filter($trackingType, fn ($t) => filled($t) && $t !== 'none'));
+            $cleaned = array_values(array_unique(array_filter($trackingType, fn ($t) => filled($t) && $t !== 'none')));
             $data['tracking_type'] = empty($cleaned) ? 'none' : implode(',', $cleaned);
         } elseif (is_string($trackingType) && filled($trackingType)) {
             $data['tracking_type'] = $trackingType;
         } else {
             $data['tracking_type'] = 'none';
+        }
+
+        $typeId = $data['product_type_id'] ?? $request->input('product_type_id');
+        if ($typeId && ProductType::query()->whereKey($typeId)->where('track_serial', true)->exists()) {
+            $parts = array_values(array_filter(explode(',', (string) $data['tracking_type']), fn ($part) => $part !== '' && $part !== 'none'));
+            if (! in_array('serial', $parts, true)) {
+                $parts[] = 'serial';
+            }
+            $data['tracking_type'] = implode(',', $parts);
         }
 
         $data['min_stock'] = $data['min_stock'] ?? 0;

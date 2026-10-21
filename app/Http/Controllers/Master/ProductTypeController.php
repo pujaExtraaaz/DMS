@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Master;
 
+use App\Domains\Catalog\Models\Brand;
+use App\Domains\Catalog\Models\Category;
+use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\ProductType;
 use App\Domains\Organization\Models\Company;
@@ -61,6 +64,7 @@ class ProductTypeController extends Controller
             'activeCount' => $activeCount,
             'inactiveCount' => $inactiveCount,
             'previewCode' => CodeGenerator::forProductType(),
+            'catalog' => $this->catalogChoices(),
         ]);
     }
 
@@ -144,7 +148,9 @@ class ProductTypeController extends Controller
                 'code' => $code,
                 'description' => $description,
                 'is_active' => $isActive,
+                'track_serial' => $request->boolean('track_serial'),
             ]);
+            $this->syncSerialTracking($productType);
 
             $successMsg = "Product Type '{$formattedName}' created successfully.";
 
@@ -203,6 +209,7 @@ class ProductTypeController extends Controller
                     'code' => $productType->code,
                     'description' => $productType->description,
                     'is_active' => $productType->is_active,
+                    'track_serial' => (bool) $productType->track_serial,
                     'products_count' => $productType->products_count,
                     'created_at' => $productType->created_at?->format('d M Y, h:i A'),
                     'updated_at' => $productType->updated_at?->format('d M Y, h:i A'),
@@ -278,7 +285,9 @@ class ProductTypeController extends Controller
                 'name' => $formattedName,
                 'description' => $description,
                 'is_active' => $isActive,
+                'track_serial' => $request->boolean('track_serial'),
             ]);
+            $this->syncSerialTracking($productType->fresh());
 
             $successMsg = "Product Type '{$formattedName}' updated successfully.";
 
@@ -417,7 +426,9 @@ class ProductTypeController extends Controller
                 'code' => $code,
                 'description' => trim((string) $request->input('description', '')) ?: null,
                 'is_active' => true,
+                'track_serial' => $request->boolean('track_serial'),
             ]);
+            $this->syncSerialTracking($productType);
 
             return response()->json([
                 'success' => true,
@@ -449,5 +460,51 @@ class ProductTypeController extends Controller
                 'message' => 'An error occurred while saving the product type: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    protected function syncSerialTracking(ProductType $productType): void
+    {
+        $name = mb_strtolower(trim($productType->name));
+        $products = Product::query()
+            ->where(function ($query) use ($productType, $name) {
+                $query->where('product_type_id', $productType->id)
+                    ->orWhereRaw('LOWER(TRIM(COALESCE(product_type, ""))) = ?', [$name]);
+            })
+            ->get();
+
+        foreach ($products as $product) {
+            $parts = array_values(array_filter(
+                array_map('trim', explode(',', (string) $product->tracking_type)),
+                fn ($part) => $part !== '' && $part !== 'none'
+            ));
+
+            if ($productType->track_serial) {
+                if (! in_array('serial', $parts, true)) {
+                    $parts[] = 'serial';
+                }
+            } else {
+                $parts = array_values(array_filter($parts, fn ($part) => $part !== 'serial'));
+            }
+
+            $product->product_type_id = $productType->id;
+            $product->tracking_type = $parts === [] ? 'none' : implode(',', $parts);
+            $product->save();
+        }
+    }
+
+    /**
+     * @return array{brands: \Illuminate\Support\Collection, categories: \Illuminate\Support\Collection, subCategories: \Illuminate\Support\Collection, types: \Illuminate\Support\Collection, links: \Illuminate\Support\Collection}
+     */
+    protected function catalogChoices(): array
+    {
+        return [
+            'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
+            'categories' => Category::query()->orderBy('name')->get(['id', 'name', 'brand_id']),
+            'subCategories' => SubCategory::query()->orderBy('name')->get(['id', 'name', 'category_id']),
+            'types' => ProductType::query()->orderBy('name')->get(['id', 'name', 'track_serial']),
+            'links' => Product::query()
+                ->whereNotNull('product_type_id')
+                ->get(['product_type_id', 'brand_id', 'category_id', 'sub_category_id']),
+        ];
     }
 }

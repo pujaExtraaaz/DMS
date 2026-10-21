@@ -55,32 +55,6 @@
                 @enderror
             </div>
 
-            {{-- Code (System Auto-generated preview) --}}
-            <div>
-                <label for="code" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                    Code
-                </label>
-                <input
-                    type="text"
-                    id="code"
-                    name="code"
-                    value="{{ old('code', $item->code ?? $previewCode ?? '') }}"
-                    {{ $item->exists ? 'readonly' : '' }}
-                    placeholder="Auto-generated on save"
-                    class="block w-full rounded-xl border-slate-200 text-sm font-mono {{ $item->exists ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : 'focus:border-indigo-500 focus:ring-indigo-500' }} shadow-2xs"
-                >
-                <p class="mt-1 text-[11px] text-slate-500">
-                    @if($item->exists)
-                        System code is permanent and maintains historical references.
-                    @else
-                        Leave blank to automatically assign the next collision-safe sequence code (e.g. PT-GLOBAL-00001).
-                    @endif
-                </p>
-                @error('code')
-                    <p class="mt-1 text-xs text-red-600 font-medium">{{ $message }}</p>
-                @enderror
-            </div>
-
             {{-- Description --}}
             <div>
                 <label for="description" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
@@ -98,6 +72,14 @@
                     <p class="mt-1 text-xs text-red-600 font-medium">{{ $message }}</p>
                 @enderror
             </div>
+
+            <label class="flex items-start gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 cursor-pointer">
+                <input type="checkbox" name="track_serial" value="1" @checked(old('track_serial', $item->track_serial)) class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                <span>
+                    <span class="block text-sm font-semibold text-slate-800">Track serial numbers</span>
+                    <span class="block text-xs text-slate-500">Purchase invoices ask for a serial number on every product of this type.</span>
+                </span>
+            </label>
 
             {{-- Status --}}
             <div class="pt-2 border-t border-slate-100">

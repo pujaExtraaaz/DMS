@@ -51,14 +51,13 @@
 <x-ui.card>
 <div class="overflow-x-auto"><table class="min-w-full text-sm">
 <thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">Batch Name</th><th class="px-3 py-2 text-left">Serial No</th><th class="px-3 py-2 text-left">UOM</th><th class="px-3 py-2 text-right">Ordered</th><th class="px-3 py-2 text-right">Received</th><th class="px-3 py-2 text-right">Unit Cost</th><th class="px-3 py-2 text-right">Line Total</th>
+<th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">Batch Name</th><th class="px-3 py-2 text-left">UOM</th><th class="px-3 py-2 text-right">Ordered</th><th class="px-3 py-2 text-right">Received</th><th class="px-3 py-2 text-right">Unit Cost</th><th class="px-3 py-2 text-right">Line Total</th>
 </tr></thead>
 <tbody class="divide-y">
 @foreach($order->items as $item)
 <tr>
 <td class="px-3 py-2">{{ $item->product?->name }}</td>
 <td class="px-3 py-2 font-mono text-xs">{{ $item->batch_no ?? '-' }}</td>
-<td class="px-3 py-2 font-mono text-xs">{{ $item->serial_no ?: '—' }}</td>
 <td class="px-3 py-2">{{ $item->uom?->code }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->quantity, 2) }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->received_qty, 2) }}</td>
@@ -110,7 +109,13 @@
             </div>
             @if($order->is_freight_applicable || (float) $order->freight_amount > 0)
                 <div class="flex justify-between text-slate-600">
-                    <span>Freight Charges:</span>
+                    <span>
+                        Freight Charges
+                        @if(($order->freight_mode ?? 'amount') === 'percent')
+                            ({{ rtrim(rtrim(number_format((float) $order->freight_percent, 2), '0'), '.') }}% of taxable amount)
+                        @endif
+                        :
+                    </span>
                     <span class="font-mono font-medium">₹{{ number_format((float) $order->freight_amount, 2) }}</span>
                 </div>
                 @if((float) $order->freight_tax_amount > 0)

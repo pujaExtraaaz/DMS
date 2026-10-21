@@ -15,6 +15,13 @@
     @csrf
     @method('PUT')
 
+    <div class="rounded-xl border-2 border-amber-400 bg-amber-50 p-4">
+        <label class="block text-sm font-extrabold uppercase tracking-wide text-amber-950">Remarks & Additional Delivery</label>
+        <p class="mt-1 text-xs font-medium text-amber-800">Put delivery instructions here. This stays at the top so it is not missed.</p>
+        <textarea name="notes" rows="3" placeholder="Delivery instructions and invoice remarks..."
+                  class="mt-2 block w-full rounded-lg border-amber-300 bg-white text-sm font-bold text-slate-900 focus:border-amber-500 focus:ring-amber-500">{{ old('notes', $invoice->notes) }}</textarea>
+    </div>
+
     <x-ui.card>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
@@ -25,13 +32,22 @@
                         + Add New
                     </button>
                 </div>
-                <select name="supplier_id" x-model="supplierId" @change="onSupplierChange()" required
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">Select supplier</option>
-                    @foreach($suppliers as $s)
-                        <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', $invoice->supplier_id)==$s->id)>{{ $s->name }}</option>
-                    @endforeach
-                </select>
+                <div class="relative" @click.outside="supplierOpen = false">
+                    <select name="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel()" required class="sr-only">
+                        <option value="">Select supplier</option>
+                        @foreach($suppliers as $s)
+                            <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', $invoice->supplier_id)==$s->id)>{{ $s->name }}</option>
+                        @endforeach
+                    </select>
+                    <input type="text" x-model="supplierQuery" @focus="supplierOpen = true" @input="supplierOpen = true" autocomplete="off" placeholder="Type to search supplier..."
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <div x-show="supplierOpen" x-cloak class="absolute z-40 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
+                        <template x-for="supplier in filteredSuppliers()" :key="supplier.id">
+                            <button type="button" @mousedown.prevent="pickSupplier(supplier.id)" class="block w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-indigo-50" x-text="supplier.name"></button>
+                        </template>
+                        <div x-show="filteredSuppliers().length === 0" class="px-3 py-2 text-xs text-slate-500">No matching supplier</div>
+                    </div>
+                </div>
             </div>
 
             <div>
@@ -245,7 +261,7 @@
                         <th class="p-3 min-w-[95px] w-24 text-right">Sgst %</th>
                         <th class="p-3 min-w-[100px] w-28 text-center">Tax Rate</th>
                         <th class="p-3 min-w-[130px] w-36">Batch No</th>
-                        <th class="p-3 min-w-[125px] w-32 text-right">Batch MRP (₹)</th>
+                        <th class="p-3 min-w-[125px] w-32 text-right" title="Optional shelf price printed on the batch. It is not added to this invoice.">Printed MRP (₹)<div class="font-normal normal-case tracking-normal text-[10px] text-slate-400">Optional, not in the bill</div></th>
                         <th class="p-3 min-w-[140px] w-36 text-right">Line Total (₹)</th>
                         <th class="p-3 min-w-[50px] w-14 text-center"></th>
                     </tr>
@@ -265,52 +281,20 @@
                                     </template>
                                 </select>
 
-                                <template x-if="isSerialTracked(row)">
-                                    <div class="mt-2.5 p-3 bg-slate-50 rounded-lg border border-slate-200/90 shadow-2xs space-y-2">
-                                        <div class="flex items-center justify-between">
-                                            <div class="flex items-center gap-1.5">
-                                                <svg class="w-3.5 h-3.5 text-indigo-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/>
-                                                </svg>
-                                                <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Serial Numbers</span>
-                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700"
-                                                      x-text="(row.serial_numbers ? row.serial_numbers.length : 0) + ' entered'"></span>
-                                            </div>
-                                            <span class="text-[11px] text-slate-500 font-medium"
-                                                  x-text="'Target Qty: ' + (row.quantity || 1)"></span>
-                                        </div>
-
-                                        <div class="flex flex-wrap items-center gap-2 pt-0.5">
-                                            <template x-for="(sNo, sIdx) in (row.serial_numbers || [])" :key="sIdx">
-                                                <div class="inline-flex items-center rounded-md border border-slate-300 bg-white shadow-2xs focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 overflow-hidden min-w-[130px] sm:min-w-[140px] max-w-[220px] h-9 transition">
-                                                    <input type="text"
-                                                           :name="`items[${i}][serial_numbers][${sIdx}]`"
-                                                           x-model="row.serial_numbers[sIdx]"
-                                                           :placeholder="`Serial #${sIdx + 1}`"
-                                                           class="block w-full h-full px-2.5 py-1.5 text-xs font-mono font-medium text-slate-800 placeholder-slate-400 border-0 focus:ring-0 focus:outline-none bg-transparent">
-                                                    <button type="button"
-                                                            @click="removeSerial(i, sIdx)"
-                                                            class="h-full px-2 bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border-l border-slate-200 transition-colors flex items-center justify-center shrink-0 cursor-pointer"
-                                                            title="Remove Serial">
-                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                                                        </svg>
-                                                    </button>
-                                                </div>
-                                            </template>
-
-                                            <button type="button"
-                                                    @click="addSerial(i)"
-                                                    class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition shadow-2xs h-9 shrink-0 cursor-pointer"
-                                                    title="Add Serial Number">
-                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                                                </svg>
-                                                <span>+ Add Serial</span>
-                                            </button>
-                                        </div>
+                                    <div class="mt-2">
+                                        <label class="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                                            Serial number
+                                            <span x-show="isSerialTracked(row)" x-cloak class="text-[10px] font-bold uppercase text-amber-700">Required</span>
+                                        </label>
+                                        <template x-for="(sNo, sIdx) in (row.serial_numbers || [])" :key="'serial-' + i + '-' + sIdx">
+                                            <input type="text"
+                                                   :name="`items[${i}][serial_numbers][${sIdx}]`"
+                                                   x-model="row.serial_numbers[sIdx]"
+                                                   :placeholder="(row.serial_numbers.length > 1) ? ('Serial ' + (sIdx + 1)) : 'Serial number'"
+                                                   :required="isSerialTracked(row)"
+                                                   class="mb-1 block w-full rounded-md border-gray-300 px-2.5 py-2 text-xs font-mono text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                        </template>
                                     </div>
-                                </template>
                             </td>
 
                             <td class="p-3 align-top min-w-[70px] w-20 text-center text-xs font-semibold text-slate-600 pt-5"
@@ -322,7 +306,7 @@
                                        min="0.0001"
                                        :name="`items[${i}][quantity]`"
                                        x-model.number="row.quantity"
-                                       @input="recalc()"
+                                       @input="syncSerials(i); recalc()"
                                        required
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
@@ -496,6 +480,9 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         },
         onOdAccountChange() {},
         supplierId: '{{ old('supplier_id', $invoice->supplier_id) }}',
+        supplierQuery: '',
+        supplierOpen: false,
+        suppliers: [],
         warehouseId: '{{ old('warehouse_id', $invoice->warehouse_id) }}',
         supplierOrders: initialOrders || [],
         poLoading: false,
@@ -522,7 +509,26 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         grandTotal: 0,
         items: [],
 
+        filteredSuppliers() {
+            const q = (this.supplierQuery || '').trim().toLowerCase();
+            if (!q) return this.suppliers;
+            return this.suppliers.filter(s => s.name.toLowerCase().includes(q));
+        },
+        syncSupplierLabel() {
+            const found = this.suppliers.find(s => String(s.id) === String(this.supplierId));
+            this.supplierQuery = found ? found.name : '';
+        },
+        pickSupplier(id) {
+            this.supplierId = String(id);
+            this.supplierOpen = false;
+            this.syncSupplierLabel();
+            this.onSupplierChange();
+        },
         async init() {
+            this.suppliers = Array.from(document.querySelectorAll('select[name="supplier_id"] option'))
+                .filter(option => option.value)
+                .map(option => ({ id: option.value, name: option.textContent.trim() }));
+            this.syncSupplierLabel();
             this.recalcDueDate();
             if (this.supplierId) {
                 await this.loadSupplierAddresses(this.supplierId);
@@ -544,13 +550,14 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                         sgst_percent: Number(it.sgst_percent) || 0,
                         batch_number: it.batch_number || it.batch_no || '',
                         batch_mrp: Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0),
-                        serial_numbers: it.serial_numbers || [],
+                        serial_numbers: (it.serial_numbers && it.serial_numbers.length) ? it.serial_numbers : [''],
                         line_total: Number(it.line_total) || 0
                     };
                 });
             } else {
                 this.addItem();
             }
+            this.items.forEach((_, idx) => this.syncSerials(idx));
             this.recalc();
         },
 
@@ -565,7 +572,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                 sgst_percent: 0,
                 batch_number: '',
                 batch_mrp: 0,
-                serial_numbers: [],
+                serial_numbers: [''],
                 line_total: 0
             });
             this.recalc();
@@ -598,23 +605,19 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.batch_mrp = Number(p.mrp) || 0;
-                if (this.isSerialTracked(row) && (!row.serial_numbers || row.serial_numbers.length === 0)) {
-                    row.serial_numbers = [''];
-                }
             }
+            this.syncSerials(index);
             this.recalc();
         },
 
-        addSerial(itemIndex) {
-            if (!this.items[itemIndex].serial_numbers) {
-                this.items[itemIndex].serial_numbers = [];
-            }
-            this.items[itemIndex].serial_numbers.push('');
-        },
-
-        removeSerial(itemIndex, serialIndex) {
-            if (this.items[itemIndex].serial_numbers) {
-                this.items[itemIndex].serial_numbers.splice(serialIndex, 1);
+        syncSerials(index) {
+            const row = this.items[index];
+            if (!row) return;
+            const qty = Math.min(30, Math.max(1, Math.round(Number(row.quantity) || 1)));
+            if (!Array.isArray(row.serial_numbers)) row.serial_numbers = [];
+            while (row.serial_numbers.length < qty) row.serial_numbers.push('');
+            while (row.serial_numbers.length > qty && String(row.serial_numbers[row.serial_numbers.length - 1] || '').trim() === '') {
+                row.serial_numbers.pop();
             }
         },
 
@@ -776,11 +779,12 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                                 sgst_percent: Number(it.sgst_percent) || 0,
                                 batch_number: it.batch_number || '',
                                 batch_mrp: Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0),
-                                serial_numbers: [],
+                                serial_numbers: [''],
                                 line_total: Number(it.line_total) || 0
                             };
                         });
                     }
+                    this.items.forEach((_, idx) => this.syncSerials(idx));
                     this.recalc();
                 }
             } catch (e) {

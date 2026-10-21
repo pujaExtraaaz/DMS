@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Purchase Order - {{ $order->po_no }}</title>
     <style>
         @page {
@@ -246,6 +247,158 @@
             border-top: 1px solid #334155;
         }
 
+        .toolbar .btn-options.is-open .chevron {
+            transform: rotate(180deg);
+        }
+        .toolbar .chevron {
+            transition: transform 0.45s ease;
+        }
+        .shutter {
+            max-width: 900px;
+            margin: 0 auto 10px;
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.55s cubic-bezier(.22, .8, .2, 1);
+        }
+        .shutter.is-open {
+            grid-template-rows: 1fr;
+        }
+        .shutter-clip {
+            overflow: hidden;
+            min-height: 0;
+            position: relative;
+        }
+        .shutter-slats {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            z-index: 3;
+            pointer-events: none;
+        }
+        .shutter-slats i {
+            flex: 1;
+            background: linear-gradient(#ffffff, #e2e8f0);
+            border-bottom: 1px solid #94a3b8;
+            transform-origin: top center;
+            transform: scaleY(1);
+            transition: transform 0.42s ease;
+        }
+        .shutter.is-open .shutter-slats i {
+            transform: scaleY(0);
+        }
+        .shutter.is-open .shutter-slats i:nth-child(1) { transition-delay: 0.02s; }
+        .shutter.is-open .shutter-slats i:nth-child(2) { transition-delay: 0.05s; }
+        .shutter.is-open .shutter-slats i:nth-child(3) { transition-delay: 0.08s; }
+        .shutter.is-open .shutter-slats i:nth-child(4) { transition-delay: 0.11s; }
+        .shutter.is-open .shutter-slats i:nth-child(5) { transition-delay: 0.14s; }
+        .shutter.is-open .shutter-slats i:nth-child(6) { transition-delay: 0.17s; }
+        .shutter.is-open .shutter-slats i:nth-child(7) { transition-delay: 0.20s; }
+        .shutter.is-open .shutter-slats i:nth-child(8) { transition-delay: 0.23s; }
+        .print-fields {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        .special-instructions {
+            margin: 0;
+            padding: 8px 10px;
+            background: #fef3c7;
+            border-bottom: 2px solid #d97706;
+            border-left: 6px solid #b45309;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .special-instructions-label {
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #92400e;
+        }
+        .special-instructions-text {
+            margin-top: 3px;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+            color: #1c1917;
+            white-space: pre-line;
+        }
+        .special-instructions-edit {
+            display: block;
+            width: 100%;
+            margin-top: 3px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            resize: vertical;
+            min-height: 36px;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+            color: #1c1917;
+        }
+        .special-instructions-edit:focus {
+            outline: 1px dashed #b45309;
+            background: #fffbeb;
+        }
+        .order-notes-status {
+            margin-top: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            color: #92400e;
+        }
+        .print-fields h2 {
+            margin: 0 0 8px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .print-fields p {
+            margin: 0 0 8px;
+            font-size: 11px;
+            color: #64748b;
+        }
+        .print-fields .groups {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px 16px;
+        }
+        .print-fields h3 {
+            margin: 0 0 4px;
+            font-size: 10px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #475569;
+        }
+        .print-fields label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #1e293b;
+            margin: 2px 0;
+            cursor: pointer;
+        }
+        .print-fields .actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .print-fields .actions button {
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        @media (max-width: 720px) {
+            .print-fields .groups { grid-template-columns: 1fr; }
+        }
+
         @media print {
             body {
                 background: #ffffff !important;
@@ -383,6 +536,10 @@
     </div>
 
     <div class="toolbar-right">
+        <button type="button" id="print-options-toggle" class="btn-options" aria-expanded="false" aria-controls="print-options-shutter">
+            Print options
+            <svg class="chevron" width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+        </button>
         <button class="btn-primary" onclick="window.print()">
             <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
             Print
@@ -401,12 +558,96 @@
         </a>
     </div>
 </div>
+
+<div class="shutter no-print" id="print-options-shutter">
+<div class="shutter-clip">
+    <div class="shutter-slats" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<div class="print-fields">
+    <h2>Print fields</h2>
+    <p>Untick a field to leave it off this purchase order. The choice is remembered on this browser. PO number, supplier, item, quantity, rate, line amount, and grand total stay on the print.</p>
+    <div class="groups">
+        <div>
+            <h3>Order</h3>
+            <label><input type="checkbox" data-print-field value="po-date" checked> PO Date</label>
+            <label><input type="checkbox" data-print-field value="payment-terms" checked> Payment Terms</label>
+            <label><input type="checkbox" data-print-field value="due-date" checked> Payment Due Date</label>
+            <label><input type="checkbox" data-print-field value="reference" checked> Reference No</label>
+            <label><input type="checkbox" data-print-field value="destination" checked> Destination</label>
+            <label><input type="checkbox" data-print-field value="expected-date" checked> Expected Date</label>
+        </div>
+        <div>
+            <h3>Company</h3>
+            <label><input type="checkbox" data-print-field value="company-address" checked> Address</label>
+            <label><input type="checkbox" data-print-field value="company-contact" checked> Phone and email</label>
+            <label><input type="checkbox" data-print-field value="company-tax" checked> GSTIN and PAN</label>
+            <label><input type="checkbox" data-print-field value="company-state" checked> State</label>
+        </div>
+        <div>
+            <h3>Supplier</h3>
+            <label><input type="checkbox" data-print-field value="supplier-code" checked> Supplier code</label>
+            <label><input type="checkbox" data-print-field value="billing-address" checked> Billing address</label>
+            <label><input type="checkbox" data-print-field value="supplier-gstin" checked> GSTIN</label>
+            <label><input type="checkbox" data-print-field value="supplier-pan" checked> PAN</label>
+            <label><input type="checkbox" data-print-field value="supplier-state" checked> State</label>
+            <label><input type="checkbox" data-print-field value="supplier-contact" checked> Contact</label>
+        </div>
+        <div>
+            <h3>Delivery</h3>
+            <label><input type="checkbox" data-print-field value="warehouse" checked> Warehouse location</label>
+            <label><input type="checkbox" data-print-field value="dispatch-address" checked> Dispatch address</label>
+            <label><input type="checkbox" data-print-field value="consignee-gstin" checked> GSTIN</label>
+            <label><input type="checkbox" data-print-field value="consignee-pan" checked> PAN</label>
+            <label><input type="checkbox" data-print-field value="consignee-state" checked> State</label>
+            <label><input type="checkbox" data-print-field value="dispatch-phone" checked> Dispatch phone</label>
+        </div>
+        <div>
+            <h3>Line items</h3>
+            <label><input type="checkbox" data-print-field value="brand" checked> Brand</label>
+            <label><input type="checkbox" data-print-field value="batch" checked> Batch number</label>
+            <label><input type="checkbox" data-print-field value="serial" checked> Serial number</label>
+            <label><input type="checkbox" data-print-field value="part-no" checked> Part number</label>
+            <label><input type="checkbox" data-print-field value="hsn" checked> HSN/SAC</label>
+            <label><input type="checkbox" data-print-field value="unit" checked> Unit</label>
+            <label><input type="checkbox" data-print-field value="discount" checked> Discount</label>
+            <label><input type="checkbox" data-print-field value="tax" checked> Tax %</label>
+            <label><input type="checkbox" data-print-field value="cgst" checked> CGST %</label>
+            <label><input type="checkbox" data-print-field value="sgst" checked> SGST %</label>
+            <label><input type="checkbox" data-print-field value="igst" checked> IGST %</label>
+        </div>
+        <div>
+            <h3>Footer</h3>
+            <label><input type="checkbox" data-print-field value="amount-words" checked> Amount in words</label>
+            <label><input type="checkbox" data-print-field value="freight-note" checked> Freight note</label>
+            <label><input type="checkbox" data-print-field value="order-notes" checked> Order notes</label>
+            <label><input type="checkbox" data-print-field value="tax-breakup" checked> Tax breakup</label>
+            <label><input type="checkbox" data-print-field value="freight" checked> Freight in total</label>
+            <label><input type="checkbox" data-print-field value="terms" checked> Terms and conditions</label>
+            <label><input type="checkbox" data-print-field value="signatures" checked> Signatures</label>
+        </div>
+    </div>
+    <div class="actions">
+        <button type="button" id="print-fields-all">Show all</button>
+        <button type="button" id="print-fields-none">Hide optional fields</button>
+    </div>
+</div>
+</div>
+</div>
 @endif
 
 <div class="doc-wrapper">
     <!-- Document Title Banner -->
     <div class="doc-banner">
         PURCHASE ORDER
+    </div>
+
+    <div class="special-instructions" data-col="order-notes" id="order-notes-block">
+        <div class="special-instructions-label">Order Notes / Special Instructions</div>
+        @if(empty($isPdf))
+            <textarea id="order-notes-input" class="special-instructions-edit" rows="2" placeholder="Type special instructions for the supplier...">{{ $order->notes }}</textarea>
+            <div class="order-notes-status no-print" id="order-notes-status">Click the text to edit. It saves on this purchase order.</div>
+        @elseif($order->notes)
+            <div class="special-instructions-text">{{ $order->notes }}</div>
+        @endif
     </div>
 
     <!-- Section 1: Header (Company Details & Document Metadata) -->
@@ -423,15 +664,15 @@
                 @if($companyLegalName && $companyLegalName !== $companyName)
                     <div style="font-size: 8.5px; color: #475569; margin-bottom: 2px;">({{ $companyLegalName }})</div>
                 @endif
-                <div style="font-size: 8.5px; color: #334155; margin-bottom: 2px;">
+                <div data-col="company-address" style="font-size: 8.5px; color: #334155; margin-bottom: 2px;">
                     {{ $companyAddress }}
                 </div>
-                <div style="font-size: 8.5px; color: #334155; margin-bottom: 3px;">
+                <div data-col="company-contact" style="font-size: 8.5px; color: #334155; margin-bottom: 3px;">
                     @if($companyPhone)<strong>Phone:</strong> {{ $companyPhone }} &nbsp;|&nbsp; @endif
                     @if($companyEmail)<strong>Email:</strong> {{ $companyEmail }}@endif
                 </div>
                 <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; margin-top: 3px;">
-                    <tr>
+                    <tr data-col="company-tax">
                         <td style="padding: 1px 0; border: none; width: 50%;">
                             <strong>GSTIN/UIN:</strong> {{ $companyGstin }}
                         </td>
@@ -439,7 +680,7 @@
                             <strong>PAN:</strong> {{ $companyPan }}
                         </td>
                     </tr>
-                    <tr>
+                    <tr data-col="company-state">
                         <td style="padding: 1px 0; border: none;" colspan="2">
                             <strong>State:</strong> {{ $companyState }} @if($companyStateCode)(Code: {{ $companyStateCode }})@endif
                         </td>
@@ -454,11 +695,11 @@
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; width: 44%; font-weight: 700; color: #334155;">PO Number:</td>
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 800; color: #0f172a;">{{ $order->po_no }}</td>
                     </tr>
-                    <tr>
+                    <tr data-col="po-date">
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 700; color: #334155;">PO Date:</td>
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 600;">{{ $order->po_date?->format('d-M-Y') ?? '—' }}</td>
                     </tr>
-                    <tr>
+                    <tr data-col="payment-terms">
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 700; color: #334155;">Payment Terms:</td>
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 600;">
                             @if($order->credit_days)
@@ -471,24 +712,24 @@
                         </td>
                     </tr>
                     @if($order->due_date)
-                    <tr>
+                    <tr data-col="due-date">
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 700; color: #334155;">Payment Due Date:</td>
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 600;">
                             {{ $order->due_date->format('d/m/Y') }}@if($order->credit_days) ({{ $order->credit_days }} days)@endif
                         </td>
                     </tr>
                     @endif
-                    <tr>
+                    <tr data-col="reference">
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 700; color: #334155;">Reference No:</td>
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 600;">{{ $referenceNo }}</td>
                     </tr>
-                    <tr>
+                    <tr data-col="destination">
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 700; color: #334155;">Destination:</td>
                         <td style="border: none; border-bottom: 1px solid #334155; padding: 3px 6px; font-weight: 600;">
                             {{ $consignee['warehouse_name'] ?: ($consignee['branch_name'] ?: $consignee['company_name']) }}
                         </td>
                     </tr>
-                    <tr>
+                    <tr data-col="expected-date">
                         <td style="border: none; padding: 3px 6px; font-weight: 700; color: #334155;">Expected Date:</td>
                         <td style="border: none; padding: 3px 6px; font-weight: 600;">
                             {{ $order->expected_date?->format('d-M-Y') ?: '—' }}
@@ -510,28 +751,28 @@
                         {{ $supplierDetails['name'] }}
                     </div>
                     @if($supplierDetails['code'])
-                        <div style="color: #64748b; font-size: 8px; margin-bottom: 2px;">Supplier Code: <strong>{{ $supplierDetails['code'] }}</strong></div>
+                        <div data-col="supplier-code" style="color: #64748b; font-size: 8px; margin-bottom: 2px;">Supplier Code: <strong>{{ $supplierDetails['code'] }}</strong></div>
                     @endif
-                    <div style="margin-bottom: 3px; color: #334155;">
+                    <div data-col="billing-address" style="margin-bottom: 3px; color: #334155;">
                         <strong>Billing Address:</strong><br>
                         <span style="white-space: pre-line;">{{ $supplierDetails['billing_address'] }}</span>
                     </div>
                     <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; margin-top: 3px;">
                         <tr>
-                            <td style="border: none; padding: 1px 0; width: 50%;">
+                            <td data-col="supplier-gstin" style="border: none; padding: 1px 0; width: 50%;">
                                 <strong>GSTIN/UIN:</strong> {{ $supplierDetails['gstin'] }}
                             </td>
-                            <td style="border: none; padding: 1px 0; width: 50%;">
+                            <td data-col="supplier-pan" style="border: none; padding: 1px 0; width: 50%;">
                                 <strong>PAN:</strong> {{ $supplierDetails['pan'] }}
                             </td>
                         </tr>
-                        <tr>
+                        <tr data-col="supplier-state">
                             <td style="border: none; padding: 1px 0;" colspan="2">
                                 <strong>State:</strong> {{ $supplierDetails['state'] }}
                                 @if($supplierDetails['state_code'])(Code: {{ $supplierDetails['state_code'] }})@endif
                             </td>
                         </tr>
-                        <tr>
+                        <tr data-col="supplier-contact">
                             <td style="border: none; padding: 1px 0;" colspan="2">
                                 <strong>Contact:</strong> {{ $supplierDetails['contact_person'] }}
                                 @if($supplierDetails['phone'] !== '—') | Tel: {{ $supplierDetails['phone'] }}@endif
@@ -550,33 +791,33 @@
                         {{ $consignee['company_name'] }}
                     </div>
                     @if($consignee['warehouse_name'])
-                        <div style="font-weight: 700; color: #1e293b; font-size: 9px; margin-bottom: 2px;">
+                        <div data-col="warehouse" style="font-weight: 700; color: #1e293b; font-size: 9px; margin-bottom: 2px;">
                             Warehouse: {{ $consignee['warehouse_name'] }}
                         </div>
                     @elseif($consignee['branch_name'])
-                        <div style="font-weight: 700; color: #1e293b; font-size: 9px; margin-bottom: 2px;">
+                        <div data-col="warehouse" style="font-weight: 700; color: #1e293b; font-size: 9px; margin-bottom: 2px;">
                             Branch: {{ $consignee['branch_name'] }}
                         </div>
                     @endif
-                    <div style="margin-bottom: 3px; color: #334155;">
+                    <div data-col="dispatch-address" style="margin-bottom: 3px; color: #334155;">
                         <strong>Dispatch / Delivery Address:</strong><br>
                         <span style="white-space: pre-line;">{{ $consignee['delivery_address'] }}</span>
                     </div>
                     <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; margin-top: 3px;">
                         <tr>
-                            <td style="border: none; padding: 1px 0; width: 50%;">
+                            <td data-col="consignee-gstin" style="border: none; padding: 1px 0; width: 50%;">
                                 <strong>GSTIN/UIN:</strong> {{ $consignee['gstin'] }}
                             </td>
-                            <td style="border: none; padding: 1px 0; width: 50%;">
+                            <td data-col="consignee-pan" style="border: none; padding: 1px 0; width: 50%;">
                                 <strong>PAN:</strong> {{ $consignee['pan'] }}
                             </td>
                         </tr>
-                        <tr>
+                        <tr data-col="consignee-state">
                             <td style="border: none; padding: 1px 0;" colspan="2">
                                 <strong>State:</strong> {{ $consignee['state'] }} @if($consignee['state_code'])(Code: {{ $consignee['state_code'] }})@endif
                             </td>
                         </tr>
-                        <tr>
+                        <tr data-col="dispatch-phone">
                             <td style="border: none; padding: 1px 0;" colspan="2">
                                 <strong>Dispatch Phone:</strong> {{ $consignee['phone'] }}
                             </td>
@@ -593,15 +834,15 @@
             <tr>
                 <th style="width: 24px;">S.No.</th>
                 <th class="text-left" style="width: 220px;">Item Description</th>
-                <th style="width: 55px;">HSN/Sac</th>
+                <th data-col="hsn" style="width: 55px;">HSN/Sac</th>
                 <th class="text-right" style="width: 44px;">Qty</th>
-                <th style="width: 34px;">Unit</th>
+                <th data-col="unit" style="width: 34px;">Unit</th>
                 <th class="text-right" style="width: 65px;">Rate (&#8377;)</th>
-                <th class="text-right" style="width: 38px;">Disc.</th>
-                <th class="text-right" style="width: 38px;">Tax %</th>
-                <th class="text-right" style="width: 44px;">Cgst %</th>
-                <th class="text-right" style="width: 44px;">Sgst %</th>
-                <th class="text-right" style="width: 44px;">Igst %</th>
+                <th data-col="discount" class="text-right" style="width: 38px;">Disc.</th>
+                <th data-col="tax" class="text-right" style="width: 38px;">Tax %</th>
+                <th data-col="cgst" class="text-right" style="width: 44px;">Cgst %</th>
+                <th data-col="sgst" class="text-right" style="width: 44px;">Sgst %</th>
+                <th data-col="igst" class="text-right" style="width: 44px;">Igst %</th>
                 <th class="text-right" style="width: 80px;">Line Amount (&#8377;)</th>
             </tr>
         </thead>
@@ -637,26 +878,24 @@
                         <div class="item-name">{{ $item->product?->name ?: 'Item #' . ($idx + 1) }}</div>
                         @if($brand || $batch || $serialNo)
                             <div class="item-sub">
-                                @if($brand)<span>Brand: <strong>{{ $brand }}</strong></span>@endif
-                                @if($brand && ($batch || $serialNo)) &nbsp;|&nbsp; @endif
-                                @if($batch)<span>Batch: <strong>{{ $batch }}</strong></span>@endif
-                                @if($batch && $serialNo) &nbsp;|&nbsp; @endif
-                                @if($serialNo)<span>Serial: <strong>{{ $serialNo }}</strong></span>@endif
+                                @if($brand)<span data-col="brand">Brand: <strong>{{ $brand }}</strong></span>@endif
+                                @if($batch)<span data-col="batch">@if($brand) | @endif Batch: <strong>{{ $batch }}</strong></span>@endif
+                                @if($serialNo)<span data-col="serial">@if($brand || $batch) | @endif Serial: <strong>{{ $serialNo }}</strong></span>@endif
                             </div>
                         @endif
                         @if($item->product?->sku && $item->product->sku !== $item->product?->name)
-                            <div class="item-sub">Part No: {{ $item->product->sku }}</div>
+                            <div class="item-sub" data-col="part-no">Part No: {{ $item->product->sku }}</div>
                         @endif
                     </td>
-                    <td class="text-center" style="font-size: 8.5px;">{{ $hsn }}</td>
+                    <td data-col="hsn" class="text-center" style="font-size: 8.5px;">{{ $hsn }}</td>
                     <td class="text-right font-bold">{{ (float) $qty == (int) $qty ? number_format($qty, 0) : number_format($qty, 2) }}</td>
-                    <td class="text-center">{{ $item->uom?->code ?: 'PCS' }}</td>
+                    <td data-col="unit" class="text-center">{{ $item->uom?->code ?: 'PCS' }}</td>
                     <td class="text-right">{{ number_format($rate, 2) }}</td>
-                    <td class="text-right">—</td>
-                    <td class="text-right">{{ number_format($taxP, 1) }}%</td>
-                    <td class="text-right">{{ $cgstP > 0 ? number_format($cgstP, 1) . '%' : '—' }}</td>
-                    <td class="text-right">{{ $sgstP > 0 ? number_format($sgstP, 1) . '%' : '—' }}</td>
-                    <td class="text-right">{{ $igstP > 0 ? number_format($igstP, 1) . '%' : '—' }}</td>
+                    <td data-col="discount" class="text-right">—</td>
+                    <td data-col="tax" class="text-right">{{ number_format($taxP, 1) }}%</td>
+                    <td data-col="cgst" class="text-right">{{ $cgstP > 0 ? number_format($cgstP, 1) . '%' : '—' }}</td>
+                    <td data-col="sgst" class="text-right">{{ $sgstP > 0 ? number_format($sgstP, 1) . '%' : '—' }}</td>
+                    <td data-col="igst" class="text-right">{{ $igstP > 0 ? number_format($igstP, 1) . '%' : '—' }}</td>
                     <td class="text-right font-bold">{{ number_format($lineTaxable, 2) }}</td>
                 </tr>
             @empty
@@ -667,9 +906,17 @@
         </tbody>
         <tfoot>
             <tr style="background: #f8fafc; font-weight: 700;">
-                <td colspan="3" class="text-right" style="border-top: 1.5px solid #1e293b; padding: 4px 6px;">TOTALS:</td>
+                <td style="border-top: 1.5px solid #1e293b;"></td>
+                <td class="text-right" style="border-top: 1.5px solid #1e293b; padding: 4px 6px;">TOTALS:</td>
+                <td data-col="hsn" style="border-top: 1.5px solid #1e293b;"></td>
                 <td class="text-right font-bold" style="border-top: 1.5px solid #1e293b;">{{ number_format($totalQty, 2) }}</td>
-                <td colspan="7" style="border-top: 1.5px solid #1e293b;"></td>
+                <td data-col="unit" style="border-top: 1.5px solid #1e293b;"></td>
+                <td style="border-top: 1.5px solid #1e293b;"></td>
+                <td data-col="discount" style="border-top: 1.5px solid #1e293b;"></td>
+                <td data-col="tax" style="border-top: 1.5px solid #1e293b;"></td>
+                <td data-col="cgst" style="border-top: 1.5px solid #1e293b;"></td>
+                <td data-col="sgst" style="border-top: 1.5px solid #1e293b;"></td>
+                <td data-col="igst" style="border-top: 1.5px solid #1e293b;"></td>
                 <td class="text-right font-bold" style="border-top: 1.5px solid #1e293b;">&#8377; {{ number_format($order->subtotal, 2) }}</td>
             </tr>
         </tfoot>
@@ -680,13 +927,15 @@
         <tr>
             <!-- Left Side: Amount Chargeable in Words & Notes -->
             <td style="width: 58%; border-left: none; border-top: none; border-right: 1px solid #334155; border-bottom: none; padding: 6px 8px; vertical-align: top;">
-                <div class="words-title">Amount Chargeable (in words):</div>
-                <div class="words-val">
-                    {{ $amountWords }}
+                <div data-col="amount-words">
+                    <div class="words-title">Amount Chargeable (in words):</div>
+                    <div class="words-val">
+                        {{ $amountWords }}
+                    </div>
                 </div>
 
                 @if($order->is_freight_applicable || (float) $order->freight_amount > 0)
-                    <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 8.5px;">
+                    <div data-col="freight-note" style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1; font-size: 8.5px;">
                         <span style="font-weight: 700; color: #059669;">✓ Freight Charges Applicable</span>
                         @if($order->freight_notes)
                             <div style="color: #475569; margin-top: 2px;">
@@ -696,12 +945,6 @@
                     </div>
                 @endif
 
-                @if($order->notes)
-                    <div style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed #cbd5e1; font-size: 8.5px; color: #334155;">
-                        <strong>Order Notes / Special Instructions:</strong>
-                        <div style="white-space: pre-line; margin-top: 2px;">{{ $order->notes }}</div>
-                    </div>
-                @endif
             </td>
 
             <!-- Right Side: Totals Summary -->
@@ -712,30 +955,36 @@
                         <td style="border: none; border-bottom: 1px solid #e2e8f0; width: 44%;" class="text-right font-bold">&#8377; {{ number_format($order->subtotal, 2) }}</td>
                     </tr>
                     @if($cgstTotal > 0)
-                    <tr class="summary-row">
+                    <tr class="summary-row" data-col="tax-breakup">
                         <td style="border: none; border-bottom: 1px solid #e2e8f0; color: #334155;">CGST:</td>
                         <td style="border: none; border-bottom: 1px solid #e2e8f0;" class="text-right">&#8377; {{ number_format($cgstTotal, 2) }}</td>
                     </tr>
                     @endif
                     @if($sgstTotal > 0)
-                    <tr class="summary-row">
+                    <tr class="summary-row" data-col="tax-breakup">
                         <td style="border: none; border-bottom: 1px solid #e2e8f0; color: #334155;">SGST:</td>
                         <td style="border: none; border-bottom: 1px solid #e2e8f0;" class="text-right">&#8377; {{ number_format($sgstTotal, 2) }}</td>
                     </tr>
                     @endif
                     @if($igstTotal > 0)
-                    <tr class="summary-row">
+                    <tr class="summary-row" data-col="tax-breakup">
                         <td style="border: none; border-bottom: 1px solid #e2e8f0; color: #334155;">IGST:</td>
                         <td style="border: none; border-bottom: 1px solid #e2e8f0;" class="text-right">&#8377; {{ number_format($igstTotal, 2) }}</td>
                     </tr>
                     @endif
                     @if($order->is_freight_applicable || (float) $order->freight_amount > 0)
-                    <tr class="summary-row">
-                        <td style="border: none; border-bottom: 1px solid #e2e8f0; color: #334155;">Freight Charges:</td>
+                    <tr class="summary-row" data-col="freight">
+                        <td style="border: none; border-bottom: 1px solid #e2e8f0; color: #334155;">
+                            Freight Charges
+                            @if(($order->freight_mode ?? 'amount') === 'percent')
+                                ({{ rtrim(rtrim(number_format((float) $order->freight_percent, 2), '0'), '.') }}%)
+                            @endif
+                            :
+                        </td>
                         <td style="border: none; border-bottom: 1px solid #e2e8f0;" class="text-right">&#8377; {{ number_format((float) $order->freight_amount, 2) }}</td>
                     </tr>
                     @if((float) $order->freight_tax_amount > 0)
-                    <tr class="summary-row">
+                    <tr class="summary-row" data-col="freight">
                         <td style="border: none; border-bottom: 1px solid #e2e8f0; color: #334155;">Freight Tax (GST {{ number_format((float) $order->freight_tax_rate, 1) }}%):</td>
                         <td style="border: none; border-bottom: 1px solid #e2e8f0;" class="text-right">&#8377; {{ number_format((float) $order->freight_tax_amount, 2) }}</td>
                     </tr>
@@ -751,7 +1000,7 @@
     </table>
 
     <!-- Section 5: Mandatory Terms and Conditions (Six Client Terms Preserved Exactly) -->
-    <div class="avoid-break" style="border-bottom: 1.5px solid #1e293b;">
+    <div class="avoid-break" data-col="terms" style="border-bottom: 1.5px solid #1e293b;">
         <div class="section-header" style="background: #f8fafc;">
             Terms and Conditions
         </div>
@@ -768,7 +1017,7 @@
     </div>
 
     <!-- Section 7: Declaration and Signatures -->
-    <table class="grid-table avoid-break" style="border: none;">
+    <table class="grid-table avoid-break" data-col="signatures" style="border: none;">
         <tr>
             <!-- Supplier Signature -->
             <td style="width: 50%; border-left: none; border-top: none; border-bottom: none; border-right: 1px solid #334155; padding: 6px 8px; vertical-align: top;">
@@ -800,6 +1049,115 @@
     </div>
 </div>
 
+@if(empty($isPdf))
+<script>
+(function () {
+    var key = 'po-print-fields';
+    var boxes = document.querySelectorAll('[data-print-field]');
+
+    function read() {
+        try {
+            return JSON.parse(localStorage.getItem(key) || '{}') || {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function apply() {
+        var saved = read();
+        boxes.forEach(function (box) {
+            box.checked = saved[box.value] !== false;
+        });
+        document.querySelectorAll('[data-col]').forEach(function (el) {
+            el.style.display = saved[el.getAttribute('data-col')] === false ? 'none' : '';
+        });
+    }
+
+    function save() {
+        var saved = {};
+        boxes.forEach(function (box) {
+            saved[box.value] = box.checked;
+        });
+        localStorage.setItem(key, JSON.stringify(saved));
+        apply();
+    }
+
+    boxes.forEach(function (box) {
+        box.addEventListener('change', save);
+    });
+    var showAll = document.getElementById('print-fields-all');
+    var hideOptional = document.getElementById('print-fields-none');
+    if (showAll) {
+        showAll.addEventListener('click', function () {
+            boxes.forEach(function (box) { box.checked = true; });
+            save();
+        });
+    }
+    if (hideOptional) {
+        hideOptional.addEventListener('click', function () {
+            boxes.forEach(function (box) { box.checked = false; });
+            save();
+        });
+    }
+    apply();
+
+    var notesInput = document.getElementById('order-notes-input');
+    var notesStatus = document.getElementById('order-notes-status');
+    var notesBlock = document.getElementById('order-notes-block');
+    var notesToken = document.querySelector('meta[name="csrf-token"]');
+    function hideEmptyNotesForPrint() {
+        if (!notesBlock || !notesInput) return;
+        notesBlock.dataset.hiddenByChoice = notesBlock.style.display === 'none' ? '1' : '0';
+        if (notesBlock.dataset.hiddenByChoice !== '1' && notesInput.value.trim() === '') {
+            notesBlock.style.display = 'none';
+        }
+    }
+    window.addEventListener('beforeprint', hideEmptyNotesForPrint);
+    window.addEventListener('afterprint', function () {
+        if (!notesBlock || notesBlock.dataset.hiddenByChoice === '1') return;
+        notesBlock.style.display = '';
+    });
+    if (notesInput && notesToken) {
+        var notesTimer;
+        function saveNotes() {
+            if (notesStatus) notesStatus.textContent = 'Saving...';
+            fetch(@json(route('purchasing.orders.notes', $order)), {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': notesToken.getAttribute('content')
+                },
+                body: JSON.stringify({ notes: notesInput.value })
+            }).then(function (res) {
+                if (!res.ok) throw new Error('save failed');
+                if (notesStatus) notesStatus.textContent = 'Saved on this purchase order';
+            }).catch(function () {
+                if (notesStatus) notesStatus.textContent = 'Could not save. Try again.';
+            });
+        }
+        notesInput.addEventListener('input', function () {
+            clearTimeout(notesTimer);
+            notesTimer = setTimeout(saveNotes, 500);
+        });
+        notesInput.addEventListener('blur', function () {
+            clearTimeout(notesTimer);
+            saveNotes();
+        });
+    }
+
+    var toggle = document.getElementById('print-options-toggle');
+    var shutter = document.getElementById('print-options-shutter');
+    if (toggle && shutter) {
+        toggle.addEventListener('click', function () {
+            var open = shutter.classList.toggle('is-open');
+            toggle.classList.toggle('is-open', open);
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+    }
+})();
+</script>
+@endif
 </body>
 </html>
 

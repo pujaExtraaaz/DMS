@@ -99,12 +99,57 @@
         </div>
     </div>
 
+    <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-2xs"
+         x-data="productTypeFinder(@js($catalog))"
+         x-effect="apply()">
+        <h2 class="text-sm font-bold text-slate-900">Find a product type</h2>
+        <p class="mt-1 text-xs text-slate-500">The lists include every brand, category, and sub-category. Choose them in order, then pick the product type that matches.</p>
+        <div class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Brand</label>
+                <select x-model="brandId" @change="categoryId = ''; subCategoryId = ''; typeId = ''" class="block w-full rounded-xl border-slate-200 text-sm">
+                    <option value="">All brands</option>
+                    <template x-for="brand in brands" :key="brand.id">
+                        <option :value="brand.id" x-text="brand.name"></option>
+                    </template>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Category</label>
+                <select x-model="categoryId" @change="subCategoryId = ''; typeId = ''" class="block w-full rounded-xl border-slate-200 text-sm">
+                    <option value="">All categories</option>
+                    <template x-for="category in categoryOptions" :key="category.id">
+                        <option :value="category.id" x-text="category.name"></option>
+                    </template>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Sub-category</label>
+                <select x-model="subCategoryId" @change="typeId = ''" class="block w-full rounded-xl border-slate-200 text-sm">
+                    <option value="">All sub-categories</option>
+                    <template x-for="sub in subOptions" :key="sub.id">
+                        <option :value="sub.id" x-text="sub.name"></option>
+                    </template>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Product type</label>
+                <select x-model="typeId" class="block w-full rounded-xl border-slate-200 text-sm">
+                    <option value="">Matching product types</option>
+                    <template x-for="type in typeOptions" :key="type.id">
+                        <option :value="type.id" x-text="type.name"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+    </div>
+
     {{-- Main Card --}}
     <x-ui.card>
         {{-- Table Toolbar --}}
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search Product Type Name, Code, Description..."
+            search-placeholder="Search product type name or description..."
             :reset-url="route('masters.product-types.index')"
         >
             <x-slot name="filters">
@@ -128,9 +173,6 @@
                         <x-ui.sortable-th column="name" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Product Type Name
                         </x-ui.sortable-th>
-                        <x-ui.sortable-th column="code" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
-                            Code
-                        </x-ui.sortable-th>
                         <th scope="col" class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Description</th>
                         <x-ui.sortable-th column="products_count" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Assigned Products
@@ -146,7 +188,7 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">
                     @forelse($items as $item)
-                        <tr class="hover:bg-slate-50/75 transition-colors">
+                        <tr class="hover:bg-slate-50/75 transition-colors" data-product-type-row="{{ $item->id }}">
                             {{-- Name --}}
                             <td class="px-4 py-3.5">
                                 <div class="flex items-center gap-2.5">
@@ -158,15 +200,11 @@
                                              @click="openViewModal('{{ $item->id }}')">
                                             {{ $item->name }}
                                         </div>
+                                        @if($item->track_serial)
+                                            <div class="text-[10px] font-bold uppercase tracking-wide text-amber-700">Serial numbers</div>
+                                        @endif
                                     </div>
                                 </div>
-                            </td>
-
-                            {{-- Code --}}
-                            <td class="px-4 py-3.5 font-mono text-xs text-slate-600">
-                                <span class="bg-slate-100 px-2 py-0.5 rounded text-[11px] font-medium text-slate-700">
-                                    {{ $item->code ?: '—' }}
-                                </span>
                             </td>
 
                             {{-- Description --}}
@@ -216,9 +254,9 @@
                                             @click="openEditModal({
                                                 id: '{{ $item->id }}',
                                                 name: '{{ addslashes($item->name) }}',
-                                                code: '{{ addslashes($item->code ?? '') }}',
                                                 description: '{{ addslashes($item->description ?? '') }}',
-                                                is_active: {{ $item->is_active ? 'true' : 'false' }}
+                                                is_active: {{ $item->is_active ? 'true' : 'false' }},
+                                                track_serial: {{ $item->track_serial ? 'true' : 'false' }}
                                             })"
                                             class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
                                             title="Edit Product Type">
@@ -237,7 +275,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="p-0">
+                            <td colspan="6" class="p-0">
                                 <x-ui.empty-state
                                     title="No matching product types found"
                                     description="Try clearing search or filters to see more results."
@@ -350,26 +388,6 @@
                             <p x-show="errors.name" x-text="errors.name" class="mt-1 text-xs text-red-600 font-medium"></p>
                         </div>
 
-                        {{-- Code --}}
-                        <div>
-                            <label for="form_code" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
-                                Code
-                            </label>
-                            <input
-                                type="text"
-                                id="form_code"
-                                x-model="form.code"
-                                :readonly="isEditMode"
-                                placeholder="Auto-generated on save"
-                                class="w-full rounded-xl border-slate-200 text-sm font-mono shadow-2xs placeholder:text-slate-400 py-2.5 px-3.5"
-                                :class="isEditMode ? 'bg-slate-50 text-slate-500 cursor-not-allowed' : 'focus:border-indigo-500 focus:ring-indigo-500'"
-                            >
-                            <p class="mt-1 text-[11px] text-slate-500">
-                                <span x-show="!isEditMode">Leave blank to auto-assign sequential code (e.g. PT-GLOBAL-00001).</span>
-                                <span x-show="isEditMode">System code is permanent to preserve catalog and transaction history.</span>
-                            </p>
-                        </div>
-
                         {{-- Description --}}
                         <div>
                             <label for="form_description" class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
@@ -384,6 +402,14 @@
                                 class="w-full rounded-xl border-slate-200 text-sm focus:border-indigo-500 focus:ring-indigo-500 shadow-2xs placeholder:text-slate-400 py-2.5 px-3.5"
                             ></textarea>
                         </div>
+
+                        <label class="flex items-start gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 cursor-pointer">
+                            <input type="checkbox" x-model="form.track_serial" class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                            <span>
+                                <span class="block text-sm font-semibold text-slate-800">Track serial numbers</span>
+                                <span class="block text-xs text-slate-500">Purchase invoices ask for a serial number on every product of this type. This stays on until you turn it off.</span>
+                            </span>
+                        </label>
 
                         {{-- Active Toggle --}}
                         <div class="pt-2 border-t border-slate-100">
@@ -480,8 +506,8 @@
 
                     <div class="grid grid-cols-2 gap-3 text-xs">
                         <div class="bg-slate-50 p-3 rounded-xl">
-                            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Code</span>
-                            <div class="font-mono font-bold text-slate-800 mt-0.5" x-text="viewData?.code || '—'"></div>
+                            <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Serial numbers</span>
+                            <div class="font-bold text-slate-800 mt-0.5" x-text="viewData?.track_serial ? 'Tracked' : 'Not tracked'"></div>
                         </div>
                         <div class="bg-slate-50 p-3 rounded-xl">
                             <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Linked Products</span>
@@ -620,9 +646,9 @@ function productTypesManager() {
 
         form: {
             name: '',
-            code: '',
             description: '',
-            is_active: true
+            is_active: true,
+            track_serial: false
         },
 
         errors: {},
@@ -646,9 +672,9 @@ function productTypesManager() {
             this.editingId = null;
             this.form = {
                 name: '',
-                code: '',
                 description: '',
-                is_active: true
+                is_active: true,
+                track_serial: false
             };
             this.errors = {};
             this.formErrorSummary = '';
@@ -660,9 +686,9 @@ function productTypesManager() {
             this.editingId = item.id;
             this.form = {
                 name: item.name || '',
-                code: item.code || '',
                 description: item.description || '',
-                is_active: Boolean(item.is_active)
+                is_active: Boolean(item.is_active),
+                track_serial: Boolean(item.track_serial)
             };
             this.errors = {};
             this.formErrorSummary = '';
@@ -714,9 +740,9 @@ function productTypesManager() {
 
             const payload = {
                 name: this.form.name,
-                code: this.form.code ? this.form.code.trim() : null,
                 description: this.form.description ? this.form.description.trim() : null,
-                is_active: Boolean(this.form.is_active)
+                is_active: Boolean(this.form.is_active),
+                track_serial: Boolean(this.form.track_serial)
             };
 
             try {
@@ -816,6 +842,56 @@ function productTypesManager() {
             setTimeout(() => {
                 this.notification.show = false;
             }, 5000);
+        }
+    };
+}
+
+function productTypeFinder(catalog) {
+    return {
+        brandId: '',
+        categoryId: '',
+        subCategoryId: '',
+        typeId: '',
+        brands: catalog.brands || [],
+        categories: catalog.categories || [],
+        subCategories: catalog.subCategories || [],
+        types: catalog.types || [],
+        links: catalog.links || [],
+        get categoryOptions() {
+            if (!this.brandId) return this.categories;
+            return this.categories.filter((category) => !category.brand_id || String(category.brand_id) === String(this.brandId));
+        },
+        get subOptions() {
+            if (!this.categoryId) return this.subCategories;
+            return this.subCategories.filter((sub) => String(sub.category_id) === String(this.categoryId));
+        },
+        matchingTypeIds() {
+            return this.links.filter((link) => {
+                if (this.brandId && String(link.brand_id) !== String(this.brandId)) return false;
+                if (this.categoryId && String(link.category_id) !== String(this.categoryId)) return false;
+                if (this.subCategoryId && String(link.sub_category_id) !== String(this.subCategoryId)) return false;
+                return true;
+            }).map((link) => String(link.product_type_id));
+        },
+        get typeOptions() {
+            if (!this.brandId && !this.categoryId && !this.subCategoryId) return this.types;
+            const ids = new Set(this.matchingTypeIds());
+            const narrowed = this.types.filter((type) => ids.has(String(type.id)));
+            return narrowed.length ? narrowed : this.types;
+        },
+        apply() {
+            const ids = new Set(this.matchingTypeIds());
+            const narrowing = Boolean(this.brandId || this.categoryId || this.subCategoryId);
+            document.querySelectorAll('[data-product-type-row]').forEach((row) => {
+                const id = row.getAttribute('data-product-type-row');
+                let show = true;
+                if (this.typeId) {
+                    show = id === String(this.typeId);
+                } else if (narrowing && ids.size > 0) {
+                    show = ids.has(id);
+                }
+                row.style.display = show ? '' : 'none';
+            });
         }
     };
 }

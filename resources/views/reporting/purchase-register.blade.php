@@ -93,23 +93,23 @@
             <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50">
                     <tr>
-                        <x-ui.sortable-th column="purchase_no" :current-sort="$sort ?? 'purchase_date'" :current-direction="$direction ?? 'desc'">Purchase No</x-ui.sortable-th>
-                        <x-ui.sortable-th column="purchase_date" :current-sort="$sort ?? 'purchase_date'" :current-direction="$direction ?? 'desc'">Date</x-ui.sortable-th>
-                        <x-ui.sortable-th column="supplier" :current-sort="$sort ?? 'purchase_date'" :current-direction="$direction ?? 'desc'">Supplier</x-ui.sortable-th>
-                        <x-ui.sortable-th column="grand_total" :current-sort="$sort ?? 'purchase_date'" :current-direction="$direction ?? 'desc'" align="right">Total</x-ui.sortable-th>
-                        <x-ui.sortable-th column="status" :current-sort="$sort ?? 'purchase_date'" :current-direction="$direction ?? 'desc'">Status</x-ui.sortable-th>
+                        <x-ui.sortable-th column="invoice_no" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Invoice No</x-ui.sortable-th>
+                        <x-ui.sortable-th column="invoice_date" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Date</x-ui.sortable-th>
+                        <x-ui.sortable-th column="supplier" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Supplier</x-ui.sortable-th>
+                        <x-ui.sortable-th column="grand_total" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'" align="right">Total</x-ui.sortable-th>
+                        <x-ui.sortable-th column="status" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Status</x-ui.sortable-th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     @forelse($purchases as $p)
                         <tr class="hover:bg-slate-50">
-                            <td class="px-3 py-2 font-medium text-slate-900">{{ $p->purchase_no }}</td>
-                            <td class="px-3 py-2 text-slate-600">{{ $p->purchase_date?->format('d M Y') }}</td>
-                            <td class="px-3 py-2 text-slate-700">{{ $p->supplierParty?->name ?? $p->supplier_name }}</td>
+                            <td class="px-3 py-2 font-medium text-slate-900">{{ $p->invoice_no }}</td>
+                            <td class="px-3 py-2 text-slate-600">{{ $p->invoice_date?->format('d M Y') }}</td>
+                            <td class="px-3 py-2 text-slate-700">{{ $p->supplier?->name ?? '—' }}</td>
                             <td class="px-3 py-2 text-right font-medium text-slate-900">₹{{ number_format((float)$p->grand_total, 2) }}</td>
                             <td class="px-3 py-2">
-                                <x-ui.badge :variant="in_array($p->status, ['received', 'completed', 'paid']) ? 'emerald' : ($p->status === 'cancelled' ? 'rose' : 'amber')">
-                                    {{ ucfirst($p->status) }}
+                                <x-ui.badge :variant="in_array($p->status, ['posted', 'paid']) ? 'emerald' : ($p->status === 'cancelled' ? 'rose' : 'amber')">
+                                    {{ ucfirst((string) $p->status) }}
                                 </x-ui.badge>
                             </td>
                         </tr>

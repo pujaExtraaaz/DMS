@@ -31,11 +31,22 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->trustProxies(at: '*');
 
+        // A stale session must still be able to leave the app and land on login.
+        $middleware->validateCsrfTokens(except: [
+            'logout',
+        ]);
+
         // $middleware->validateCsrfTokens(except: [
         //     'api/tally-connector/*',
         // ]);
 
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->render(function (\Illuminate\Session\TokenMismatchException $e, \Illuminate\Http\Request $request) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Page expired.'], 419);
+            }
+
+            return redirect()->route('login');
+        });
     })->create();

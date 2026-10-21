@@ -42,24 +42,18 @@
             installPrompt: null,
             showInstall: false,
             toggleCollapsed() {
-                // Animate only on explicit chevron click — never on page load / module change.
                 this.sidebarAnimate = true;
+                this.booksAsideCollapsed = false;
                 this.sidebarCollapsed = !this.sidebarCollapsed;
-                if (! this.hasBooksAside) {
-                    localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
-                }
+                localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
             },
             init() {
-                // Keep Accounting Books column visible whenever the workspace is active.
                 this.booksAsideCollapsed = false;
-                sessionStorage.removeItem('booksAsideCollapsed');
-                sessionStorage.removeItem('booksMainSidebarCollapsed');
-
+                const stored = localStorage.getItem('dmsSidebarCollapsed');
                 if (this.hasBooksAside) {
-                    // Every Books/Tally page: main rail stays collapsed (no reload animation).
-                    this.sidebarCollapsed = true;
+                    this.sidebarCollapsed = stored === null ? true : stored === 'true';
                 } else {
-                    this.sidebarCollapsed = localStorage.getItem('dmsSidebarCollapsed') === 'true';
+                    this.sidebarCollapsed = stored === 'true';
                     this.sidebarAnimate = true;
                 }
 

@@ -74,8 +74,11 @@
                     >
                 </div>
                 <x-ui.button type="submit" variant="secondary" size="sm">Apply</x-ui.button>
-                <p class="text-xs text-slate-500 pb-2">Figures refresh for the selected date within {{ $year?->name }}.</p>
+                <p class="text-xs text-slate-500 pb-2">Figures refresh for the selected date within {{ $year?->name }}. Unposted invoices on this branch are included.</p>
             </form>
+            @if (! empty($cards['unposted_note'] ?? null))
+                <p class="mt-3 text-sm font-medium text-amber-800">{{ $cards['unposted_note'] }}</p>
+            @endif
         </x-ui.card>
 
         @if ($cards)

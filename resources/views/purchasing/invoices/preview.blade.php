@@ -278,6 +278,13 @@
 
 <div class="invoice">
 
+    @if($invoice->notes)
+        <div style="margin: 0 0 10px; padding: 8px 10px; background: #fef3c7; border: 2px solid #d97706; border-left: 6px solid #b45309; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+            <div style="font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #92400e;">Remarks &amp; Additional Delivery</div>
+            <div style="margin-top: 3px; font-size: 13px; font-weight: 800; color: #1c1917; white-space: pre-line;">{{ $invoice->notes }}</div>
+        </div>
+    @endif
+
     <div class="header">
         <div class="header-left">
             @if($company?->logo_url)
@@ -525,10 +532,6 @@
                     {{ $company?->purchase_terms_and_conditions ?: 'Payment is due per agreed credit terms. All disputes subject to local jurisdiction.' }}
                 </div>
 
-                @if($invoice->remarks)
-                    <div class="bold" style="margin-top: 8px; margin-bottom: 4px;">Remarks</div>
-                    <div style="color: #4b5563; font-size: 11px;">{{ $invoice->remarks }}</div>
-                @endif
             </div>
 
             @if($company?->bank_name || $company?->bank_account_no)

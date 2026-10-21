@@ -1,7 +1,7 @@
 @extends('layouts.dms')
 @section('title', 'Day Book')
 @section('content')
-<x-ui.page-header title="Day Book" description="Chronological voucher listing (Sales / Receipt / Credit Note / Purchase).">
+<x-ui.page-header title="Day Book" description="Live listing from sales, receipts, credit notes, purchase invoices, freight bills, and accounting vouchers.">
     <x-slot name="actions">
         <a href="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">⬇ CSV</a>
         <a href="{{ request()->fullUrlWithQuery(['export' => 'pdf']) }}" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">⬇ PDF</a>

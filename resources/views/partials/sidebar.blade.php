@@ -37,7 +37,7 @@
 
 <aside
     :class="[
-        sidebarCollapsed ? 'lg:w-[72px]' : 'lg:w-64',
+        sidebarCollapsed ? 'lg:w-[72px] books-rail-collapsed' : 'lg:w-64 books-rail-open',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         sidebarAnimate ? 'transition-all duration-300' : ''
     ]"
@@ -107,7 +107,7 @@
                         <a href="{{ route('masters.customers.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.customers.*', 'masters.parties.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Parties</span></a>
                     @endif
                     @if($can('price-master.view', 'masters.view'))
-                        <a href="{{ route('masters.price-masters.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.price-masters.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Price List</span></a>
+                        <a href="{{ route('masters.price-masters.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.price-masters.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Price Master</span></a>
                     @endif
                     @if($can('masters.view', 'products.view', 'customers.view'))
                         <a href="{{ route('masters.bulk-import.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.bulk-import.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Bulk Import</span></a>

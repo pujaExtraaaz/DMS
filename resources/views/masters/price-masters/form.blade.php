@@ -7,7 +7,12 @@
         'id' => $p->id,
         'name' => $p->name,
         'sku' => $p->sku,
+        'base_uom_id' => $p->base_uom_id ? (string) $p->base_uom_id : '',
+        'tax_rate' => (float) ($p->tax_rate ?? 0),
     ])->values();
+    $gstMode = function ($value): string {
+        return in_array((string) $value, ['1', 'true', 'inclusive'], true) ? 'inclusive' : 'exclusive';
+    };
     $uomOptions = $uoms->map(fn ($u) => [
         'id' => $u->id,
         'code' => $u->code,
@@ -20,6 +25,7 @@
                 'product_id' => (string) ($row['product_id'] ?? ''),
                 'uom_id' => (string) ($row['uom_id'] ?? ''),
                 'rate' => $row['rate'] ?? '',
+                'gst_mode' => $gstMode($row['rate_includes_gst'] ?? '0'),
                 'min_qty' => $row['min_qty'] ?? '',
                 'searchQuery' => '',
                 'isOpen' => false,
@@ -30,6 +36,7 @@
             'product_id' => '',
             'uom_id' => '',
             'rate' => '',
+            'gst_mode' => 'exclusive',
             'min_qty' => '',
             'searchQuery' => '',
             'isOpen' => false,
@@ -67,7 +74,8 @@
         lines: {{ json_encode($initialLines) }},
         editProductId: {{ json_encode((string) old('product_id', $item->product_id ?? '')) }},
         editUomId: {{ json_encode((string) old('uom_id', $item->uom_id ?? '')) }},
-        editRate: {{ json_encode(old('rate', $item->rate ?? '')) }},
+        editRate: {{ json_encode(old('rate', $item->entered_rate ?? $item->rate ?? '')) }},
+        editGstMode: {{ json_encode($gstMode(old('rate_includes_gst', $item->rate_includes_gst ? '1' : '0'))) }},
         editMinQty: {{ json_encode(old('min_qty', $item->min_qty ?? '')) }},
     })" class="space-y-4 {{ $isEdit ? 'max-w-xl' : 'max-w-4xl' }}">
 
@@ -156,9 +164,29 @@
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Rate</label>
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                        <label class="block text-sm font-medium text-gray-700">Rate</label>
+                        <div class="flex items-center gap-3 text-xs text-slate-600">
+                            <label class="inline-flex items-center gap-1.5">
+                                <input type="radio" name="gst_choice" value="exclusive" x-model="editGstMode" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                Excluding GST
+                            </label>
+                            <label class="inline-flex items-center gap-1.5">
+                                <input type="radio" name="gst_choice" value="inclusive" x-model="editGstMode" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                Including GST
+                            </label>
+                        </div>
+                    </div>
+                    <input type="hidden" name="rate_includes_gst" :value="editGstMode === 'inclusive' ? '1' : '0'">
                     <input type="number" step="0.01" name="rate" x-model="editRate" required
                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <p class="mt-1 text-xs text-slate-500" x-show="editProductId" x-cloak>
+                        Product GST <span x-text="money(taxPercent(editProductId))"></span>%.
+                        <span x-show="editRate !== '' && editRate !== null">
+                            GST amount ₹<span x-text="editSplit().gst"></span>.
+                            Final rate ₹<span x-text="editSplit().final"></span>.
+                        </span>
+                    </p>
                     @error('rate')
                         <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
                     @enderror
@@ -178,7 +206,7 @@
                     <div class="flex items-center justify-between gap-3">
                         <div>
                             <h3 class="text-sm font-semibold text-slate-700">Products</h3>
-                            <p class="text-xs text-slate-500 mt-0.5">Add one or more products with UOM, rate, and min qty.</p>
+                            <p class="text-xs text-slate-500 mt-0.5">The unit fills in from the product. Enter the rate including or excluding GST.</p>
                         </div>
                         <button type="button" @click="addLine()"
                                 class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shrink-0">
@@ -244,10 +272,30 @@
                                         </template>
                                     </div>
 
-                                    <div>
-                                        <label class="block text-xs font-medium text-slate-700 mb-1">Rate</label>
+                                    <div class="md:col-span-2">
+                                        <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+                                            <label class="block text-xs font-medium text-slate-700">Rate</label>
+                                            <div class="flex items-center gap-3 text-xs text-slate-600">
+                                                <label class="inline-flex items-center gap-1.5">
+                                                    <input type="radio" :name="`gst_choice_${idx}`" value="exclusive" x-model="line.gst_mode" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                                    Excluding GST
+                                                </label>
+                                                <label class="inline-flex items-center gap-1.5">
+                                                    <input type="radio" :name="`gst_choice_${idx}`" value="inclusive" x-model="line.gst_mode" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                                    Including GST
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <input type="hidden" :name="`lines[${idx}][rate_includes_gst]`" :value="line.gst_mode === 'inclusive' ? '1' : '0'">
                                         <input type="number" step="0.01" :name="`lines[${idx}][rate]`" x-model="line.rate"
                                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <p class="mt-1 text-xs text-slate-500" x-show="line.product_id" x-cloak>
+                                            Product GST <span x-text="money(taxPercent(line.product_id))"></span>%.
+                                            <span x-show="line.rate !== '' && line.rate !== null">
+                                                GST amount ₹<span x-text="lineSplit(line).gst"></span>.
+                                                Final rate ₹<span x-text="lineSplit(line).final"></span>.
+                                            </span>
+                                        </p>
                                         <template x-if="lineErrors[idx]?.rate">
                                             <p class="mt-1 text-xs text-rose-600" x-text="lineErrors[idx].rate"></p>
                                         </template>
@@ -352,6 +400,7 @@ function priceMasterForm(config) {
             product_id: String(line.product_id || ''),
             uom_id: String(line.uom_id || ''),
             rate: line.rate ?? '',
+            gst_mode: line.gst_mode === 'inclusive' ? 'inclusive' : 'exclusive',
             min_qty: line.min_qty ?? '',
             searchQuery: line.searchQuery || '',
             isOpen: false,
@@ -372,6 +421,7 @@ function priceMasterForm(config) {
         editProductOpen: false,
         editUomId: String(config.editUomId || ''),
         editRate: config.editRate ?? '',
+        editGstMode: config.editGstMode === 'inclusive' ? 'inclusive' : 'exclusive',
         editMinQty: config.editMinQty ?? '',
 
         init() {
@@ -469,6 +519,7 @@ function priceMasterForm(config) {
                 product_id: '',
                 uom_id: '',
                 rate: '',
+                gst_mode: 'exclusive',
                 min_qty: '',
                 searchQuery: '',
                 isOpen: false,
@@ -495,6 +546,9 @@ function priceMasterForm(config) {
             line.product_id = String(prod.id);
             line.searchQuery = `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`;
             line.isOpen = false;
+            if (prod.base_uom_id) {
+                line.uom_id = String(prod.base_uom_id);
+            }
         },
         clearLineProduct(idx) {
             const line = this.lines[idx];
@@ -518,6 +572,40 @@ function priceMasterForm(config) {
             this.editProductId = String(prod.id);
             this.editProductQuery = `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`;
             this.editProductOpen = false;
+            if (prod.base_uom_id) {
+                this.editUomId = String(prod.base_uom_id);
+            }
+        },
+        productById(id) {
+            return this.products.find(p => String(p.id) === String(id)) || null;
+        },
+        taxPercent(productId) {
+            const tax = parseFloat(this.productById(productId)?.tax_rate);
+            return Number.isFinite(tax) && tax > 0 ? tax : 0;
+        },
+        money(value) {
+            const amount = Number(value);
+            if (!Number.isFinite(amount)) return '0.00';
+            return (Math.round((amount + Number.EPSILON) * 100) / 100).toFixed(2);
+        },
+        splitRate(entered, mode, productId) {
+            const amount = parseFloat(entered);
+            if (!Number.isFinite(amount)) {
+                return { gst: '0.00', final: '0.00' };
+            }
+            const tax = this.taxPercent(productId);
+            if (mode === 'inclusive' && tax > 0) {
+                const exclusive = amount / (1 + tax / 100);
+                return { gst: this.money(amount - exclusive), final: this.money(amount) };
+            }
+            const gst = amount * tax / 100;
+            return { gst: this.money(gst), final: this.money(amount + gst) };
+        },
+        lineSplit(line) {
+            return this.splitRate(line?.rate, line?.gst_mode, line?.product_id);
+        },
+        editSplit() {
+            return this.splitRate(this.editRate, this.editGstMode, this.editProductId);
         },
         clearEditProduct() {
             this.editProductId = '';

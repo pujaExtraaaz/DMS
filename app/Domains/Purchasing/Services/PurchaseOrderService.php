@@ -124,24 +124,8 @@ class PurchaseOrderService
                 $shippingSnapshot = $rawShipping ?: ($shippingAddress ? $shippingAddress->formatSnapshot() : $defaultDeliveryAddress);
             }
 
-            $isFreightApplicable = !empty($data['is_freight_applicable']);
-            $freightAmount = 0.0;
-            $freightTaxRate = 0.0;
-            $freightTaxAmount = 0.0;
-            $freightTotal = 0.0;
-            $freightNotes = null;
-
-            if ($isFreightApplicable) {
-                $freightAmount = round((float) ($data['freight_amount'] ?? 0), 2);
-                $freightTaxRate = round((float) ($data['freight_tax_rate'] ?? 0), 2);
-                if ($freightAmount > 0) {
-                    $freightTaxAmount = round($freightAmount * ($freightTaxRate / 100), 2);
-                    $freightTotal = round($freightAmount + $freightTaxAmount, 2);
-                }
-                $freightNotes = !empty($data['freight_notes']) ? trim($data['freight_notes']) : null;
-            }
-
-            $grandTotal = round($subtotal + $taxAmount + $freightTotal, 2);
+            $freight = $this->freightCharges($data, $subtotal);
+            $grandTotal = round($subtotal + $taxAmount + $freight['freight_total'], 2);
 
             $creditDaysOverride = (isset($data['credit_days']) && $data['credit_days'] !== '' && $data['credit_days'] !== null)
                 ? max(0, (int) $data['credit_days'])
@@ -168,12 +152,14 @@ class PurchaseOrderService
                 'credit_days' => $due['credit_days'],
                 'due_date' => $due['due_date'],
                 'status' => ! empty($data['submit_for_approval']) ? 'pending_approval' : 'draft',
-                'is_freight_applicable' => $isFreightApplicable,
-                'freight_amount' => $freightAmount,
-                'freight_tax_rate' => $freightTaxRate,
-                'freight_tax_amount' => $freightTaxAmount,
-                'freight_total' => $freightTotal,
-                'freight_notes' => $freightNotes,
+                'is_freight_applicable' => $freight['is_freight_applicable'],
+                'freight_mode' => $freight['freight_mode'],
+                'freight_percent' => $freight['freight_percent'],
+                'freight_amount' => $freight['freight_amount'],
+                'freight_tax_rate' => $freight['freight_tax_rate'],
+                'freight_tax_amount' => $freight['freight_tax_amount'],
+                'freight_total' => $freight['freight_total'],
+                'freight_notes' => $freight['freight_notes'],
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
                 'grand_total' => $grandTotal,
@@ -252,7 +238,7 @@ class PurchaseOrderService
     public function update(PurchaseOrder $order, array $data, User $actor): PurchaseOrder
     {
         return DB::transaction(function () use ($order, $data, $actor) {
-            if (! in_array($order->status, ['draft', 'pending_approval'], true)) {
+            if (! in_array($order->status, ['draft', 'pending_approval', 'approved'], true)) {
                 throw new InvalidArgumentException("Cannot edit purchase order in '{$order->status}' status.");
             }
 
@@ -359,24 +345,8 @@ class PurchaseOrderService
                 $newStatus = 'pending_approval';
             }
 
-            $isFreightApplicable = !empty($data['is_freight_applicable']);
-            $freightAmount = 0.0;
-            $freightTaxRate = 0.0;
-            $freightTaxAmount = 0.0;
-            $freightTotal = 0.0;
-            $freightNotes = null;
-
-            if ($isFreightApplicable) {
-                $freightAmount = round((float) ($data['freight_amount'] ?? 0), 2);
-                $freightTaxRate = round((float) ($data['freight_tax_rate'] ?? 0), 2);
-                if ($freightAmount > 0) {
-                    $freightTaxAmount = round($freightAmount * ($freightTaxRate / 100), 2);
-                    $freightTotal = round($freightAmount + $freightTaxAmount, 2);
-                }
-                $freightNotes = !empty($data['freight_notes']) ? trim($data['freight_notes']) : null;
-            }
-
-            $grandTotal = round($subtotal + $taxAmount + $freightTotal, 2);
+            $freight = $this->freightCharges($data, $subtotal);
+            $grandTotal = round($subtotal + $taxAmount + $freight['freight_total'], 2);
 
             $creditDaysOverride = (isset($data['credit_days']) && $data['credit_days'] !== '' && $data['credit_days'] !== null)
                 ? max(0, (int) $data['credit_days'])
@@ -400,12 +370,14 @@ class PurchaseOrderService
                 'credit_days' => $due['credit_days'],
                 'due_date' => $due['due_date'],
                 'status' => $newStatus,
-                'is_freight_applicable' => $isFreightApplicable,
-                'freight_amount' => $freightAmount,
-                'freight_tax_rate' => $freightTaxRate,
-                'freight_tax_amount' => $freightTaxAmount,
-                'freight_total' => $freightTotal,
-                'freight_notes' => $freightNotes,
+                'is_freight_applicable' => $freight['is_freight_applicable'],
+                'freight_mode' => $freight['freight_mode'],
+                'freight_percent' => $freight['freight_percent'],
+                'freight_amount' => $freight['freight_amount'],
+                'freight_tax_rate' => $freight['freight_tax_rate'],
+                'freight_tax_amount' => $freight['freight_tax_amount'],
+                'freight_total' => $freight['freight_total'],
+                'freight_notes' => $freight['freight_notes'],
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
                 'grand_total' => $grandTotal,
@@ -1337,5 +1309,50 @@ class PurchaseOrderService
         }
 
         return $normalized;
+    }
+
+    /**
+     * Freight is either a fixed rupee amount or a percent of the taxable item total.
+     * GST on freight is calculated on that rupee amount.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{is_freight_applicable: bool, freight_mode: string, freight_percent: float|null, freight_amount: float, freight_tax_rate: float, freight_tax_amount: float, freight_total: float, freight_notes: string|null}
+     */
+    protected function freightCharges(array $data, float $subtotal): array
+    {
+        $applicable = ! empty($data['is_freight_applicable']);
+        $mode = ($data['freight_mode'] ?? 'amount') === 'percent' ? 'percent' : 'amount';
+        $percent = null;
+        $amount = 0.0;
+        $taxRate = 0.0;
+        $taxAmount = 0.0;
+        $notes = null;
+
+        if ($applicable) {
+            $taxRate = round((float) ($data['freight_tax_rate'] ?? 0), 2);
+            if ($mode === 'percent') {
+                $percent = round(min(100, max(0, (float) ($data['freight_percent'] ?? 0))), 4);
+                $amount = round($subtotal * $percent / 100, 2);
+            } else {
+                $amount = round(max(0, (float) ($data['freight_amount'] ?? 0)), 2);
+            }
+            if ($amount > 0 && $taxRate > 0) {
+                $taxAmount = round($amount * ($taxRate / 100), 2);
+            }
+            $notes = filled($data['freight_notes'] ?? null) ? trim((string) $data['freight_notes']) : null;
+        } else {
+            $mode = 'amount';
+        }
+
+        return [
+            'is_freight_applicable' => $applicable,
+            'freight_mode' => $mode,
+            'freight_percent' => $percent,
+            'freight_amount' => $amount,
+            'freight_tax_rate' => $taxRate,
+            'freight_tax_amount' => $taxAmount,
+            'freight_total' => round($amount + $taxAmount, 2),
+            'freight_notes' => $notes,
+        ];
     }
 }

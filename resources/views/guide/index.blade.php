@@ -125,6 +125,9 @@
         background: color-mix(in srgb, var(--gd) 10%, white);
         border: 1px solid color-mix(in srgb, var(--gd) 22%, white);
     }
+    .gd-section { margin-top: 22px; padding-top: 16px; border-top: 1px solid #f1f5f9; }
+    .gd-section h4 { margin: 4px 0 0; font-size: 16px; line-height: 1.3; font-weight: 700; color: #0f172a; }
+    .gd-section .gd-purpose { margin-top: 8px; }
     @media (min-width: 720px) {
         .gd-nav-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     }
@@ -144,7 +147,7 @@
         <section class="gd-hero">
             <p class="gd-kicker">Section 12</p>
             <h2>How the whole project runs</h2>
-            <p class="gd-lead">Work moves in one direction. Set up the company, build masters, purchase into stock, sell, deliver, collect, then read the same activity in Accounting Books. Reports only show what those steps already posted. A posted invoice or stock document is cancelled or reversed. It is never deleted.</p>
+            <p class="gd-lead">Work moves in one direction. Set up the company, build masters, purchase into stock, sell, deliver, collect, then read the same activity in Accounting Books. Each module below opens into its screens, and each screen has the steps to finish that work. A posted invoice or stock document is cancelled or reversed. It is never deleted.</p>
         </section>
 
         <nav class="gd-nav" aria-label="Guide modules">
@@ -169,30 +172,36 @@
                         <p>Module {{ $module['number'] }}</p>
                         <h3>{{ $module['title'] }}</h3>
                     </div>
-                    <span class="gd-count">{{ count($module['screens']) }} screens</span>
+                    <span class="gd-count">{{ count($module['sections'] ?? $module['screens']) }} screens</span>
                 </header>
                 <div class="gd-body">
                     <p class="gd-purpose">{{ $module['purpose'] }}</p>
-                    <p class="gd-label">Workflow</p>
-                    <ol class="gd-steps">
-                        @foreach ($module['flow'] as $index => $step)
-                            <li class="gd-step">
-                                <div class="gd-rail">
-                                    <span class="gd-dot">{{ $index + 1 }}</span>
-                                    @if (! $loop->last)
-                                        <span class="gd-line"></span>
-                                    @endif
-                                </div>
-                                <p>{{ $step }}</p>
-                            </li>
-                        @endforeach
-                    </ol>
                     <p class="gd-label">Open these screens</p>
                     <ul class="gd-chips">
-                        @foreach ($module['screens'] as $screen)
-                            <li>{{ $screen }}</li>
+                        @foreach ($module['sections'] as $section)
+                            <li>{{ $section['title'] }}</li>
                         @endforeach
                     </ul>
+                    @foreach ($module['sections'] as $section)
+                        <section class="gd-section">
+                            <p class="gd-label">Screen</p>
+                            <h4>{{ $section['title'] }}</h4>
+                            <p class="gd-purpose">{{ $section['summary'] }}</p>
+                            <ol class="gd-steps">
+                                @foreach ($section['steps'] as $index => $step)
+                                    <li class="gd-step">
+                                        <div class="gd-rail">
+                                            <span class="gd-dot">{{ $index + 1 }}</span>
+                                            @if (! $loop->last)
+                                                <span class="gd-line"></span>
+                                            @endif
+                                        </div>
+                                        <p>{{ $step }}</p>
+                                    </li>
+                                @endforeach
+                            </ol>
+                        </section>
+                    @endforeach
                 </div>
             </section>
         @endforeach
@@ -203,19 +212,28 @@
 @push('scripts')
 <script>
     function bindGuideNav() {
-        if (window.__guideNavBound) return;
         const root = document.getElementById('guide-root');
-        const sections = document.querySelectorAll('[data-guide-module]');
-        if (!root || !sections.length || !window.Alpine || !('IntersectionObserver' in window)) return;
         const scroller = document.querySelector('main.dms-content');
-        const observer = new IntersectionObserver(function (entries) {
-            entries.forEach(function (entry) {
-                if (!entry.isIntersecting) return;
-                Alpine.$data(root).active = Number(entry.target.getAttribute('data-guide-module'));
+        const sections = Array.prototype.slice.call(document.querySelectorAll('[data-guide-module]'));
+        if (!root || !scroller || !sections.length || !window.Alpine) return;
+
+        const update = function () {
+            const nav = root.querySelector('.gd-nav');
+            const line = scroller.getBoundingClientRect().top + (nav ? nav.offsetHeight : 0) + 8;
+            let current = Number(sections[0].getAttribute('data-guide-module'));
+            sections.forEach(function (section) {
+                if (section.getBoundingClientRect().top <= line) {
+                    current = Number(section.getAttribute('data-guide-module'));
+                }
             });
-        }, { root: scroller, rootMargin: '-20% 0px -60% 0px', threshold: 0.15 });
-        sections.forEach(function (section) { observer.observe(section); });
-        window.__guideNavBound = true;
+            const data = Alpine.$data(root);
+            if (data && data.active !== current) data.active = current;
+        };
+
+        if (scroller.__guideNavScroll) scroller.removeEventListener('scroll', scroller.__guideNavScroll);
+        scroller.__guideNavScroll = update;
+        scroller.addEventListener('scroll', update, { passive: true });
+        update();
     }
     document.addEventListener('alpine:initialized', bindGuideNav);
     if (window.Alpine) bindGuideNav();

@@ -29,6 +29,7 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
     Route::get('orders/create', [PurchaseOrderController::class, 'create'])->name('orders.create');
     Route::post('orders', [PurchaseOrderController::class, 'store'])->name('orders.store');
     Route::get('orders/{order}/preview', [PurchaseOrderController::class, 'preview'])->name('orders.preview');
+    Route::patch('orders/{order}/notes', [PurchaseOrderController::class, 'updateNotes'])->name('orders.notes');
     Route::get('orders/{order}/export/{format}', [PurchaseOrderController::class, 'export'])->name('orders.export');
     Route::get('orders/{order}', [PurchaseOrderController::class, 'show'])->name('orders.show');
     Route::get('orders/{order}/edit', [PurchaseOrderController::class, 'edit'])->name('orders.edit');

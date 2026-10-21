@@ -6,6 +6,7 @@ use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Delivery\Models\Delivery;
 use App\Domains\Inventory\Models\Purchase;
+use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Inventory\Models\StockMovement;
 use App\Domains\Master\Models\Customer;
@@ -21,6 +22,7 @@ use App\Models\User;
 use App\Support\ReportExporter;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -453,8 +455,31 @@ class ReportController extends Controller
         $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
         $dateTo = $request->input('date_to', now()->toDateString());
 
-        $query = Purchase::query()
-            ->with(['items.product', 'creator', 'supplierParty', 'warehouse'])
+        $query = PurchaseInvoice::query()
+            ->with(['items.product', 'supplier', 'warehouse'])
+            ->whereBetween('invoice_date', [$dateFrom, $dateTo])
+            ->where('status', '!=', 'cancelled')
+            ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_id', $request->supplier_id))
+            ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
+            ->when($request->filled('product_id') || $request->filled('brand_id') || $request->filled('category_id'), function ($q) use ($request) {
+                $q->whereHas('items.product', function ($p) use ($request) {
+                    $p->when($request->filled('product_id'), fn ($x) => $x->where('id', $request->product_id))
+                        ->when($request->filled('brand_id'), fn ($x) => $x->where('brand_id', $request->brand_id))
+                        ->when($request->filled('category_id'), fn ($x) => $x->where('category_id', $request->category_id));
+                });
+            });
+
+        $this->applySearch($query, $request->input('search'), [
+            'invoice_no',
+            'supplier_invoice_no',
+            'status',
+            'notes',
+        ], [
+            'supplier' => ['name', 'phone'],
+        ]);
+
+        $legacy = Purchase::query()
+            ->with(['items.product', 'supplierParty', 'warehouse'])
             ->whereBetween('purchase_date', [$dateFrom, $dateTo])
             ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_party_id', $request->supplier_id))
             ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
@@ -466,7 +491,7 @@ class ReportController extends Controller
                 });
             });
 
-        $this->applySearch($query, $request->input('search'), [
+        $this->applySearch($legacy, $request->input('search'), [
             'purchase_no',
             'supplier_name',
             'status',
@@ -475,27 +500,31 @@ class ReportController extends Controller
             'supplierParty' => ['name', 'phone'],
         ]);
 
-        [$sort, $direction] = $this->applySorting(
-            $query,
-            $request,
-            [
-                'purchase_no' => 'purchase_no',
-                'purchase_date' => 'purchase_date',
-                'date' => 'purchase_date',
-                'supplier' => function ($q, $dir) {
-                    $q->leftJoin('customers as s_parties', 'purchases.supplier_party_id', '=', 's_parties.id')
-                        ->orderByRaw("COALESCE(s_parties.name, purchases.supplier_name) {$dir}")
-                        ->select('purchases.*');
-                },
-                'grand_total' => 'grand_total',
-                'total' => 'grand_total',
-                'status' => 'status',
-            ],
-            'purchase_date',
-            'desc'
-        );
+        $sort = $request->input('sort', 'invoice_date');
+        $direction = $request->input('direction', 'desc') === 'asc' ? 'asc' : 'desc';
+        $rows = $query->get()->map(fn (PurchaseInvoice $invoice) => (object) [
+            'invoice_no' => $invoice->invoice_no,
+            'invoice_date' => $invoice->invoice_date,
+            'supplier' => (object) ['name' => $invoice->supplier?->name],
+            'grand_total' => $invoice->grand_total,
+            'status' => $invoice->status,
+        ])->concat($legacy->get()->map(fn (Purchase $purchase) => (object) [
+            'invoice_no' => $purchase->purchase_no,
+            'invoice_date' => $purchase->purchase_date,
+            'supplier' => (object) ['name' => $purchase->supplierParty?->name ?? $purchase->supplier_name],
+            'grand_total' => $purchase->grand_total,
+            'status' => $purchase->status,
+        ]));
 
-        $purchases = $query->paginate(30)->withQueryString();
+        $rows = ($direction === 'asc' ? $rows->sortBy(fn ($row) => $this->purchaseRegisterSortValue($row, $sort)) : $rows->sortByDesc(fn ($row) => $this->purchaseRegisterSortValue($row, $sort)))->values();
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $purchases = new LengthAwarePaginator(
+            $rows->forPage($page, 30)->values(),
+            $rows->count(),
+            30,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
 
         return view('reporting.purchase-register', array_merge(
             compact('purchases', 'dateFrom', 'dateTo', 'sort', 'direction'),
@@ -606,6 +635,17 @@ class ReportController extends Controller
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
         ], $this->filterOptions()));
+    }
+
+    protected function purchaseRegisterSortValue(object $row, string $sort): mixed
+    {
+        return match ($sort) {
+            'invoice_no', 'purchase_no' => $row->invoice_no,
+            'supplier' => $row->supplier->name ?? '',
+            'grand_total', 'total' => (float) $row->grand_total,
+            'status' => $row->status,
+            default => optional($row->invoice_date)->format('Y-m-d'),
+        };
     }
 
     /**

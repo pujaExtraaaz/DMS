@@ -18,12 +18,14 @@ class ProductType extends Model
         'code',
         'description',
         'is_active',
+        'track_serial',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'track_serial' => 'boolean',
         ];
     }
 

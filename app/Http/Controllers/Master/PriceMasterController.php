@@ -74,6 +74,7 @@ class PriceMasterController extends Controller
             'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.uom_id' => 'nullable|exists:uoms,id',
             'lines.*.rate' => 'nullable|numeric|min:0',
+            'lines.*.rate_includes_gst' => 'nullable|boolean',
             'lines.*.min_qty' => 'nullable|numeric|min:0',
         ]);
 
@@ -127,15 +128,23 @@ class PriceMasterController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($validated, $lines) {
+            $products = Product::query()
+                ->whereIn('id', $lines->pluck('product_id')->filter()->unique()->all())
+                ->get()
+                ->keyBy('id');
+
+            DB::transaction(function () use ($validated, $lines, $products) {
                 foreach ($lines as $row) {
-                    PriceMaster::create([
-                        'customer_type_id' => $validated['customer_type_id'],
-                        'product_id' => $row['product_id'],
-                        'uom_id' => $row['uom_id'],
-                        'rate' => $row['rate'],
-                        'min_qty' => filled($row['min_qty'] ?? null) ? $row['min_qty'] : null,
-                    ]);
+                    $product = $products->get($row['product_id']);
+                    PriceMaster::create(array_merge(
+                        $this->pricedAttributes($row, (float) ($product->tax_rate ?? 0)),
+                        [
+                            'customer_type_id' => $validated['customer_type_id'],
+                            'product_id' => $row['product_id'],
+                            'uom_id' => $row['uom_id'],
+                            'min_qty' => filled($row['min_qty'] ?? null) ? $row['min_qty'] : null,
+                        ]
+                    ));
                 }
             });
         } catch (QueryException $e) {
@@ -167,8 +176,14 @@ class PriceMasterController extends Controller
 
     public function update(Request $request, PriceMaster $priceMaster): RedirectResponse
     {
+        $validated = $this->validated($request);
+        $product = Product::query()->find($validated['product_id']);
+
         try {
-            $priceMaster->update($this->validated($request));
+            $priceMaster->update(array_merge(
+                $validated,
+                $this->pricedAttributes($validated, (float) ($product->tax_rate ?? 0))
+            ));
         } catch (QueryException $e) {
             if ($this->isUniqueConstraintViolation($e)) {
                 throw ValidationException::withMessages([
@@ -260,15 +275,34 @@ class PriceMasterController extends Controller
             'product_id' => 'required|exists:products,id',
             'uom_id' => 'required|exists:uoms,id',
             'rate' => 'required|numeric|min:0',
+            'rate_includes_gst' => 'nullable|boolean',
             'min_qty' => 'nullable|numeric|min:0',
         ]);
+    }
+
+    /**
+     * Keep the billed rate exclusive of GST. The entered amount is stored beside it.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array{rate: float, entered_rate: float, rate_includes_gst: bool}
+     */
+    protected function pricedAttributes(array $input, float $taxPercent): array
+    {
+        $includesGst = filter_var($input['rate_includes_gst'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $split = PriceMaster::splitRate((float) ($input['rate'] ?? 0), $includesGst, $taxPercent);
+
+        return [
+            'rate' => $split['exclusive'],
+            'entered_rate' => $split['entered'],
+            'rate_includes_gst' => $includesGst,
+        ];
     }
 
     protected function formData(): array
     {
         return [
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
-            'products' => Product::where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku']),
+            'products' => Product::where('is_active', true)->orderBy('name')->get(['id', 'name', 'sku', 'base_uom_id', 'tax_rate']),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
         ];
     }

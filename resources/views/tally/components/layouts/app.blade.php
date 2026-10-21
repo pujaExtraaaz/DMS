@@ -33,22 +33,18 @@
             booksAsideCollapsed: false,
             hasBooksAside: {{ books_show_aside() ? 'true' : 'false' }},
             toggleCollapsed() {
-                // Animate only on explicit chevron click — never on page load / module change.
                 this.sidebarAnimate = true;
+                this.booksAsideCollapsed = false;
                 this.sidebarCollapsed = !this.sidebarCollapsed;
-                if (! this.hasBooksAside) {
-                    localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
-                }
+                localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
             },
             init() {
                 this.booksAsideCollapsed = false;
-                sessionStorage.removeItem('booksAsideCollapsed');
-                sessionStorage.removeItem('booksMainSidebarCollapsed');
-
+                const stored = localStorage.getItem('dmsSidebarCollapsed');
                 if (this.hasBooksAside) {
-                    this.sidebarCollapsed = true;
+                    this.sidebarCollapsed = stored === null ? true : stored === 'true';
                 } else {
-                    this.sidebarCollapsed = localStorage.getItem('dmsSidebarCollapsed') === 'true';
+                    this.sidebarCollapsed = stored === 'true';
                     this.sidebarAnimate = true;
                 }
             }

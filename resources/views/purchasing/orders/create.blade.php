@@ -16,10 +16,10 @@
                     + Add Supplier
                 </button>
             </div>
-            <select name="supplier_id" id="supplier_id" class="block w-full rounded-lg border-gray-300 text-sm" required onchange="handleSupplierChange(this.value)">
-                <option value="">Select supplier</option>
-                @foreach($suppliers as $s)<option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id')==$s->id)>{{ $s->name }}</option>@endforeach
-            </select>
+            @include('purchasing.orders.partials.supplier-search', [
+                'suppliers' => $suppliers,
+                'selected' => old('supplier_id'),
+            ])
         </div>
         <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Warehouse</label>
@@ -119,7 +119,6 @@
     <th class="px-3 py-2 text-left w-44">Brand</th>
     <th class="px-3 py-2 text-left min-w-[250px]">Product</th>
     <th class="px-3 py-2 text-left">Batch Name</th>
-    <th class="px-3 py-2 text-left">Serial No</th>
     <th class="px-3 py-2 text-left">UOM</th>
     <th class="px-3 py-2 text-left">Qty</th>
     <th class="px-3 py-2 text-left">Unit Cost</th>
@@ -194,9 +193,6 @@
             <td class="px-3 py-2">
                 <input type="text" name="items[{{ $idx }}][batch_no]" list="po-batch-list-{{ $idx }}" class="po-batch-input block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional" value="{{ $oldItem['batch_no'] ?? $oldItem['batch_name'] ?? '' }}">
                 <datalist id="po-batch-list-{{ $idx }}"></datalist>
-            </td>
-            <td class="px-3 py-2">
-                <input type="text" name="items[{{ $idx }}][serial_no]" class="po-serial-input block w-32 rounded-lg border-gray-300 text-sm" placeholder="Optional" maxlength="100" value="{{ $oldItem['serial_no'] ?? '' }}">
             </td>
             <td class="px-3 py-2">
                 <select name="items[{{ $idx }}][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
@@ -300,9 +296,6 @@
             <datalist id="po-batch-list-0"></datalist>
         </td>
         <td class="px-3 py-2">
-            <input type="text" name="items[0][serial_no]" class="po-serial-input block w-32 rounded-lg border-gray-300 text-sm" placeholder="Optional" maxlength="100">
-        </td>
-        <td class="px-3 py-2">
             <select name="items[0][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
                 @foreach($uoms as $u)<option value="{{ $u->id }}">{{ $u->code }}</option>@endforeach
             </select>
@@ -373,43 +366,16 @@
             </div>
         </div>
 
-        <div id="freight_fields_container" style="{{ old('is_freight_applicable', 0) ? 'display: block;' : 'display: none;' }}" class="space-y-4 pt-1">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Freight Amount (₹)</label>
-                    <input type="number" step="0.01" min="0" name="freight_amount" id="po_freight_amount"
-                           value="{{ old('freight_amount', '0.00') }}"
-                           oninput="recalculatePoTotals()"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="0.00">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Freight Tax Rate (%)</label>
-                    <input type="number" step="0.01" min="0" max="100" name="freight_tax_rate" id="po_freight_tax_rate"
-                           value="{{ old('freight_tax_rate', '0.00') }}"
-                           oninput="recalculatePoTotals()"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="0.00">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Freight Tax Amount (₹)</label>
-                    <input type="number" step="0.01" min="0" name="freight_tax_amount" id="po_freight_tax_amount"
-                           value="{{ old('freight_tax_amount', '0.00') }}" readonly
-                           class="block w-full rounded-lg border-gray-200 bg-slate-100 text-slate-600 text-sm cursor-not-allowed">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Freight Total (₹)</label>
-                    <input type="number" step="0.01" min="0" name="freight_total" id="po_freight_total"
-                           value="{{ old('freight_total', '0.00') }}" readonly
-                           class="block w-full rounded-lg border-gray-200 bg-slate-100 text-slate-700 font-semibold text-sm cursor-not-allowed">
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1">Freight Notes / Transporter Details (Optional)</label>
-                <input type="text" name="freight_notes" id="po_freight_notes"
-                       value="{{ old('freight_notes') }}"
-                       maxlength="1000"
-                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="E.G. Transporter Name, Terms (Paid/To-Pay), Dispatch Terms...">
-            </div>
-        </div>
+        @include('purchasing.orders.partials.freight-fields', [
+            'freightApplicable' => old('is_freight_applicable', 0),
+            'freightMode' => old('freight_mode', 'amount'),
+            'freightPercent' => old('freight_percent', '0.00'),
+            'freightAmount' => old('freight_amount', '0.00'),
+            'freightTaxRate' => old('freight_tax_rate', '0.00'),
+            'freightTaxAmount' => old('freight_tax_amount', '0.00'),
+            'freightTotal' => old('freight_total', '0.00'),
+            'freightNotes' => old('freight_notes'),
+        ])
     </div>
 
     <!-- Notes & Order Summary Section -->
@@ -941,6 +907,14 @@ function toggleFreightFields() {
     recalculatePoTotals();
 }
 
+function toggleFreightMode() {
+    const mode = document.getElementById('po_freight_mode')?.value || 'amount';
+    const percentWrap = document.getElementById('freight_percent_wrap');
+    const amountWrap = document.getElementById('freight_amount_wrap');
+    if (percentWrap) percentWrap.style.display = mode === 'percent' ? '' : 'none';
+    if (amountWrap) amountWrap.style.display = mode === 'amount' ? '' : 'none';
+}
+
 function recalculatePoTotals() {
     let subtotal = 0;
     let taxTotal = 0;
@@ -963,10 +937,13 @@ function recalculatePoTotals() {
     });
 
     const isFreightApplicable = document.getElementById('po_is_freight_applicable')?.value === '1';
+    const freightMode = document.getElementById('po_freight_mode')?.value || 'amount';
     const freightAmountInput = document.getElementById('po_freight_amount');
+    const freightPercentInput = document.getElementById('po_freight_percent');
     const freightTaxRateInput = document.getElementById('po_freight_tax_rate');
     const freightTaxAmountInput = document.getElementById('po_freight_tax_amount');
     const freightTotalInput = document.getElementById('po_freight_total');
+    const freightCalculated = document.getElementById('freight_calculated_amount');
 
     let freightAmount = 0;
     let freightTaxRate = 0;
@@ -974,8 +951,16 @@ function recalculatePoTotals() {
     let freightTotal = 0;
 
     if (isFreightApplicable) {
-        freightAmount = parseFloat(freightAmountInput?.value) || 0;
         freightTaxRate = parseFloat(freightTaxRateInput?.value) || 0;
+        if (freightMode === 'percent') {
+            const freightPercent = Math.min(100, Math.max(0, parseFloat(freightPercentInput?.value) || 0));
+            freightAmount = subtotal * freightPercent / 100;
+            if (freightAmountInput) {
+                freightAmountInput.value = freightAmount.toFixed(2);
+            }
+        } else {
+            freightAmount = parseFloat(freightAmountInput?.value) || 0;
+        }
         freightTaxAmount = (freightAmount * freightTaxRate) / 100;
         freightTotal = freightAmount + freightTaxAmount;
 
@@ -1004,6 +989,7 @@ function recalculatePoTotals() {
 
     if (summarySubtotal) summarySubtotal.textContent = '₹' + subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (summaryTax) summaryTax.textContent = '₹' + taxTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (freightCalculated) freightCalculated.textContent = '₹' + freightAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (summaryFreight) summaryFreight.textContent = '₹' + freightAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (summaryFreightTax) summaryFreightTax.textContent = '₹' + freightTaxAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (summaryGrandTotal) summaryGrandTotal.textContent = '₹' + grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
