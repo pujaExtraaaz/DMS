@@ -44,20 +44,39 @@ return new class extends Migration
         }
     }
 
+    /**
+     * @param  list<string>  $indexNames
+     */
     private function dropCodeFrom(string $table, array $indexNames): void
     {
         if (! Schema::hasColumn($table, 'code')) {
             return;
         }
 
-        $existing = collect(Schema::getIndexes($table))
-            ->pluck('name')
-            ->filter()
-            ->all();
+        $indexes = collect(Schema::getIndexes($table))->keyBy('name');
+        $restore = [];
 
         foreach ($indexNames as $indexName) {
-            if (! in_array($indexName, $existing, true)) {
+            $index = $indexes->get($indexName);
+
+            if (! $index) {
                 continue;
+            }
+
+            foreach (Schema::getForeignKeys($table) as $foreignKey) {
+                if (isset($restore[$foreignKey['name']])) {
+                    continue;
+                }
+
+                if (! $this->indexSupports($index['columns'], $foreignKey['columns'])) {
+                    continue;
+                }
+
+                Schema::table($table, function (Blueprint $blueprint) use ($foreignKey) {
+                    $blueprint->dropForeign($foreignKey['name']);
+                });
+
+                $restore[$foreignKey['name']] = $foreignKey;
             }
 
             Schema::table($table, function (Blueprint $blueprint) use ($indexName) {
@@ -65,11 +84,29 @@ return new class extends Migration
             });
         }
 
-        // Re-check after index drops in case a prior partial run already removed the column.
         if (Schema::hasColumn($table, 'code')) {
             Schema::table($table, function (Blueprint $blueprint) {
                 $blueprint->dropColumn('code');
             });
         }
+
+        foreach ($restore as $foreignKey) {
+            Schema::table($table, function (Blueprint $blueprint) use ($foreignKey) {
+                $blueprint->foreign($foreignKey['columns'], $foreignKey['name'])
+                    ->references($foreignKey['foreign_columns'])
+                    ->on($foreignKey['foreign_table'])
+                    ->onUpdate($foreignKey['on_update'])
+                    ->onDelete($foreignKey['on_delete']);
+            });
+        }
+    }
+
+    /**
+     * @param  list<string>  $indexColumns
+     * @param  list<string>  $foreignColumns
+     */
+    private function indexSupports(array $indexColumns, array $foreignColumns): bool
+    {
+        return array_slice(array_values($indexColumns), 0, count($foreignColumns)) === array_values($foreignColumns);
     }
 };
