@@ -97,6 +97,63 @@ class InterCompanyTransactionTest extends TestCase
         $response->assertSee('Additional Information');
     }
 
+    public function test_new_transaction_modal_has_sidebar_safe_layout_and_responsive_dimensions(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->get(route('organization.sister-concerns.transactions'));
+
+        $response->assertStatus(200);
+
+        // Modal teleported to body and centered in full viewport above sidebar
+        $response->assertSee('x-teleport="body"', false);
+        $response->assertSee('fixed inset-0 z-[100]', false);
+        $response->assertSee('min-h-screen items-center justify-center', false);
+        $response->assertDontSee('left-0 lg:left-64', false);
+
+        // Modal dimension and scrolling rules
+        $response->assertSee('max-h-[88vh]', false);
+        $response->assertSee('sticky top-0 z-10', false);
+        $response->assertSee('sticky bottom-0 z-10', false);
+
+        // All 4 sections' form controls are present
+        $response->assertSee('x-model="form.transaction_date"', false);
+        $response->assertSee('x-model="form.transaction_type"', false);
+        $response->assertSee('x-model="form.transaction_no"', false);
+        $response->assertSee('x-model="form.from_company_id"', false);
+        $response->assertSee('x-model="form.to_company_id"', false);
+        $response->assertSee('x-model="form.amount"', false);
+        $response->assertSee('x-model="form.currency"', false);
+        $response->assertSee('x-model="form.exchange_rate"', false);
+        $response->assertSee('x-model="form.is_gst_applicable"', false);
+        $response->assertSee('x-model="form.igst_amount"', false);
+        $response->assertSee('x-model="form.is_tds_applicable"', false);
+        $response->assertSee('x-model="form.tds_section"', false);
+        $response->assertSee('x-model="form.tds_rate"', false);
+        $response->assertSee('x-model="form.tds_amount"', false);
+        $response->assertSee('x-model="form.reference_invoice"', false);
+        $response->assertSee('x-model="form.reference_po"', false);
+        $response->assertSee('x-model="form.due_date"', false);
+        $response->assertSee('x-model="form.status"', false);
+        $response->assertSee('x-model="form.approved_by"', false);
+        $response->assertSee('x-model="form.narration"', false);
+        $response->assertSee('x-model="form.notes"', false);
+    }
+
+    public function test_view_and_delete_transaction_modals_use_sidebar_safe_boundary(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->get(route('organization.sister-concerns.transactions'));
+
+        $response->assertStatus(200);
+
+        // All 3 modals (Add/Edit, View, Delete) teleport to body with full viewport stacking
+        $content = $response->getContent();
+        $needle = 'x-teleport="body"';
+        $occurrences = substr_count($content, $needle);
+        $this->assertGreaterThanOrEqual(3, $occurrences, 'Add/Edit, View, and Delete modals should all teleport to body.');
+        $response->assertDontSee('left-0 lg:left-64', false);
+    }
+
     public function test_can_create_valid_transaction_between_two_eligible_companies(): void
     {
         $payload = [

@@ -87,6 +87,78 @@ class SisterConcernCompanyModalTest extends TestCase
         $response->assertSee('PAN');
     }
 
+    public function test_add_company_modal_has_sidebar_safe_layout_and_responsive_dimensions(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->get(route('organization.sister-concerns.companies'));
+
+        $response->assertStatus(200);
+
+        // Modal teleported to body and centered in full viewport above sidebar
+        $response->assertSee('x-teleport="body"', false);
+        $response->assertSee('fixed inset-0 z-[100]', false);
+        $response->assertSee('min-h-screen items-center justify-center', false);
+        $response->assertDontSee('left-0 lg:left-64', false);
+
+        // Modal dimension and scrolling rules
+        $response->assertSee('max-h-[88vh]', false);
+        $response->assertSee('sticky top-0 z-10', false);
+        $response->assertSee('sticky bottom-0 z-10', false);
+
+        // Form controls and section fields
+        $response->assertSee('x-model="form.name"', false);
+        $response->assertSee('x-model="form.code"', false);
+        $response->assertSee('x-model="form.company_type"', false);
+        $response->assertSee('x-model="form.legal_name"', false);
+        $response->assertSee('x-model="form.incorporation_no"', false);
+        $response->assertSee('x-model="form.incorporation_date"', false);
+        $response->assertSee('x-model="form.cin"', false);
+        $response->assertSee('x-model="form.logo_emoji"', false);
+        $response->assertSee('x-model="form.gstin"', false);
+        $response->assertSee('x-model="form.pan"', false);
+        $response->assertSee('x-model="form.tan"', false);
+        $response->assertSee('x-model="form.iec_code"', false);
+        $response->assertSee('x-model="form.msme_registration_no"', false);
+        $response->assertSee('x-model="form.address"', false);
+        $response->assertSee('x-model="form.city"', false);
+        $response->assertSee('x-model="form.state"', false);
+        $response->assertSee('x-model="form.country"', false);
+        $response->assertSee('x-model="form.pincode"', false);
+        $response->assertSee('x-model="form.phone"', false);
+        $response->assertSee('x-model="form.email"', false);
+        $response->assertSee('x-model="form.website"', false);
+        $response->assertSee('x-model="form.nature_of_business"', false);
+        $response->assertSee('x-model="form.authorized_capital"', false);
+        $response->assertSee('x-model="form.paid_up_capital"', false);
+        $response->assertSee('x-model="form.annual_turnover"', false);
+        $response->assertSee('x-model="form.financial_year"', false);
+        $response->assertSee('x-model="form.accounting_software"', false);
+        $response->assertSee('x-model="form.branches_count_manual"', false);
+        $response->assertSee('x-model="form.employees_count_manual"', false);
+        $response->assertSee('x-model="form.relationship_type"', false);
+        $response->assertSee('x-model="form.shareholding_percentage"', false);
+        $response->assertSee('x-model="form.is_active"', false);
+        $response->assertSee('x-model="form.compliance_status"', false);
+
+        // Logo emoji container wraps properly
+        $response->assertSee('flex items-center gap-1 flex-wrap py-1', false);
+    }
+
+    public function test_view_and_delete_company_modals_use_sidebar_safe_boundary(): void
+    {
+        $response = $this->actingAs($this->adminUser)
+            ->get(route('organization.sister-concerns.companies'));
+
+        $response->assertStatus(200);
+
+        // All 3 modals (Add/Edit, View, Delete) teleport to body with full viewport stacking
+        $content = $response->getContent();
+        $needle = 'x-teleport="body"';
+        $occurrences = substr_count($content, $needle);
+        $this->assertGreaterThanOrEqual(3, $occurrences, 'Add/Edit, View, and Delete modals should all teleport to body.');
+        $response->assertDontSee('left-0 lg:left-64', false);
+    }
+
     public function test_can_create_sister_concern_with_all_five_sections(): void
     {
         $payload = [

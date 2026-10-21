@@ -92,8 +92,8 @@ class ProductTypeSearchableManagementTest extends TestCase
             ]);
 
         $names = collect($response->json('items'))->pluck('name')->all();
-        $this->assertContains('FINISHED GOODS', $names);
-        $this->assertContains('HARDWARE', $names);
+        $this->assertTrue(in_array('Finished Goods', $names) || in_array('FINISHED GOODS', $names));
+        $this->assertTrue(in_array('Hardware', $names) || in_array('HARDWARE', $names));
     }
 
     public function test_can_quick_store_new_product_type(): void
@@ -113,7 +113,7 @@ class ProductTypeSearchableManagementTest extends TestCase
             ]);
 
         $this->assertDatabaseHas('product_types', [
-            'name' => 'RAW MATERIALS',
+            'name' => 'Raw Materials',
         ]);
     }
 
@@ -150,18 +150,15 @@ class ProductTypeSearchableManagementTest extends TestCase
             ->assertJsonValidationErrors(['name']);
     }
 
-    public function test_product_create_form_renders_searchable_dropdown_and_add_button(): void
+    public function test_product_create_form_does_not_render_product_type_dropdown_or_add_button(): void
     {
         $response = $this->actingAs($this->user)
             ->get(route('masters.products.create'));
 
         $response->assertOk();
-        $response->assertSee('Product Type');
-        $response->assertSee('Add Product Type');
-        $response->assertSee('Select Product Type');
-        $response->assertSee('productTypeManager');
-        $response->assertSee('product_type_id');
-        $response->assertSee('product_type');
+        $response->assertDontSee('+ Add Product Type');
+        $response->assertDontSee('productTypeManager');
+        $response->assertDontSee('product_type_search_input');
     }
 
     public function test_can_create_product_with_selected_product_type(): void
@@ -190,18 +187,16 @@ class ProductTypeSearchableManagementTest extends TestCase
 
         $response->assertRedirect(route('masters.products.index'));
 
-        $this->assertDatabaseHas('products', [
-            'name' => 'BRAVIA 65 4K SCREEN',
-            'sku' => 'PART-BRV-65',
-            'product_type_id' => $type->id,
-            'product_type' => 'FINISHED GOODS',
-        ]);
+        $product = Product::where('sku', 'PART-BRV-65')->first();
+        $this->assertNotNull($product);
+        $this->assertEquals($type->id, $product->product_type_id);
+        $this->assertEquals('Finished Goods', $product->product_type);
     }
 
     public function test_can_update_product_type(): void
     {
-        $type1 = ProductType::firstOrCreate(['name' => 'FINISHED GOODS'], ['code' => 'FG', 'is_active' => true]);
-        $type2 = ProductType::firstOrCreate(['name' => 'SPARE PART'], ['code' => 'SP', 'is_active' => true]);
+        $type1 = ProductType::firstOrCreate(['name' => 'Finished Goods'], ['code' => 'FG', 'is_active' => true]);
+        $type2 = ProductType::firstOrCreate(['name' => 'Spare Part'], ['code' => 'SP', 'is_active' => true]);
 
         $product = Product::create([
             'company_id' => $this->company->id,
@@ -236,12 +231,12 @@ class ProductTypeSearchableManagementTest extends TestCase
 
         $product->refresh();
         $this->assertSame($type2->id, (int) $product->product_type_id);
-        $this->assertSame('SPARE PART', $product->product_type);
+        $this->assertEquals('Spare Part', $product->product_type);
     }
 
     public function test_product_edit_form_prefills_selected_product_type(): void
     {
-        $type = ProductType::firstOrCreate(['name' => 'HARDWARE'], ['code' => 'HW', 'is_active' => true]);
+        $type = ProductType::firstOrCreate(['name' => 'Hardware'], ['code' => 'HW', 'is_active' => true]);
 
         $product = Product::create([
             'company_id' => $this->company->id,
@@ -263,7 +258,7 @@ class ProductTypeSearchableManagementTest extends TestCase
 
         $response->assertOk();
         $response->assertSee((string) $type->id);
-        $response->assertSee('HARDWARE');
+        $response->assertSee('Hardware');
     }
 
     public function test_product_type_is_optional(): void

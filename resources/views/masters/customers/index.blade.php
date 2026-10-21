@@ -88,6 +88,12 @@
                         <a href="{{ route('masters.customers.edit', $item) }}" class="text-indigo-600 hover:text-indigo-800 hover:underline">
                             {{ $item->name }}
                         </a>
+                        @if($item->businessGroup)
+                            <div class="text-[11px] text-purple-700 font-normal flex items-center gap-1 mt-0.5" title="Business Group">
+                                <span class="font-emoji">{{ $item->businessGroup->logo_emoji ?: '🏢' }}</span>
+                                <span class="truncate max-w-[200px]">{{ $item->businessGroup->name }}</span>
+                            </div>
+                        @endif
                     </td>
                     <td class="px-6 py-4 text-sm font-mono text-slate-600">{{ $item->code }}</td>
                     <td class="px-6 py-4 text-sm">

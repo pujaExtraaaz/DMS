@@ -325,36 +325,40 @@
     {{-- ========================================================================= --}}
     {{-- ADD / EDIT TRANSACTION MODAL                                              --}}
     {{-- ========================================================================= --}}
-    <div x-cloak
-         x-show="showFormModal"
-         class="fixed inset-0 z-50 overflow-y-auto"
-         aria-labelledby="modal-title"
-         role="dialog"
-         aria-modal="true">
+    <template x-teleport="body">
+        <div x-cloak
+             x-show="showFormModal"
+             class="fixed inset-0 z-[100] overflow-y-auto"
+             aria-labelledby="modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="closeFormModal()">
 
-        {{-- Backdrop --}}
-        <div x-show="showFormModal"
-             x-transition:enter="ease-out duration-300"
-             x-transition:enter-start="opacity-0"
-             x-transition:enter-end="opacity-100"
-             x-transition:leave="ease-in duration-200"
-             x-transition:leave-start="opacity-100"
-             x-transition:leave-end="opacity-0"
-             @click="closeFormModal()"
-             class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"></div>
-
-        <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-6">
+            {{-- Fullscreen Backdrop --}}
             <div x-show="showFormModal"
                  x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
                  x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                 class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-4xl border border-slate-100 flex flex-col">
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @click="closeFormModal()"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"></div>
+
+            <div class="relative flex min-h-screen items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">
+                <div x-show="showFormModal"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="pointer-events-auto relative w-full max-h-[88vh] flex flex-col bg-white rounded-2xl text-left shadow-2xl border border-slate-200 overflow-hidden my-auto"
+                     style="width: min(1140px, calc(100vw - 32px)); max-width: min(1140px, calc(100vw - 32px));"
+                     @click.stop>
 
                 {{-- Fixed Header --}}
-                <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                <div class="shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white/95 backdrop-blur-xs sticky top-0 z-10">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
@@ -374,8 +378,8 @@
                 </div>
 
                 {{-- Scrollable Form Body --}}
-                <form @submit.prevent="submitForm()" class="flex flex-col">
-                    <div class="p-6 space-y-6 max-h-[calc(86vh-130px)] overflow-y-auto">
+                <form @submit.prevent="submitForm()" class="flex flex-col flex-1 min-h-0 overflow-hidden">
+                    <div class="flex-1 overflow-y-auto p-6 space-y-6">
 
                         {{-- Validation Summary Alert --}}
                         <div x-show="formErrorSummary" class="p-3.5 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs flex items-center gap-2">
@@ -709,8 +713,8 @@
 
                     </div>
 
-                    {{-- Fixed Modal Footer --}}
-                    <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+                    {{-- Sticky Modal Footer --}}
+                    <div class="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/95 backdrop-blur-xs sticky bottom-0 z-10">
                         <button type="button"
                                 @click="closeFormModal()"
                                 :disabled="isSaving"
@@ -731,41 +735,46 @@
 
             </div>
         </div>
-    </div>
+    </template>
 
     {{-- ========================================================================= --}}
     {{-- VIEW DETAILS MODAL                                                        --}}
     {{-- ========================================================================= --}}
-    <div x-cloak
-         x-show="showViewModal"
-         class="fixed inset-0 z-50 overflow-y-auto"
-         role="dialog"
-         aria-modal="true">
+    <template x-teleport="body">
+        <div x-cloak
+             x-show="showViewModal"
+             class="fixed inset-0 z-[100] overflow-y-auto"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="showViewModal = false">
 
-        <div x-show="showViewModal"
-             x-transition:enter="ease-out duration-300"
-             x-transition:enter-start="opacity-0"
-             x-transition:enter-end="opacity-100"
-             x-transition:leave="ease-in duration-200"
-             x-transition:leave-start="opacity-100"
-             x-transition:leave-end="opacity-0"
-             @click="showViewModal = false"
-             class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"></div>
-
-        <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-6">
+            {{-- Fullscreen Backdrop --}}
             <div x-show="showViewModal"
                  x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 translate-y-4 sm:scale-95"
-                 x-transition:enter-end="opacity-100 sm:scale-100"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
                  x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 sm:scale-100"
-                 x-transition:leave-end="opacity-0 translate-y-4 sm:scale-95"
-                 class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-3xl border border-slate-100">
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @click="showViewModal = false"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"></div>
+
+            <div class="relative flex min-h-screen items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">
+                <div x-show="showViewModal"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="pointer-events-auto relative w-full max-h-[88vh] flex flex-col bg-white rounded-2xl text-left shadow-2xl border border-slate-200 overflow-hidden my-auto"
+                     style="width: min(850px, calc(100vw - 32px)); max-width: min(850px, calc(100vw - 32px));"
+                     @click.stop>
 
                 <template x-if="viewData">
-                    <div>
+                    <div class="flex flex-col flex-1 min-h-0 overflow-hidden">
                         {{-- Header Banner --}}
-                        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80">
+                        <div class="shrink-0 flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/95 backdrop-blur-xs sticky top-0 z-10">
                             <div class="flex items-center gap-3">
                                 <div class="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -789,7 +798,7 @@
                         </div>
 
                         {{-- Body --}}
-                        <div class="p-6 space-y-6 max-h-[75vh] overflow-y-auto text-xs">
+                        <div class="flex-1 overflow-y-auto p-6 space-y-6 text-xs">
                             {{-- Counterparties Flow --}}
                             <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                                 <div class="text-center sm:text-left flex-1">
@@ -856,7 +865,7 @@
                         </div>
 
                         {{-- Footer --}}
-                        <div class="px-6 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
+                        <div class="shrink-0 px-6 py-3 border-t border-slate-100 bg-slate-50/95 backdrop-blur-xs flex justify-end sticky bottom-0 z-10">
                             <button type="button" @click="showViewModal = false" class="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition cursor-pointer">
                                 Close
                             </button>
@@ -866,68 +875,73 @@
 
             </div>
         </div>
-    </div>
+    </template>
 
     {{-- ========================================================================= --}}
     {{-- DELETE CONFIRMATION MODAL                                                 --}}
     {{-- ========================================================================= --}}
-    <div x-cloak
-         x-show="showDeleteModal"
-         class="fixed inset-0 z-50 overflow-y-auto"
-         role="dialog"
-         aria-modal="true">
+    <template x-teleport="body">
+        <div x-cloak
+             x-show="showDeleteModal"
+             class="fixed inset-0 z-[100] overflow-y-auto"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="cancelDelete()">
 
-        <div x-show="showDeleteModal"
-             x-transition:enter="ease-out duration-300"
-             x-transition:enter-start="opacity-0"
-             x-transition:enter-end="opacity-100"
-             x-transition:leave="ease-in duration-200"
-             x-transition:leave-start="opacity-100"
-             x-transition:leave-end="opacity-0"
-             @click="cancelDelete()"
-             class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"></div>
-
-        <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-6">
+            {{-- Fullscreen Backdrop --}}
             <div x-show="showDeleteModal"
                  x-transition:enter="ease-out duration-300"
-                 x-transition:enter-start="opacity-0 translate-y-4 sm:scale-95"
-                 x-transition:enter-end="opacity-100 sm:scale-100"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
                  x-transition:leave="ease-in duration-200"
-                 x-transition:leave-start="opacity-100 sm:scale-100"
-                 x-transition:leave-end="opacity-0 translate-y-4 sm:scale-95"
-                 class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-md border border-slate-100 p-6">
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @click="cancelDelete()"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"></div>
 
-                <div class="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <div class="relative flex min-h-screen items-center justify-center p-4 sm:p-6 pointer-events-none">
+                <div x-show="showDeleteModal"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="pointer-events-auto relative w-full sm:max-w-md bg-white rounded-2xl text-left overflow-hidden shadow-2xl border border-slate-200 p-6 my-auto"
+                     @click.stop>
+
+                    <div class="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </div>
+
+                    <h3 class="text-base font-bold text-center text-slate-900">Delete Inter-Company Transaction?</h3>
+                    <p class="text-xs text-center text-slate-500 mt-2">
+                        Are you sure you want to delete transaction <strong class="text-slate-800 font-mono" x-text="deletingTransactionNo"></strong>? This action cannot be undone.
+                    </p>
+
+                    <div class="mt-6 flex items-center justify-center gap-3">
+                        <button type="button"
+                                @click="cancelDelete()"
+                                :disabled="isDeleting"
+                                class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer">
+                            Cancel
+                        </button>
+                        <button type="button"
+                                @click="executeDelete()"
+                                :disabled="isDeleting"
+                                class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-xs transition disabled:opacity-50 cursor-pointer">
+                            <svg x-show="isDeleting" class="animate-spin -ml-1 mr-1 h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span x-text="isDeleting ? 'Deleting...' : 'Confirm Delete'"></span>
+                        </button>
+                    </div>
+
                 </div>
-
-                <h3 class="text-base font-bold text-center text-slate-900">Delete Inter-Company Transaction?</h3>
-                <p class="text-xs text-center text-slate-500 mt-2">
-                    Are you sure you want to delete transaction <strong class="text-slate-800 font-mono" x-text="deletingTransactionNo"></strong>? This action cannot be undone.
-                </p>
-
-                <div class="mt-6 flex items-center justify-center gap-3">
-                    <button type="button"
-                            @click="cancelDelete()"
-                            :disabled="isDeleting"
-                            class="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer">
-                        Cancel
-                    </button>
-                    <button type="button"
-                            @click="executeDelete()"
-                            :disabled="isDeleting"
-                            class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow-xs transition disabled:opacity-50 cursor-pointer">
-                        <svg x-show="isDeleting" class="animate-spin -ml-1 mr-1 h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span x-text="isDeleting ? 'Deleting...' : 'Confirm Delete'"></span>
-                    </button>
-                </div>
-
             </div>
         </div>
-    </div>
+    </template>
 
 </div>
 
