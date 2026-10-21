@@ -61,6 +61,17 @@
     ));
 
     $initialBusinessGroupId = old('business_group_id', $item->business_group_id ?? request('selected_group_id', request('business_group_id')));
+
+    $initialContacts = old('contacts', ($item->exists && $item->relationLoaded('contacts'))
+        ? $item->contacts->map(fn ($contact) => [
+            'name' => $contact->name ?? '',
+            'role' => $contact->role ?? '',
+            'phone' => $contact->phone ?? '',
+            'alternate_phone' => $contact->alternate_phone ?? '',
+            'email' => $contact->email ?? '',
+            'is_primary' => (bool) $contact->is_primary,
+        ])->values()->all()
+        : []);
 @endphp
 
 @section('content')
@@ -188,7 +199,7 @@
                            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 hover:underline focus:outline-none"
                            title="Create new business group in Sister Concern">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            + Add
+                            Add
                         </a>
                     </div>
 
@@ -349,7 +360,6 @@
                         <template x-for="t in customClassifications" :key="t.id">
                             <option :value="t.id" x-text="t.name"></option>
                         </template>
-                        <option value="__add_manually__" class="font-semibold text-indigo-600 bg-indigo-50">+ Add Manually</option>
                     </select>
                 </div>
 
@@ -387,7 +397,7 @@
                 <button type="button" @click="addAddress()"
                         class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                    + Add Address
+                    Add Address
                 </button>
             </div>
 
@@ -709,6 +719,57 @@
                 </div>
                 <p>Specific pricing schedules and custom rates are managed centrally in <a href="{{ route('masters.price-masters.index') }}" target="_blank" class="text-indigo-600 underline font-medium hover:text-indigo-800">Master &rarr; Price Master</a> based on party classification.</p>
             </div>
+        </div>
+
+        <div class="space-y-3">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-700">Contact Persons</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Add the people you deal with at this party. One can be marked primary.</p>
+                </div>
+                <button type="button" @click="addContact()"
+                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shrink-0">
+                    + Add Contact
+                </button>
+            </div>
+            <div x-show="contacts.length === 0" class="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-xs text-slate-500">
+                No contact persons yet.
+            </div>
+            <template x-for="(contact, idx) in contacts" :key="idx">
+                <div class="rounded-lg border border-slate-200 p-3 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                            <input type="radio" name="contact_primary" :checked="contact.is_primary" @change="setPrimaryContact(idx)" class="text-indigo-600 focus:ring-indigo-500">
+                            Primary contact
+                        </label>
+                        <button type="button" @click="removeContact(idx)" class="text-xs font-semibold text-rose-600 hover:text-rose-800">Remove</button>
+                    </div>
+                    <input type="hidden" :name="`contacts[${idx}][level]`" value="party">
+                    <input type="hidden" :name="`contacts[${idx}][is_primary]`" :value="contact.is_primary ? 1 : 0">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Name *</label>
+                            <input type="text" :name="`contacts[${idx}][name]`" x-model="contact.name" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Designation</label>
+                            <input type="text" :name="`contacts[${idx}][role]`" x-model="contact.role" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Mobile 1</label>
+                            <input type="text" :name="`contacts[${idx}][phone]`" x-model="contact.phone" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Mobile 2</label>
+                            <input type="text" :name="`contacts[${idx}][alternate_phone]`" x-model="contact.alternate_phone" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-700 mb-1">Email</label>
+                            <input type="email" :name="`contacts[${idx}][email]`" x-model="contact.email" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                    </div>
+                </div>
+            </template>
         </div>
 
         <div class="space-y-4">
@@ -1243,6 +1304,7 @@ function partyFormController() {
             pincode: {!! json_encode(old('pincode', $item->pincode ?? '')) !!},
         },
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
+        contacts: {!! json_encode($initialContacts) !!},
         addresses: {!! json_encode($initialAddresses) !!},
         _ifscTimers: {},
         _ifscLastFetched: {},
@@ -1252,6 +1314,31 @@ function partyFormController() {
         getCities(stateName) {
             if (!stateName) return [];
             return this.stateCities[stateName] || [];
+        },
+
+        addContact() {
+            this.contacts.push({
+                name: '',
+                role: '',
+                phone: '',
+                alternate_phone: '',
+                email: '',
+                is_primary: this.contacts.length === 0,
+            });
+        },
+
+        removeContact(idx) {
+            const wasPrimary = this.contacts[idx]?.is_primary;
+            this.contacts.splice(idx, 1);
+            if (wasPrimary && this.contacts.length) {
+                this.contacts[0].is_primary = true;
+            }
+        },
+
+        setPrimaryContact(idx) {
+            this.contacts.forEach((contact, index) => {
+                contact.is_primary = index === idx;
+            });
         },
 
         addAddress() {

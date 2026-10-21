@@ -124,6 +124,7 @@
                 </button>
                 <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
                     <a href="{{ route('purchasing.orders.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.orders.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Orders</span></a>
+                    <a href="{{ route('purchasing.comparisons.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.comparisons.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Comparison Sheets</span></a>
                     <a href="{{ route('purchasing.invoices.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.invoices.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Invoices</span></a>
                     <a href="{{ route('purchasing.freight-bills.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.freight-bills.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Freight Bills</span></a>
                 </div>
@@ -157,16 +158,12 @@
                 <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
                     @if($can('orders.view', 'orders.create', 'orders.book', 'orders.manage', 'create orders'))
                         <a href="{{ route('orders.index') }}" class="{{ $itemClass }} {{ $linkClass(['orders.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Orders</span></a>
-                        <a href="{{ route('orders.create') }}" class="{{ $itemClass }} {{ $linkClass(['orders.create']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Create Order</span></a>
                     @endif
                     @if($can('quotations.view', 'quotations.create', 'sales.view'))
                         <a href="{{ route('quotations.index') }}" class="{{ $itemClass }} {{ $linkClass(['quotations.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Quotations</span></a>
                     @endif
-                    @if($can('sales.view', 'invoices.view'))
-                        <a href="{{ route('invoices.index') }}" class="{{ $itemClass }} {{ $linkClass(['invoices.index', 'invoices.show']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tax Invoices</span></a>
-                    @endif
-                    @if($can('sales.create', 'invoices.create'))
-                        <a href="{{ route('invoices.create') }}" class="{{ $itemClass }} {{ $linkClass(['invoices.create']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Create Invoice</span></a>
+                    @if($can('sales.view', 'invoices.view', 'sales.create', 'invoices.create'))
+                        <a href="{{ route('invoices.index') }}" class="{{ $itemClass }} {{ $linkClass(['invoices.index', 'invoices.show', 'invoices.create']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tax Invoices</span></a>
                     @endif
                     @if($can('sales.manage', 'quotations.manage', 'masters.manage'))
                         <a href="{{ route('region-policies.index') }}" class="{{ $itemClass }} {{ $linkClass(['region-policies.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Region Policies</span></a>

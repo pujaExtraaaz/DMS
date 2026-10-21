@@ -132,15 +132,6 @@
                 @endif
             </form>
 
-            {{-- + New Transaction Button --}}
-            <div class="shrink-0">
-                <button type="button"
-                        @click="openAddModal()"
-                        class="inline-flex items-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-xs font-semibold shadow-xs transition cursor-pointer">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                    <span>+ New Transaction</span>
-                </button>
-            </div>
         </div>
 
         {{-- Table Container --}}

@@ -696,7 +696,7 @@ class CustomerController extends Controller
             'contacts.*.alternate_phone' => 'nullable|string|max:20',
             'contacts.*.email' => 'nullable|email|max:255',
             'contacts.*.location' => 'nullable|string|max:100',
-            'contacts.*.level' => 'nullable|in:primary,secondary,accounts,support',
+            'contacts.*.level' => 'nullable|in:party,branch,site,warehouse,transporter,driver,site_incharge,primary,secondary,accounts,support',
             'contacts.*.is_primary' => 'nullable|boolean',
             'addresses' => 'nullable|array',
             'addresses.*.id' => 'nullable|integer',
@@ -828,9 +828,9 @@ class CustomerController extends Controller
     {
         // 1. Contacts
         $contacts = collect($request->input('contacts', []))
-            ->filter(fn ($row) => filled($row['name'] ?? null) || filled($row['phone'] ?? null) || filled($row['email'] ?? null))
+            ->filter(fn ($row) => filled($row['name'] ?? null))
             ->map(fn ($row) => [
-                'level' => $row['level'] ?? 'secondary',
+                'level' => in_array($row['level'] ?? null, ['party', 'branch', 'site', 'warehouse', 'transporter', 'driver', 'site_incharge'], true) ? $row['level'] : 'party',
                 'name' => $row['name'] ?? null,
                 'role' => $row['role'] ?? null,
                 'phone' => $row['phone'] ?? null,

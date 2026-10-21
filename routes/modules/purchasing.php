@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Purchasing\FreightBillController;
+use App\Http\Controllers\Purchasing\PurchaseComparisonController;
 use App\Http\Controllers\Purchasing\LandedCostController;
 use App\Http\Controllers\Purchasing\PurchaseInvoiceController;
 use App\Http\Controllers\Purchasing\PurchaseInwardController;
@@ -8,6 +9,22 @@ use App\Http\Controllers\Purchasing\PurchaseOrderController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission:super-admin|purchases.view|purchases.create|purchases.edit|purchases.delete|purchases.manage|purchase-orders.view|purchase-orders.create|purchase-orders.edit|purchase-orders.delete|purchase-orders.manage|inventory.view|inventory.manage')->group(function () {
+    Route::get('comparisons', [PurchaseComparisonController::class, 'index'])->name('comparisons.index');
+    Route::get('comparisons/create', [PurchaseComparisonController::class, 'create'])->name('comparisons.create');
+    Route::post('comparisons', [PurchaseComparisonController::class, 'store'])->name('comparisons.store');
+    Route::get('comparisons/suppliers/{customer}', [PurchaseComparisonController::class, 'supplier'])->name('comparisons.supplier');
+    Route::get('comparisons/{comparison}/edit', [PurchaseComparisonController::class, 'edit'])->name('comparisons.edit');
+    Route::put('comparisons/{comparison}', [PurchaseComparisonController::class, 'update'])->name('comparisons.update');
+    Route::post('comparisons/{comparison}/submit', [PurchaseComparisonController::class, 'submit'])->name('comparisons.submit');
+    Route::post('comparisons/{comparison}/approve', [PurchaseComparisonController::class, 'approve'])->name('comparisons.approve');
+    Route::post('comparisons/{comparison}/reject', [PurchaseComparisonController::class, 'reject'])->name('comparisons.reject');
+    Route::post('comparisons/{comparison}/convert', [PurchaseComparisonController::class, 'convert'])->name('comparisons.convert');
+    Route::get('comparisons/{comparison}/print', [PurchaseComparisonController::class, 'print'])->name('comparisons.print');
+    Route::get('comparisons/{comparison}/pdf', [PurchaseComparisonController::class, 'pdf'])->name('comparisons.pdf');
+    Route::get('comparisons/{comparison}/excel', [PurchaseComparisonController::class, 'excel'])->name('comparisons.excel');
+    Route::get('comparisons/{comparison}/files/{file}', [PurchaseComparisonController::class, 'file'])->name('comparisons.files');
+    Route::get('comparisons/{comparison}', [PurchaseComparisonController::class, 'show'])->name('comparisons.show');
+
     Route::get('orders', [PurchaseOrderController::class, 'index'])->name('orders.index');
     Route::get('orders/create', [PurchaseOrderController::class, 'create'])->name('orders.create');
     Route::post('orders', [PurchaseOrderController::class, 'store'])->name('orders.store');
