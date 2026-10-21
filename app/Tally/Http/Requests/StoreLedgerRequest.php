@@ -104,14 +104,14 @@ class StoreLedgerRequest extends FormRequest
                 'string',
                 'max:32',
                 'regex:/^[A-Z0-9][A-Z0-9_-]{0,31}$/',
-                Rule::unique('ledgers', 'code')
+                Rule::unique('acct_ledgers', 'code')
                     ->where(fn ($query) => $query->where('company_id', $company->id))
                     ->ignore($ledger),
             ],
             'account_group_id' => [
                 'required',
                 'integer',
-                Rule::exists('account_groups', 'id')->where(function ($query) use ($company, $ledger) {
+                Rule::exists('acct_account_groups', 'id')->where(function ($query) use ($company, $ledger) {
                     $query->where('company_id', $company->id)->where(function ($query) use ($ledger) {
                         $query->where('is_active', true);
 
@@ -133,7 +133,7 @@ class StoreLedgerRequest extends FormRequest
                 'string',
                 'size:15',
                 'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/',
-                Rule::unique('ledgers', 'gstin')
+                Rule::unique('acct_ledgers', 'gstin')
                     ->where(fn ($query) => $query->where('company_id', $company->id))
                     ->ignore($ledger),
             ],
@@ -143,7 +143,7 @@ class StoreLedgerRequest extends FormRequest
             'deduction_section_id' => [
                 'nullable',
                 'integer',
-                Rule::exists('deduction_sections', 'id')->where(fn ($query) => $query->where('company_id', $company->id)),
+                Rule::exists('acct_deduction_sections', 'id')->where(fn ($query) => $query->where('company_id', $company->id)),
             ],
             'cash_flow_class' => ['nullable', Rule::in(['Operating', 'Investing', 'Financing'])],
             'is_active' => ['required', 'boolean'],
@@ -163,7 +163,7 @@ class StoreLedgerRequest extends FormRequest
                 'string',
                 'max:30',
                 'regex:/^[A-Za-z0-9]{6,30}$/',
-                Rule::unique('bank_accounts', 'account_number')
+                Rule::unique('acct_bank_accounts', 'account_number')
                     ->where(fn ($query) => $query->where('company_id', $company->id))
                     ->ignore($ledger?->bankAccount()->value('id')),
             ],

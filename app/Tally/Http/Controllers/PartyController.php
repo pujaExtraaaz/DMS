@@ -159,7 +159,7 @@ class PartyController extends Controller
             'shipping_address' => ['nullable', 'string', 'max:500'],
             'state' => ['nullable', 'string', 'max:255'],
             'country' => ['nullable', 'string', 'max:80'],
-            'gstin' => ['nullable', 'string', 'size:15', 'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/', Rule::unique('ledgers', 'gstin')->where('company_id', $companyId)->ignore($party?->ledger_id)],
+            'gstin' => ['nullable', 'string', 'size:15', 'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/', Rule::unique('acct_ledgers', 'gstin')->where('company_id', $companyId)->ignore($party?->ledger_id)],
             'pan' => ['nullable', 'string', 'size:10', 'regex:/^[A-Z]{5}[0-9]{4}[A-Z]$/'],
             'gst_registration_type' => ['nullable', Rule::enum(GstRegistrationType::class)],
             'credit_limit' => ['nullable', 'numeric', 'min:0'],

@@ -55,8 +55,8 @@ class PayrollController extends Controller
         $data = $request->validate([
             'period_start' => ['required', 'date'],
             'period_end' => ['required', 'date', 'after_or_equal:period_start'],
-            'salary_ledger_id' => ['required', Rule::exists('ledgers', 'id')->where('company_id', $company->id)],
-            'deduction_ledger_id' => ['nullable', Rule::exists('ledgers', 'id')->where('company_id', $company->id)],
+            'salary_ledger_id' => ['required', Rule::exists('acct_ledgers', 'id')->where('company_id', $company->id)],
+            'deduction_ledger_id' => ['nullable', Rule::exists('acct_ledgers', 'id')->where('company_id', $company->id)],
             'employee_ids' => ['required', 'array', 'min:1'],
             'employee_ids.*' => ['integer'],
         ]);
@@ -115,7 +115,7 @@ class PayrollController extends Controller
         $data = $request->validate([
             'attendance_date' => ['required', 'date'],
             'rows' => ['required', 'array', 'min:1'],
-            'rows.*.employee_id' => ['required', Rule::exists('employees', 'id')->where('company_id', $company->id)],
+            'rows.*.employee_id' => ['required', Rule::exists('acct_employees', 'id')->where('company_id', $company->id)],
             'rows.*.attendance_type' => ['nullable', Rule::in(['present', 'absent', 'leave', 'half'])],
         ]);
         $marked = array_values(array_filter($data['rows'], fn (array $row) => ($row['attendance_type'] ?? '') !== ''));
@@ -188,7 +188,7 @@ class PayrollController extends Controller
         }
 
         $data = $request->validate([
-            'bank_ledger_id' => ['required', Rule::exists('ledgers', 'id')->where('company_id', $company->id)],
+            'bank_ledger_id' => ['required', Rule::exists('acct_ledgers', 'id')->where('company_id', $company->id)],
         ]);
 
         if ($total <= 0) {

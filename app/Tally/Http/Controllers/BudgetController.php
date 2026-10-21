@@ -104,8 +104,8 @@ class BudgetController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'period_start' => ['required', 'date', 'after_or_equal:'.$year->start_date->toDateString(), 'before_or_equal:'.$year->end_date->toDateString()],
             'period_end' => ['required', 'date', 'after_or_equal:period_start', 'before_or_equal:'.$year->end_date->toDateString()],
-            'ledger_id' => ['nullable', 'integer', Rule::exists('ledgers', 'id')->where(fn ($query) => $query->where('company_id', $company->id))],
-            'account_group_id' => ['nullable', 'integer', Rule::exists('account_groups', 'id')->where(fn ($query) => $query->where('company_id', $company->id))],
+            'ledger_id' => ['nullable', 'integer', Rule::exists('acct_ledgers', 'id')->where(fn ($query) => $query->where('company_id', $company->id))],
+            'account_group_id' => ['nullable', 'integer', Rule::exists('acct_account_groups', 'id')->where(fn ($query) => $query->where('company_id', $company->id))],
             'cost_centre_id' => ['nullable', 'integer', Rule::exists('cost_centres', 'id')->where(fn ($query) => $query->where('company_id', $company->id))],
             'amount' => ['required', 'numeric', 'min:0', 'decimal:0,2'],
         ]);

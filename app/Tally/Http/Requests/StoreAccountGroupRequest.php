@@ -84,7 +84,7 @@ class StoreAccountGroupRequest extends FormRequest
                 'string',
                 'max:32',
                 'regex:/^[A-Z0-9][A-Z0-9_-]{0,31}$/',
-                Rule::unique('account_groups', 'code')
+                Rule::unique('acct_account_groups', 'code')
                     ->where(fn ($query) => $query->where('company_id', $company->id))
                     ->ignore($group),
             ],

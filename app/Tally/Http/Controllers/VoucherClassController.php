@@ -37,7 +37,7 @@ class VoucherClassController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'voucher_type' => ['required', Rule::in(array_map(fn (VoucherType $type) => $type->value, VoucherType::cases()))],
-            'default_ledger_id' => ['nullable', Rule::exists('ledgers', 'id')->where('company_id', $company->id)],
+            'default_ledger_id' => ['nullable', Rule::exists('acct_ledgers', 'id')->where('company_id', $company->id)],
         ]);
 
         VoucherClass::query()->create([

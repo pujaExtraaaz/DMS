@@ -37,7 +37,7 @@ class ParityMasterController extends Controller
         $company = $context->company();
         $data = $request->validate([
             'name' => ['required', 'string', 'max:80'],
-            'code' => ['required', 'string', 'max:8', Rule::unique('currencies', 'code')->where('company_id', $company->id)],
+            'code' => ['required', 'string', 'max:8', Rule::unique('acct_currencies', 'code')->where('company_id', $company->id)],
             'symbol' => ['required', 'string', 'max:8'],
             'decimal_places' => ['required', 'integer', 'between:0,4'],
             'exchange_rate' => ['required', 'numeric', 'gt:0'],
@@ -67,7 +67,7 @@ class ParityMasterController extends Controller
         $this->owns($context, $currency->company_id);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:80'],
-            'code' => ['required', 'string', 'max:8', Rule::unique('currencies', 'code')->where('company_id', $currency->company_id)->ignore($currency->id)],
+            'code' => ['required', 'string', 'max:8', Rule::unique('acct_currencies', 'code')->where('company_id', $currency->company_id)->ignore($currency->id)],
             'symbol' => ['required', 'string', 'max:8'],
             'decimal_places' => ['required', 'integer', 'between:0,4'],
             'exchange_rate' => ['required', 'numeric', 'gt:0'],
@@ -444,7 +444,7 @@ class ParityMasterController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:80'],
-            'abbreviation' => ['required', 'string', 'max:12', Rule::unique('voucher_type_masters', 'abbreviation')->where('company_id', $companyId)->ignore($ignore)],
+            'abbreviation' => ['required', 'string', 'max:12', Rule::unique('acct_voucher_type_masters', 'abbreviation')->where('company_id', $companyId)->ignore($ignore)],
             'category' => ['required', Rule::in(array_column(VoucherType::cases(), 'value'))],
             'prefix' => ['required', 'string', 'max:12'],
             'next_number' => ['required', 'integer', 'min:1'],
@@ -479,7 +479,7 @@ class ParityMasterController extends Controller
     private function gstData(Request $request, int $companyId, ?int $ignore = null): array
     {
         $data = $request->validate([
-            'gstin' => ['required', 'string', 'size:15', Rule::unique('gst_registrations', 'gstin')->where('company_id', $companyId)->ignore($ignore)],
+            'gstin' => ['required', 'string', 'size:15', Rule::unique('acct_gst_registrations', 'gstin')->where('company_id', $companyId)->ignore($ignore)],
             'registration_type' => ['required', Rule::in(array_column(GstRegistrationType::cases(), 'value'))],
             'state' => ['required', 'string', 'max:80'],
             'branch_id' => ['nullable', 'integer'],
@@ -530,7 +530,7 @@ class ParityMasterController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'legal_name' => ['nullable', 'string', 'max:160'],
-            'merchant_code' => ['required', 'string', 'max:40', Rule::unique('merchant_profiles', 'merchant_code')->where('company_id', $companyId)->ignore($ignore)],
+            'merchant_code' => ['required', 'string', 'max:40', Rule::unique('acct_merchant_profiles', 'merchant_code')->where('company_id', $companyId)->ignore($ignore)],
             'branch_id' => ['nullable', 'integer'],
             'settlement_ledger_id' => ['nullable', 'integer'],
             'bank_account_id' => ['nullable', 'integer'],
@@ -565,7 +565,7 @@ class ParityMasterController extends Controller
     private function paymentData(Request $request, int $companyId): array
     {
         $data = $request->validate([
-            'ledger_id' => ['required', Rule::exists('ledgers', 'id')->where('company_id', $companyId)],
+            'ledger_id' => ['required', Rule::exists('acct_ledgers', 'id')->where('company_id', $companyId)],
             'amount' => ['required', 'numeric', 'gt:0'],
             'due_date' => ['required', 'date'],
             'reference' => ['nullable', 'string', 'max:50'],
@@ -608,7 +608,7 @@ class ParityMasterController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'employee_code' => ['required', 'string', 'max:20', Rule::unique('employees', 'employee_code')->where('company_id', $companyId)->ignore($ignore)],
+            'employee_code' => ['required', 'string', 'max:20', Rule::unique('acct_employees', 'employee_code')->where('company_id', $companyId)->ignore($ignore)],
             'designation' => ['nullable', 'string', 'max:80'],
             'group_name' => ['nullable', 'string', 'max:80'],
             'pan' => ['nullable', 'string', 'max:10'],
@@ -649,7 +649,7 @@ class ParityMasterController extends Controller
             'nature' => ['required', Rule::in(['earning', 'deduction'])],
             'calculation' => ['required', Rule::in(['flat', 'percent'])],
             'rate_or_amount' => ['required', 'numeric', 'gte:0'],
-            'ledger_id' => ['required', Rule::exists('ledgers', 'id')->where('company_id', $companyId)],
+            'ledger_id' => ['required', Rule::exists('acct_ledgers', 'id')->where('company_id', $companyId)],
             'employee_id' => ['nullable', 'integer'],
         ]);
         $data['employee_id'] = ($data['employee_id'] ?? null) ?: null;

@@ -105,7 +105,7 @@ class DeductionSectionController extends Controller
         $data = $request->validate([
             'kind' => ['required', Rule::enum(DeductionKind::class)],
             'name' => ['required', 'string', 'max:255'],
-            'section_code' => ['required', 'string', 'max:20', Rule::unique('deduction_sections', 'section_code')->where(fn ($query) => $query->where('company_id', $context->company()->id))->ignore($section)],
+            'section_code' => ['required', 'string', 'max:20', Rule::unique('acct_deduction_sections', 'section_code')->where(fn ($query) => $query->where('company_id', $context->company()->id))->ignore($section)],
             'rate' => ['required', 'numeric', 'min:0', 'max:100'],
             'threshold_amount' => ['required', 'numeric', 'min:0'],
             'party_role' => ['required', Rule::enum(PartyRole::class)],
