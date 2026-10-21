@@ -18,6 +18,7 @@ class Customer extends Model
     protected $fillable = [
         'company_id',
         'branch_id',
+        'business_group_id',
         'customer_type_id',
         'area_id',
         'route_id',
@@ -125,6 +126,11 @@ class Customer extends Model
     public function customerType(): BelongsTo
     {
         return $this->belongsTo(CustomerType::class);
+    }
+
+    public function businessGroup(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Organization\Models\BusinessGroup::class);
     }
 
     public function area(): BelongsTo

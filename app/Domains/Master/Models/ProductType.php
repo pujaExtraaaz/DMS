@@ -16,6 +16,7 @@ class ProductType extends Model
         'company_id',
         'name',
         'code',
+        'description',
         'is_active',
     ];
 

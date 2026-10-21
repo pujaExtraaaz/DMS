@@ -30,6 +30,7 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
     Route::resource('delivery-persons', DeliveryPersonController::class);
 
     Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit')->group(function () {
+        Route::patch('products/{product}/assign-type', [ProductController::class, 'assignType'])->name('products.assign-type');
         Route::resource('products', ProductController::class);
         Route::resource('price-masters', PriceMasterController::class);
         Route::delete('price-lists/{price_master}', [PriceMasterController::class, 'destroy'])->name('price-lists.destroy');
@@ -38,6 +39,7 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::match(['get', 'post'], 'customers/gst-lookup', [CustomerController::class, 'gstLookup'])->name('customers.gst-lookup');
         Route::match(['get', 'post'], 'customers/ifsc-lookup', [CustomerController::class, 'ifscLookup'])->name('customers.ifsc-lookup');
         Route::post('customers/quick-add', [CustomerController::class, 'quickAdd'])->name('customers.quick-add');
+        Route::get('customers/business-groups', [CustomerController::class, 'businessGroups'])->name('customers.business-groups');
         Route::get('customers/{customer}/addresses', [CustomerController::class, 'addresses'])->name('customers.addresses');
         Route::get('cities', [CustomerController::class, 'cities'])->name('cities');
         Route::resource('customers', CustomerController::class);

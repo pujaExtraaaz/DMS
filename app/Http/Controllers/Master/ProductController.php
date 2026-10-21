@@ -29,9 +29,16 @@ class ProductController extends Controller
     public function index(Request $request): View
     {
         $query = Product::query()
-            ->with(['baseUom', 'brand', 'category'])
+            ->with(['baseUom', 'brand', 'category', 'productType'])
             ->when($request->filled('brand_id'), fn ($q) => $q->where('brand_id', $request->brand_id))
             ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->category_id))
+            ->when($request->filled('product_type'), function ($q) use ($request) {
+                $val = $request->input('product_type');
+                $q->where(function ($sub) use ($val) {
+                    $sub->where('product_type', $val)
+                        ->orWhere('product_type_id', $val);
+                });
+            })
             ->when($request->filled('status'), function ($q) use ($request) {
                 if ($request->status === 'active') {
                     $q->where('is_active', true);
@@ -66,10 +73,40 @@ class ProductController extends Controller
             'items' => $items,
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
             'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'productTypes' => ProductType::where('is_active', true)->orderBy('name')->get(),
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
             'search' => $request->string('search'),
+            'productType' => $request->string('product_type'),
         ]);
+    }
+
+    public function assignType(Request $request, Product $product): JsonResponse|RedirectResponse
+    {
+        $typeId = $request->input('product_type_id');
+        $typeName = null;
+
+        if (!empty($typeId)) {
+            $pt = ProductType::find($typeId);
+            $typeName = $pt?->name;
+        }
+
+        $product->update([
+            'product_type_id' => $typeId ?: null,
+            'product_type' => $typeName,
+        ]);
+
+        $msg = "Product Type updated for '{$product->name}'.";
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => $msg,
+                'product_type' => $typeName,
+            ]);
+        }
+
+        return back()->with('success', $msg);
     }
 
     public function create(): View

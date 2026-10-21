@@ -11,6 +11,7 @@ use App\Domains\Master\Models\CustomerType;
 use App\Domains\Master\Models\Route;
 use App\Domains\Master\Services\GstLookupService;
 use App\Domains\Master\Services\IfscLookupService;
+use App\Domains\Organization\Models\BusinessGroup;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\AuditLogService;
@@ -100,10 +101,41 @@ class CustomerController extends Controller
         ]);
     }
 
+    /**
+     * Search and list active Sister Concern Business Groups for Party selection.
+     */
+    public function businessGroups(Request $request): JsonResponse
+    {
+        $search = trim((string) $request->input('search', $request->input('q', '')));
+
+        $query = BusinessGroup::query()
+            ->where('is_active', true);
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('code', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('include_id')) {
+            $includeId = (int) $request->input('include_id');
+            $query->orWhere('id', $includeId);
+        }
+
+        $groups = $query->orderBy('name')
+            ->get(['id', 'name', 'code', 'logo_emoji']);
+
+        return response()->json([
+            'success' => true,
+            'data' => $groups,
+        ]);
+    }
+
     public function index(Request $request): View
     {
         $query = Customer::query()
-            ->with(['customerType', 'area', 'route', 'salesperson', 'salesManager'])
+            ->with(['customerType', 'area', 'route', 'salesperson', 'salesManager', 'businessGroup'])
             ->when($request->filled('party_type'), function ($q) use ($request) {
                 $type = $request->party_type;
                 if ($type === Customer::PARTY_TYPE_SUNDRY_DEBTORS) {
@@ -207,7 +239,7 @@ class CustomerController extends Controller
             'item' => $customer,
             'initialAddresses' => $initialAddresses,
             'lead' => $lead,
-            ...$this->formData(),
+            ...$this->formData($customer),
         ]);
     }
 
@@ -295,7 +327,7 @@ class CustomerController extends Controller
 
     public function edit(Customer $customer): View
     {
-        $customer->load(['contacts', 'addresses', 'bankAccounts']);
+        $customer->load(['contacts', 'addresses', 'bankAccounts', 'creditCheques', 'businessGroup']);
 
         $addresses = $customer->activeAddresses()->get()->map(function ($a) {
             return [
@@ -334,7 +366,7 @@ class CustomerController extends Controller
         return view('masters.customers.form', [
             'item' => $customer,
             'initialAddresses' => $addresses,
-            ...$this->formData(),
+            ...$this->formData($customer),
         ]);
     }
 
@@ -638,6 +670,7 @@ class CustomerController extends Controller
             'name' => 'required|string|max:255',
             'code' => 'nullable|string|max:30|unique:customers,code'.($customer ? ','.$customer->id : ''),
             'party_type' => 'required|in:sundry_debtors,sundry_creditors,both,dealer,customer,supplier',
+            'business_group_id' => 'nullable|integer|exists:business_groups,id',
             'customer_type_id' => 'nullable|exists:customer_types,id',
             'area_id' => 'nullable|exists:areas,id',
             'route_id' => 'nullable|exists:routes,id',
@@ -682,6 +715,7 @@ class CustomerController extends Controller
             'addresses.*.is_default_billing' => 'nullable',
             'addresses.*.is_default_delivery' => 'nullable',
             'bank_accounts' => 'nullable|array',
+            'bank_accounts.*.id' => 'nullable|integer',
             'bank_accounts.*.account_holder_name' => 'nullable|string|max:255',
             'bank_accounts.*.bank_name' => 'nullable|string|max:255',
             'bank_accounts.*.branch_name' => 'nullable|string|max:255',
@@ -689,49 +723,75 @@ class CustomerController extends Controller
             'bank_accounts.*.account_type' => 'nullable|in:current,savings',
             'bank_accounts.*.ifsc_code' => 'nullable|string|max:20',
             'bank_accounts.*.is_primary' => 'nullable|boolean',
+            'credit_cheques' => 'nullable|array',
+            'credit_cheques.*.id' => 'nullable|integer',
+            'credit_cheques.*.cheque_number' => 'nullable|string|max:50',
+            'credit_cheques.*.bank_name' => 'nullable|string|max:255',
+            'credit_cheques.*.branch_name' => 'nullable|string|max:255',
+            'credit_cheques.*.cheque_date' => 'nullable|date',
+            'credit_cheques.*.amount' => 'nullable|numeric|min:0',
+            'credit_cheques.*.cheque_type' => 'nullable|in:regular,security,pdc',
+            'credit_cheques.*.status' => 'nullable|in:pending,received,deposited,cleared,cancelled,bounced',
+            'credit_cheques.*.notes' => 'nullable|string',
         ];
 
         $validator = Validator::make($request->all(), $rules);
 
         $validator->after(function ($validator) use ($request) {
             $addresses = $request->input('addresses', []);
-            if (!is_array($addresses)) {
-                return;
-            }
+            if (is_array($addresses)) {
+                $defaultBillingCount = 0;
+                $defaultDeliveryCount = 0;
 
-            $defaultBillingCount = 0;
-            $defaultDeliveryCount = 0;
+                foreach ($addresses as $index => $addr) {
+                    $state = $addr['state'] ?? null;
+                    $city = $addr['city'] ?? null;
 
-            foreach ($addresses as $index => $addr) {
-                $state = $addr['state'] ?? null;
-                $city = $addr['city'] ?? null;
+                    if (filled($city) && filled($state)) {
+                        if (! IndianCities::isValidCityForState($city, $state)) {
+                            $validator->errors()->add(
+                                "addresses.{$index}.city",
+                                "The selected city \"{$city}\" does not belong to the state \"{$state}\"."
+                            );
+                        }
+                    }
 
-                if (filled($city) && filled($state)) {
-                    if (! IndianCities::isValidCityForState($city, $state)) {
-                        $validator->errors()->add(
-                            "addresses.{$index}.city",
-                            "The selected city \"{$city}\" does not belong to the state \"{$state}\"."
-                        );
+                    $isDefaultBilling = filter_var($addr['is_default_billing'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                        || filter_var($addr['is_default'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                    $isDefaultDelivery = filter_var($addr['is_default_delivery'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+                    if ($isDefaultBilling) {
+                        $defaultBillingCount++;
+                    }
+                    if ($isDefaultDelivery) {
+                        $defaultDeliveryCount++;
                     }
                 }
 
-                $isDefaultBilling = filter_var($addr['is_default_billing'] ?? false, FILTER_VALIDATE_BOOLEAN)
-                    || filter_var($addr['is_default'] ?? false, FILTER_VALIDATE_BOOLEAN);
-                $isDefaultDelivery = filter_var($addr['is_default_delivery'] ?? false, FILTER_VALIDATE_BOOLEAN);
-
-                if ($isDefaultBilling) {
-                    $defaultBillingCount++;
+                if ($defaultBillingCount > 1) {
+                    $validator->errors()->add('addresses', 'Only one address can be set as the default billing address.');
                 }
-                if ($isDefaultDelivery) {
-                    $defaultDeliveryCount++;
+                if ($defaultDeliveryCount > 1) {
+                    $validator->errors()->add('addresses', 'Only one address can be set as the default delivery address.');
                 }
             }
 
-            if ($defaultBillingCount > 1) {
-                $validator->errors()->add('addresses', 'Only one address can be set as the default billing address.');
-            }
-            if ($defaultDeliveryCount > 1) {
-                $validator->errors()->add('addresses', 'Only one address can be set as the default delivery address.');
+            // Cheque validation: if cheque details are provided, cheque_number is required
+            $cheques = $request->input('credit_cheques', []);
+            if (is_array($cheques)) {
+                foreach ($cheques as $index => $chq) {
+                    $hasAnyField = filled($chq['bank_name'] ?? null)
+                        || filled($chq['branch_name'] ?? null)
+                        || filled($chq['cheque_date'] ?? null)
+                        || filled($chq['amount'] ?? null)
+                        || filled($chq['notes'] ?? null);
+                    if ($hasAnyField && blank($chq['cheque_number'] ?? null)) {
+                        $validator->errors()->add(
+                            "credit_cheques.{$index}.cheque_number",
+                            "Cheque number is required when cheque details are provided."
+                        );
+                    }
+                }
             }
         });
 
@@ -792,22 +852,83 @@ class CustomerController extends Controller
 
         // 3. Bank Accounts
         $bankAccounts = collect($request->input('bank_accounts', []))
-            ->filter(fn ($row) => filled($row['account_number'] ?? null) || filled($row['bank_name'] ?? null) || filled($row['ifsc_code'] ?? null))
+            ->filter(function ($row) {
+                return filled(trim((string) ($row['account_number'] ?? '')))
+                    || filled(trim((string) ($row['bank_name'] ?? '')))
+                    || filled(trim((string) ($row['ifsc_code'] ?? '')))
+                    || filled(trim((string) ($row['account_holder_name'] ?? '')));
+            })
             ->map(fn ($row) => [
-                'account_holder_name' => $row['account_holder_name'] ?? null,
-                'bank_name' => $row['bank_name'] ?? null,
-                'branch_name' => $row['branch_name'] ?? null,
-                'account_number' => $row['account_number'] ?? null,
+                'id' => !empty($row['id']) ? (int) $row['id'] : null,
+                'account_holder_name' => trim((string) ($row['account_holder_name'] ?? '')) ?: null,
+                'bank_name' => trim((string) ($row['bank_name'] ?? '')) ?: null,
+                'branch_name' => trim((string) ($row['branch_name'] ?? '')) ?: null,
+                'account_number' => trim((string) ($row['account_number'] ?? '')) ?: null,
                 'account_type' => in_array($row['account_type'] ?? '', ['current', 'savings'], true) ? $row['account_type'] : 'current',
-                'ifsc_code' => strtoupper(trim((string) ($row['ifsc_code'] ?? ''))),
-                'is_primary' => (bool) ($row['is_primary'] ?? false),
+                'ifsc_code' => strtoupper(trim((string) ($row['ifsc_code'] ?? ''))) ?: null,
+                'is_primary' => filter_var($row['is_primary'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 'is_active' => true,
             ])
             ->values();
 
-        $customer->bankAccounts()->delete();
+        if ($bankAccounts->isNotEmpty() && !$bankAccounts->contains('is_primary', true)) {
+            $bankAccounts[0]['is_primary'] = true;
+        }
+
+        $existingBankAccounts = $customer->bankAccounts()->get()->keyBy('id');
+        $handledBankIds = [];
         foreach ($bankAccounts as $row) {
-            $customer->bankAccounts()->create($row);
+            $id = $row['id'];
+            $payload = collect($row)->except('id')->all();
+            if ($id && $existingBankAccounts->has($id)) {
+                $existingBankAccounts[$id]->update($payload);
+                $handledBankIds[] = $id;
+            } else {
+                $created = $customer->bankAccounts()->create($payload);
+                $handledBankIds[] = $created->id;
+            }
+        }
+        foreach ($existingBankAccounts as $existingId => $acc) {
+            if (!in_array($existingId, $handledBankIds, true)) {
+                $acc->delete();
+            }
+        }
+
+        // 4. Credit Cheques (only synchronize if explicitly provided in request)
+        if ($request->has('credit_cheques')) {
+            $creditCheques = collect($request->input('credit_cheques', []))
+                ->filter(fn ($row) => filled($row['cheque_number'] ?? null))
+                ->map(fn ($row) => [
+                    'id' => !empty($row['id']) ? (int) $row['id'] : null,
+                    'cheque_number' => $row['cheque_number'],
+                    'bank_name' => $row['bank_name'] ?? null,
+                    'branch_name' => $row['branch_name'] ?? null,
+                    'cheque_date' => $row['cheque_date'] ?? null,
+                    'amount' => (float) ($row['amount'] ?? 0),
+                    'cheque_type' => $row['cheque_type'] ?? 'regular',
+                    'status' => in_array($row['status'] ?? '', ['pending', 'received', 'deposited', 'cleared', 'cancelled', 'bounced'], true) ? $row['status'] : 'pending',
+                    'notes' => $row['notes'] ?? null,
+                ])
+                ->values();
+
+            $existingCreditCheques = $customer->creditCheques()->get()->keyBy('id');
+            $handledChequeIds = [];
+            foreach ($creditCheques as $row) {
+                $id = $row['id'];
+                $payload = collect($row)->except('id')->all();
+                if ($id && $existingCreditCheques->has($id)) {
+                    $existingCreditCheques[$id]->update($payload);
+                    $handledChequeIds[] = $id;
+                } else {
+                    $created = $customer->creditCheques()->create($payload);
+                    $handledChequeIds[] = $created->id;
+                }
+            }
+            foreach ($existingCreditCheques as $existingId => $chq) {
+                if (!in_array($existingId, $handledChequeIds, true)) {
+                    $chq->delete();
+                }
+            }
         }
     }
 
@@ -906,7 +1027,7 @@ class CustomerController extends Controller
         }
     }
 
-    protected function formData(): array
+    protected function formData(?Customer $customer = null): array
     {
         $allUsers = User::orderBy('name')->get();
 
@@ -926,7 +1047,14 @@ class CustomerController extends Controller
             $salespersons = $allUsers;
         }
 
+        $bgQuery = BusinessGroup::query()->where('is_active', true);
+        if ($customer && $customer->business_group_id) {
+            $bgQuery->orWhere('id', $customer->business_group_id);
+        }
+        $businessGroups = $bgQuery->orderBy('name')->get(['id', 'name', 'code', 'logo_emoji']);
+
         return [
+            'businessGroups' => $businessGroups,
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
             'areas' => Area::where('is_active', true)->orderBy('name')->get(),
             'routes' => Route::where('is_active', true)->orderBy('name')->get(),

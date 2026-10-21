@@ -38,6 +38,17 @@
                 </select>
 
                 <select
+                    name="product_type"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">Product Type: All</option>
+                    @foreach($productTypes ?? [] as $pt)
+                        <option value="{{ $pt->name }}" @selected(request('product_type') == $pt->name || request('product_type') == $pt->id)>{{ $pt->name }}</option>
+                    @endforeach
+                </select>
+
+                <select
                     name="status"
                     data-dynamic-filter
                     class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"

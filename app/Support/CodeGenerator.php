@@ -21,6 +21,26 @@ class CodeGenerator
         return self::next(Company::class, 'CMP', null, 'code');
     }
 
+    public static function forBrand(?int $companyId = null): string
+    {
+        return self::next(Brand::class, 'BR', $companyId, 'code');
+    }
+
+    public static function forCategory(?int $companyId = null): string
+    {
+        return self::next(Category::class, 'CAT', $companyId, 'code');
+    }
+
+    public static function forSubCategory(?int $companyId = null): string
+    {
+        return self::next(SubCategory::class, 'SCAT', $companyId, 'code');
+    }
+
+    public static function forProductType(?int $companyId = null): string
+    {
+        return self::next(\App\Domains\Master\Models\ProductType::class, 'PT', $companyId, 'code');
+    }
+
     public static function forProduct(?int $companyId = null): string
     {
         return self::next(Product::class, 'PROD', $companyId, 'sku');
