@@ -142,6 +142,19 @@
                 </select>
             </div>
         </div>
+        <div class="relative mt-3" @click.outside="productOpen = false">
+            <label class="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Product</label>
+            <input type="search" x-model="productQuery" @focus="productOpen = true" @input="productOpen = true" placeholder="Search product name or SKU..." class="block w-full rounded-xl border-slate-200 text-sm" autocomplete="off">
+            <div x-show="productOpen && productQuery.trim() !== ''" x-cloak class="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                <template x-for="product in productMatches" :key="product.id">
+                    <button type="button" class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-indigo-50" @click="selectProduct(product)">
+                        <span class="font-medium text-slate-800" x-text="product.name"></span>
+                        <span class="text-xs text-slate-500" x-text="product.sku || ''"></span>
+                    </button>
+                </template>
+                <p x-show="productMatches.length === 0" class="px-3 py-2 text-xs text-slate-500">No matching products.</p>
+            </div>
+        </div>
     </div>
 
     {{-- Main Card --}}
@@ -852,6 +865,9 @@ function productTypeFinder(catalog) {
         categoryId: '',
         subCategoryId: '',
         typeId: '',
+        productQuery: '',
+        productOpen: false,
+        products: catalog.products || [],
         brands: catalog.brands || [],
         categories: catalog.categories || [],
         subCategories: catalog.subCategories || [],
@@ -872,6 +888,23 @@ function productTypeFinder(catalog) {
                 if (this.subCategoryId && String(link.sub_category_id) !== String(this.subCategoryId)) return false;
                 return true;
             }).map((link) => String(link.product_type_id));
+        },
+        get productMatches() {
+            const query = this.productQuery.trim().toLowerCase();
+            if (!query) return [];
+            return this.products.filter((product) => {
+                const name = String(product.name || '').toLowerCase();
+                const sku = String(product.sku || '').toLowerCase();
+                return name.includes(query) || sku.includes(query);
+            }).slice(0, 20);
+        },
+        selectProduct(product) {
+            this.productQuery = product.sku ? product.name + ' · ' + product.sku : product.name;
+            this.productOpen = false;
+            this.brandId = product.brand_id ? String(product.brand_id) : '';
+            this.categoryId = product.category_id ? String(product.category_id) : '';
+            this.subCategoryId = product.sub_category_id ? String(product.sub_category_id) : '';
+            this.typeId = product.product_type_id ? String(product.product_type_id) : '';
         },
         get typeOptions() {
             if (!this.brandId && !this.categoryId && !this.subCategoryId) return this.types;

@@ -505,6 +505,9 @@ class ProductTypeController extends Controller
             'links' => Product::query()
                 ->whereNotNull('product_type_id')
                 ->get(['product_type_id', 'brand_id', 'category_id', 'sub_category_id']),
+            'products' => Product::query()
+                ->orderBy('name')
+                ->get(['id', 'name', 'sku', 'brand_id', 'category_id', 'sub_category_id', 'product_type_id']),
         ];
     }
 }

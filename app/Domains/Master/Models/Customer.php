@@ -25,6 +25,7 @@ class Customer extends Model
         'salesperson_id',
         'sales_manager_id',
         'name',
+        'trade_name',
         'code',
         'party_type',
         'phone',

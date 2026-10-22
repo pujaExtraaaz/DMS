@@ -635,7 +635,31 @@ class GstLookupService
 
     /**
      * @param  array<string, mixed>  $data
+     * @param  list<string>  $keys
      */
+    protected function findLabeledString(array $data, array $keys, int $depth = 0): string
+    {
+        $wanted = array_map('strtolower', $keys);
+        foreach ($data as $key => $value) {
+            if (is_string($key) && in_array(strtolower($key), $wanted, true) && is_string($value) && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+        if ($depth >= 4) {
+            return '';
+        }
+        foreach ($data as $value) {
+            if (! is_array($value)) {
+                continue;
+            }
+            $found = $this->findLabeledString($value, $keys, $depth + 1);
+            if ($found !== '') {
+                return $found;
+            }
+        }
+
+        return '';
+    }
     protected function payloadHasIdentity(array $data): bool
     {
         foreach (['tradeNam', 'lgnm', 'trade_name', 'legal_name', 'tradeName', 'legalName'] as $key) {
@@ -655,8 +679,8 @@ class GstLookupService
      */
     protected function normalizeTaxpayerData(array $data, string $gstin): array
     {
-        $tradeName = trim((string) ($data['tradeNam'] ?? $data['trade_name'] ?? $data['tradeName'] ?? $data['trade_nm'] ?? ''));
-        $legalName = trim((string) ($data['lgnm'] ?? $data['legal_name'] ?? $data['legalName'] ?? $data['legal_nm'] ?? ''));
+        $tradeName = $this->findLabeledString($data, ['tradeNam', 'trade_name', 'tradeName', 'trade_nm', 'trdnm', 'tradename']);
+        $legalName = $this->findLabeledString($data, ['lgnm', 'legal_name', 'legalName', 'legal_nm', 'legalname']);
 
         // Prefer legal business name; keep trade name available for review.
         $name = $legalName !== '' ? $legalName : $tradeName;

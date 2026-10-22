@@ -583,6 +583,7 @@ class CustomerController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'trade_name' => 'nullable|string|max:255',
             'code' => 'nullable|string|max:30|unique:customers,code',
             'party_type' => 'required|in:sundry_debtors,sundry_creditors,both,dealer,customer,supplier',
             'customer_type_id' => 'nullable|exists:customer_types,id',
@@ -668,6 +669,7 @@ class CustomerController extends Controller
         $rules = [
             'lead_id' => 'nullable|integer|exists:leads,id',
             'name' => 'required|string|max:255',
+            'trade_name' => 'nullable|string|max:255',
             'code' => 'nullable|string|max:30|unique:customers,code'.($customer ? ','.$customer->id : ''),
             'party_type' => 'required|in:sundry_debtors,sundry_creditors,both,dealer,customer,supplier',
             'business_group_id' => 'nullable|integer|exists:business_groups,id',

@@ -127,7 +127,7 @@
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GSTIN</label>
                     <div class="flex gap-2">
                         <input type="text" name="gstin" x-model="form.gstin" maxlength="15"
-                               placeholder="E.G. 27AAAAA0000A1Z5"
+                               placeholder="E.G. 27AAAAA0000A1Z5" @input.debounce.400ms="autoFetchGst()"
                                class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         <button type="button" @click="fetchGstDetails()" :disabled="searchingGst"
                                 class="inline-flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-100 transition disabled:opacity-50">
@@ -170,13 +170,23 @@
                             <p x-show="gstLookupInfo.center_jurisdiction"><span class="text-slate-500">Center jurisdiction:</span> <span x-text="gstLookupInfo.center_jurisdiction"></span></p>
                             <p x-show="gstLookupInfo.nature_of_business" class="sm:col-span-2"><span class="text-slate-500">Nature of business:</span> <span x-text="gstLookupInfo.nature_of_business"></span></p>
                         </div>
-                        <p class="text-slate-500">These details are shown from GST records and are not saved as separate party fields.</p>
+                        <p class="text-slate-500">Trade name is saved with the party. The other GST registration details are shown for review.</p>
                     </div>
                 </div>
 
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Party Name *</label>
                     <input type="text" name="name" x-model="form.name" required
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider">Trade Name</label>
+                        <button type="button" x-show="form.trade_name" @click="form.name = form.trade_name" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Use as party name</button>
+                    </div>
+                    <input type="text" name="trade_name" x-model="form.trade_name"
+                           placeholder="Filled automatically from the GSTIN"
                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 </div>
 
@@ -1294,6 +1304,7 @@ function partyFormController() {
 
         form: {
             name: {!! json_encode(old('name', $item->name ?? '')) !!},
+            trade_name: {!! json_encode(old('trade_name', $item->trade_name ?? '')) !!},
             gstin: {!! json_encode(old('gstin', $item->gstin ?? '')) !!},
             party_type: {!! json_encode(old('party_type', $item->party_type_key ?? 'sundry_debtors')) !!},
             pan: {!! json_encode(old('pan', $item->pan ?? '')) !!},
@@ -1303,6 +1314,7 @@ function partyFormController() {
             state: {!! json_encode(old('state', $item->state ?? '')) !!},
             pincode: {!! json_encode(old('pincode', $item->pincode ?? '')) !!},
         },
+        lastAutoGstin: '',
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
         contacts: {!! json_encode($initialContacts) !!},
         addresses: {!! json_encode($initialAddresses) !!},
@@ -1557,6 +1569,14 @@ function partyFormController() {
             this.syncPrimaryAddress();
         },
 
+        autoFetchGst() {
+            const gstin = (this.form.gstin || '').trim().toUpperCase();
+            if (gstin.length !== 15 || gstin === this.lastAutoGstin || this.searchingGst) return;
+            const gstinPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[0-9A-Z]{1}[0-9A-Z]{1}$/;
+            if (!gstinPattern.test(gstin)) return;
+            this.fetchGstDetails();
+        },
+
         async fetchGstDetails() {
             const gstin = (this.form.gstin || '').trim().toUpperCase();
             this.form.gstin = gstin;
@@ -1582,6 +1602,7 @@ function partyFormController() {
                 return;
             }
 
+            this.lastAutoGstin = gstin;
             this.searchingGst = true;
             this.gstFeedback = { type: '', message: '', note: '' };
             this.applyExtractedGstinFields(null, gstin);
@@ -1595,7 +1616,9 @@ function partyFormController() {
                 }
 
                 if (data.success && data.party) {
+                    if (data.party.trade_name) this.form.trade_name = String(data.party.trade_name).trim();
                     if (data.party.name) this.form.name = String(data.party.name).trim();
+                    this.lastAutoGstin = gstin;
                     if (data.party.pan) this.form.pan = String(data.party.pan).trim();
                     if (data.party.state) this.form.state = String(data.party.state).trim();
                     if (data.party.pincode) this.form.pincode = String(data.party.pincode).trim();
