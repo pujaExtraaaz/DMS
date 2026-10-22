@@ -25,9 +25,9 @@ class HasUppercaseNamesTest extends TestCase
         $model->email = 'contact@example.com';
         $model->sku = 'SKU-001';
 
-        $this->assertSame('SONY PROFESSIONAL DISPLAY', $model->name);
-        $this->assertSame('AVIT DIGITAL', $model->company_name);
-        $this->assertSame('BULK FOODS DEPOT', $model->transporter_name);
+        $this->assertSame('Sony Professional Display', $model->name);
+        $this->assertSame('Avit Digital', $model->company_name);
+        $this->assertSame('Bulk Foods Depot', $model->transporter_name);
         $this->assertSame('contact@example.com', $model->email);
         $this->assertSame('SKU-001', $model->sku);
     }
@@ -43,8 +43,8 @@ class HasUppercaseNamesTest extends TestCase
             'code' => 'br-001',
         ]);
 
-        $this->assertSame('APPLE INC', $model->name);
-        $this->assertSame('APPLE OPERATIONS', $model->legal_name);
+        $this->assertSame('Apple Inc', $model->name);
+        $this->assertSame('Apple Operations', $model->legal_name);
         $this->assertSame('apple@example.com', $model->email);
         $this->assertSame('br-001', $model->code);
     }
@@ -60,12 +60,12 @@ class HasUppercaseNamesTest extends TestCase
         ]);
 
         $arr = $model->toArray();
-        $this->assertSame('JOHN SMITH', $arr['name']);
-        $this->assertSame('JOHN WAREHOUSE', $arr['shipping_name']);
+        $this->assertSame('John Smith', $arr['name']);
+        $this->assertSame('John Warehouse', $arr['shipping_name']);
         $this->assertSame('john@example.com', $arr['email']);
 
         $json = json_decode($model->toJson(), true);
-        $this->assertSame('JOHN SMITH', $json['name']);
+        $this->assertSame('John Smith', $json['name']);
     }
 
     public function test_uppercase_name_attributes_modifies_underlying_raw_attributes(): void
@@ -79,7 +79,7 @@ class HasUppercaseNamesTest extends TestCase
 
         $model->uppercaseNameAttributes();
 
-        $this->assertSame('BULK FOODS DEPOT', $model->getAttributes()['name']);
-        $this->assertSame('AVIT DIGITAL', $model->getAttributes()['company_name']);
+        $this->assertSame('Bulk Foods Depot', $model->getAttributes()['name']);
+        $this->assertSame('Avit Digital', $model->getAttributes()['company_name']);
     }
 }
