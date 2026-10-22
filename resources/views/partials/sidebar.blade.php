@@ -240,8 +240,8 @@
             </div>
         @endif
 
-        @if($can('hrms.view', 'hrms.manage', 'crm.view', 'crm.manage', 'tally.view', 'tally.manage'))
-            <div x-data="{ open: {{ $is('hrms.*') || $is('crm.*') || $is('tally.*') ? 'true' : 'false' }} }">
+        @if($can('hrms.view', 'hrms.manage', 'crm.view', 'crm.manage', 'tally.view', 'tally.manage', 'targets.view', 'targets.manage', 'sales_targets.view', 'sales_targets.manage', 'salesperson', 'super-admin'))
+            <div x-data="{ open: {{ $is('hrms.*') || $is('crm.*') || $is('tally.*') || $is('sales-targets.*') ? 'true' : 'false' }} }">
                 <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
                     <span>9 · HR · CRM</span>
                     <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
@@ -261,6 +261,37 @@
                     @if($can('crm.view', 'crm.manage'))
                         <a href="{{ route('crm.leads.index') }}" class="{{ $itemClass }} {{ $linkClass(['crm.leads.index', 'crm.leads.show', 'crm.leads.edit', 'crm.leads.create', 'crm.leads.bulk-upload*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leads (CRM)</span></a>
                         <a href="{{ route('crm.leads.segments.index') }}" class="{{ $itemClass }} {{ $linkClass(['crm.leads.segments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Lead Segments</span></a>
+                    @endif
+                    @if($can('targets.view', 'targets.manage', 'sales_targets.view', 'sales_targets.manage', 'salesperson', 'super-admin'))
+                        <div x-data="{ targetOpen: {{ $is('sales-targets.*') ? 'true' : 'false' }} }" class="pt-1 mt-1 border-t border-slate-700/50">
+                            <button
+                                type="button"
+                                @click="targetOpen = !targetOpen"
+                                class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-1.5 text-left text-xs font-semibold text-slate-300 hover:bg-slate-800/60 hover:text-white transition"
+                                x-show="!$root.sidebarCollapsed"
+                                x-cloak
+                            >
+                                <span class="flex items-center gap-2">
+                                    <svg class="h-4 w-4 shrink-0 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.25 2.25L15 6" />
+                                    </svg>
+                                    <span>Sales Target Management</span>
+                                </span>
+                                <svg class="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform" :class="targetOpen && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                </svg>
+                            </button>
+
+                            <div x-show="targetOpen || $root.sidebarCollapsed" x-cloak class="space-y-0.5 mt-0.5" :class="!$root.sidebarCollapsed && 'pl-2 border-l border-slate-800 ml-3'">
+                                <a href="{{ route('sales-targets.dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.dashboard']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Target Dashboard</span></a>
+                                <a href="{{ route('sales-targets.create') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.create']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Assign Targets</span></a>
+                                <a href="{{ route('sales-targets.index') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.index', 'sales-targets.show', 'sales-targets.edit']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Target List</span></a>
+                                <a href="{{ route('sales-targets.salesman-performance') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.salesman-performance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Salesman Performance</span></a>
+                                <a href="{{ route('sales-targets.team-branch-performance') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.team-branch-performance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Team &amp; Branch Performance</span></a>
+                                <a href="{{ route('sales-targets.alerts') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.alerts*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Target Alerts</span></a>
+                                <a href="{{ route('sales-targets.reports') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.reports']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Target Reports</span></a>
+                            </div>
+                        </div>
                     @endif
                 </div>
             </div>

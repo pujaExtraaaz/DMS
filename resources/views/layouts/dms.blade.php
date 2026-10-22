@@ -209,6 +209,7 @@
     @livewireScripts
     <script src="{{ asset('js/dynamic-tables.js') }}" defer></script>
     <script src="{{ asset('js/title-case.js') }}" defer></script>
+    <script src="{{ asset('js/searchable-select.js') }}" defer></script>
     @stack('scripts')
     @include('partials.sync-conflict')
 </body>
