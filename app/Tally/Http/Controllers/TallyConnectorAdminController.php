@@ -63,14 +63,32 @@ class TallyConnectorAdminController extends Controller
             abort(500, 'The Tally Connector folder could not be packed.');
         }
 
-        foreach (['tally_connector.exe', 'config.json', 'config.example.json', 'install-task.ps1'] as $name) {
-            $path = $dir.DIRECTORY_SEPARATOR.$name;
-            if ($name === 'config.json' && ! is_file($path)) {
-                $path = $dir.DIRECTORY_SEPARATOR.'config.example.json';
+        $root = base_path('tools/tally-connector');
+        $files = [
+            'tally_connector.exe' => $dir.DIRECTORY_SEPARATOR.'tally_connector.exe',
+            'config.json' => $dir.DIRECTORY_SEPARATOR.'config.json',
+            'config.example.json' => $root.DIRECTORY_SEPARATOR.'config.example.json',
+            'install-task.ps1' => $root.DIRECTORY_SEPARATOR.'install-task.ps1',
+        ];
+        if (! is_file($files['config.example.json'])) {
+            $files['config.example.json'] = $dir.DIRECTORY_SEPARATOR.'config.example.json';
+        }
+        if (! is_file($files['install-task.ps1'])) {
+            $files['install-task.ps1'] = $dir.DIRECTORY_SEPARATOR.'install-task.ps1';
+        }
+        if (! is_file($files['config.json'])) {
+            $files['config.json'] = $files['config.example.json'];
+        }
+
+        foreach ($files as $name => $path) {
+            if (! is_file($path)) {
+                continue;
             }
-            if (is_file($path)) {
-                $zip->addFile($path, 'tally-connector/'.$name);
+            $contents = file_get_contents($path);
+            if ($contents === false) {
+                abort(500, $name.' could not be read for the download.');
             }
+            $zip->addFromString('tally-connector/'.$name, $contents);
         }
         $zip->close();
 
