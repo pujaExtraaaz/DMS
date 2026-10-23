@@ -410,35 +410,36 @@ class SalesTargetManagementTest extends TestCase
         );
     }
 
-    public function test_sidebar_navigation_places_sales_target_management_under_hr_crm(): void
+    public function test_sidebar_navigation_places_sales_target_management_above_hr_crm(): void
     {
         $response = $this->actingAs($this->adminUser)->get(route('dashboard'));
         $response->assertOk();
 
         $content = $response->getContent();
+        $text = strip_tags($content);
 
-        // 1. Verify 8 · Commercials and 9 · HR · CRM exist in proper order
-        $posCommercials = strpos($content, '8 · Commercials');
-        $posHrCrm = strpos($content, '9 · HR · CRM');
-        $posBooks = strpos($content, '10 · Accounting (Books)');
-        $posReports = strpos($content, '11 · Reports');
+        // 1. Verify all sections exist in sequential order
+        $posCommercials = strpos($text, '8 · Commercials');
+        $posTargetMgmt = strpos($text, '9 · Sales Target Management');
+        $posHrCrm = strpos($text, '10 · HR · CRM');
+        $posBooks = strpos($text, '11 · Accounting (Books)');
+        $posReports = strpos($text, '12 · Reports');
+        $posGuide = strpos($text, '13 · Guide');
 
         $this->assertNotFalse($posCommercials, '8 · Commercials missing in sidebar');
-        $this->assertNotFalse($posHrCrm, '9 · HR · CRM missing in sidebar');
-        $this->assertNotFalse($posBooks, '10 · Accounting (Books) missing in sidebar');
-        $this->assertNotFalse($posReports, '11 · Reports missing in sidebar');
+        $this->assertNotFalse($posTargetMgmt, '9 · Sales Target Management missing in sidebar');
+        $this->assertNotFalse($posHrCrm, '10 · HR · CRM missing in sidebar');
+        $this->assertNotFalse($posBooks, '11 · Accounting (Books) missing in sidebar');
+        $this->assertNotFalse($posReports, '12 · Reports missing in sidebar');
+        $this->assertNotFalse($posGuide, '13 · Guide missing in sidebar');
 
-        $this->assertLessThan($posHrCrm, $posCommercials, '8 · Commercials must appear before 9 · HR · CRM');
-        $this->assertLessThan($posBooks, $posHrCrm, '9 · HR · CRM must appear before 10 · Accounting (Books)');
-        $this->assertLessThan($posReports, $posBooks, '10 · Accounting (Books) must appear before 11 · Reports');
+        $this->assertLessThan($posTargetMgmt, $posCommercials, '8 · Commercials must appear before 9 · Sales Target Management');
+        $this->assertLessThan($posHrCrm, $posTargetMgmt, '9 · Sales Target Management must appear immediately before 10 · HR · CRM');
+        $this->assertLessThan($posBooks, $posHrCrm, '10 · HR · CRM must appear before 11 · Accounting (Books)');
+        $this->assertLessThan($posReports, $posBooks, '11 · Accounting (Books) must appear before 12 · Reports');
+        $this->assertLessThan($posGuide, $posReports, '12 · Reports must appear before 13 · Guide');
 
-        // 2. Sales Target Management must appear AFTER 9 · HR · CRM and BEFORE 10 · Accounting (Books)
-        $posTargetSubmenu = strpos($content, 'Sales Target Management');
-        $this->assertNotFalse($posTargetSubmenu, 'Sales Target Management missing from sidebar');
-        $this->assertGreaterThan($posHrCrm, $posTargetSubmenu, 'Sales Target Management must be inside/after 9 · HR · CRM');
-        $this->assertLessThan($posBooks, $posTargetSubmenu, 'Sales Target Management must appear before 10 · Accounting (Books)');
-
-        // 3. Verify all 7 links are present in sidebar
+        // 2. Verify all 7 links are present in sidebar
         $response->assertSee(route('sales-targets.dashboard'));
         $response->assertSee(route('sales-targets.create'));
         $response->assertSee(route('sales-targets.index'));
@@ -448,7 +449,7 @@ class SalesTargetManagementTest extends TestCase
         $response->assertSee(route('sales-targets.reports'));
     }
 
-    public function test_all_seven_sales_target_management_routes_are_accessible_and_expand_hr_crm(): void
+    public function test_all_seven_sales_target_management_routes_are_accessible_and_expand_target_menu(): void
     {
         $routes = [
             route('sales-targets.dashboard'),
@@ -464,9 +465,9 @@ class SalesTargetManagementTest extends TestCase
             $response = $this->actingAs($this->adminUser)->get($url);
             $response->assertOk();
 
-            // HR · CRM parent container should be open
-            $response->assertSee('9 · HR · CRM');
-            $response->assertSee('Sales Target Management');
+            // 9 · Sales Target Management standalone top-level section should be present
+            $response->assertSeeText('9 · Sales Target Management');
+            $response->assertSeeText('10 · HR · CRM');
         }
     }
 

@@ -18,6 +18,7 @@
             position: relative;
             display: inline-block;
             vertical-align: middle;
+            box-sizing: border-box;
         }
         .dms-searchable-trigger {
             display: flex;
@@ -25,6 +26,7 @@
             justify-content: space-between;
             width: 100%;
             min-height: 38px;
+            height: 38px;
             padding: 0.5rem 0.75rem;
             font-size: 0.875rem;
             line-height: 1.25rem;
@@ -37,6 +39,7 @@
             cursor: pointer;
             transition: all 0.15s ease-in-out;
             user-select: none;
+            box-sizing: border-box;
         }
         .dms-searchable-trigger:hover:not(:disabled) {
             border-color: #94a3b8;
@@ -101,6 +104,45 @@
             color: #6366f1;
         }
 
+        /* Compact / Toolbar Filter Variant */
+        .dms-searchable-container.dms-searchable-filter {
+            display: inline-flex;
+            vertical-align: middle;
+            width: auto;
+            min-width: 120px;
+            max-width: 220px;
+            flex-shrink: 0;
+        }
+        .dms-searchable-filter .dms-searchable-trigger {
+            min-height: 34px;
+            height: 34px;
+            padding: 0.375rem 0.625rem;
+            font-size: 0.75rem;
+            line-height: 1rem;
+            border-radius: 0.5rem;
+            border-color: #cbd5e1;
+            background-color: #ffffff;
+            color: #334155;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        .dms-searchable-filter .dms-searchable-trigger-text {
+            font-size: 0.75rem;
+            line-height: 1rem;
+            margin-right: 0.375rem;
+        }
+        .dms-searchable-filter .dms-searchable-trigger-text.is-placeholder {
+            color: #475569;
+            font-weight: 500;
+        }
+        .dms-searchable-filter .dms-searchable-chevron {
+            width: 0.875rem;
+            height: 0.875rem;
+        }
+        .dms-searchable-filter .dms-searchable-clear-btn {
+            width: 1.125rem;
+            height: 1.125rem;
+        }
+
         /* Fixed Popover Menu */
         .dms-searchable-menu {
             position: fixed;
@@ -114,6 +156,7 @@
             flex-direction: column;
             animation: dmsSearchableFadeIn 0.12s ease-out;
             font-family: inherit;
+            box-sizing: border-box;
         }
         @keyframes dmsSearchableFadeIn {
             from { opacity: 0; transform: scale(0.98); }
@@ -124,12 +167,34 @@
             background-color: #f8fafc;
             border-bottom: 1px solid #f1f5f9;
             position: relative;
+            box-sizing: border-box;
+        }
+        .dms-searchable-search-box {
+            position: relative;
+            display: flex;
+            align-items: center;
+            width: 100%;
+        }
+        .dms-searchable-search-icon {
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0.9375rem;
+            height: 0.9375rem;
+            color: #94a3b8;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .dms-searchable-search-input {
             width: 100%;
-            padding: 0.375rem 0.625rem 0.375rem 2rem;
+            height: 34px;
+            box-sizing: border-box;
+            padding: 0.375rem 0.625rem 0.375rem 2.25rem;
             font-size: 0.8125rem;
-            line-height: 1.125rem;
+            line-height: 1.25rem;
             color: #0f172a;
             background-color: #ffffff;
             border: 1px solid #cbd5e1;
@@ -137,19 +202,13 @@
             outline: none;
             transition: all 0.15s;
         }
+        .dms-searchable-search-input::placeholder {
+            color: #94a3b8;
+            opacity: 1;
+        }
         .dms-searchable-search-input:focus {
             border-color: #6366f1;
             box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
-        }
-        .dms-searchable-search-icon {
-            position: absolute;
-            left: 1.125rem;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 0.875rem;
-            height: 0.875rem;
-            color: #94a3b8;
-            pointer-events: none;
         }
         .dms-searchable-options-list {
             max-height: 230px;
@@ -273,6 +332,26 @@
     }
 
     /**
+     * Determine if a select is used in a compact filter / toolbar context
+     */
+    function isFilterSelect(select) {
+        if (select.hasAttribute('data-dynamic-filter')) return true;
+        if (select.closest('.dms-table-toolbar')) return true;
+        if (select.closest('[data-dynamic-filter]')) return true;
+        if (select.closest('[data-filters]')) return true;
+        if (select.closest('.filter-container, .filters-wrapper, .table-filters')) return true;
+
+        // Compact classes typically used on toolbar filters in DMS
+        const hasCompactClass = select.classList.contains('text-xs') ||
+                                select.classList.contains('py-1.5') ||
+                                select.classList.contains('py-1') ||
+                                select.classList.contains('h-8') ||
+                                select.classList.contains('h-9');
+
+        return hasCompactClass && !select.classList.contains('w-full');
+    }
+
+    /**
      * Enhance a single <select> element into a searchable select
      */
     function enhance(select) {
@@ -281,8 +360,9 @@
         // Skip multi-selects
         if (select.multiple) return;
 
-        // Skip explicitly disabled selects
+        // Skip explicitly disabled selects or custom pickers
         if (select.hasAttribute('data-no-search') || select.getAttribute('data-searchable') === 'false') return;
+        if (select.classList.contains('picker-store') || select.getAttribute('aria-hidden') === 'true') return;
 
         // Skip already initialized
         if (select.hasAttribute('data-dms-searchable-initialized')) return;
@@ -301,21 +381,37 @@
 
         select.setAttribute('data-dms-searchable-initialized', 'true');
 
+        // Determine whether this is a compact / filter select
+        const isFilter = isFilterSelect(select);
+
         // Create Container
         const container = document.createElement('div');
         container.className = 'dms-searchable-container';
 
         // Mirror sizing and layout classes from the original select
         const widthClasses = [];
+        let hasExplicitWidth = false;
         select.classList.forEach(cls => {
             if (/^(w-|max-w-|min-w-|flex-|col-)/.test(cls)) {
                 widthClasses.push(cls);
+                if (cls !== 'w-auto' && cls !== 'w-full') {
+                    hasExplicitWidth = true;
+                }
             }
         });
-        if (widthClasses.length > 0) {
-            container.classList.add(...widthClasses);
-        } else if (select.classList.contains('block') || select.classList.contains('w-full') || !select.classList.contains('inline')) {
-            container.classList.add('w-full');
+
+        if (isFilter) {
+            container.classList.add('dms-searchable-filter');
+            // If the select had a specific width class like w-40, keep it; otherwise .dms-searchable-filter CSS rules apply
+            if (hasExplicitWidth) {
+                container.classList.add(...widthClasses.filter(c => c !== 'w-full'));
+            }
+        } else {
+            if (widthClasses.length > 0) {
+                container.classList.add(...widthClasses);
+            } else if (select.classList.contains('block') || select.classList.contains('w-full') || !select.classList.contains('inline')) {
+                container.classList.add('w-full');
+            }
         }
 
         // Apply explicit inline width if present
@@ -456,10 +552,13 @@
             const searchWrapper = document.createElement('div');
             searchWrapper.className = 'dms-searchable-search-wrapper';
 
+            const searchBox = document.createElement('div');
+            searchBox.className = 'dms-searchable-search-box';
+
             const searchIcon = document.createElement('div');
             searchIcon.className = 'dms-searchable-search-icon';
             searchIcon.innerHTML = `
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 100%; height: 100%;">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M16.65 11a5.65 5.65 0 11-11.3 0 5.65 5.65 0 0111.3 0z"/>
                 </svg>
             `;
@@ -471,8 +570,9 @@
             searchInput.autocomplete = 'off';
             searchInput.spellcheck = false;
 
-            searchWrapper.appendChild(searchIcon);
-            searchWrapper.appendChild(searchInput);
+            searchBox.appendChild(searchIcon);
+            searchBox.appendChild(searchInput);
+            searchWrapper.appendChild(searchBox);
             menuEl.appendChild(searchWrapper);
 
             // Options List
@@ -507,14 +607,27 @@
             const viewportWidth = window.innerWidth;
             const minMenuWidth = Math.max(rect.width, 220);
 
-            menuEl.style.width = `${minMenuWidth}px`;
+            // Calculate horizontal positioning & ensure it fits within the viewport
+            let left = rect.left;
+            let finalMenuWidth = minMenuWidth;
+
+            if (finalMenuWidth > viewportWidth - 16) {
+                finalMenuWidth = viewportWidth - 16;
+            }
+            menuEl.style.width = `${finalMenuWidth}px`;
+
+            if (left + finalMenuWidth > viewportWidth - 8) {
+                left = viewportWidth - finalMenuWidth - 8;
+            }
+            if (left < 8) left = 8;
+
+            menuEl.style.left = `${left}px`;
 
             // Calculate vertical positioning
             const spaceBelow = viewportHeight - rect.bottom;
             const spaceAbove = rect.top;
-            const maxExpectedHeight = 280;
 
-            if (spaceBelow < 200 && spaceAbove > spaceBelow) {
+            if (spaceBelow < 220 && spaceAbove > spaceBelow) {
                 // Open upwards
                 menuEl.style.top = 'auto';
                 menuEl.style.bottom = `${viewportHeight - rect.top + 4}px`;
@@ -523,15 +636,6 @@
                 menuEl.style.top = `${rect.bottom + 4}px`;
                 menuEl.style.bottom = 'auto';
             }
-
-            // Calculate horizontal positioning
-            let left = rect.left;
-            if (left + minMenuWidth > viewportWidth - 8) {
-                left = viewportWidth - minMenuWidth - 8;
-            }
-            if (left < 8) left = 8;
-
-            menuEl.style.left = `${left}px`;
         }
 
         function renderOptions(filtered) {
@@ -749,6 +853,9 @@
             trigger.focus();
         });
 
+        // Reposition event listener
+        trigger.addEventListener('dms:reposition', positionMenu);
+
         // Observe changes to <select> children (options dynamically loaded/changed)
         const observer = new MutationObserver((mutations) => {
             let optionsChanged = false;
@@ -815,14 +922,13 @@
 
     window.addEventListener('scroll', () => {
         if (activeDropdown) {
-            // Close dropdown if user scrolls the page significantly
-            // or reposition smoothly
-            const openMenu = document.querySelector('.dms-searchable-menu:not([style*="display: none"])');
             const activeTrigger = document.querySelector('.dms-searchable-trigger.is-active');
-            if (openMenu && activeTrigger) {
+            if (activeTrigger) {
                 const rect = activeTrigger.getBoundingClientRect();
-                if (rect.top < -50 || rect.bottom > window.innerHeight + 50) {
+                if (rect.top < -30 || rect.bottom > window.innerHeight + 30) {
                     activeDropdown();
+                } else {
+                    activeTrigger.dispatchEvent(new CustomEvent('dms:reposition'));
                 }
             }
         }

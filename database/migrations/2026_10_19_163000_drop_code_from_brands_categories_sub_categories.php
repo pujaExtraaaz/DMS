@@ -55,6 +55,7 @@ return new class extends Migration
 
         $indexes = collect(Schema::getIndexes($table))->keyBy('name');
         $restore = [];
+        $isSqlite = Schema::getConnection()->getDriverName() === 'sqlite';
 
         foreach ($indexNames as $indexName) {
             $index = $indexes->get($indexName);
@@ -63,25 +64,29 @@ return new class extends Migration
                 continue;
             }
 
-            foreach (Schema::getForeignKeys($table) as $foreignKey) {
-                if (isset($restore[$foreignKey['name']])) {
-                    continue;
+            if (! $isSqlite) {
+                foreach (Schema::getForeignKeys($table) as $foreignKey) {
+                    if (isset($restore[$foreignKey['name']])) {
+                        continue;
+                    }
+
+                    if (! $this->indexSupports($index['columns'], $foreignKey['columns'])) {
+                        continue;
+                    }
+
+                    Schema::table($table, function (Blueprint $blueprint) use ($foreignKey) {
+                        $blueprint->dropForeign($foreignKey['name']);
+                    });
+
+                    $restore[$foreignKey['name']] = $foreignKey;
                 }
 
-                if (! $this->indexSupports($index['columns'], $foreignKey['columns'])) {
-                    continue;
-                }
-
-                Schema::table($table, function (Blueprint $blueprint) use ($foreignKey) {
-                    $blueprint->dropForeign($foreignKey['name']);
+                Schema::table($table, function (Blueprint $blueprint) use ($indexName) {
+                    $blueprint->dropUnique($indexName);
                 });
-
-                $restore[$foreignKey['name']] = $foreignKey;
+            } else {
+                \Illuminate\Support\Facades\DB::statement("DROP INDEX IF EXISTS {$indexName}");
             }
-
-            Schema::table($table, function (Blueprint $blueprint) use ($indexName) {
-                $blueprint->dropUnique($indexName);
-            });
         }
 
         if (Schema::hasColumn($table, 'code')) {
@@ -90,14 +95,16 @@ return new class extends Migration
             });
         }
 
-        foreach ($restore as $foreignKey) {
-            Schema::table($table, function (Blueprint $blueprint) use ($foreignKey) {
-                $blueprint->foreign($foreignKey['columns'], $foreignKey['name'])
-                    ->references($foreignKey['foreign_columns'])
-                    ->on($foreignKey['foreign_table'])
-                    ->onUpdate($foreignKey['on_update'])
-                    ->onDelete($foreignKey['on_delete']);
-            });
+        if (! $isSqlite) {
+            foreach ($restore as $foreignKey) {
+                Schema::table($table, function (Blueprint $blueprint) use ($foreignKey) {
+                    $blueprint->foreign($foreignKey['columns'], $foreignKey['name'])
+                        ->references($foreignKey['foreign_columns'])
+                        ->on($foreignKey['foreign_table'])
+                        ->onUpdate($foreignKey['on_update'])
+                        ->onDelete($foreignKey['on_delete']);
+                });
+            }
         }
     }
 
