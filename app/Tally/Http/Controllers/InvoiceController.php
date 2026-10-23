@@ -166,6 +166,7 @@ class InvoiceController extends Controller
             'priceLists' => $this->priceLists($company),
             'availableCredit' => $this->availableCreditFor($order?->customer_ledger_id ? \Tally\Models\Ledger::query()->find($order->customer_ledger_id) : null),
             'nextNumber' => $numbers->peek($company, $branch, $year, $kind),
+            'numberingMethod' => $numbers->method($company, $kind),
         ]);
     }
 
@@ -195,6 +196,20 @@ class InvoiceController extends Controller
             'kind' => $invoice->kind,
             'invoice' => $invoice,
         ]);
+    }
+
+    public function ims(Request $request, Invoice $invoice): RedirectResponse
+    {
+        $company = app(WorkspaceContext::class)->company();
+        abort_unless($company && (int) $invoice->company_id === (int) $company->id, 404);
+        abort_unless($invoice->kind === InvoiceKind::Purchase && $invoice->isPosted(), 404);
+
+        $data = $request->validate([
+            'ims_status' => ['required', 'in:pending,accepted,rejected'],
+        ]);
+        $invoice->update(['ims_status' => $data['ims_status']]);
+
+        return back()->with('status', 'Invoice marked '.$data['ims_status'].'.');
     }
 
     public function einvoice(Request $request, Invoice $invoice): View

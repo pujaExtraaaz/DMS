@@ -65,6 +65,14 @@ class InventoryReports
         $opening = $godownId === null ? Quantity::scale((string) $product->opening_quantity, 4) : 0;
 
         foreach ($movements as $movement) {
+            if ($movement->isPlacedOpening()) {
+                if ($godownId !== null) {
+                    $opening += Quantity::signedScale((string) $movement->quantity, 4);
+                }
+
+                continue;
+            }
+
             if ($movement->movement_date->toDateString() < $from) {
                 $opening += Quantity::signedScale((string) $movement->quantity, 4);
             }
@@ -76,7 +84,7 @@ class InventoryReports
         foreach ($movements as $movement) {
             $date = $movement->movement_date->toDateString();
 
-            if ($date < $from || $date > $to) {
+            if ($movement->isPlacedOpening() || $date < $from || $date > $to) {
                 continue;
             }
 
@@ -132,9 +140,18 @@ class InventoryReports
             }
 
             if ($godownId === null) {
-                $opening = Quantity::scale((string) $product->opening_quantity, 4);
+                $placed = 0;
+
+                foreach ($mine as $movement) {
+                    if ($movement->isPlacedOpening()) {
+                        $placed += Quantity::signedScale((string) $movement->quantity, 4);
+                    }
+                }
+
+                $opening = max(0, Quantity::scale((string) $product->opening_quantity, 4) - $placed);
 
                 if ($opening > 0) {
+                    $unallocatedValue = Quantity::valueFromScaled($opening, (string) $product->opening_rate);
                     $rows[] = [
                         'product' => $product->name,
                         'godown' => 'Not in a godown',
@@ -143,10 +160,10 @@ class InventoryReports
                         'out_quantity' => '0.0000',
                         'closing_quantity' => Quantity::format($opening),
                         'rate' => (string) $product->opening_rate,
-                        'opening_value' => (string) $product->opening_value,
+                        'opening_value' => $unallocatedValue,
                         'in_value' => '0.00',
                         'out_value' => '0.00',
-                        'closing_value' => (string) $product->opening_value,
+                        'closing_value' => $unallocatedValue,
                     ];
                 }
             }
@@ -204,6 +221,10 @@ class InventoryReports
             $closing = Quantity::scale((string) $product->opening_quantity, 4);
 
             foreach ($movements->where('product_id', $product->id) as $movement) {
+                if ($movement->isPlacedOpening()) {
+                    continue;
+                }
+
                 $closing += Quantity::signedScale((string) $movement->quantity, 4);
             }
 
@@ -248,6 +269,15 @@ class InventoryReports
             $signed = Quantity::signedScale((string) $movement->quantity, 4);
             $value = $this->cents($movement->value);
             $date = $movement->movement_date->toDateString();
+
+            if ($movement->isPlacedOpening()) {
+                if (! $includeOpening) {
+                    $openingQty += $signed;
+                    $openingValue += $value;
+                }
+
+                continue;
+            }
 
             if ($date < $from) {
                 $openingQty += $signed;

@@ -50,6 +50,7 @@ class CostCentreController extends Controller
             'company' => $context->company(),
             'centre' => new CostCentre(['is_active' => true]),
             'categories' => $context->company()->costCategories()->where('is_active', true)->orderBy('name')->get(),
+            'parents' => $context->company()->costCentres()->orderBy('name')->get(),
         ]);
     }
 
@@ -66,6 +67,7 @@ class CostCentreController extends Controller
             'company' => $context->company(),
             'centre' => $costCentre,
             'categories' => $context->company()->costCategories()->orderBy('name')->get(),
+            'parents' => $context->company()->costCentres()->whereKeyNot($costCentre->id)->orderBy('name')->get(),
         ]);
     }
 
@@ -102,10 +104,27 @@ class CostCentreController extends Controller
             'name' => ['required', 'string', 'max:255', Rule::unique('cost_centres', 'name')->where(fn ($query) => $query->where('company_id', $company->id))->ignore($centre)],
             'code' => ['nullable', 'string', 'max:32'],
             'cost_category_id' => ['nullable', 'integer', Rule::exists('cost_categories', 'id')->where(fn ($query) => $query->where('company_id', $company->id))],
+            'parent_id' => ['nullable', 'integer', Rule::exists('acct_cost_centres', 'id')->where(fn ($query) => $query->where('company_id', $company->id)), function (string $attribute, mixed $value, \Closure $fail) use ($centre): void {
+                if ($value === null || $value === '' || ! $centre) {
+                    return;
+                }
+                $parentId = (int) $value;
+                $guard = 0;
+                while ($parentId && $guard < 30) {
+                    if ($parentId === $centre->id) {
+                        $fail('A cost centre cannot sit under itself.');
+
+                        return;
+                    }
+                    $parentId = (int) \Tally\Models\CostCentre::query()->whereKey($parentId)->value('parent_id');
+                    $guard++;
+                }
+            }],
             'is_active' => ['required', 'boolean'],
         ]);
         $data['code'] = $data['code'] ?? null;
         $data['cost_category_id'] = $data['cost_category_id'] ?? null;
+        $data['parent_id'] = $data['parent_id'] ?? null;
         $data['is_active'] = $request->boolean('is_active');
 
         return $data;

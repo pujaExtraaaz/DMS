@@ -119,7 +119,7 @@ class StockTransactionController extends Controller
         $name = (string) $request->route()?->getName();
 
         foreach (StockTransactionType::cases() as $type) {
-            if (str_starts_with($name, 'stock.'.$type->value.'.')) {
+            if (preg_match('/(?:^|\.)stock\.'.preg_quote($type->value, '/').'\./', $name) === 1) {
                 return $type;
             }
         }

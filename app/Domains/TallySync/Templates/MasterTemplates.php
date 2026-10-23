@@ -3,7 +3,8 @@
 namespace App\Domains\TallySync\Templates;
 
 /**
- * Canonical master XML shapes for future Tally sync.
+ * TallyPrime master XML. Every stored Books field that Tally can import is a tag.
+ * adjustment and transfer vouchers are not masters.
  */
 class MasterTemplates
 {
@@ -15,38 +16,38 @@ class MasterTemplates
         ?string $hsn = null,
         ?string $description = null,
         float $gstRate = 0,
+        array $fields = [],
     ): string {
-        $current = XmlHelpers::xml($currentName ?: $name);
-        $nameXml = XmlHelpers::xml($name);
-        $uom = XmlHelpers::xml($unit ?: 'Nos');
-        $hsnXml = XmlHelpers::xml($hsn ?? '');
-        $descXml = XmlHelpers::xml($description ?? '');
+        $current = $currentName ?: $name;
         $cgst = number_format($gstRate / 2, 2, '.', '');
         $sgst = number_format($gstRate / 2, 2, '.', '');
         $igst = number_format($gstRate, 2, '.', '');
+        $hsnXml = XmlHelpers::xml($hsn ?? '');
+        $supply = XmlHelpers::xml((string) ($fields['GSTTYPEOFSUPPLY'] ?? 'Goods'));
+        unset($fields['GSTTYPEOFSUPPLY']);
 
-        $inner = <<<XML
-<STOCKITEM NAME="{$current}" ACTION="{$action}">
-    <NAME>{$nameXml}</NAME>
-    <BASEUNITS>{$uom}</BASEUNITS>
-    <GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
-    <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
-    <DESCRIPTION>{$descXml}</DESCRIPTION>
-    <GSTDETAILS.LIST>
-        <APPLICABLEFROM>20260401</APPLICABLEFROM>
-        <HSNCODE>{$hsnXml}</HSNCODE>
-        <TAXABILITY>Taxable</TAXABILITY>
-        <STATEWISEDETAILS.LIST>
-            <STATENAME>Any</STATENAME>
-            <RATEDETAILS.LIST><GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD><GSTRATE>{$cgst}</GSTRATE></RATEDETAILS.LIST>
-            <RATEDETAILS.LIST><GSTRATEDUTYHEAD>SGST/UTGST</GSTRATEDUTYHEAD><GSTRATE>{$sgst}</GSTRATE></RATEDETAILS.LIST>
-            <RATEDETAILS.LIST><GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD><GSTRATE>{$igst}</GSTRATE></RATEDETAILS.LIST>
-        </STATEWISEDETAILS.LIST>
-    </GSTDETAILS.LIST>
-</STOCKITEM>
+        $gst = <<<XML
+<GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
+<GSTTYPEOFSUPPLY>{$supply}</GSTTYPEOFSUPPLY>
+<GSTDETAILS.LIST>
+ <APPLICABLEFROM>20260401</APPLICABLEFROM>
+ <HSNCODE>{$hsnXml}</HSNCODE>
+ <TAXABILITY>Taxable</TAXABILITY>
+ <STATEWISEDETAILS.LIST>
+  <STATENAME>Any</STATENAME>
+  <RATEDETAILS.LIST><GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD><GSTRATE>{$cgst}</GSTRATE></RATEDETAILS.LIST>
+  <RATEDETAILS.LIST><GSTRATEDUTYHEAD>SGST/UTGST</GSTRATEDUTYHEAD><GSTRATE>{$sgst}</GSTRATE></RATEDETAILS.LIST>
+  <RATEDETAILS.LIST><GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD><GSTRATE>{$igst}</GSTRATE></RATEDETAILS.LIST>
+  <RATEDETAILS.LIST><GSTRATEDUTYHEAD>Cess</GSTRATEDUTYHEAD><GSTRATE>0</GSTRATE></RATEDETAILS.LIST>
+ </STATEWISEDETAILS.LIST>
+</GSTDETAILS.LIST>
 XML;
 
-        return XmlEnvelope::masters('PRODUCT', $inner);
+        return XmlEnvelope::masters('PRODUCT', $this->object('STOCKITEM', $current, $action, array_merge([
+            'NAME' => $name,
+            'BASEUNITS' => $unit ?: 'Nos',
+            'DESCRIPTION' => $description ?? '',
+        ], $fields), $gst));
     }
 
     public function ledger(
@@ -57,51 +58,97 @@ XML;
         ?string $gstin = null,
         ?string $address = null,
         ?string $state = null,
+        array $fields = [],
     ): string {
-        $current = XmlHelpers::xml($currentName ?: $name);
-        $nameXml = XmlHelpers::xml($name);
-        $parentXml = XmlHelpers::xml($parent);
-        $gstinXml = XmlHelpers::xml($gstin ?? '');
         $addressXml = XmlHelpers::xml($address ?? '');
-        $stateXml = XmlHelpers::xml($state ?? '');
-
-        $inner = <<<XML
-<LEDGER NAME="{$current}" ACTION="{$action}">
- <NAME>{$nameXml}</NAME>
- <PARENT>{$parentXml}</PARENT>
- <ISBILLWISEON>Yes</ISBILLWISEON>
- <GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>
- <PARTYGSTIN>{$gstinXml}</PARTYGSTIN>
- <ADDRESS.LIST TYPE="String"><ADDRESS>{$addressXml}</ADDRESS></ADDRESS.LIST>
- <STATENAME>{$stateXml}</STATENAME>
-</LEDGER>
+        $mailing = XmlHelpers::xml((string) ($fields['MAILINGNAME'] ?? $name));
+        unset($fields['MAILINGNAME']);
+        $extra = <<<XML
+<MAILINGNAME.LIST TYPE="String"><MAILINGNAME>{$mailing}</MAILINGNAME></MAILINGNAME.LIST>
+<ADDRESS.LIST TYPE="String"><ADDRESS>{$addressXml}</ADDRESS></ADDRESS.LIST>
 XML;
 
-        return XmlEnvelope::masters('CUSTOMER', $inner);
+        return XmlEnvelope::masters('CUSTOMER', $this->object('LEDGER', $currentName ?: $name, $action, array_merge([
+            'NAME' => $name,
+            'PARENT' => $parent,
+            'ISBILLWISEON' => 'Yes',
+            'GSTREGISTRATIONTYPE' => 'Regular',
+            'PARTYGSTIN' => $gstin ?? '',
+            'STATENAME' => $state ?? '',
+        ], $fields), $extra));
     }
 
-    public function unit(string $name, string $action = 'Create', ?string $currentName = null): string
+    public function unit(string $name, string $action = 'Create', ?string $currentName = null, array $fields = []): string
     {
-        $current = XmlHelpers::xml($currentName ?: $name);
-        $nameXml = XmlHelpers::xml($name);
-
-        return XmlEnvelope::masters('UOM', <<<XML
-<UNIT NAME="{$current}" ACTION="{$action}">
- <NAME>{$nameXml}</NAME>
- <ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
-</UNIT>
-XML);
+        return XmlEnvelope::masters('UOM', $this->object('UNIT', $currentName ?: $name, $action, array_merge([
+            'NAME' => $name,
+            'ISSIMPLEUNIT' => 'Yes',
+            'DECIMALPLACES' => '2',
+        ], $fields)));
     }
 
-    public function godown(string $name, string $action = 'Create', ?string $currentName = null): string
+    public function godown(string $name, string $action = 'Create', ?string $currentName = null, array $fields = []): string
     {
-        $current = XmlHelpers::xml($currentName ?: $name);
-        $nameXml = XmlHelpers::xml($name);
+        return XmlEnvelope::masters('GODOWN', $this->object('GODOWN', $currentName ?: $name, $action, array_merge([
+            'NAME' => $name,
+            'PARENT' => 'Primary',
+        ], $fields)));
+    }
 
-        return XmlEnvelope::masters('GODOWN', <<<XML
-<GODOWN NAME="{$current}" ACTION="{$action}">
- <NAME>{$nameXml}</NAME>
-</GODOWN>
-XML);
+    public function group(string $name, string $parent, string $action = 'Create', ?string $currentName = null, array $fields = []): string
+    {
+        return XmlEnvelope::masters('GROUP', $this->object('GROUP', $currentName ?: $name, $action, array_merge([
+            'NAME' => $name,
+            'PARENT' => $parent !== '' ? $parent : 'Primary',
+        ], $fields)));
+    }
+
+    public function stockGroup(string $name, string $parent, string $action = 'Create', ?string $currentName = null, array $fields = []): string
+    {
+        return XmlEnvelope::masters('STOCKGROUP', $this->object('STOCKGROUP', $currentName ?: $name, $action, array_merge([
+            'NAME' => $name,
+            'PARENT' => $parent !== '' ? $parent : 'Primary',
+        ], $fields)));
+    }
+
+    public function costCentre(string $name, string $category, string $action = 'Create', ?string $currentName = null, array $fields = []): string
+    {
+        return XmlEnvelope::masters('COSTCENTRE', $this->object('COSTCENTRE', $currentName ?: $name, $action, array_merge([
+            'NAME' => $name,
+            'CATEGORY' => $category !== '' ? $category : 'Primary Cost Category',
+            'PARENT' => 'Primary',
+        ], $fields)));
+    }
+
+    public function costCategory(string $name, string $action = 'Create', ?string $currentName = null, array $fields = []): string
+    {
+        return XmlEnvelope::masters('COSTCATEGORY', $this->object('COSTCATEGORY', $currentName ?: $name, $action, array_merge([
+            'NAME' => $name,
+            'ALLOCATEREVENUE' => 'Yes',
+            'ALLOCATENONREVENUE' => 'Yes',
+        ], $fields)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $fields
+     */
+    private function object(string $tag, string $nameAttr, string $action, array $fields, string $extra = ''): string
+    {
+        $body = '';
+        foreach ($fields as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            if (is_bool($value)) {
+                $value = $value ? 'Yes' : 'No';
+            }
+            $body .= '<'.$key.'>'.XmlHelpers::xml((string) $value).'</'.$key.">\n";
+        }
+
+        $name = XmlHelpers::xml($nameAttr);
+        $action = XmlHelpers::xml($action);
+        $extra = trim($extra);
+
+        return "<{$tag} NAME=\"{$name}\" ACTION=\"{$action}\">\n{$body}{$extra}\n</{$tag}>";
     }
 }

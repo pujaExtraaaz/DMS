@@ -96,12 +96,12 @@ class ParityMasterController extends Controller
 
     public function voucherTypes(WorkspaceContext $context): View
     {
-        return $this->index($context, 'Voucher Types', 'voucher-types', VoucherTypeMaster::class, ['Name' => 'name', 'Abbreviation' => 'abbreviation', 'Category' => 'category', 'Prefix' => 'prefix']);
+        return $this->index($context, 'Voucher Types', 'voucher-types', VoucherTypeMaster::class, ['Name' => 'name', 'Category' => 'category', 'Method' => 'numbering_method', 'Prefix' => 'prefix', 'Suffix' => 'suffix', 'Restart' => 'restart']);
     }
 
     public function createVoucherType(WorkspaceContext $context): View
     {
-        return $this->form($context, 'Voucher type', 'voucher-types.store', new VoucherTypeMaster(['next_number' => 1, 'padding' => 6]), $this->voucherTypeFields());
+        return $this->form($context, 'Voucher type', 'voucher-types.store', new VoucherTypeMaster(['next_number' => 1, 'padding' => 6, 'numbering_method' => 'automatic', 'restart' => 'yearly']), $this->voucherTypeFields());
     }
 
     public function storeVoucherType(Request $request, WorkspaceContext $context): RedirectResponse
@@ -431,9 +431,24 @@ class ParityMasterController extends Controller
             ['name' => 'name', 'label' => 'Name', 'type' => 'text'],
             ['name' => 'abbreviation', 'label' => 'Abbreviation', 'type' => 'text'],
             ['name' => 'category', 'label' => 'Category', 'type' => 'select', 'options' => collect(VoucherType::cases())->mapWithKeys(fn (VoucherType $type) => [$type->value => $type->label()])->all()],
-            ['name' => 'prefix', 'label' => 'Number prefix', 'type' => 'text'],
-            ['name' => 'next_number', 'label' => 'Next number', 'type' => 'number'],
-            ['name' => 'padding', 'label' => 'Padding', 'type' => 'number'],
+            ['name' => 'numbering_method', 'label' => 'Numbering method', 'type' => 'select', 'options' => [
+                'automatic' => 'Automatic',
+                'multi_user' => 'Multi-user automatic',
+                'automatic_manual' => 'Automatic (manual override)',
+                'manual' => 'Manual',
+                'none' => 'None',
+            ], 'help' => 'Automatic shows the next number. Multi-user automatic allots it only when you save. Manual and None require the number on the voucher. Override shows the next number and lets you change it.'],
+            ['name' => 'prefix', 'label' => 'Number prefix', 'type' => 'text', 'optional' => true, 'help' => 'Required for automatic numbering. Example: REC'],
+            ['name' => 'suffix', 'label' => 'Number suffix', 'type' => 'text', 'optional' => true, 'help' => 'Added after the number, for example /26.'],
+            ['name' => 'next_number', 'label' => 'Starting number', 'type' => 'number', 'help' => 'Used when a new series starts. Raising it skips ahead. It does not reuse a number already given out.'],
+            ['name' => 'padding', 'label' => 'Width of number', 'type' => 'number'],
+            ['name' => 'restart', 'label' => 'Restart numbering', 'type' => 'select', 'options' => [
+                'yearly' => 'Yearly',
+                'monthly' => 'Monthly',
+                'daily' => 'Daily',
+                'weekly' => 'Weekly',
+                'never' => 'Never',
+            ], 'help' => 'Yearly restarts each financial year. Monthly, daily, and weekly restart on that calendar period. Never keeps one series across years.'],
         ];
     }
 
@@ -445,13 +460,23 @@ class ParityMasterController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:80'],
             'abbreviation' => ['required', 'string', 'max:12', Rule::unique('acct_voucher_type_masters', 'abbreviation')->where('company_id', $companyId)->ignore($ignore)],
-            'category' => ['required', Rule::in(array_column(VoucherType::cases(), 'value'))],
-            'prefix' => ['required', 'string', 'max:12'],
+            'category' => ['required', Rule::in(array_column(VoucherType::cases(), 'value')), Rule::unique('acct_voucher_type_masters', 'category')->where('company_id', $companyId)->ignore($ignore)],
+            'numbering_method' => ['required', Rule::in(['automatic', 'multi_user', 'automatic_manual', 'manual', 'none'])],
+            'prefix' => ['nullable', 'string', 'max:12', Rule::requiredIf(fn () => in_array($request->input('numbering_method'), ['automatic', 'multi_user', 'automatic_manual'], true))],
+            'suffix' => ['nullable', 'string', 'max:12'],
             'next_number' => ['required', 'integer', 'min:1'],
             'padding' => ['required', 'integer', 'between:1,8'],
+            'restart' => ['required', Rule::in(['yearly', 'monthly', 'daily', 'weekly', 'never'])],
         ]);
         $data['abbreviation'] = strtoupper($data['abbreviation']);
-        $data['prefix'] = strtoupper($data['prefix']);
+        $data['prefix'] = strtoupper(trim((string) ($data['prefix'] ?? '')));
+        $data['suffix'] = strtoupper(trim((string) ($data['suffix'] ?? ''))) ?: null;
+        $sample = \Tally\Accounting\VoucherNumberFormat::make($data['prefix'], $data['suffix'], (int) $data['padding'], (int) $data['next_number']);
+        if (strlen($sample) > 30) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'prefix' => 'Prefix, number width, and suffix together must stay within 30 characters.',
+            ]);
+        }
 
         return $data;
     }

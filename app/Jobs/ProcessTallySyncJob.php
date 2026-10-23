@@ -34,7 +34,7 @@ class ProcessTallySyncJob implements ShouldQueue
         }
 
         // Office bridge mode: leave items pending for the local Tally Connector to pull.
-        if (config('services.tally.use_connector', config('tally_sync.use_connector'))) {
+        if (config('tally_sync.use_connector', true)) {
             return;
         }
 

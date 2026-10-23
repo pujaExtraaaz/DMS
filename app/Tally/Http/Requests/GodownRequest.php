@@ -21,10 +21,13 @@ class GodownRequest extends FormRequest
         $code = strtoupper(trim((string) $this->input('code')));
         $address = trim((string) $this->input('address'));
 
+        $parent = $this->input('parent_id');
+
         $this->merge([
             'name' => trim((string) $this->input('name')),
             'code' => $code === '' ? null : $code,
             'address' => $address === '' ? null : $address,
+            'parent_id' => $parent === '' || $parent === null ? null : $parent,
             'is_active' => $this->boolean('is_active'),
         ]);
     }
@@ -64,6 +67,32 @@ class GodownRequest extends FormRequest
                     ->ignore($godown),
             ],
             'address' => ['nullable', 'string', 'max:500'],
+            'parent_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('acct_godowns', 'id')->where(fn ($query) => $query->where('company_id', $company->id)),
+                function (string $attribute, mixed $value, \Closure $fail) use ($company, $godown): void {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    $parentId = (int) $value;
+                    if ($godown && $parentId === $godown->id) {
+                        $fail('A godown cannot sit under itself.');
+
+                        return;
+                    }
+                    $guard = 0;
+                    while ($parentId && $guard < 30) {
+                        if ($godown && $parentId === $godown->id) {
+                            $fail('A godown cannot sit under one of its own godowns.');
+
+                            return;
+                        }
+                        $parentId = (int) DB::table('acct_godowns')->where('company_id', $company->id)->where('id', $parentId)->value('parent_id');
+                        $guard++;
+                    }
+                },
+            ],
             'is_active' => ['required', 'boolean'],
         ];
     }

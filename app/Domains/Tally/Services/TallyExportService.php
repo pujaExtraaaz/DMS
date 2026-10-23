@@ -122,6 +122,14 @@ class TallyExportService
             return null;
         }
 
+        $books = app(\App\Domains\TallySync\Queue\BooksTwin::class)->target($document);
+        if ($books instanceof \Illuminate\Database\Eloquent\Model) {
+            return app(\App\Domains\TallySync\Queue\BooksSyncQueue::class)->enqueue($books);
+        }
+        if ($books === 'skip') {
+            return null;
+        }
+
         try {
             return $this->enqueue($type, $document);
         } catch (\Throwable $e) {
@@ -156,6 +164,14 @@ class TallyExportService
         $postedStatuses = ['issued', 'posted', 'paid', 'partial', 'completed', 'approved'];
 
         if ($status !== '' && ! in_array($status, $postedStatuses, true)) {
+            return null;
+        }
+
+        $books = app(\App\Domains\TallySync\Queue\BooksTwin::class)->target($document);
+        if ($books instanceof \Illuminate\Database\Eloquent\Model) {
+            return app(\App\Domains\TallySync\Queue\BooksSyncQueue::class)->enqueue($books);
+        }
+        if ($books === 'skip') {
             return null;
         }
 

@@ -7,6 +7,7 @@
     'cashLedgers',
     'otherLedgers',
     'nextNumber',
+    'numberingMethod' => 'automatic',
     'costCentres' => [],
     'businessUnits' => [],
     'departments' => [],
@@ -27,7 +28,8 @@
 
     $blank = ['ledger_id' => '', 'debit' => '', 'credit' => '', 'narration' => '', 'reference' => '', 'cost_centre_id' => '', 'business_unit_id' => '', 'department_id' => ''];
     $doubleEntry = in_array($voucher->voucher_type, [VoucherType::Journal, VoucherType::Adjustment, VoucherType::Receipt, VoucherType::Transfer], true);
-    $lineCentres = in_array($voucher->voucher_type, [VoucherType::Journal, VoucherType::Adjustment, VoucherType::Transfer], true) ? $costCentres : [];
+    $lineCentres = ($company?->usesCostCentres() ?? false) ? $costCentres : [];
+    $bankLine = in_array($voucher->voucher_type, [VoucherType::Payment, VoucherType::Receipt, VoucherType::Contra], true);
     $classOptions = collect($voucherClasses)->filter(fn ($class) => $class->voucher_type === $voucher->voucher_type->value);
     $dateLabel = 'Date';
     $openLedger = match (true) {
@@ -113,7 +115,13 @@
             <label class="tally-co-row">
                 <span>{{ $voucher->voucher_type->label() }}</span>
                 <span>:</span>
-                <span class="tally-co-value">No. {{ $nextNumber }}</span>
+                @if (! $voucher->exists && in_array($numberingMethod, ['manual', 'none', 'automatic_manual'], true))
+                    <input class="input" name="voucher_number" value="{{ old('voucher_number', $nextNumber) }}" maxlength="30" @required(in_array($numberingMethod, ['manual', 'none'], true)) aria-label="Voucher number" placeholder="{{ in_array($numberingMethod, ['manual', 'none'], true) ? 'Enter number' : 'Next number' }}">
+                @elseif ($numberingMethod === 'multi_user')
+                    <span class="tally-co-value">Allotted on save</span>
+                @else
+                    <span class="tally-co-value">No. {{ $nextNumber }}</span>
+                @endif
             </label>
             <label class="tally-co-row">
                 <span>Date</span>
@@ -179,6 +187,21 @@
         <x-tally::form.field name="reference_number" label="Reference">
             <x-tally::form.input name="reference_number" value="{{ old('reference_number', $voucher->reference_number) }}" maxlength="50" />
         </x-form.field>
+        <x-tally::form.field name="reference_date" label="Reference date">
+            <x-tally::form.input name="reference_date" type="date" value="{{ old('reference_date', optional($voucher->reference_date)->toDateString()) }}" />
+        </x-form.field>
+        <x-tally::form.field name="effective_date" label="Effective date">
+            <x-tally::form.input name="effective_date" type="date" value="{{ old('effective_date', optional($voucher->effective_date)->toDateString()) }}" />
+        </x-form.field>
+        <x-tally::form.field name="place_of_supply" label="Place of supply">
+            <x-tally::form.input name="place_of_supply" value="{{ old('place_of_supply', $voucher->place_of_supply) }}" maxlength="80" />
+        </x-form.field>
+        @if (in_array($voucher->voucher_type, [VoucherType::Sales, VoucherType::Purchase], true))
+            <x-tally::form.field name="is_invoice" label="Invoice mode">
+                <input type="hidden" name="is_invoice" value="0">
+                <label class="check"><input type="checkbox" name="is_invoice" value="1" @checked(filter_var(old('is_invoice', $voucher->is_invoice), FILTER_VALIDATE_BOOLEAN))> This voucher is an invoice</label>
+            </x-form.field>
+        @endif
         @if (count($currencies) > 0)
             <x-tally::form.field name="currency_id" label="Currency">
                 @include('tally::masters._picker', [
@@ -251,7 +274,7 @@
                             </thead>
                     <tbody data-section="journal">
                         @foreach ($entries as $index => $entry)
-                            @include('tally::vouchers._line', ['index' => $index, 'entry' => $entry, 'ledgers' => $ledgers, 'mode' => 'journal', 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'refLabel' => $voucher->voucher_type === VoucherType::Receipt ? 'Agst Ref' : 'New Ref'])
+                            @include('tally::vouchers._line', ['index' => $index, 'entry' => $entry, 'ledgers' => $ledgers, 'mode' => 'journal', 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'refLabel' => $voucher->voucher_type === VoucherType::Receipt ? 'Agst Ref' : 'New Ref', 'bank' => $bankLine])
                         @endforeach
                     </tbody>
                 </table>
@@ -279,7 +302,7 @@
                             </thead>
                             <tbody data-section="{{ $section['side'] }}">
                                 @foreach ($section['rows'] as $row)
-                                    @include('tally::vouchers._line', ['index' => $row['index'], 'entry' => $row['entry'] + ['amount' => $row['amount']], 'ledgers' => $section['ledgers'], 'mode' => $section['side'], 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'account' => $section['title'] === 'Account', 'autofocus' => $loop->parent->first && $loop->first])
+                                    @include('tally::vouchers._line', ['index' => $row['index'], 'entry' => $row['entry'] + ['amount' => $row['amount']], 'ledgers' => $section['ledgers'], 'mode' => $section['side'], 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'account' => $section['title'] === 'Account', 'autofocus' => $loop->parent->first && $loop->first, 'bank' => $bankLine])
                                 @endforeach
                             </tbody>
                         </table>
@@ -301,8 +324,8 @@
 
     @if (in_array($voucher->voucher_type, [\Tally\Accounting\VoucherType::Receipt, \Tally\Accounting\VoucherType::Payment], true) && ($company === null || $company->usesBillWise()))
         <details class="tally-more">
-        <summary>Adjust against bills</summary>
-        <p class="form-note">Optional. Enter an amount against a bill for a partial or full settlement. Any remainder is kept as an advance.</p>
+        <summary>Bill-wise details</summary>
+        <p class="form-note">Agst Ref settles an open bill. New Ref is opened when a sales or purchase voucher is posted. Any amount you do not allocate is an Advance under the name below. Clear that name to leave the remainder On Account.</p>
         <div class="table-wrap">
             <table class="data bill-allocate">
                 <colgroup>
@@ -311,7 +334,7 @@
                     <col class="col-outstanding">
                     <col class="col-allocate">
                 </colgroup>
-                <thead><tr><th>Bill</th><th>Due</th><th class="money">Outstanding</th><th class="money">Allocate</th></tr></thead>
+                <thead><tr><th>Agst Ref</th><th>Due</th><th class="money">Outstanding</th><th class="money">Amount</th></tr></thead>
                 <tbody>
                     @forelse ($openBills as $index => $bill)
                         <tr>
@@ -326,6 +349,11 @@
                 </tbody>
             </table>
         </div>
+        <label class="tally-co-row" style="margin-top:0.75rem">
+            <span>Advance name</span>
+            <span>:</span>
+            <input class="input" name="advance_name" value="{{ old('advance_name', 'Advance') }}" maxlength="40" placeholder="Advance">
+        </label>
         <p class="form-note" style="margin-top:0.75rem">Settlement difference (under/over): post a discount or write-off journal against one bill.</p>
         <div class="form-grid">
             <label class="tally-co-row">
@@ -393,12 +421,12 @@
 
 @if ($doubleEntry)
     <template id="line-journal">
-        @include('tally::vouchers._line', ['index' => '__INDEX__', 'entry' => $blank, 'ledgers' => $ledgers, 'mode' => 'journal', 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'refLabel' => $voucher->voucher_type === VoucherType::Receipt ? 'Agst Ref' : 'New Ref'])
+        @include('tally::vouchers._line', ['index' => '__INDEX__', 'entry' => $blank, 'ledgers' => $ledgers, 'mode' => 'journal', 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'refLabel' => $voucher->voucher_type === VoucherType::Receipt ? 'Agst Ref' : 'New Ref', 'bank' => $bankLine])
     </template>
 @else
     @foreach ($sections as $section)
         <template id="line-{{ $section['side'] }}">
-            @include('tally::vouchers._line', ['index' => '__INDEX__', 'entry' => $blank, 'ledgers' => $section['ledgers'], 'mode' => $section['side'], 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'account' => false])
+            @include('tally::vouchers._line', ['index' => '__INDEX__', 'entry' => $blank, 'ledgers' => $section['ledgers'], 'mode' => $section['side'], 'costCentres' => $lineCentres, 'businessUnits' => $businessUnits, 'departments' => $departments, 'account' => false, 'bank' => $bankLine])
         </template>
     @endforeach
 @endif

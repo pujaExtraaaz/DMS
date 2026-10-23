@@ -73,7 +73,10 @@
                     </x-tally::form.field>
                 @elseif ($section === 'inventory')
                     <p class="gateway-group">Inventory Features</p>
-                    @include('tally::companies._yesno', ['name' => 'allow_negative_stock', 'label' => 'Allow negative stock', 'value' => $company->allow_negative_stock, 'options' => ['No', 'Yes'], 'values' => ['0', '1'], 'autofocus' => true])
+                    @include('tally::companies._yesno', ['name' => 'maintain_inventory', 'label' => 'Maintain inventory', 'value' => $company->maintainsInventory(), 'options' => ['No', 'Yes'], 'values' => ['0', '1'], 'autofocus' => true])
+                    @include('tally::companies._yesno', ['name' => 'integrate_accounts_with_inventory', 'label' => 'Integrate accounts with inventory', 'value' => $company->integratesAccountsWithInventory(), 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    @include('tally::companies._yesno', ['name' => 'cost_centres_for_inventory', 'label' => 'Use cost centres for inventory', 'value' => $company->usesCostCentresForInventory(), 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    @include('tally::companies._yesno', ['name' => 'allow_negative_stock', 'label' => 'Allow negative stock', 'value' => $company->allow_negative_stock, 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
                     @include('tally::companies._yesno', ['name' => 'inventory_repeat_scan_increments', 'label' => 'Repeat barcode scan increases quantity', 'value' => $repeatScan, 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
                     @include('tally::companies._yesno', [
                         'name' => 'inventory_valuation_method',
@@ -92,6 +95,9 @@
                         'values' => ['regular', 'composition', 'unregistered', 'consumer'],
                         'autofocus' => true,
                     ])
+                    @include('tally::companies._yesno', ['name' => 'enable_gst', 'label' => 'Enable GST', 'value' => $company->gstEnabled(), 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    @include('tally::companies._yesno', ['name' => 'enable_tds', 'label' => 'Enable TDS', 'value' => $company->tdsEnabled(), 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
+                    @include('tally::companies._yesno', ['name' => 'enable_tcs', 'label' => 'Enable TCS', 'value' => $company->tcsEnabled(), 'options' => ['No', 'Yes'], 'values' => ['0', '1']])
                     @include('tally::companies._yesno', [
                         'name' => 'tax_pricing',
                         'label' => 'Tax pricing',

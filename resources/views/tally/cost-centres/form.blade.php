@@ -6,6 +6,14 @@
             <div class="form-grid">
                 <x-tally::form.field name="name" label="Name" required><x-tally::form.input name="name" :value="old('name', $centre->name)" required /></x-form.field>
                 <x-tally::form.field name="code" label="Code"><x-tally::form.input name="code" :value="old('code', $centre->code)" /></x-form.field>
+                <x-tally::form.field name="parent_id" label="Under">
+                    <select id="parent_id" name="parent_id" class="input">
+                        <option value="">Primary</option>
+                        @foreach ($parents ?? [] as $parent)
+                            <option value="{{ $parent->id }}" @selected((string) old('parent_id', $centre->parent_id) === (string) $parent->id)>{{ $parent->name }}</option>
+                        @endforeach
+                    </select>
+                </x-form.field>
                 <x-tally::form.field name="cost_category_id" label="Category">
                     <select id="cost_category_id" name="cost_category_id" class="input">
                         <option value="">None</option>

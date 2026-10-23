@@ -9,6 +9,7 @@ use Tally\Models\FinancialYear;
 use Tally\Models\Godown;
 use Tally\Models\Product;
 use Tally\Models\StockBatch;
+use Tally\Models\StockGodownOpening;
 use Tally\Models\StockMovement;
 use Tally\Models\StockSerial;
 use Illuminate\Database\Eloquent\Model;
@@ -16,8 +17,9 @@ use Illuminate\Validation\ValidationException;
 
 /**
  * The only writer of stock movements. Quantity on hand is the signed sum of
- * movements, plus the product opening quantity when no godown is requested.
- * Opening quantity is not placed in a godown. Batch quantity is the same sum
+ * movements, plus any opening quantity that has not been placed in a godown.
+ * Godown opening rows are movements, so they are not added a second time.
+ * Batch quantity is the same sum
  * filtered by batch. Value is quantity times rate, stored on the movement.
  */
 class StockMovementService
@@ -178,7 +180,8 @@ class StockMovementService
     }
 
     /**
-     * Godown quantity is movements only. Company quantity also includes opening stock.
+     * Godown quantity is movements only. Company quantity adds opening stock
+     * that is not already sitting in a godown.
      */
     public function quantity(Product $product, ?Godown $godown = null): string
     {
@@ -186,6 +189,7 @@ class StockMovementService
 
         if ($godown === null) {
             $scaled += Quantity::scale((string) $product->opening_quantity, 4);
+            $scaled -= $this->placedOpeningScaled($product);
         }
 
         return Quantity::format($scaled);
@@ -206,6 +210,7 @@ class StockMovementService
 
         StockMovement::query()
             ->where('company_id', $companyId)
+            ->withoutPlacedOpening()
             ->select(['id', 'product_id', 'financial_year_id', 'quantity', 'value'])
             ->chunkById(500, function ($rows) use (&$quantity, &$value, $financialYearId): void {
                 foreach ($rows as $row) {
@@ -218,6 +223,23 @@ class StockMovementService
             });
 
         return ['quantity' => $quantity, 'value' => $value];
+    }
+
+    private function placedOpeningScaled(Product $product): int
+    {
+        $scaled = 0;
+
+        StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reference_type', StockGodownOpening::class)
+            ->select(['id', 'quantity'])
+            ->chunkById(200, function ($rows) use (&$scaled): void {
+                foreach ($rows as $row) {
+                    $scaled += Quantity::signedScale((string) $row->quantity, 4);
+                }
+            });
+
+        return $scaled;
     }
 
     /**

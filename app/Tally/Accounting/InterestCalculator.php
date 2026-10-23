@@ -14,13 +14,23 @@ final class InterestCalculator
     /**
      * @return array{days: int, interest: string}
      */
-    public function onOutstanding(string $principal, string $annualPercent, string $dueDate, string $asOf, int $dayCount = 365): array
+    public function onOutstanding(string $principal, string $annualPercent, string $dueDate, string $asOf, int $dayCount = 365, string $style = '365_day_year'): array
     {
         if ($asOf <= $dueDate || Money::cents($principal) <= 0) {
             return ['days' => 0, 'interest' => '0.00'];
         }
 
-        $days = (int) ((strtotime($asOf) - strtotime($dueDate)) / 86400);
+        if ($style === '30_day_month') {
+            $from = strtotime($dueDate);
+            $until = strtotime($asOf);
+            $days = ((int) date('Y', $until) - (int) date('Y', $from)) * 360
+                + ((int) date('n', $until) - (int) date('n', $from)) * 30
+                + ((int) date('j', $until) - (int) date('j', $from));
+            $dayCount = 360;
+        } else {
+            $days = (int) ((strtotime($asOf) - strtotime($dueDate)) / 86400);
+        }
+
         $days = max(0, $days);
 
         if ($days === 0 || $dayCount < 1) {

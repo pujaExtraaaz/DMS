@@ -8,7 +8,9 @@ use Tally\Models\FinancialYear;
 use Tally\Models\Ledger;
 use Tally\Models\Party;
 use Tally\Models\Voucher;
+use Tally\Models\Invoice;
 use Tally\Models\VoucherEntry;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Opens a bill for each posted customer debit and supplier credit.
@@ -32,7 +34,7 @@ class BillService
         foreach ($voucher->entries as $entry) {
             $ledger = $entry->ledger;
 
-            if (! $ledger) {
+            if (! $ledger || ! $ledger->maintainsBillWise()) {
                 continue;
             }
 
@@ -59,7 +61,12 @@ class BillService
 
     public function ensureOpening(Ledger $ledger, ?FinancialYear $year = null): ?Bill
     {
-        $ledger->loadMissing('accountGroup');
+        $ledger->loadMissing(['accountGroup', 'company']);
+
+        if (! $ledger->maintainsBillWise()) {
+            return null;
+        }
+
         $amount = Money::cents((string) $ledger->opening_balance);
 
         if ($amount === 0) {
@@ -77,7 +84,8 @@ class BillService
         }
 
         $year ??= $ledger->company->financialYears()->orderBy('start_date')->first();
-        $date = $year?->start_date->toDateString()
+        $date = $ledger->company->books_beginning_from?->toDateString()
+            ?? $year?->start_date->toDateString()
             ?? $ledger->company->financial_year_start->toDateString();
 
         $bill = Bill::query()->firstOrNew([
@@ -161,6 +169,40 @@ class BillService
         }
 
         return (int) ($ledger->credit_days ?? $party?->credit_days ?? 0);
+    }
+
+    public function applyInvoiceBillName(Invoice $invoice): void
+    {
+        $name = trim((string) $invoice->bill_name);
+
+        if ($name === '' || ! $invoice->voucher_id) {
+            return;
+        }
+
+        $bills = Bill::query()
+            ->whereHas('entry', fn ($query) => $query->where('voucher_id', $invoice->voucher_id))
+            ->get();
+
+        foreach ($bills as $bill) {
+            if ($bill->bill_number === $name) {
+                continue;
+            }
+
+            $taken = Bill::query()
+                ->where('company_id', $invoice->company_id)
+                ->where('ledger_id', $bill->ledger_id)
+                ->where('bill_number', $name)
+                ->whereKeyNot($bill->id)
+                ->exists();
+
+            if ($taken) {
+                throw ValidationException::withMessages([
+                    'bill_name' => 'That bill name is already used for this party.',
+                ]);
+            }
+
+            $bill->update(['bill_number' => $name]);
+        }
     }
 
     private function dueDate(string $date, int $days): string

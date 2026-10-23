@@ -22,6 +22,9 @@
                         @else
                             <input class="input" id="{{ $field['name'] }}" name="{{ $field['name'] }}" type="{{ $field['type'] === 'number' ? 'number' : ($field['type'] === 'date' ? 'date' : 'text') }}" value="{{ old($field['name'], $record->{$field['name']} instanceof \DateTimeInterface ? $record->{$field['name']}->toDateString() : ($record->{$field['name']} ?? '')) }}" @required(empty($field['optional']))>
                         @endif
+                        @if (! empty($field['help']))
+                            <p class="form-note">{{ $field['help'] }}</p>
+                        @endif
                     </x-form.field>
                 @endforeach
             </div>

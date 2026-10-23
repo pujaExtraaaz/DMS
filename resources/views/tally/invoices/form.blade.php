@@ -15,6 +15,7 @@
             :price-lists="$priceLists ?? []"
             :available-credit="$availableCredit ?? null"
             :next-number="$nextNumber"
+            :numbering-method="$numberingMethod ?? 'automatic'"
         />
     </x-shell.page>
 </x-layouts.app>

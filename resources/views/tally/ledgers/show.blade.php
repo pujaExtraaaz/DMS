@@ -30,6 +30,9 @@
                 <dt>PAN</dt><dd>{{ $ledger->pan ?: '—' }}</dd>
                 <dt>Credit limit</dt><dd>{{ $ledger->credit_limit !== null ? number_format((float) $ledger->credit_limit, 2) : '—' }}</dd>
                 <dt>Credit days</dt><dd>{{ $ledger->credit_days ?? '—' }}</dd>
+                <dt>Bill-wise</dt><dd>{{ $ledger->maintainsBillWise() ? 'Yes' : 'No' }}</dd>
+                <dt>Cost centres</dt><dd>{{ $ledger->costCentresApplicable() ? 'Applicable' : 'Not applicable' }}</dd>
+                <dt>Interest</dt><dd>{{ $ledger->calculatesInterest() ? rtrim(rtrim(number_format((float) $ledger->interest_rate, 4), '0'), '.') . '% · ' . ($ledger->interest_style === '30_day_month' ? '30-day month' : '365-day year') : 'No' }}</dd>
                 <dt>Status</dt><dd><x-tally::ui.status :active="$ledger->is_active" /></dd>
                 @if ($ledger->bankAccount)
                     <dt>Bank name</dt><dd>{{ $ledger->bankAccount->bank_name }}</dd>

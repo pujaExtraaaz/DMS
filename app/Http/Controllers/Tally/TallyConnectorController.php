@@ -91,7 +91,7 @@ class TallyConnectorController extends Controller
         $data = $request->validate([
             'status' => 'required|in:sent,failed',
             'error' => 'nullable|string|max:2000',
-            'response' => 'nullable|string|max:20000',
+            'response' => 'nullable|string|max:60000',
         ]);
 
         if ($data['status'] === 'sent') {
@@ -105,6 +105,7 @@ class TallyConnectorController extends Controller
 
             try {
                 app(TallyExportService::class)->recordSuccess($tally_sync_queue, $data['response'] ?? null);
+                app(\App\Domains\TallySync\Queue\BooksSyncQueue::class)->recordLink($tally_sync_queue, $data['response'] ?? null);
             } catch (\Throwable $e) {
                 Log::warning('Tally mapping update failed', ['id' => $tally_sync_queue->id, 'error' => $e->getMessage()]);
             }
@@ -122,5 +123,29 @@ class TallyConnectorController extends Controller
             'id' => $tally_sync_queue->id,
             'status' => $tally_sync_queue->fresh()->status,
         ]);
+    }
+
+    public function exports(): JsonResponse
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('tally_sync_cursors')) {
+            return response()->json(['ok' => false, 'message' => 'Connector tables are not migrated.'], 503);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'items' => app(\App\Domains\TallySync\Bridge\TallyExportBuilder::class)->pending(),
+        ]);
+    }
+
+    public function imports(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'key' => 'required|string|max:40',
+            'xml' => 'required|string|max:8000000',
+        ]);
+
+        return response()->json([
+            'ok' => true,
+        ] + app(\App\Domains\TallySync\Bridge\TallyInbound::class)->apply($data['key'], $data['xml']));
     }
 }

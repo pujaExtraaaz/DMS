@@ -229,7 +229,6 @@
                         ['Import', 'utilities.import'],
                         ['Export', 'utilities.export'],
                         ['Audit trail', 'audit.index'],
-                        ['Tally connector', 'connector.show'],
                     ] as [$label, $route])
                         @if (tally_route_has($route))
                             <x-ui.button variant="secondary" size="sm" class="!justify-start" :href="tally_route($route)">{{ $label }}</x-ui.button>

@@ -2,8 +2,23 @@
     <x-tally::form.field name="name" label="Name" required>
         <x-tally::form.input name="name" value="{{ old('name', $product->name) }}" required maxlength="255" />
     </x-form.field>
+    <x-tally::form.field name="alias" label="Alias">
+        <x-tally::form.input name="alias" value="{{ old('alias', $product->alias) }}" maxlength="255" />
+    </x-form.field>
     <x-tally::form.field name="code" label="SKU" required>
         <x-tally::form.input name="code" value="{{ old('code', $product->code) }}" required maxlength="32" />
+    </x-form.field>
+    <x-tally::form.field name="part_number" label="Part number">
+        <x-tally::form.input name="part_number" value="{{ old('part_number', $product->part_number) }}" maxlength="40" />
+    </x-form.field>
+    <x-tally::form.field name="type_of_supply" label="Type of supply" required>
+        <select id="type_of_supply" name="type_of_supply" class="input" required>
+            <option value="goods" @selected(old('type_of_supply', $product->type_of_supply ?: 'goods') === 'goods')>Goods</option>
+            <option value="services" @selected(old('type_of_supply', $product->type_of_supply) === 'services')>Services</option>
+        </select>
+    </x-form.field>
+    <x-tally::form.field name="description" label="Description" class="span-2">
+        <x-tally::form.textarea name="description" :value="old('description', $product->description)" />
     </x-form.field>
     <x-tally::form.field name="barcode" label="Barcode">
         <x-tally::form.input name="barcode" value="{{ old('barcode', $product->barcode) }}" maxlength="64" />
@@ -85,4 +100,33 @@
     </x-form.field>
     <x-tally::form.active class="span-2" :checked="$product->is_active ?? true" />
 </div>
-<p class="form-note">Conversion factor is how many primary units make one alternate unit. Opening value must equal opening quantity × opening rate. Opening quantity is not received into a godown.</p>
+<p class="form-note">Conversion factor is how many primary units make one alternate unit. Opening value must equal opening quantity × opening rate. The opening quantity above is the item total. Godown rows below place that opening into those godowns. When you fill any row, the quantities must add up to the opening quantity.</p>
+<h2>Opening by godown</h2>
+<div class="form-grid">
+    @php
+        $savedOpenings = old('openings', $product->exists ? $product->godownOpenings->map(fn ($row) => ['godown_id' => $row->godown_id, 'batch_name' => $row->batch_name, 'quantity' => $row->quantity, 'rate' => $row->rate])->all() : []);
+        $openingRows = array_values($savedOpenings);
+        while (count($openingRows) < 3) {
+            $openingRows[] = ['godown_id' => '', 'batch_name' => '', 'quantity' => '', 'rate' => ''];
+        }
+    @endphp
+    @foreach ($openingRows as $index => $opening)
+        <x-tally::form.field name="openings_{{ $index }}_godown" label="Godown">
+            <select id="openings_{{ $index }}_godown" name="openings[{{ $index }}][godown_id]" class="input">
+                <option value="">None</option>
+                @foreach ($godowns ?? [] as $godown)
+                    <option value="{{ $godown->id }}" @selected((string) ($opening['godown_id'] ?? '') === (string) $godown->id)>{{ $godown->name }}</option>
+                @endforeach
+            </select>
+        </x-form.field>
+        <x-tally::form.field name="openings_{{ $index }}_batch" label="Batch">
+            <x-tally::form.input name="openings[{{ $index }}][batch_name]" value="{{ $opening['batch_name'] ?? '' }}" maxlength="40" />
+        </x-form.field>
+        <x-tally::form.field name="openings_{{ $index }}_qty" label="Quantity">
+            <x-tally::form.input name="openings[{{ $index }}][quantity]" type="number" min="0" step="0.0001" value="{{ $opening['quantity'] ?? '' }}" />
+        </x-form.field>
+        <x-tally::form.field name="openings_{{ $index }}_rate" label="Rate">
+            <x-tally::form.input name="openings[{{ $index }}][rate]" type="number" min="0" step="0.01" value="{{ $opening['rate'] ?? '' }}" />
+        </x-form.field>
+    @endforeach
+</div>

@@ -7,6 +7,7 @@
     'partyLedgers',
     'accountLedgers',
     'nextNumber',
+    'numberingMethod' => 'automatic',
     'products' => [],
     'godowns' => [],
     'taxRates' => [],
@@ -65,7 +66,7 @@
     @if (! empty($availableCredit))
         <p class="form-note">Available credit: {{ $availableCredit }}</p>
     @endif
-    <x-tally::invoice.header :kind="$kind" :invoice="$invoice" :next-number="$nextNumber" />
+    <x-tally::invoice.header :kind="$kind" :invoice="$invoice" :next-number="$nextNumber" :numbering-method="$numberingMethod" />
     <x-tally::invoice.party :kind="$kind" :invoice="$invoice" :party-ledgers="$partyLedgers" :account-ledgers="$accountLedgers" />
     @if (count($priceLists) > 0)
         <label class="tally-co-row">

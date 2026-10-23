@@ -45,6 +45,7 @@ class GodownController extends Controller
         return view('tally::godowns.create', [
             'company' => $company,
             'godown' => new Godown(['is_active' => true]),
+            'parents' => $company->godowns()->orderBy('name')->get(),
         ]);
     }
 
@@ -67,9 +68,12 @@ class GodownController extends Controller
 
     public function edit(WorkspaceContext $context, Godown $godown): View
     {
+        $company = $context->company();
+
         return view('tally::godowns.edit', [
-            'company' => $context->company(),
+            'company' => $company,
             'godown' => $godown,
+            'parents' => $company->godowns()->whereKeyNot($godown->id)->orderBy('name')->get(),
         ]);
     }
 

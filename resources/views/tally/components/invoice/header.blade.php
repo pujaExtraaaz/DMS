@@ -1,9 +1,15 @@
-@props(['kind', 'invoice', 'nextNumber'])
+@props(['kind', 'invoice', 'nextNumber', 'numberingMethod' => 'automatic'])
 <div class="tally-co-head">
     <label class="tally-co-row">
         <span>{{ $kind->documentLabel() }}</span>
         <span>:</span>
-        <input class="input" value="{{ $nextNumber }}" readonly>
+        @if (! $invoice->exists && in_array($numberingMethod, ['manual', 'none', 'automatic_manual'], true))
+            <input class="input" name="invoice_number" value="{{ old('invoice_number', $nextNumber) }}" maxlength="30" @required(in_array($numberingMethod, ['manual', 'none'], true)) aria-label="Invoice number" placeholder="{{ in_array($numberingMethod, ['manual', 'none'], true) ? 'Enter number' : 'Next number' }}">
+        @elseif ($numberingMethod === 'multi_user')
+            <input class="input" value="Allotted on save" readonly>
+        @else
+            <input class="input" value="{{ $invoice->exists ? $invoice->invoice_number : $nextNumber }}" readonly>
+        @endif
     </label>
     <label class="tally-co-row">
         <span>Date</span>
@@ -21,6 +27,11 @@
         <span class="tally-co-value">Not Applicable</span>
     </label>
 </div>
+<label class="tally-co-row">
+    <span>Bill name</span>
+    <span>:</span>
+    <input class="input" name="bill_name" value="{{ old('bill_name', $invoice->bill_name) }}" maxlength="40" placeholder="Uses the voucher number when blank">
+</label>
 <label class="tally-co-row">
     <span>{{ $kind->referenceLabel() }}</span>
     <span>:</span>

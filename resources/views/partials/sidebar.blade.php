@@ -305,6 +305,7 @@
                     <a href="{{ route('reports.balance-sheet') }}" class="{{ $itemClass }} {{ $linkClass(['reports.balance-sheet']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Balance Sheet</span></a>
                     <a href="{{ route('reports.trial-balance') }}" class="{{ $itemClass }} {{ $linkClass(['reports.trial-balance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Trial Balance</span></a>
                     <a href="{{ route('reports.od') }}" class="{{ $itemClass }} {{ $linkClass(['reports.od', 'od.report*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>OD Report</span></a>
+                    <a href="{{ route('reports.tally-connector') }}" class="{{ $itemClass }} {{ $linkClass(['reports.tally-connector']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tally Connector</span></a>
                 </div>
             </div>
         @endif

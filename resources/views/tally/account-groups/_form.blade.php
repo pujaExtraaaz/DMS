@@ -25,6 +25,13 @@
             @endforeach
         </select>
     </x-form.field>
+    <x-tally::form.field name="affects_gross_profit" label="Gross profit">
+        <label class="check">
+            <input type="hidden" name="affects_gross_profit" value="0">
+            <input type="checkbox" name="affects_gross_profit" value="1" @checked(filter_var(old('affects_gross_profit', $group->affects_gross_profit), FILTER_VALIDATE_BOOLEAN)) @disabled($group->is_system)>
+            <span>Affects gross profit</span>
+        </label>
+    </x-form.field>
     <x-tally::form.active class="span-2" :checked="$group->is_active ?? true" />
 </div>
 <p class="form-note muted">A subgroup keeps the nature of its parent. System groups stay in the chart and cannot be deleted.</p>

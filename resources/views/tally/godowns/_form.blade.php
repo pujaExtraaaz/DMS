@@ -2,6 +2,14 @@
     <x-tally::form.field name="name" label="Name" required>
         <x-tally::form.input name="name" value="{{ old('name', $godown->name) }}" required maxlength="255" />
     </x-form.field>
+    <x-tally::form.field name="parent_id" label="Under">
+        <select id="parent_id" name="parent_id" class="input">
+            <option value="">Primary</option>
+            @foreach ($parents ?? [] as $parent)
+                <option value="{{ $parent->id }}" @selected((string) old('parent_id', $godown->parent_id) === (string) $parent->id)>{{ $parent->name }}</option>
+            @endforeach
+        </select>
+    </x-form.field>
     <x-tally::form.field name="code" label="Code">
         <x-tally::form.input name="code" value="{{ old('code', $godown->code) }}" maxlength="32" />
     </x-form.field>

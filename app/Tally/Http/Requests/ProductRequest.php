@@ -30,7 +30,11 @@ class ProductRequest extends FormRequest
 
         $this->merge([
             'name' => trim((string) $this->input('name')),
+            'alias' => trim((string) $this->input('alias')) ?: null,
             'code' => $code,
+            'part_number' => trim((string) $this->input('part_number')) ?: null,
+            'description' => trim((string) $this->input('description')) ?: null,
+            'type_of_supply' => $this->input('type_of_supply') === 'services' ? 'services' : 'goods',
             'barcode' => $barcode === '' ? null : $barcode,
             'hsn_sac_id' => $this->input('hsn_sac_id') ?: null,
             'tax_rate_id' => $this->input('tax_rate_id') ?: null,
@@ -174,6 +178,15 @@ class ProductRequest extends FormRequest
             'reorder_level' => ['required', 'numeric', 'min:0', 'decimal:0,4', 'max:99999999999.9999'],
             'maximum_stock' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'max:99999999999.9999'],
             'track_batch' => ['required', 'boolean'],
+            'alias' => ['nullable', 'string', 'max:255'],
+            'part_number' => ['nullable', 'string', 'max:40'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'type_of_supply' => ['required', Rule::in(['goods', 'services'])],
+            'openings' => ['nullable', 'array'],
+            'openings.*.godown_id' => ['nullable', 'integer', Rule::exists('acct_godowns', 'id')->where(fn ($query) => $query->where('company_id', $company->id))],
+            'openings.*.batch_name' => ['nullable', 'string', 'max:40'],
+            'openings.*.quantity' => ['nullable', 'numeric', 'min:0'],
+            'openings.*.rate' => ['nullable', 'numeric', 'min:0'],
             'track_serial' => ['required', 'boolean'],
             'is_active' => ['required', 'boolean'],
             'hsn_sac_id' => [
@@ -259,6 +272,22 @@ class ProductRequest extends FormRequest
 
             if ($given !== '' && Money::cents($given) !== Money::cents($expected)) {
                 $validator->errors()->add('opening_value', 'Opening value must equal opening quantity × opening rate ('.$expected.').');
+            }
+
+            $placed = 0;
+            $anyOpening = false;
+
+            foreach ((array) $this->input('openings', []) as $opening) {
+                if (! is_array($opening) || ($opening['godown_id'] ?? '') === '' || (float) ($opening['quantity'] ?? 0) <= 0) {
+                    continue;
+                }
+
+                $anyOpening = true;
+                $placed += Quantity::scale((string) $opening['quantity'], 4);
+            }
+
+            if ($anyOpening && $placed !== Quantity::scale((string) $this->input('opening_quantity'), 4)) {
+                $validator->errors()->add('openings', 'Opening by godown must add up to the opening quantity.');
             }
         });
     }

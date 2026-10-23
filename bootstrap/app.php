@@ -34,11 +34,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // A stale session must still be able to leave the app and land on login.
         $middleware->validateCsrfTokens(except: [
             'logout',
+            'api/tally-connector/*',
         ]);
-
-        // $middleware->validateCsrfTokens(except: [
-        //     'api/tally-connector/*',
-        // ]);
 
     })
     ->withExceptions(function (Exceptions $exceptions): void {

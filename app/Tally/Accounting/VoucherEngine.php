@@ -75,14 +75,14 @@ class VoucherEngine
                     'narration' => $this->blank($input['narration'] ?? null),
                     'total_debit' => Money::format($debitCents),
                     'total_credit' => Money::format($creditCents),
-                ] + $this->moneyMeta($input) + $this->linkMeta($input));
+                ] + $this->moneyMeta($input) + $this->linkMeta($input) + $this->tallyMeta($input));
             } else {
                 $voucher = Voucher::query()->create([
                     'company_id' => $company->id,
                     'branch_id' => $branch->id,
                     'financial_year_id' => $financialYear->id,
                     'voucher_type' => $type,
-                    'voucher_number' => $this->assignedNumber($assignedNumber, $company, $branch, $financialYear, $type),
+                    'voucher_number' => $this->assignedNumber($assignedNumber, $company, $branch, $financialYear, $type, $date, $input['voucher_number'] ?? null),
                     'voucher_date' => $date,
                     'reference_number' => $this->blank($input['reference_number'] ?? null),
                     'narration' => $this->blank($input['narration'] ?? null),
@@ -91,11 +91,12 @@ class VoucherEngine
                     'total_debit' => Money::format($debitCents),
                     'total_credit' => Money::format($creditCents),
                     'created_by' => $user->id,
-                ] + $this->moneyMeta($input) + $this->linkMeta($input));
+                ] + $this->moneyMeta($input) + $this->linkMeta($input) + $this->tallyMeta($input));
             }
 
             $voucher->entries()->createMany($lines);
-            $this->allocate($voucher, $type, $input['allocations'] ?? []);
+            $advanceName = array_key_exists('advance_name', $input) ? (string) $input['advance_name'] : null;
+            $this->allocate($voucher, $type, $input['allocations'] ?? [], $advanceName);
 
             $awaitingApproval = false;
             if ($post) {
@@ -469,6 +470,37 @@ class VoucherEngine
      * @param  array<string, mixed>  $input
      * @return array<string, mixed>
      */
+    /**
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
+     */
+    private function tallyMeta(array $input): array
+    {
+        $meta = [];
+
+        foreach (['effective_date', 'reference_date'] as $key) {
+            if (array_key_exists($key, $input)) {
+                $meta[$key] = ($input[$key] ?? '') === '' ? null : $input[$key];
+            }
+        }
+
+        if (array_key_exists('place_of_supply', $input)) {
+            $meta['place_of_supply'] = $this->blank($input['place_of_supply']);
+        }
+
+        if (array_key_exists('is_invoice', $input)) {
+            $meta['is_invoice'] = filter_var($input['is_invoice'], FILTER_VALIDATE_BOOLEAN);
+        }
+
+        if (array_key_exists('party_ledger_id', $input)) {
+            $meta['party_ledger_id'] = ($input['party_ledger_id'] === '' || $input['party_ledger_id'] === null)
+                ? null
+                : (int) $input['party_ledger_id'];
+        }
+
+        return $meta;
+    }
+
     private function linkMeta(array $input): array
     {
         return [
@@ -582,8 +614,12 @@ class VoucherEngine
             $centreId = $entry['cost_centre_id'] ?? null;
             $centreId = $centreId === '' || $centreId === null ? null : (int) $centreId;
 
-            if (! $company->usesCostCentres()) {
+            if (! $company->usesCostCentres() || ! $ledger->costCentresApplicable()) {
                 $centreId = null;
+            } elseif ($post && ! $centreId) {
+                $errors["entries.$index.cost_centre_id"] = 'Select a cost centre. This ledger uses cost centres.';
+
+                continue;
             }
 
             if ($centreId) {
@@ -651,6 +687,13 @@ class VoucherEngine
                 'cost_centre_id' => $centreId,
                 'business_unit_id' => $unitId,
                 'department_id' => $departmentId,
+                'bank_transaction_type' => $this->blank($entry['bank_transaction_type'] ?? null),
+                'instrument_number' => $this->blank($entry['instrument_number'] ?? null),
+                'instrument_date' => $this->blank($entry['instrument_date'] ?? null),
+                'payment_favouring' => $this->blank($entry['payment_favouring'] ?? null),
+                'bank_name' => $this->blank($entry['bank_name'] ?? null),
+                'bank_account_number' => $this->blank($entry['bank_account_number'] ?? null),
+                'bank_ifsc' => $this->blank($entry['bank_ifsc'] ?? null),
             ];
         }
 
@@ -812,21 +855,43 @@ class VoucherEngine
      * Invoices allocate their number first, then pass it here so the accounting
      * voucher reuses that number instead of taking a second one from the sequence.
      */
-    private function assignedNumber(?string $assignedNumber, Company $company, Branch $branch, FinancialYear $financialYear, VoucherType $type): string
+    private function assignedNumber(?string $assignedNumber, Company $company, Branch $branch, FinancialYear $financialYear, VoucherType $type, ?\DateTimeInterface $on = null, ?string $typed = null): string
     {
         $assignedNumber = trim((string) $assignedNumber);
 
-        if ($assignedNumber === '') {
-            return $this->numbers->allocate($company, $branch, $financialYear, $type);
+        if ($assignedNumber !== '') {
+            if (strlen($assignedNumber) > 30) {
+                throw ValidationException::withMessages([
+                    'invoice_number' => 'The invoice number is too long.',
+                ]);
+            }
+
+            return $assignedNumber;
         }
 
-        if (strlen($assignedNumber) > 30) {
+        $number = $this->numbers->resolve($company, $branch, $financialYear, $type, $typed, $on);
+
+        if (strlen($number) > 30) {
             throw ValidationException::withMessages([
-                'invoice_number' => 'The invoice number is too long.',
+                'voucher_number' => 'The voucher number is too long.',
             ]);
         }
 
-        return $assignedNumber;
+        $taken = Voucher::query()
+            ->where('company_id', $company->id)
+            ->where('branch_id', $branch->id)
+            ->where('financial_year_id', $financialYear->id)
+            ->where('voucher_type', $type->value)
+            ->where('voucher_number', $number)
+            ->exists();
+
+        if ($taken) {
+            throw ValidationException::withMessages([
+                'voucher_number' => 'That voucher number is already used.',
+            ]);
+        }
+
+        return $number;
     }
 
     /**
@@ -892,7 +957,7 @@ class VoucherEngine
     /**
      * @param  list<array<string, mixed>>  $rows
      */
-    private function allocate(Voucher $voucher, VoucherType $type, array $rows): void
+    private function allocate(Voucher $voucher, VoucherType $type, array $rows, ?string $advanceName = null): void
     {
         if (! $voucher->company?->usesBillWise()) {
             return;
@@ -906,7 +971,7 @@ class VoucherEngine
             return;
         }
 
-        $this->allocations->sync($voucher->fresh(['entries.ledger.accountGroup']), $rows);
+        $this->allocations->sync($voucher->fresh(['entries.ledger.accountGroup']), $rows, $advanceName);
     }
 
     private function blank(mixed $value): ?string

@@ -20,6 +20,8 @@ class BillAllocation extends AccountingModel
         'bill_id',
         'voucher_id',
         'ledger_id',
+        'reference_type',
+        'reference_name',
         'amount',
     ];
 

@@ -155,8 +155,14 @@ class StockTransactionService
                 continue;
             }
 
-            if ($scaled <= 0) {
+            if ($type !== StockTransactionType::Physical && $scaled <= 0) {
                 $errors["lines.$index.quantity"] = 'Enter a quantity greater than zero.';
+
+                continue;
+            }
+
+            if ($type === StockTransactionType::Physical && $scaled < 0) {
+                $errors["lines.$index.quantity"] = 'Enter the counted quantity as zero or more.';
 
                 continue;
             }
@@ -177,12 +183,28 @@ class StockTransactionService
 
             $sign = 1;
 
-            if ($type === StockTransactionType::Out) {
+            if (in_array($type, [StockTransactionType::Out, StockTransactionType::RejectionOut], true)) {
                 $sign = -1;
+            }
+
+            if ($type === StockTransactionType::RejectionIn) {
+                $sign = 1;
             }
 
             if ($type === StockTransactionType::Adjustment) {
                 $sign = ($line['direction'] ?? 'increase') === 'decrease' ? -1 : 1;
+            }
+
+            if ($type === StockTransactionType::Physical) {
+                $onHand = Quantity::scale($this->movements->quantity($product, $godown), $product->primaryUnit->decimal_places);
+                $difference = $scaled - $onHand;
+
+                if ($difference === 0) {
+                    continue;
+                }
+
+                $sign = $difference > 0 ? 1 : -1;
+                $scaled = abs($difference);
             }
 
             $number = count($kept) + 1;
@@ -204,7 +226,9 @@ class StockTransactionService
         }
 
         if ($kept === []) {
-            $errors['lines'] = 'Add at least one product.';
+            $errors['lines'] = $type === StockTransactionType::Physical
+                ? 'The counted quantity matches the godown balance. Nothing was posted.'
+                : 'Add at least one product.';
         }
 
         if ($errors !== []) {
@@ -270,9 +294,9 @@ class StockTransactionService
         }
 
         $type = match ($transaction->type) {
-            StockTransactionType::In => StockMovementType::In,
-            StockTransactionType::Out => StockMovementType::Out,
-            StockTransactionType::Adjustment => StockMovementType::Adjustment,
+            StockTransactionType::In, StockTransactionType::RejectionIn => StockMovementType::In,
+            StockTransactionType::Out, StockTransactionType::RejectionOut => StockMovementType::Out,
+            StockTransactionType::Adjustment, StockTransactionType::Physical => StockMovementType::Adjustment,
             StockTransactionType::Transfer => StockMovementType::TransferOut,
         };
 

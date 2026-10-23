@@ -66,6 +66,7 @@ class InventoryValuation
 
         StockMovement::query()
             ->where('product_id', $product->id)
+            ->withoutPlacedOpening()
             ->select(['id', 'quantity', 'value'])
             ->chunkById(500, function ($rows) use (&$quantity, &$value): void {
                 foreach ($rows as $row) {

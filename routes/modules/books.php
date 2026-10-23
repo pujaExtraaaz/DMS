@@ -58,7 +58,7 @@ use Tally\Http\Controllers\YearEndController;
 use Tally\Http\Controllers\RecurringVoucherController;
 use Tally\Http\Controllers\BusinessUnitController;
 use Tally\Http\Controllers\IntercompanyController;
-use Tally\Http\Controllers\TallyConnectorAdminController;
+
 use Tally\Http\Controllers\DepartmentController;
 use Tally\Http\Controllers\SubLedgerController;
 use Tally\Http\Controllers\LocationController;
@@ -214,6 +214,9 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
         'stock-out' => 'out',
         'stock-transfers' => 'transfer',
         'stock-adjustments' => 'adjustment',
+        'rejections-in' => 'rejection_in',
+        'rejections-out' => 'rejection_out',
+        'physical-stock' => 'physical',
     ] as $slug => $stockType) {
         Route::get("/transactions/{$slug}", [StockTransactionController::class, 'index'])->name("stock.{$stockType}.index");
         Route::get("/transactions/{$slug}/create", [StockTransactionController::class, 'create'])->name("stock.{$stockType}.create");
@@ -362,6 +365,10 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
     Route::get('/reports/business-units', [AccountingReportController::class, 'businessUnits'])->name('reports.business-units');
     Route::get('/reports/departments', [AccountingReportController::class, 'departments'])->name('reports.departments');
     Route::get('/reports/interest', [AccountingReportController::class, 'interest'])->name('reports.interest');
+    Route::post('/reports/interest', [AccountingReportController::class, 'postInterest'])->name('reports.interest.post');
+    Route::get('/reports/gstr-9', [AccountingReportController::class, 'gstr9'])->name('reports.gstr-9');
+    Route::get('/reports/ims', [AccountingReportController::class, 'ims'])->name('reports.ims');
+    Route::post('/transactions/purchase/{invoice}/ims', [InvoiceController::class, 'ims'])->name('invoices.purchase.ims');
 
     Route::get('/reports/stock-summary', [InventoryReportController::class, 'summary'])->name('reports.stock-summary');
     Route::get('/reports/stock-ledger', [InventoryReportController::class, 'ledger'])->name('reports.stock-ledger');
@@ -505,7 +512,7 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
     Route::post('/utilities/intercompany', [IntercompanyController::class, 'store'])->name('intercompany.store');
     Route::post('/utilities/intercompany/eliminate', [IntercompanyController::class, 'eliminate'])->name('intercompany.eliminate');
 
-    Route::get('/utilities/tally-connector', [TallyConnectorAdminController::class, 'show'])->name('connector.show');
+    Route::redirect('/utilities/tally-connector', '/reports/tally-connector')->name('connector.show');
 
     Route::get('/reports/sub-ledgers', [SubLedgerController::class, 'index'])->name('reports.sub-ledgers');
     Route::get('/reports/sub-ledgers/{ledger}', [SubLedgerController::class, 'show'])->name('reports.sub-ledgers.show');

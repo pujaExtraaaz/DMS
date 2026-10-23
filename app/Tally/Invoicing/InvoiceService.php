@@ -87,6 +87,7 @@ class InvoiceService
                 'invoice_date' => $date,
                 'party_ledger_id' => $party->id,
                 'account_ledger_id' => $account->id,
+                'bill_name' => $this->blank($input['bill_name'] ?? null),
                 'reference_number' => $this->blank($input['reference_number'] ?? null),
                 'narration' => $this->blank($input['narration'] ?? null),
                 'supply_type' => $built['supply_type'],
@@ -124,12 +125,32 @@ class InvoiceService
                 $invoice->lines()->delete();
                 $invoice->update($attributes);
             } else {
+                $invoiceNumber = $this->numbers->resolve(
+                    $company,
+                    $branch,
+                    $financialYear,
+                    $kind,
+                    isset($input['invoice_number']) ? (string) $input['invoice_number'] : null,
+                    $date,
+                );
+                $taken = Invoice::query()
+                    ->where('company_id', $company->id)
+                    ->where('branch_id', $branch->id)
+                    ->where('financial_year_id', $financialYear->id)
+                    ->where('kind', $kind->value)
+                    ->where('invoice_number', $invoiceNumber)
+                    ->exists();
+                if ($taken) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'invoice_number' => 'That voucher number is already used.',
+                    ]);
+                }
                 $invoice = Invoice::query()->create($attributes + [
                     'company_id' => $company->id,
                     'branch_id' => $branch->id,
                     'financial_year_id' => $financialYear->id,
                     'kind' => $kind,
-                    'invoice_number' => $this->numbers->allocate($company, $branch, $financialYear, $kind),
+                    'invoice_number' => $invoiceNumber,
                     'status' => VoucherStatus::Draft,
                     'created_by' => $user->id,
                 ]);
@@ -300,7 +321,11 @@ class InvoiceService
             $kind->voucherType(),
             [
                 'voucher_date' => $invoice->invoice_date->toDateString(),
+                'effective_date' => $invoice->invoice_date->toDateString(),
                 'reference_number' => $invoice->reference_number,
+                'place_of_supply' => $invoice->place_of_supply,
+                'party_ledger_id' => $invoice->party_ledger_id,
+                'is_invoice' => true,
                 'narration' => $invoice->narration,
                 'entries' => $this->accounting->entries($invoice),
             ],
@@ -314,6 +339,7 @@ class InvoiceService
             'voucher_id' => $voucher->id,
             'posted_at' => now(),
         ]);
+        app(\Tally\Accounting\BillService::class)->applyInvoiceBillName($invoice->fresh());
 
         $posted = $invoice->fresh(['lines', 'voucher', 'company', 'branch', 'financialYear']);
         app(SalesOrderService::class)->fulfil($posted);

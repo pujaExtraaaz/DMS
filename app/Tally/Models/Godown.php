@@ -8,6 +8,7 @@ use Database\Factories\GodownFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Godown extends AccountingModel
 {
@@ -19,6 +20,7 @@ class Godown extends AccountingModel
      */
     protected $fillable = [
         'company_id',
+        'parent_id',
         'name',
         'code',
         'address',
@@ -40,9 +42,21 @@ class Godown extends AccountingModel
         return $this->belongsTo(Company::class);
     }
 
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_id');
+    }
+
     public function canBeDeleted(): bool
     {
-        return ! $this->hasMany(StockMovement::class)->exists()
+        return ! $this->children()->exists()
+            && ! $this->hasMany(StockGodownOpening::class)->exists()
+            && ! $this->hasMany(StockMovement::class)->exists()
             && ! $this->hasMany(StockTransactionLine::class)->exists()
             && ! $this->hasMany(InvoiceLine::class)->exists();
     }

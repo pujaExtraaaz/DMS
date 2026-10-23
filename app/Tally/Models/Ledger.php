@@ -27,11 +27,16 @@ class Ledger extends AccountingModel
         'account_group_id',
         'parent_ledger_id',
         'name',
+        'mailing_name',
+        'alias',
         'code',
         'opening_balance',
         'opening_balance_type',
         'address',
+        'contact_person',
         'state',
+        'country',
+        'pincode',
         'phone',
         'email',
         'gstin',
@@ -39,6 +44,11 @@ class Ledger extends AccountingModel
         'pan',
         'credit_limit',
         'credit_days',
+        'maintain_bill_wise',
+        'cost_centres_applicable',
+        'calculate_interest',
+        'interest_rate',
+        'interest_style',
         'payment_term_id',
         'deduction_section_id',
         'is_active',
@@ -59,6 +69,10 @@ class Ledger extends AccountingModel
             'opening_balance_type' => OpeningBalanceType::class,
             'credit_limit' => 'decimal:2',
             'credit_days' => 'integer',
+            'maintain_bill_wise' => 'boolean',
+            'cost_centres_applicable' => 'boolean',
+            'calculate_interest' => 'boolean',
+            'interest_rate' => 'decimal:4',
             'gst_registration_type' => GstRegistrationType::class,
             'is_active' => 'boolean',
             'is_system' => 'boolean',
@@ -156,6 +170,33 @@ class Ledger extends AccountingModel
     public function isSupplier(): bool
     {
         return $this->belongsToGroup('CREDITORS');
+    }
+
+    public function maintainsBillWise(): bool
+    {
+        $value = $this->getAttribute('maintain_bill_wise');
+
+        if ($value === null) {
+            return true;
+        }
+
+        return ! in_array($value, [false, 0, '0', 'false'], true);
+    }
+
+    public function costCentresApplicable(): bool
+    {
+        $value = $this->getAttribute('cost_centres_applicable');
+
+        if ($value === null) {
+            return false;
+        }
+
+        return ! in_array($value, [false, 0, '0', 'false'], true);
+    }
+
+    public function calculatesInterest(): bool
+    {
+        return ! in_array($this->calculate_interest, [null, false, 0, '0', 'false'], true);
     }
 
     public function isSalesAccount(): bool

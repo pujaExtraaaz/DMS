@@ -26,6 +26,15 @@
                     <button class="btn" type="submit">Cancel</button>
                 </form>
                 @if ($kind->value === 'purchase')
+                    <form method="POST" action="{{ tally_route('books.tally.invoices.purchase.ims', $invoice) }}">
+                        @csrf
+                        <select class="input" name="ims_status">
+                            @foreach (['pending' => 'IMS pending', 'accepted' => 'IMS accepted', 'rejected' => 'IMS rejected'] as $value => $label)
+                                <option value="{{ $value }}" @selected(($invoice->ims_status ?: 'pending') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        <button class="btn" type="submit">Save IMS</button>
+                    </form>
                     <form method="POST" action="{{ tally_route('books.tally.payment-batches.from-bills') }}">
                         @csrf
                         <input type="hidden" name="invoice_ids[]" value="{{ $invoice->id }}">

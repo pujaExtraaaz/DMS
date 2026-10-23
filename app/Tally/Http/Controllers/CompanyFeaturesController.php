@@ -128,11 +128,17 @@ class CompanyFeaturesController extends Controller
 
         if ($section === 'inventory') {
             $request->validate([
+                'maintain_inventory' => ['required', 'boolean'],
+                'integrate_accounts_with_inventory' => ['required', 'boolean'],
+                'cost_centres_for_inventory' => ['required', 'boolean'],
                 'allow_negative_stock' => ['required', 'boolean'],
                 'inventory_repeat_scan_increments' => ['required', 'boolean'],
                 'inventory_valuation_method' => ['nullable', 'in:weighted_average,fifo'],
             ]);
             $company->update([
+                'maintain_inventory' => $request->boolean('maintain_inventory'),
+                'integrate_accounts_with_inventory' => $request->boolean('integrate_accounts_with_inventory'),
+                'cost_centres_for_inventory' => $request->boolean('cost_centres_for_inventory'),
                 'allow_negative_stock' => $request->boolean('allow_negative_stock'),
                 'inventory_valuation_method' => $request->input('inventory_valuation_method', $company->inventory_valuation_method ?? 'weighted_average'),
             ]);
@@ -143,11 +149,17 @@ class CompanyFeaturesController extends Controller
 
         if ($section === 'statutory') {
             $data = $request->validate([
+                'enable_gst' => ['required', 'boolean'],
+                'enable_tds' => ['required', 'boolean'],
+                'enable_tcs' => ['required', 'boolean'],
                 'gst_registration_type' => ['required', 'in:regular,composition,unregistered,consumer'],
                 'tax_pricing' => ['required', 'in:exclusive,inclusive'],
                 'tax_rounding' => ['required', 'in:paisa,rupee'],
             ]);
             $company->update([
+                'enable_gst' => $request->boolean('enable_gst'),
+                'enable_tds' => $request->boolean('enable_tds'),
+                'enable_tcs' => $request->boolean('enable_tcs'),
                 'gst_registration_type' => GstRegistrationType::from($data['gst_registration_type']),
                 'tax_pricing' => TaxPricing::from($data['tax_pricing']),
                 'tax_rounding' => TaxRounding::from($data['tax_rounding']),
