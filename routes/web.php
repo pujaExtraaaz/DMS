@@ -37,6 +37,9 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
+    Route::post('/sidebar/preferences', [\App\Http\Controllers\SidebarPreferenceController::class, 'update'])->name('sidebar.preferences.update');
+    Route::post('/sidebar/preferences/reset', [\App\Http\Controllers\SidebarPreferenceController::class, 'reset'])->name('sidebar.preferences.reset');
+
     foreach (glob(__DIR__.'/modules/*.php') as $moduleRoutes) {
         if (str_ends_with($moduleRoutes, 'payment-public.php')
             || str_ends_with($moduleRoutes, 'crm-public.php')

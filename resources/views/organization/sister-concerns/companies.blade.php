@@ -25,7 +25,7 @@
                            name="search"
                            value="{{ $search ?? '' }}"
                            placeholder="Search Company, GSTIN, State..."
-                           class="w-full rounded-xl border-slate-200 pl-9 pr-9 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
+                           class="w-full rounded-xl border-slate-200 pl-10 pr-9 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
                     @if(!empty($search))
                         <a href="{{ route('organization.sister-concerns.companies', array_filter(['business_group_id' => $selectedGroup])) }}"
                            title="Clear search"
