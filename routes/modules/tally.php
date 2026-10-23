@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Route;
 // Future re-enable (kept ready):
 // 1. TALLY_SYNC_ENABLED=true
 // 2. TALLY_CONNECTOR_TOKEN + TALLY_COMPANY
-// 3. Admin UI: reports.tally-connector (DMS sidebar section 11)
+// 3. Admin UI: tally-connector.show (DMS sidebar section 12)
 // 4. Public API auto-loads from routes/web.php when enabled
 // 5. TallySyncServiceProvider registers TallyAutoEnqueueObserver when enabled
 //

@@ -44,7 +44,7 @@ class BooksXml
 
     private function ledger(Ledger $ledger, string $action): string
     {
-        $ledger->loadMissing('accountGroup');
+        $ledger->loadMissing(['accountGroup', 'bankAccount']);
         $opening = (float) $ledger->opening_balance;
         $debit = $ledger->opening_balance_type === OpeningBalanceType::Debit
             || $ledger->opening_balance_type?->value === 'debit';
@@ -68,7 +68,10 @@ class BooksXml
                 'EMAIL' => $ledger->email,
                 'LEDGERCONTACT' => $ledger->contact_person,
                 'INCOMETAXNUMBER' => $ledger->pan,
-                'GSTREGISTRATIONTYPE' => $ledger->gst_registration_type?->label() ?: 'Regular',
+                'GSTREGISTRATIONTYPE' => $ledger->gst_registration_type?->label() ?: '',
+                'BANKNAME' => $ledger->bankAccount?->bank_name,
+                'ACCOUNTNUMBER' => $ledger->bankAccount?->account_number,
+                'IFSCODE' => $ledger->bankAccount?->ifsc,
                 'ISBILLWISEON' => $ledger->maintain_bill_wise ? 'Yes' : 'No',
                 'ISCOSTCENTRESON' => $ledger->cost_centres_applicable ? 'Yes' : 'No',
                 'CREDITLIMIT' => $ledger->credit_limit !== null ? number_format((float) $ledger->credit_limit, 2, '.', '') : '',
@@ -92,7 +95,7 @@ class BooksXml
             $this->primaryGroup($group->name) && $action === 'Create' ? 'Alter' : $action,
             $this->currentName($group, 'books_group') ?: $group->name,
             array_filter([
-                'PARENT' => $group->parent?->name ?: '',
+                'PARENT' => $group->parent?->name ?: "\x04 Primary",
                 'ISREVENUE' => $revenue ? 'Yes' : 'No',
                 'AFFECTSGROSSPROFIT' => $group->affects_gross_profit ? 'Yes' : 'No',
                 'ISDEEMEDPOSITIVE' => in_array($nature, [AccountNature::Asset, AccountNature::Expense], true) ? 'Yes' : 'No',

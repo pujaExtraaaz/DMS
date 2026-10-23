@@ -12,7 +12,7 @@
     </p>
     <div class="mt-4">
         @if ($exeReady)
-            <a href="{{ route('reports.tally-connector.download') }}" class="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">Download Tally Connector folder</a>
+            <a href="{{ route('tally-connector.download') }}" class="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">Download Tally Connector folder</a>
             <p class="mt-2 text-sm text-slate-600">Unzip tally-connector.zip. The folder contains tally_connector.exe, config.json, config.example.json, and install-task.ps1.</p>
         @else
             <p class="text-sm text-slate-600">The exe has not been built yet. On a machine with the .NET 8 SDK, run tools/tally-connector/publish.ps1.</p>
@@ -39,7 +39,36 @@
 </x-ui.card>
 
 <x-ui.card class="mb-6" title="What syncs">
-    <p class="text-sm text-slate-700">Groups, ledgers, units, godowns, stock groups, stock items, cost categories, cost centres, and vouchers. Voucher XML includes ledger lines, bill allocations, cheque and bank details, cost centres, godown and batch lines, GST, dates, and narration. A DMS sale that already has a Books voucher is sent once. Purchase orders stay on the DMS queue. If both sides changed the same record, it is listed below and neither side is overwritten.</p>
+    <p class="text-sm text-slate-700">Each poll checks masters and reports. Masters: groups, ledgers, bank accounts, units, godowns, stock groups, stock items, cost categories, cost centres, voucher types, and vouchers of every type (sales, purchase, receipt, payment, contra, journal, credit note, debit note, stock journal, and the other stock voucher types). Reports: day book, profit and loss, trial balance, balance sheet, cash flow, funds flow, ratio analysis, GST sales, GST purchase, GSTR-1, GSTR-3B, and GSTR-2B. Day book and GST reports use the current month. Profit and loss and the other statements use the open financial year. If both sides changed the same record, it is listed below and neither side is overwritten.</p>
+</x-ui.card>
+
+<x-ui.card class="mb-6" title="Imported reports">
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                    <th class="px-3 py-2">Report</th>
+                    <th class="px-3 py-2">Period</th>
+                    <th class="px-3 py-2">Lines</th>
+                    <th class="px-3 py-2">Updated</th>
+                    <th class="px-3 py-2">Note</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                @forelse ($reports as $report)
+                    <tr>
+                        <td class="px-3 py-2">{{ $report->title }}</td>
+                        <td class="px-3 py-2">{{ $report->period }}</td>
+                        <td class="px-3 py-2">{{ $report->rows }}</td>
+                        <td class="px-3 py-2">{{ $report->updated_at }}</td>
+                        <td class="px-3 py-2">{{ $report->message ?: ($report->status === 'ok' ? 'Imported' : $report->status) }}</td>
+                    </tr>
+                @empty
+                    <tr><td class="px-3 py-3 text-slate-500" colspan="5">No report has been imported yet. The next connector poll fills this list.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
 </x-ui.card>
 
 <x-ui.card class="mb-6" title="Setup">

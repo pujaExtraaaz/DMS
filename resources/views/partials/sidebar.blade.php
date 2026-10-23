@@ -336,9 +336,26 @@
                     <a href="{{ route('reports.balance-sheet') }}" class="{{ $itemClass }} {{ $linkClass(['reports.balance-sheet']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Balance Sheet</span></a>
                     <a href="{{ route('reports.trial-balance') }}" class="{{ $itemClass }} {{ $linkClass(['reports.trial-balance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Trial Balance</span></a>
                     <a href="{{ route('reports.od') }}" class="{{ $itemClass }} {{ $linkClass(['reports.od', 'od.report*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>OD Report</span></a>
-                    <a href="{{ route('reports.tally-connector') }}" class="{{ $itemClass }} {{ $linkClass(['reports.tally-connector']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tally Connector</span></a>
                 </div>
             </div>
+        @endif
+
+        @if($can('reports.view', 'reports.manage'))
+            <a
+                href="{{ route('tally-connector.show') }}"
+                class="{{ $sectionBtn }} {{ request()->routeIs('tally-connector.*') ? 'bg-slate-800/60 text-slate-300' : '' }}"
+                x-show="!$root.sidebarCollapsed"
+                x-cloak
+            >
+                <span>12 · Tally Connector</span>
+            </a>
+            <a
+                href="{{ route('tally-connector.show') }}"
+                class="flex items-center justify-center rounded-xl px-2 py-2 text-[10px] font-bold uppercase tracking-[0.12em] {{ request()->routeIs('tally-connector.*') ? 'bg-slate-800/60 text-slate-300' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-300' }} transition"
+                x-show="$root.sidebarCollapsed"
+                x-cloak
+                title="Tally Connector"
+            >12</a>
         @endif
 
         <a
@@ -347,7 +364,7 @@
             x-show="!$root.sidebarCollapsed"
             x-cloak
         >
-            <span>12 · Guide</span>
+            <span>13 · Guide</span>
         </a>
         <a
             href="{{ route('guide') }}"
@@ -355,7 +372,7 @@
             x-show="$root.sidebarCollapsed"
             x-cloak
             title="Guide"
-        >12</a>
+        >13</a>
 
         {{-- User Section: Profile, Users & Roles, Log Out --}}
         <div class="border-t border-slate-700/60 pt-3 mt-3 space-y-2">

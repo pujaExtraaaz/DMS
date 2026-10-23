@@ -63,16 +63,32 @@ XML;
         $addressXml = XmlHelpers::xml($address ?? '');
         $mailing = XmlHelpers::xml((string) ($fields['MAILINGNAME'] ?? $name));
         unset($fields['MAILINGNAME']);
+        $bankName = trim((string) ($fields['BANKNAME'] ?? ''));
+        $accountNumber = trim((string) ($fields['ACCOUNTNUMBER'] ?? ''));
+        $ifsc = trim((string) ($fields['IFSCODE'] ?? ''));
+        unset($fields['BANKNAME'], $fields['ACCOUNTNUMBER'], $fields['IFSCODE']);
+        $payment = '';
+        if ($bankName !== '' || $accountNumber !== '' || $ifsc !== '') {
+            $payment = '<PAYMENTDETAILS.LIST>'
+                .'<IFSCODE>'.XmlHelpers::xml($ifsc).'</IFSCODE>'
+                .'<ACCOUNTNUMBER>'.XmlHelpers::xml($accountNumber).'</ACCOUNTNUMBER>'
+                .'<PAYMENTFAVOURING>'.$mailing.'</PAYMENTFAVOURING>'
+                .'<TRANSACTIONNAME>Primary</TRANSACTIONNAME>'
+                .'<BANKNAME>'.XmlHelpers::xml($bankName).'</BANKNAME>'
+                .'<SETASDEFAULT>Yes</SETASDEFAULT>'
+                .'<DEFAULTTRANSACTIONTYPE>Inter Bank Transfer</DEFAULTTRANSACTIONTYPE>'
+                .'</PAYMENTDETAILS.LIST>';
+        }
         $extra = <<<XML
 <MAILINGNAME.LIST TYPE="String"><MAILINGNAME>{$mailing}</MAILINGNAME></MAILINGNAME.LIST>
 <ADDRESS.LIST TYPE="String"><ADDRESS>{$addressXml}</ADDRESS></ADDRESS.LIST>
+{$payment}
 XML;
 
         return XmlEnvelope::masters('CUSTOMER', $this->object('LEDGER', $currentName ?: $name, $action, array_merge([
             'NAME' => $name,
             'PARENT' => $parent,
             'ISBILLWISEON' => 'Yes',
-            'GSTREGISTRATIONTYPE' => 'Regular',
             'PARTYGSTIN' => $gstin ?? '',
             'STATENAME' => $state ?? '',
         ], $fields), $extra));
@@ -99,7 +115,7 @@ XML;
     {
         return XmlEnvelope::masters('GROUP', $this->object('GROUP', $currentName ?: $name, $action, array_merge([
             'NAME' => $name,
-            'PARENT' => $parent !== '' ? $parent : 'Primary',
+            'PARENT' => $parent !== '' && strcasecmp($parent, 'Primary') !== 0 ? $parent : "\x04 Primary",
         ], $fields)));
     }
 
@@ -107,7 +123,7 @@ XML;
     {
         return XmlEnvelope::masters('STOCKGROUP', $this->object('STOCKGROUP', $currentName ?: $name, $action, array_merge([
             'NAME' => $name,
-            'PARENT' => $parent !== '' ? $parent : 'Primary',
+            'PARENT' => $parent !== '' && strcasecmp($parent, 'Primary') !== 0 ? $parent : "\x04 Primary",
         ], $fields)));
     }
 

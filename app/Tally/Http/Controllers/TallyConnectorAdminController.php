@@ -32,10 +32,16 @@ class TallyConnectorAdminController extends Controller
                 ->get();
         }
 
+        $reports = collect();
+        if (Schema::hasTable('tally_report_snapshots')) {
+            $reports = \Illuminate\Support\Facades\DB::table('tally_report_snapshots')->orderBy('title')->get();
+        }
+
         return view('reporting.tally-connector', [
             'status' => $status,
             'recent' => $recent,
             'conflicts' => $conflicts,
+            'reports' => $reports,
             'syncEnabled' => SyncGate::enabled(),
             'exeReady' => is_file(base_path('tools/tally-connector/publish/tally_connector.exe')),
         ]);

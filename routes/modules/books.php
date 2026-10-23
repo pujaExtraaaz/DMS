@@ -512,7 +512,7 @@ Route::middleware(['auth', 'tally.workspace'])->prefix('books/tally')->name('boo
     Route::post('/utilities/intercompany', [IntercompanyController::class, 'store'])->name('intercompany.store');
     Route::post('/utilities/intercompany/eliminate', [IntercompanyController::class, 'eliminate'])->name('intercompany.eliminate');
 
-    Route::redirect('/utilities/tally-connector', '/reports/tally-connector')->name('connector.show');
+    Route::redirect('/utilities/tally-connector', '/tally-connector')->name('connector.show');
 
     Route::get('/reports/sub-ledgers', [SubLedgerController::class, 'index'])->name('reports.sub-ledgers');
     Route::get('/reports/sub-ledgers/{ledger}', [SubLedgerController::class, 'show'])->name('reports.sub-ledgers.show');

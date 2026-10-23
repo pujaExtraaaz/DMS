@@ -15,6 +15,7 @@ use Tally\Accounting\VoucherEngine;
 use Tally\Accounting\VoucherStatus;
 use Tally\Accounting\VoucherType;
 use Tally\Models\AccountGroup;
+use Tally\Models\BankAccount;
 use Tally\Models\Company;
 use Tally\Models\CostCategory;
 use Tally\Models\CostCentre;
@@ -27,6 +28,7 @@ use Tally\Models\ProductGroup;
 use Tally\Models\TallyLink;
 use Tally\Models\Unit;
 use Tally\Models\Voucher;
+use Tally\Models\VoucherTypeMaster;
 use Tally\Models\VoucherInventoryLine;
 use Tally\Tax\GstRegistrationType;
 
@@ -37,13 +39,20 @@ class TallyInbound
 
     private int $maxAlter = 0;
 
+    private int $cursorStart = 0;
+
     /**
      * @return array{created:int, updated:int, conflicts:int, skipped:int, alter_id:int}
      */
     public function apply(string $key, string $xml): array
     {
         $this->counts = ['created' => 0, 'updated' => 0, 'conflicts' => 0, 'skipped' => 0];
-        $this->maxAlter = (int) DB::table('tally_sync_cursors')->where('collection', $key)->value('alter_id');
+        $this->cursorStart = (int) DB::table('tally_sync_cursors')->where('collection', $key)->value('alter_id');
+        $this->maxAlter = $this->cursorStart;
+        if (isset(TallyExportBuilder::REPORTS[$key])) {
+            return $this->report($key, $xml);
+        }
+
         $company = $this->company();
         if (! $company) {
             $this->conflict($key, null, null, 'Set TALLY_COMPANY to the exact Books company name before import.');
@@ -53,9 +62,7 @@ class TallyInbound
 
         $dom = new \DOMDocument;
         if (! @$dom->loadXML($xml)) {
-            $this->conflict($key, null, null, 'Tally did not return XML.');
-
-            return $this->finish($key);
+            return $this->counts + ['alter_id' => $this->maxAlter];
         }
 
         $tag = match ($key) {
@@ -65,7 +72,8 @@ class TallyInbound
             'godowns' => 'GODOWN',
             'cost_categories' => 'COSTCATEGORY',
             'cost_centres' => 'COSTCENTRE',
-            'ledgers' => 'LEDGER',
+            'ledgers', 'bank_accounts' => 'LEDGER',
+            'voucher_types' => 'VOUCHERTYPE',
             'stock_items' => 'STOCKITEM',
             'vouchers' => 'VOUCHER',
             default => '',
@@ -76,7 +84,7 @@ class TallyInbound
         }
 
         foreach ($dom->getElementsByTagName($tag) as $node) {
-            if (! $node instanceof \DOMElement || $node->parentNode?->nodeName === $tag) {
+            if (! $node instanceof \DOMElement || $node->parentNode?->nodeName === $tag || $node->parentNode?->nodeName === 'CMPINFO') {
                 continue;
             }
             $alter = (int) $this->text($node, 'ALTERID');
@@ -115,7 +123,8 @@ class TallyInbound
             ]),
             'cost_categories' => $this->named($company, CostCategory::class, 'books_cost_category', $node, $name, []),
             'cost_centres' => $this->costCentre($company, $node, $name),
-            'ledgers' => $this->ledger($company, $node, $name),
+            'ledgers', 'bank_accounts' => $this->ledger($company, $node, $name),
+            'voucher_types' => $this->voucherTypeMaster($company, $node, $name),
             'stock_items' => $this->stockItem($company, $node, $name),
             'vouchers' => $this->voucher($company, $node),
             default => null,
@@ -212,6 +221,8 @@ class TallyInbound
             'is_active' => true,
         ]);
 
+        $this->bankAccount($ledger, $node);
+
         $parentLower = strtolower($parentName);
         if (str_contains($parentLower, 'debtor') || str_contains($parentLower, 'creditor')) {
             $party = Party::query()->firstOrNew(['company_id' => $company->id, 'ledger_id' => $ledger->id]);
@@ -279,7 +290,18 @@ class TallyInbound
 
     private function voucher(Company $company, \DOMElement $node): ?Voucher
     {
+        if ($this->yes($this->text($node, 'ISDELETED')) || $this->yes($this->text($node, 'ISCANCELLED'))) {
+            $this->counts['skipped']++;
+
+            return null;
+        }
+
         $typeName = $this->text($node, 'VOUCHERTYPENAME') ?: $node->getAttribute('VCHTYPE');
+        if ($typeName === '') {
+            $this->counts['skipped']++;
+
+            return null;
+        }
         $type = $this->voucherType($typeName);
         if (! $type) {
             $this->conflict('vouchers', $this->text($node, 'GUID'), $typeName, 'Voucher type is not mapped.');
@@ -533,11 +555,45 @@ class TallyInbound
         }
     }
 
+    private function bankAccount(Ledger $ledger, \DOMElement $node): void
+    {
+        $payment = null;
+        foreach ($node->getElementsByTagName('PAYMENTDETAILS.LIST') as $list) {
+            if ($list instanceof \DOMElement && $list->parentNode === $node) {
+                $payment = $list;
+                break;
+            }
+        }
+        if (! $payment instanceof \DOMElement) {
+            return;
+        }
+
+        $bankName = $this->text($payment, 'BANKNAME');
+        $account = $this->text($payment, 'ACCOUNTNUMBER');
+        $ifsc = $this->text($payment, 'IFSCODE');
+        if ($bankName === '' && $account === '' && $ifsc === '') {
+            return;
+        }
+
+        BankAccount::query()->updateOrCreate(
+            ['ledger_id' => $ledger->id],
+            [
+                'company_id' => $ledger->company_id,
+                'bank_name' => $bankName !== '' ? $bankName : $ledger->name,
+                'account_number' => $account !== '' ? $account : null,
+                'ifsc' => $ifsc !== '' ? $ifsc : null,
+            ]
+        );
+    }
+
     private function company(): ?Company
     {
         $name = trim((string) config('tally_sync.company', ''));
         if ($name !== '') {
-            return Company::query()->where('name', $name)->first();
+            $found = Company::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first();
+            if ($found) {
+                return $found;
+            }
         }
 
         return Company::query()->count() === 1 ? Company::query()->first() : null;
@@ -548,6 +604,7 @@ class TallyInbound
      */
     private function parentId(string $class, Company $company, string $name): ?int
     {
+        $name = trim(preg_replace('/[\x00-\x1F]/', '', $name) ?? '');
         if ($name === '' || strcasecmp($name, 'Primary') === 0) {
             return null;
         }
@@ -573,17 +630,133 @@ class TallyInbound
 
     private function voucherType(string $name): ?VoucherType
     {
-        return match (strtolower(trim($name))) {
-            'journal', 'stock journal' => VoucherType::Journal,
-            'payment' => VoucherType::Payment,
-            'receipt' => VoucherType::Receipt,
-            'contra' => VoucherType::Contra,
-            'sales' => VoucherType::Sales,
-            'purchase' => VoucherType::Purchase,
-            'credit note' => VoucherType::CreditNote,
-            'debit note' => VoucherType::DebitNote,
+        $name = strtolower(trim(preg_replace('/\s+/', ' ', $name) ?? ''));
+
+        return match (true) {
+            $name === '' => null,
+            str_contains($name, 'sales order'), str_contains($name, 'purchase order') => null,
+            str_contains($name, 'credit note') => VoucherType::CreditNote,
+            str_contains($name, 'debit note') => VoucherType::DebitNote,
+            str_contains($name, 'receipt note'), str_contains($name, 'delivery note'),
+            str_contains($name, 'material in'), str_contains($name, 'material out'),
+            str_contains($name, 'rejection'), str_contains($name, 'stock journal'),
+            str_contains($name, 'physical stock'), str_contains($name, 'job work') => VoucherType::Adjustment,
+            str_contains($name, 'reversing journal'), str_contains($name, 'memorandum'),
+            str_contains($name, 'payroll'), str_contains($name, 'attendance'),
+            str_contains($name, 'journal') => VoucherType::Journal,
+            str_contains($name, 'payment') => VoucherType::Payment,
+            str_contains($name, 'receipt') => VoucherType::Receipt,
+            str_contains($name, 'contra') => VoucherType::Contra,
+            str_contains($name, 'transfer') => VoucherType::Transfer,
+            str_contains($name, 'sales') => VoucherType::Sales,
+            str_contains($name, 'purchase') => VoucherType::Purchase,
             default => null,
         };
+    }
+
+    private function voucherTypeMaster(Company $company, \DOMElement $node, string $name): ?VoucherTypeMaster
+    {
+        $category = $this->voucherType($this->text($node, 'PARENT') ?: $name);
+        if (! $category) {
+            $this->counts['skipped']++;
+
+            return null;
+        }
+
+        $taken = VoucherTypeMaster::query()
+            ->where('company_id', $company->id)
+            ->where(function ($query) use ($name, $category) {
+                $query->where('name', $name)->orWhere('category', $category->value);
+            })
+            ->exists();
+        if ($taken) {
+            $this->counts['skipped']++;
+
+            return null;
+        }
+
+        $abbreviation = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $name) ?: 'VCH', 0, 8));
+        $suffix = 1;
+        while (VoucherTypeMaster::query()->where('company_id', $company->id)->where('abbreviation', $abbreviation)->exists()) {
+            $abbreviation = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $name) ?: 'VCH', 0, 6)).$suffix;
+            $suffix++;
+        }
+
+        $this->counts['created']++;
+
+        return VoucherTypeMaster::query()->create([
+            'company_id' => $company->id,
+            'name' => $name,
+            'abbreviation' => substr($abbreviation, 0, 12),
+            'category' => $category->value,
+            'numbering_method' => 'automatic',
+            'prefix' => $category->prefix(),
+            'suffix' => '',
+            'next_number' => 1,
+            'padding' => 6,
+            'restart' => 'yearly',
+        ]);
+    }
+
+    /**
+     * @return array{created:int, updated:int, conflicts:int, skipped:int, alter_id:int}
+     */
+    private function report(string $key, string $xml): array
+    {
+        [$title, $span] = TallyExportBuilder::REPORTS[$key];
+        $period = $span === 'month'
+            ? now()->startOfMonth()->format('d M Y').' - '.now()->endOfMonth()->format('d M Y')
+            : 'open financial year';
+
+        $lines = [];
+        $message = null;
+        $status = 'ok';
+        $dom = new \DOMDocument;
+        if (! @$dom->loadXML($xml)) {
+            $status = 'failed';
+            $message = 'Tally did not return this report.';
+        } elseif (preg_match('/<LINEERROR>(.*?)<\/LINEERROR>/s', $xml, $error)) {
+            $status = 'failed';
+            $message = trim(html_entity_decode(strip_tags($error[1])));
+        } else {
+            foreach (['DSPDISPNAME', 'LEDGERNAME', 'VOUCHERTYPENAME', 'VOUCHERNUMBER', 'DSPACCNAME'] as $tag) {
+                foreach ($dom->getElementsByTagName($tag) as $node) {
+                    if (! $node instanceof \DOMElement || $node->getElementsByTagName('*')->length > 0) {
+                        continue;
+                    }
+                    $label = trim(preg_replace('/\s+/', ' ', $node->textContent) ?? '');
+                    if ($label !== '' && strlen($label) < 180) {
+                        $lines[$label] = $label;
+                    }
+                    if (count($lines) >= 40) {
+                        break 2;
+                    }
+                }
+            }
+            if ($lines === []) {
+                $status = 'empty';
+                $message = 'Tally returned this report with no lines for the period.';
+            }
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('tally_report_snapshots')) {
+            DB::table('tally_report_snapshots')->updateOrInsert(
+                ['report' => $key],
+                [
+                    'title' => $title,
+                    'period' => substr($period, 0, 40),
+                    'status' => $status,
+                    'rows' => count($lines),
+                    'summary' => $lines === [] ? null : json_encode(array_values($lines)),
+                    'message' => $message ? substr($message, 0, 500) : null,
+                    'updated_at' => now(),
+                ]
+            );
+        }
+
+        $this->counts[$status === 'ok' ? 'updated' : 'skipped']++;
+
+        return $this->counts + ['alter_id' => 0];
     }
 
     private function tallyType(string $key): string
@@ -595,7 +768,8 @@ class TallyInbound
             'godowns' => 'books_godown',
             'cost_categories' => 'books_cost_category',
             'cost_centres' => 'books_cost_centre',
-            'ledgers' => 'books_ledger',
+            'ledgers', 'bank_accounts' => 'books_ledger',
+            'voucher_types' => 'books_voucher_type',
             'stock_items' => 'books_stock_item',
             'vouchers' => 'books_voucher',
             default => $key,
@@ -606,7 +780,7 @@ class TallyInbound
     {
         foreach ($node->childNodes as $child) {
             if ($child instanceof \DOMElement && strcasecmp($child->nodeName, $tag) === 0) {
-                return trim($child->textContent);
+                return trim(preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', $child->textContent) ?? '');
             }
         }
 
@@ -656,6 +830,10 @@ class TallyInbound
      */
     private function finish(string $key): array
     {
+        if ($key === 'vouchers' && $this->cursorStart < TallyExportBuilder::VOUCHER_SCAN_UNTIL) {
+            $this->maxAlter = max($this->maxAlter, $this->cursorStart + TallyExportBuilder::VOUCHER_SPAN);
+        }
+
         DB::table('tally_sync_cursors')->updateOrInsert(
             ['collection' => $key],
             ['alter_id' => $this->maxAlter, 'updated_at' => now()]

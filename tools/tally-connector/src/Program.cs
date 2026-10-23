@@ -87,14 +87,33 @@ static async Task PollAsync(ConnectorConfig config, HttpClient dms, HttpClient t
 
         var body = JsonSerializer.Serialize(new ImportBody(item.Key ?? "", response));
         var import = await dms.PostAsync($"{config.DmsUrl}/api/tally-connector/imports", new StringContent(body, Encoding.UTF8, "application/json"));
-        imported++;
+        var importText = await import.Content.ReadAsStringAsync();
         if (!import.IsSuccessStatusCode)
         {
-            Log($"DMS import {item.Key} {(int)import.StatusCode}: {Trim(await import.Content.ReadAsStringAsync(), 300)}");
+            Log($"DMS import {item.Key} {(int)import.StatusCode}: {Trim(importText, 300)}");
+            continue;
+        }
+
+        imported++;
+        try
+        {
+            using var doc = JsonDocument.Parse(importText);
+            var created = doc.RootElement.TryGetProperty("created", out var c) ? c.GetInt32() : 0;
+            var updated = doc.RootElement.TryGetProperty("updated", out var u) ? u.GetInt32() : 0;
+            var conflicts = doc.RootElement.TryGetProperty("conflicts", out var k) ? k.GetInt32() : 0;
+            if (created + updated + conflicts > 0)
+            {
+                Log($"{item.Key}: created {created}, updated {updated}, conflicts {conflicts}.");
+            }
+        }
+        catch (JsonException)
+        {
         }
     }
 
-    Log($"Poll sent {sent}, failed {failed}, imports {imported}.");
+    Log(imported == 0
+        ? $"Poll sent {sent}, failed {failed}. No Tally changes."
+        : $"Poll sent {sent}, failed {failed}. Checked {imported} lists.");
 }
 
 static async Task<string> PostTallyAsync(HttpClient tally, string url, string xml)
