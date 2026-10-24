@@ -43,7 +43,7 @@
                            name="search"
                            value="{{ $search ?? request('search') }}"
                            placeholder="Search Groups by name, code, HQ..."
-                           class="w-full rounded-xl border-slate-200 pl-9 pr-9 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
+                           class="w-full rounded-xl border-slate-200 pl-10 pr-9 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
                     @if(request('search'))
                         <a href="{{ route('organization.business-groups.index') }}"
                            title="Clear search"

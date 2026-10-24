@@ -53,6 +53,12 @@ class SearchableSelectIntegrationTest extends TestCase
 
         // Clear button
         $this->assertStringContainsString('dms-searchable-clear-btn', $content);
+
+        // Compact Filter / Toolbar isolation
+        $this->assertStringContainsString('dms-searchable-filter', $content);
+        $this->assertStringContainsString('isFilterSelect', $content);
+        $this->assertStringContainsString('dms-searchable-search-box', $content);
+        $this->assertStringContainsString('dms:reposition', $content);
     }
 
     public function test_dms_and_app_layouts_include_searchable_select_script(): void
@@ -102,5 +108,27 @@ class SearchableSelectIntegrationTest extends TestCase
         $response = $this->actingAs($this->user)->get(route('organization.companies.create'));
         $response->assertOk();
         $response->assertSee('js/searchable-select.js');
+    }
+
+    public function test_masters_customers_index_renders_toolbar_with_compact_filters(): void
+    {
+        $response = $this->actingAs($this->user)->get(route('masters.customers.index'));
+        $response->assertOk();
+        $response->assertSee('js/searchable-select.js');
+        $response->assertSee('data-dynamic-filter');
+        $response->assertSee('name="party_type"', false);
+        $response->assertSee('name="area_id"', false);
+        $response->assertSee('pl-10');
+    }
+
+    public function test_masters_products_index_renders_toolbar_with_compact_filters(): void
+    {
+        $response = $this->actingAs($this->user)->get(route('masters.products.index'));
+        $response->assertOk();
+        $response->assertSee('js/searchable-select.js');
+        $response->assertSee('data-dynamic-filter');
+        $response->assertSee('name="brand_id"', false);
+        $response->assertSee('name="category_id"', false);
+        $response->assertSee('pl-10');
     }
 }

@@ -11,6 +11,12 @@
     $itemClass = 'group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150';
     $can = fn (...$perms) => auth()->user()->hasAnyRole(['super-admin', 'client-admin']) || auth()->user()->hasAnyPermission($perms);
     $is = fn (...$patterns) => collect($patterns)->contains(fn ($p) => request()->routeIs($p));
+
+    $orderedSections = \App\Support\SidebarManager::getOrderedSections(auth()->user());
+    $sectionCounter = 0;
+    $num = function () use (&$sectionCounter) {
+        return ++$sectionCounter;
+    };
 @endphp
 
 {{-- Mobile backdrop --}}
@@ -66,313 +72,248 @@
         </button>
     </div>
 
-    <nav class="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-1 scrollbar-thin" @click.capture="if ($event.target.closest('a')) sidebarOpen = false">
+    <nav
+        x-data="{
+            customizing: false,
+            saving: false,
+            draggedKey: null,
+            statusMsg: '',
+            statusType: 'success',
+            startCustomizing() {
+                this.customizing = true;
+                this.statusMsg = '';
+            },
+            cancelCustomizing() {
+                this.customizing = false;
+                window.location.reload();
+            },
+            getCurrentOrder() {
+                const container = this.$refs.sectionsContainer;
+                if (!container) return [];
+                return Array.from(container.children)
+                    .map(el => el.getAttribute('data-sidebar-section'))
+                    .filter(Boolean);
+            },
+            updateNumbers() {
+                const container = this.$refs.sectionsContainer;
+                if (!container) return;
+                const items = Array.from(container.children).filter(el => el.hasAttribute('data-sidebar-section'));
+                let count = 1;
+                items.forEach(item => {
+                    const numEls = item.querySelectorAll('.section-num');
+                    numEls.forEach(el => {
+                        el.textContent = count;
+                    });
+                    count++;
+                });
+            },
+            moveSection(key, direction) {
+                const container = this.$refs.sectionsContainer;
+                const currentItem = container.querySelector(`[data-sidebar-section='${key}']`);
+                if (!currentItem) return;
+
+                if (direction === 'up') {
+                    const prev = currentItem.previousElementSibling;
+                    if (prev && prev.hasAttribute('data-sidebar-section')) {
+                        container.insertBefore(currentItem, prev);
+                        this.updateNumbers();
+                    }
+                } else if (direction === 'down') {
+                    const next = currentItem.nextElementSibling;
+                    if (next && next.hasAttribute('data-sidebar-section')) {
+                        container.insertBefore(next, currentItem);
+                        this.updateNumbers();
+                    }
+                }
+            },
+            onDragStart(event, key) {
+                this.draggedKey = key;
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', key);
+                }
+                const el = this.$refs.sectionsContainer.querySelector(`[data-sidebar-section='${key}']`);
+                if (el) el.classList.add('opacity-40', 'scale-[0.98]');
+            },
+            onDragOver(event) {
+                event.preventDefault();
+                if (event.dataTransfer) {
+                    event.dataTransfer.dropEffect = 'move';
+                }
+                const target = event.target.closest('[data-sidebar-section]');
+                if (target && this.draggedKey && target.getAttribute('data-sidebar-section') !== this.draggedKey) {
+                    target.classList.add('ring-2', 'ring-indigo-500/80', 'bg-slate-800/80');
+                }
+            },
+            onDragLeave(event) {
+                const target = event.target.closest('[data-sidebar-section]');
+                if (target) {
+                    target.classList.remove('ring-2', 'ring-indigo-500/80', 'bg-slate-800/80');
+                }
+            },
+            onDrop(event) {
+                event.preventDefault();
+                const target = event.target.closest('[data-sidebar-section]');
+                if (target) {
+                    target.classList.remove('ring-2', 'ring-indigo-500/80', 'bg-slate-800/80');
+                }
+                if (!this.draggedKey || !target) return;
+                const draggedKey = this.draggedKey;
+                const targetKey = target.getAttribute('data-sidebar-section');
+                if (draggedKey === targetKey) return;
+
+                const container = this.$refs.sectionsContainer;
+                const draggedEl = container.querySelector(`[data-sidebar-section='${draggedKey}']`);
+                if (!draggedEl) return;
+
+                const targetRect = target.getBoundingClientRect();
+                const isAfter = event.clientY > (targetRect.top + targetRect.height / 2);
+                if (isAfter) {
+                    target.after(draggedEl);
+                } else {
+                    container.insertBefore(draggedEl, target);
+                }
+                this.updateNumbers();
+            },
+            onDragEnd() {
+                if (this.draggedKey) {
+                    const el = this.$refs.sectionsContainer.querySelector(`[data-sidebar-section='${this.draggedKey}']`);
+                    if (el) el.classList.remove('opacity-40', 'scale-[0.98]');
+                }
+                this.draggedKey = null;
+                this.$refs.sectionsContainer.querySelectorAll('[data-sidebar-section]').forEach(el => {
+                    el.classList.remove('ring-2', 'ring-indigo-500/80', 'bg-slate-800/80');
+                });
+            },
+            async saveOrder() {
+                this.saving = true;
+                this.statusMsg = '';
+                const order = this.getCurrentOrder();
+                try {
+                    const res = await fetch('{{ route('sidebar.preferences.update') }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ order: order })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        this.statusMsg = 'Order saved!';
+                        this.statusType = 'success';
+                        setTimeout(() => {
+                            this.customizing = false;
+                            this.statusMsg = '';
+                        }, 800);
+                    } else {
+                        this.statusMsg = data.message || 'Failed to save order';
+                        this.statusType = 'error';
+                    }
+                } catch (err) {
+                    this.statusMsg = 'Error saving order';
+                    this.statusType = 'error';
+                } finally {
+                    this.saving = false;
+                }
+            },
+            async resetOrder() {
+                if (!confirm('Reset sidebar menu sections to default order?')) return;
+                this.saving = true;
+                this.statusMsg = '';
+                try {
+                    const res = await fetch('{{ route('sidebar.preferences.reset') }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json'
+                        }
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        window.location.reload();
+                    } else {
+                        this.statusMsg = data.message || 'Failed to reset';
+                        this.statusType = 'error';
+                    }
+                } catch (err) {
+                    this.statusMsg = 'Error resetting order';
+                    this.statusType = 'error';
+                } finally {
+                    this.saving = false;
+                }
+            }
+        }"
+        class="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-1 scrollbar-thin"
+        @click.capture="if (!customizing && $event.target.closest('a')) sidebarOpen = false"
+    >
         <a href="{{ route('dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['dashboard'], true) }}">
             <svg class="h-5 w-5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
             <span x-show="!$root.sidebarCollapsed" x-cloak>Dashboard</span>
         </a>
 
-        @if($can('organization.view', 'organization.manage'))
-            <div x-data="{ open: {{ $is('organization.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>1 · Setup</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+        {{-- Customize Mode Controls --}}
+        <div x-show="!$root.sidebarCollapsed" class="py-1">
+            <div x-show="!customizing" class="flex items-center justify-between px-1">
+                <button
+                    type="button"
+                    @click="startCustomizing()"
+                    class="group inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium text-slate-400 hover:bg-slate-800/80 hover:text-indigo-300 transition"
+                    title="Rearrange sidebar sections"
+                >
+                    <svg class="h-3.5 w-3.5 text-slate-500 group-hover:text-indigo-400 transition" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                    </svg>
+                    <span>Customize Order</span>
                 </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    <a href="{{ route('organization.company-profile') }}" class="{{ $itemClass }} {{ $linkClass(['organization.company-profile*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Company Profile</span></a>
-                    <a href="{{ route('organization.companies.index') }}" class="{{ $itemClass }} {{ $linkClass(['organization.companies.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Companies</span></a>
-                    <a href="{{ route('organization.branches.index') }}" class="{{ $itemClass }} {{ $linkClass(['organization.branches.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Branches</span></a>
-                    <a href="{{ route('organization.warehouses.index') }}" class="{{ $itemClass }} {{ $linkClass(['organization.warehouses.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Warehouses</span></a>
-                    <a href="{{ route('organization.financial-years.index') }}" class="{{ $itemClass }} {{ $linkClass(['organization.financial-years.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Financial Years</span></a>
-                    <a href="{{ route('organization.sister-concerns.dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['organization.sister-concerns.*', 'organization.business-groups.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Sister Concerns</span></a>
+            </div>
+
+            {{-- Active Customize Toolbar --}}
+            <div x-show="customizing" x-cloak class="rounded-xl border border-indigo-500/30 bg-indigo-950/40 p-2 text-xs space-y-2 mb-2">
+                <div class="flex items-center justify-between text-[11px] font-semibold text-indigo-200">
+                    <span>Reorder Sections</span>
+                    <span x-show="statusMsg" :class="statusType === 'error' ? 'text-rose-400' : 'text-emerald-400'" class="text-[10px]" x-text="statusMsg"></span>
+                </div>
+                <p class="text-[10px] text-slate-400 leading-tight">Drag handles or use ▲/▼ to arrange sections. Numbers update live.</p>
+                <div class="flex items-center gap-1.5 pt-1">
+                    <button
+                        type="button"
+                        @click="saveOrder()"
+                        :disabled="saving"
+                        class="flex-1 inline-flex justify-center items-center rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white shadow hover:bg-indigo-500 disabled:opacity-50 transition"
+                    >
+                        <span x-show="!saving">Save</span>
+                        <span x-show="saving">Saving...</span>
+                    </button>
+                    <button
+                        type="button"
+                        @click="cancelCustomizing()"
+                        :disabled="saving"
+                        class="rounded-lg border border-slate-700 bg-slate-800/80 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50 transition"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        @click="resetOrder()"
+                        :disabled="saving"
+                        class="rounded-lg border border-rose-900/40 bg-rose-950/30 px-2 py-1 text-[11px] font-medium text-rose-300 hover:bg-rose-900/50 disabled:opacity-50 transition"
+                        title="Reset to default order"
+                    >
+                        Reset
+                    </button>
                 </div>
             </div>
-        @endif
+        </div>
 
-        @if($can('masters.view', 'products.view', 'customers.view', 'price-master.view'))
-            <div x-data="{ open: {{ $is('masters.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>2 · Masters</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    @if($can('products.view', 'masters.view'))
-                        <a href="{{ route('masters.brands.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.brands.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Brands</span></a>
-                        <a href="{{ route('masters.categories.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.categories.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Categories</span></a>
-                        <a href="{{ route('masters.sub-categories.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.sub-categories.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Sub Categories</span></a>
-                        <a href="{{ route('masters.product-types.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.product-types.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Product Types</span></a>
-                        <a href="{{ route('masters.products.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.products.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Products</span></a>
-                    @endif
-                    @if($can('customers.view', 'masters.view'))
-                        <a href="{{ route('masters.customers.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.customers.*', 'masters.parties.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Parties</span></a>
-                    @endif
-                    @if($can('price-master.view', 'masters.view'))
-                        <a href="{{ route('masters.price-masters.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.price-masters.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Price Master</span></a>
-                    @endif
-                    @if($can('masters.view', 'products.view', 'customers.view'))
-                        <a href="{{ route('masters.bulk-import.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.bulk-import.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Bulk Import</span></a>
-                    @endif
-                </div>
-            </div>
-        @endif
-
-        @if($can('purchases.view', 'purchases.create', 'purchase-orders.view', 'purchase-orders.create', 'purchase-orders.manage', 'inventory.view'))
-            <div x-data="{ open: {{ $is('purchasing.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>3 · Purchases</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    <a href="{{ route('purchasing.orders.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.orders.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Orders</span></a>
-                    <a href="{{ route('purchasing.comparisons.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.comparisons.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Comparison Sheets</span></a>
-                    <a href="{{ route('purchasing.invoices.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.invoices.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Invoices</span></a>
-                    <a href="{{ route('purchasing.freight-bills.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.freight-bills.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Freight Bills</span></a>
-                </div>
-            </div>
-        @endif
-
-        @if($can('inventory.view', 'stock.view', 'purchases.view'))
-            <div x-data="{ open: {{ $is('inventory.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>4 · Inventory</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    @if($can('stock.view', 'inventory.view'))
-                        <a href="{{ route('inventory.stock.index') }}" class="{{ $itemClass }} {{ $linkClass(['inventory.stock.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Current Stock</span></a>
-                        <a href="{{ route('inventory.transfers.index') }}" class="{{ $itemClass }} {{ $linkClass(['inventory.transfers.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Transfer</span></a>
-                        <a href="{{ route('inventory.adjustments.index') }}" class="{{ $itemClass }} {{ $linkClass(['inventory.adjustments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Adjustments</span></a>
-                        <a href="{{ route('inventory.serials.index') }}" class="{{ $itemClass }} {{ $linkClass(['inventory.serials.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Serial Numbers</span></a>
-                        <a href="{{ route('inventory.valuation.index') }}" class="{{ $itemClass }} {{ $linkClass(['inventory.valuation.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Valuation</span></a>
-                    @endif
-                </div>
-            </div>
-        @endif
-
-        @if($can('orders.view', 'orders.create', 'orders.edit', 'orders.book', 'orders.manage', 'create orders', 'sales.view', 'invoices.view', 'quotations.view'))
-            <div x-data="{ open: {{ $is('orders.*', 'quotations.*', 'invoices.*', 'region-policies.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>5 · Sales &amp; Orders</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    @if($can('orders.view', 'orders.create', 'orders.book', 'orders.manage', 'create orders'))
-                        <a href="{{ route('orders.index') }}" class="{{ $itemClass }} {{ $linkClass(['orders.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Orders</span></a>
-                    @endif
-                    @if($can('quotations.view', 'quotations.create', 'sales.view'))
-                        <a href="{{ route('quotations.index') }}" class="{{ $itemClass }} {{ $linkClass(['quotations.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Quotations</span></a>
-                    @endif
-                    @if($can('sales.view', 'invoices.view', 'sales.create', 'invoices.create'))
-                        <a href="{{ route('invoices.index') }}" class="{{ $itemClass }} {{ $linkClass(['invoices.index', 'invoices.show', 'invoices.create']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tax Invoices</span></a>
-                    @endif
-                    @if($can('sales.manage', 'quotations.manage', 'masters.manage'))
-                        <a href="{{ route('region-policies.index') }}" class="{{ $itemClass }} {{ $linkClass(['region-policies.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Region Policies</span></a>
-                    @endif
-                </div>
-            </div>
-        @endif
-
-        @if($can('logistics.view', 'delivery.view', 'settlement.view', 'settlement.entry', 'manage settlements'))
-            <div x-data="{ open: {{ $is('logistics.*', 'deliveries.*', 'settlements.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>6 · Logistics &amp; Trips</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    @if($can('logistics.view', 'logistics.create', 'logistics.manage'))
-                        <a href="{{ route('logistics.load-sheets.index') }}" class="{{ $itemClass }} {{ $linkClass(['logistics.load-sheets.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Trip Sheets / Load</span></a>
-                    @endif
-                    @if($can('delivery.view', 'delivery.create', 'delivery.manage'))
-                        <a href="{{ route('deliveries.index') }}" class="{{ $itemClass }} {{ $linkClass(['deliveries.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Delivery Runs</span></a>
-                    @endif
-                    @if($can('settlement.view', 'settlement.create', 'settlement.manage', 'manage settlements', 'settlement.entry'))
-                        <a href="{{ route('settlements.index') }}" class="{{ $itemClass }} {{ $linkClass(['settlements.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Trip Settlements</span></a>
-                    @endif
-                </div>
-            </div>
-        @endif
-
-        @if($can('payments.view', 'payments.create', 'cheques.view', 'credit-notes.view'))
-            <div x-data="{ open: {{ $is('payments.*', 'cheques.*', 'credit-notes.*', 'outstanding.*', 'reconciliation.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>7 · Receivables</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    <a href="{{ route('payments.index') }}" class="{{ $itemClass }} {{ $linkClass(['payments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Payment Receipts</span></a>
-                    @if($can('cheques.view', 'cheques.create', 'payments.manage'))
-                        <a href="{{ route('cheques.index') }}" class="{{ $itemClass }} {{ $linkClass(['cheques.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Cheque Register</span></a>
-                    @endif
-                    @if($can('credit-notes.view', 'credit-notes.create', 'payments.manage'))
-                        <a href="{{ route('credit-notes.index') }}" class="{{ $itemClass }} {{ $linkClass(['credit-notes.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Credit Notes</span></a>
-                    @endif
-                    <a href="{{ route('outstanding.index') }}" class="{{ $itemClass }} {{ $linkClass(['outstanding.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Outstanding Balances</span></a>
-                    <a href="{{ route('reconciliation.index') }}" class="{{ $itemClass }} {{ $linkClass(['reconciliation.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Reconciliation</span></a>
-                    <a href="{{ route('reports.aging') }}" class="{{ $itemClass }} {{ $linkClass(['reports.aging']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Aging Analysis</span></a>
-                </div>
-            </div>
-        @endif
-
-        @if($can('deals.view', 'targets.view', 'schemes.view', 'interest.view'))
-            <div x-data="{ open: {{ $is('deals.*', 'expense-types.*', 'targets.*', 'schemes.*', 'interest.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>8 · Commercials</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    @if($can('deals.view', 'deals.create', 'deals.manage'))
-                        <a href="{{ route('deals.index') }}" class="{{ $itemClass }} {{ $linkClass(['deals.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Special Deals</span></a>
-                        <a href="{{ route('expense-types.index') }}" class="{{ $itemClass }} {{ $linkClass(['expense-types.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Expense Types</span></a>
-                    @endif
-                    @if($can('targets.view', 'targets.manage'))
-                        <a href="{{ route('targets.index') }}" class="{{ $itemClass }} {{ $linkClass(['targets.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Targets &amp; Rebates</span></a>
-                    @endif
-                    @if($can('schemes.view', 'schemes.manage'))
-                        <a href="{{ route('schemes.index') }}" class="{{ $itemClass }} {{ $linkClass(['schemes.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Schemes</span></a>
-                    @endif
-                    @if($can('interest.view', 'interest.manage'))
-                        <a href="{{ route('interest.index') }}" class="{{ $itemClass }} {{ $linkClass(['interest.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Interest &amp; Overdue</span></a>
-                    @endif
-                </div>
-            </div>
-        @endif
-
-        @if($can('hrms.view', 'hrms.manage', 'crm.view', 'crm.manage', 'tally.view', 'tally.manage', 'targets.view', 'targets.manage', 'sales_targets.view', 'sales_targets.manage', 'salesperson', 'super-admin'))
-            <div x-data="{ open: {{ $is('hrms.*') || $is('crm.*') || $is('tally.*') || $is('sales-targets.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>9 · HR · CRM</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    @if($can('hrms.view', 'hrms.manage'))
-                        <a href="{{ route('hrms.employees.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.employees.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Employees</span></a>
-                        <a href="{{ route('hrms.departments.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.departments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Departments</span></a>
-                        <a href="{{ route('hrms.designations.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.designations.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Designations</span></a>
-                        <a href="{{ route('hrms.managers.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.managers.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Managers</span></a>
-                        <a href="{{ route('hrms.attendances.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.attendances.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Attendance</span></a>
-                        <a href="{{ route('hrms.leave-requests.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.leave-requests.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leave Requests</span></a>
-                        <a href="{{ route('hrms.leave-balances.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.leave-balances.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leave Balances</span></a>
-                        <a href="{{ route('hrms.leave-types.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.leave-types.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leave Types</span></a>
-                        <a href="{{ route('hrms.expense-claims.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.expense-claims.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Claims</span></a>
-                    @endif
-                    @if($can('crm.view', 'crm.manage'))
-                        <a href="{{ route('crm.leads.index') }}" class="{{ $itemClass }} {{ $linkClass(['crm.leads.index', 'crm.leads.show', 'crm.leads.edit', 'crm.leads.create', 'crm.leads.bulk-upload*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leads (CRM)</span></a>
-                        <a href="{{ route('crm.leads.segments.index') }}" class="{{ $itemClass }} {{ $linkClass(['crm.leads.segments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Lead Segments</span></a>
-                    @endif
-                    @if($can('targets.view', 'targets.manage', 'sales_targets.view', 'sales_targets.manage', 'salesperson', 'super-admin'))
-                        <div x-data="{ targetOpen: {{ $is('sales-targets.*') ? 'true' : 'false' }} }" class="pt-1 mt-1 border-t border-slate-700/50">
-                            <button
-                                type="button"
-                                @click="targetOpen = !targetOpen"
-                                class="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-1.5 text-left text-xs font-semibold text-slate-300 hover:bg-slate-800/60 hover:text-white transition"
-                                x-show="!$root.sidebarCollapsed"
-                                x-cloak
-                            >
-                                <span class="flex items-center gap-2">
-                                    <svg class="h-4 w-4 shrink-0 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.25 2.25L15 6" />
-                                    </svg>
-                                    <span>Sales Target Management</span>
-                                </span>
-                                <svg class="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform" :class="targetOpen && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                </svg>
-                            </button>
-
-                            <div x-show="targetOpen || $root.sidebarCollapsed" x-cloak class="space-y-0.5 mt-0.5" :class="!$root.sidebarCollapsed && 'pl-2 border-l border-slate-800 ml-3'">
-                                <a href="{{ route('sales-targets.dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.dashboard']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Target Dashboard</span></a>
-                                <a href="{{ route('sales-targets.create') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.create']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Assign Targets</span></a>
-                                <a href="{{ route('sales-targets.index') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.index', 'sales-targets.show', 'sales-targets.edit']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Target List</span></a>
-                                <a href="{{ route('sales-targets.salesman-performance') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.salesman-performance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Salesman Performance</span></a>
-                                <a href="{{ route('sales-targets.team-branch-performance') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.team-branch-performance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Team &amp; Branch Performance</span></a>
-                                <a href="{{ route('sales-targets.alerts') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.alerts*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Target Alerts</span></a>
-                                <a href="{{ route('sales-targets.reports') }}" class="{{ $itemClass }} {{ $linkClass(['sales-targets.reports']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Target Reports</span></a>
-                            </div>
-                        </div>
-                    @endif
-                </div>
-            </div>
-        @endif
-
-        @if($can('tally.view', 'tally.manage', 'accounting.view'))
-            @php
-                $booksSectionOpen = books_workspace_active() || $is('books.tally*');
-            @endphp
-            {{-- Single entry: opens Books workspace + second aside (no nested DMS shortcuts) --}}
-            <a
-                href="{{ route('books.tally.dashboard') }}"
-                class="{{ $sectionBtn }} {{ $booksSectionOpen ? 'bg-slate-800/60 text-slate-300' : '' }}"
-                x-show="!$root.sidebarCollapsed"
-                x-cloak
-                title="Open Accounting Books sidebar"
-            >
-                <span>10 · Accounting (Books)</span>
-            </a>
-            <a
-                href="{{ route('books.tally.dashboard') }}"
-                class="flex items-center justify-center rounded-xl px-2 py-2 text-[10px] font-bold uppercase tracking-[0.12em] {{ $booksSectionOpen ? 'bg-slate-800/60 text-slate-300' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-300' }} transition"
-                x-show="$root.sidebarCollapsed"
-                x-cloak
-                title="Accounting (Books)"
-            >10</a>
-        @endif
-
-        @if($can('reports.view', 'reports.manage'))
-            <div x-data="{ open: {{ $is('reports.*') ? 'true' : 'false' }} }">
-                <button type="button" class="{{ $sectionBtn }}" x-show="!$root.sidebarCollapsed" x-cloak @click="open = !open">
-                    <span>11 · Reports</span>
-                    <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
-                <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
-                    <a href="{{ route('reports.sales') }}" class="{{ $itemClass }} {{ $linkClass(['reports.sales']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Sales Register</span></a>
-                    <a href="{{ route('reports.stock') }}" class="{{ $itemClass }} {{ $linkClass(['reports.stock']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Movement</span></a>
-                    <a href="{{ route('reports.stock-ledger') }}" class="{{ $itemClass }} {{ $linkClass(['reports.stock-ledger']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Ledger</span></a>
-                    <a href="{{ route('reports.party-statement') }}" class="{{ $itemClass }} {{ $linkClass(['reports.party-statement']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Party Ledger</span></a>
-                    <a href="{{ route('reports.purchase-register') }}" class="{{ $itemClass }} {{ $linkClass(['reports.purchase-register']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Register</span></a>
-                    <a href="{{ route('reports.outstanding') }}" class="{{ $itemClass }} {{ $linkClass(['reports.outstanding']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Outstanding Statement</span></a>
-                    <a href="{{ route('reports.margin') }}" class="{{ $itemClass }} {{ $linkClass(['reports.margin']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Margin Analysis</span></a>
-                    <a href="{{ route('reports.day-book') }}" class="{{ $itemClass }} {{ $linkClass(['reports.day-book']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Day Book</span></a>
-                    <a href="{{ route('reports.profit-loss') }}" class="{{ $itemClass }} {{ $linkClass(['reports.profit-loss']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Profit &amp; Loss</span></a>
-                    <a href="{{ route('reports.balance-sheet') }}" class="{{ $itemClass }} {{ $linkClass(['reports.balance-sheet']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Balance Sheet</span></a>
-                    <a href="{{ route('reports.trial-balance') }}" class="{{ $itemClass }} {{ $linkClass(['reports.trial-balance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Trial Balance</span></a>
-                    <a href="{{ route('reports.od') }}" class="{{ $itemClass }} {{ $linkClass(['reports.od', 'od.report*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>OD Report</span></a>
-                </div>
-            </div>
-        @endif
-
-        @if($can('reports.view', 'reports.manage'))
-            <a
-                href="{{ route('tally-connector.show') }}"
-                class="{{ $sectionBtn }} {{ request()->routeIs('tally-connector.*') ? 'bg-slate-800/60 text-slate-300' : '' }}"
-                x-show="!$root.sidebarCollapsed"
-                x-cloak
-            >
-                <span>12 · Tally Connector</span>
-            </a>
-            <a
-                href="{{ route('tally-connector.show') }}"
-                class="flex items-center justify-center rounded-xl px-2 py-2 text-[10px] font-bold uppercase tracking-[0.12em] {{ request()->routeIs('tally-connector.*') ? 'bg-slate-800/60 text-slate-300' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-300' }} transition"
-                x-show="$root.sidebarCollapsed"
-                x-cloak
-                title="Tally Connector"
-            >12</a>
-        @endif
-
-        <a
-            href="{{ route('guide') }}"
-            class="{{ $sectionBtn }} {{ request()->routeIs('guide') ? 'bg-slate-800/60 text-slate-300' : '' }}"
-            x-show="!$root.sidebarCollapsed"
-            x-cloak
-        >
-            <span>13 · Guide</span>
-        </a>
-        <a
-            href="{{ route('guide') }}"
-            class="flex items-center justify-center rounded-xl px-2 py-2 text-[10px] font-bold uppercase tracking-[0.12em] {{ request()->routeIs('guide') ? 'bg-slate-800/60 text-slate-300' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-300' }} transition"
-            x-show="$root.sidebarCollapsed"
-            x-cloak
-            title="Guide"
-        >13</a>
+        {{-- Dynamic Sections Container --}}
+        <div x-ref="sectionsContainer" id="sidebar-sections-container" class="space-y-1">
+            @foreach($orderedSections as $sectionKey)
+                @includeIf('partials.sidebar-sections.' . $sectionKey)
+            @endforeach
+        </div>
 
         {{-- User Section: Profile, Users & Roles, Log Out --}}
         <div class="border-t border-slate-700/60 pt-3 mt-3 space-y-2">

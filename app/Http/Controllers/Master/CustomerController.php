@@ -520,21 +520,31 @@ class CustomerController extends Controller
         }
     }
 
-    public function show(Customer $customer): View|RedirectResponse
-{
-    $customer->load([
-        'customerType',
-        'area',
-        'route',
-        'salesperson',
-        'salesManager',
-        'contacts',
-        'addresses',
-        'bankAccounts',
-    ]);
+    public function show(Request $request, Customer $customer): View|JsonResponse
+    {
+        $customer->load([
+            'company',
+            'branch',
+            'businessGroup',
+            'customerType',
+            'area',
+            'route',
+            'salesperson',
+            'salesManager',
+            'contacts' => fn ($q) => $q->orderBy('is_primary', 'desc')->orderBy('name'),
+            'addresses' => fn ($q) => $q->orderBy('is_default_billing', 'desc')->orderBy('is_default_delivery', 'desc'),
+            'bankAccounts' => fn ($q) => $q->orderBy('is_primary', 'desc'),
+        ]);
 
-    return view('masters.customers.show', compact('customer'));
-}
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'party' => $customer,
+            ]);
+        }
+
+        return view('masters.customers.show', compact('customer'));
+    }
 
     /**
      * Search GSTIN and return parsed vendor details.

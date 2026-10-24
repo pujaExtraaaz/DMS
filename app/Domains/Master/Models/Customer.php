@@ -39,6 +39,8 @@ class Customer extends Model
         'credit_status',
         'credit_period_basis',
         'interest_rate',
+        'payment_terms',
+        'credit_notes',
         'shipping_name',
         'is_active',
     ];
