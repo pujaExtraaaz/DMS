@@ -76,11 +76,11 @@ class TallyConnectorAdminController extends Controller
         if (! is_file($files['install-task.ps1'])) {
             $files['install-task.ps1'] = $dir.DIRECTORY_SEPARATOR.'install-task.ps1';
         }
-        if (! is_file($files['config.json'])) {
-            $files['config.json'] = $files['config.example.json'];
-        }
-
         foreach ($files as $name => $path) {
+            if ($name === 'config.json') {
+                $zip->addFromString('tally-connector/config.json', $this->connectorConfig());
+                continue;
+            }
             if (! is_file($path)) {
                 continue;
             }
@@ -93,5 +93,23 @@ class TallyConnectorAdminController extends Controller
         $zip->close();
 
         return response()->download($zipPath, 'tally-connector.zip')->deleteFileAfterSend(true);
+    }
+    private function connectorConfig(): string
+    {
+        $saved = base_path('tools/tally-connector/publish/config.json');
+        if (is_file($saved)) {
+            $contents = file_get_contents($saved);
+            if ($contents !== false && trim($contents) !== '') {
+                return $contents;
+            }
+        }
+
+        return json_encode([
+            'dms_url' => rtrim((string) config('app.url'), '/'),
+            'connector_token' => (string) config('tally_sync.connector_token', ''),
+            'tally_url' => 'http://127.0.0.1:9000',
+            'company' => (string) config('tally_sync.company', ''),
+            'poll_seconds' => 8,
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n";
     }
 }

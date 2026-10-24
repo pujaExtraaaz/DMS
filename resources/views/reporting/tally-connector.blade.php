@@ -7,7 +7,7 @@
     <p class="text-sm {{ $syncEnabled ? 'text-emerald-700' : 'text-rose-700' }}">
         Sync is <strong>{{ $syncEnabled ? 'enabled' : 'disabled' }}</strong>.
         @unless ($syncEnabled)
-            The exe is ready to run after TALLY_SYNC_ENABLED is turned on for this server. It is not pointed at the live site.
+            Set TALLY_SYNC_ENABLED=true in this server's .env, then run php artisan config:clear. The connector on the Tally PC calls this site. Tally itself stays on that PC at port 9000.
         @endunless
     </p>
     <div class="mt-4">
@@ -15,7 +15,7 @@
             <a href="{{ route('tally-connector.download') }}" class="inline-flex rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">Download Tally Connector folder</a>
             <p class="mt-2 text-sm text-slate-600">Unzip tally-connector.zip. The folder contains tally_connector.exe, config.json, config.example.json, and install-task.ps1.</p>
         @else
-            <p class="text-sm text-slate-600">The exe has not been built yet. On a machine with the .NET 8 SDK, run tools/tally-connector/publish.ps1.</p>
+            <p class="text-sm text-slate-600">tally_connector.exe is not on this server. It is built on a Windows PC with the .NET 8 SDK by running tools/tally-connector/publish.ps1, then that publish/tally_connector.exe file has to be uploaded with the code.</p>
         @endif
     </div>
 </x-ui.card>

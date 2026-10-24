@@ -1,5 +1,6 @@
 bin/
 obj/
-publish/
 logs/
 config.json
+publish/*.pdb
+publish/logs/

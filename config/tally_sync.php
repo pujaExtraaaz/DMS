@@ -10,7 +10,7 @@ return [
     | Native Books is the live accounting path. Keep this false until you
     | intentionally revive TallyPrime sync. Templates stay available either way.
     */
-    'enabled' => (bool) env('TALLY_SYNC_ENABLED', false),
+    'enabled' => filter_var(env('TALLY_SYNC_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
 
     /* When enabled, load /api/tally-connector/* for the office bridge. */
     'expose_connector_api' => (bool) env('TALLY_EXPOSE_CONNECTOR_API', true),
