@@ -35,26 +35,32 @@ class SalesTargetCalculationService
                 ->whereNotIn('status', ['cancelled', 'draft', 'void'])
                 ->whereBetween('invoice_date', [$startDate, $endDate]);
 
-            if ($salespersonIds->isNotEmpty()) {
-                $invoiceQuery->whereIn('salesperson_id', $salespersonIds);
-            }
+            if ($target->owner_type === 'party' || $target->customer_id) {
+                $invoiceQuery->where('customer_id', $target->customer_id);
+            } else {
+                if ($salespersonIds->isNotEmpty()) {
+                    $invoiceQuery->whereIn('salesperson_id', $salespersonIds);
+                }
 
-            // Also check branch match if branch-owned and no specific users
-            if ($target->owner_type === 'branch' && $target->branch_id && $salespersonIds->isEmpty()) {
-                $invoiceQuery->whereHas('customer', function ($q) use ($target) {
-                    $q->where('branch_id', $target->branch_id);
-                });
+                // Also check branch match if branch-owned and no specific users
+                if ($target->owner_type === 'branch' && $target->branch_id && $salespersonIds->isEmpty()) {
+                    $invoiceQuery->whereHas('customer', function ($q) use ($target) {
+                        $q->where('branch_id', $target->branch_id);
+                    });
+                }
             }
 
             $matchedInvoices = (clone $invoiceQuery)->with(['items.product'])->get();
             $invoiceIds = $matchedInvoices->pluck('id')->all();
 
-            // 3. Credit Notes Query (Posted credit notes for these invoices or salesperson)
+            // 3. Credit Notes Query (Posted credit notes for these invoices or salesperson or customer)
             $creditNoteQuery = CreditNote::query()
                 ->where('status', 'posted')
                 ->whereBetween('credit_note_date', [$startDate, $endDate]);
 
-            if (!empty($invoiceIds)) {
+            if ($target->owner_type === 'party' || $target->customer_id) {
+                $creditNoteQuery->where('customer_id', $target->customer_id);
+            } elseif (!empty($invoiceIds)) {
                 $creditNoteQuery->where(function ($q) use ($invoiceIds, $salespersonIds) {
                     $q->whereIn('invoice_id', $invoiceIds);
                     if ($salespersonIds->isNotEmpty()) {
@@ -212,6 +218,29 @@ class SalesTargetCalculationService
             return [
                 'amount' => max(0, $invTotal - $cnTotal),
                 'quantity' => 0.0,
+                'invoices_count' => $invoices->count(),
+                'invoice_ids' => $invoices->pluck('id')->all(),
+            ];
+        }
+
+        // Case A2: Pure Quantity Target (no specific brand/product restriction)
+        if ($targetType === 'quantity' && !$target->brand_id && !$target->product_id && !$target->sku && !$target->category_id && !$target->sub_category_id) {
+            $totalQty = 0.0;
+            $invTotal = (float) $invoices->sum('grand_total');
+            $cnTotal = (float) $creditNotes->sum('grand_total');
+            foreach ($invoices as $inv) {
+                foreach ($inv->items as $item) {
+                    $totalQty += (float) ($item->quantity ?? 0);
+                }
+            }
+            foreach ($creditNotes as $cn) {
+                foreach ($cn->items as $cnItem) {
+                    $totalQty -= (float) ($cnItem->quantity ?? 0);
+                }
+            }
+            return [
+                'amount' => max(0, $invTotal - $cnTotal),
+                'quantity' => max(0, $totalQty),
                 'invoices_count' => $invoices->count(),
                 'invoice_ids' => $invoices->pluck('id')->all(),
             ];

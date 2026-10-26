@@ -82,4 +82,47 @@ class HasUppercaseNamesTest extends TestCase
         $this->assertSame('Bulk Foods Depot', $model->getAttributes()['name']);
         $this->assertSame('Avit Digital', $model->getAttributes()['company_name']);
     }
+
+    public function test_json_payloads_and_cast_attributes_are_never_corrupted(): void
+    {
+        $model = new class extends Model {
+            use HasUppercaseNames;
+            protected $guarded = [];
+            protected function casts(): array
+            {
+                return [
+                    'additional_details' => 'array',
+                ];
+            }
+        };
+
+        $model->name = 'acme corp';
+        $model->additional_details = [
+            'contacts' => [],
+            'bank_accounts' => [
+                [
+                    'bank_name' => 'hdfc bank',
+                    'bank_account_no' => '50200115516401',
+                    'bank_ifsc' => 'HDFC0001390',
+                    'upi_id' => null,
+                    'od_limit' => 10000000,
+                    'interest_rate' => 10.25,
+                ],
+            ],
+        ];
+
+        $model->uppercaseNameAttributes();
+
+        $rawAttributes = $model->getAttributes();
+        $this->assertSame('Acme Corp', $rawAttributes['name']);
+
+        // The additional_details raw attribute must still be valid JSON and have snake_case keys and lowercase null
+        $json = $rawAttributes['additional_details'];
+        $this->assertIsString($json);
+        $this->assertStringContainsString('"bank_name"', $json);
+        $this->assertStringContainsString('"upi_id":null', $json);
+        $this->assertStringNotContainsString('"UPI_ID":Null', $json);
+        $this->assertStringNotContainsString('"Bank_Accounts"', $json);
+        $this->assertTrue(json_validate($json));
+    }
 }

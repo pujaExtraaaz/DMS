@@ -257,6 +257,7 @@ class InvoiceController extends Controller
                 }
 
                 $invoice = Invoice::create([
+                    'company_id' => $customer->company_id ?? \App\Domains\Organization\Models\Company::resolveCurrent()?->id,
                     'invoice_no' => $this->invoiceNumberGenerator->generate(),
                     'customer_id' => $validated['customer_id'],
                     'scheme_id' => $scheme?->id,

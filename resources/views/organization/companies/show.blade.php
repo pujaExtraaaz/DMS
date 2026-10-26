@@ -211,7 +211,15 @@
         @php
             $bankAccounts = $company->bank_accounts;
             $hasAnyBank = collect($bankAccounts)->contains(function($b) {
-                return filled($b['bank_name'] ?? null) || filled($b['bank_account_no'] ?? null) || filled($b['bank_ifsc'] ?? null) || filled($b['upi_id'] ?? null);
+                return filled($b['bank_name'] ?? null)
+                    || filled($b['bank_account_no'] ?? null)
+                    || filled($b['bank_ifsc'] ?? null)
+                    || filled($b['upi_id'] ?? null)
+                    || filled($b['swift_code'] ?? null)
+                    || filled($b['branch'] ?? null)
+                    || filled($b['bank_branch'] ?? null)
+                    || filled($b['bsr_code'] ?? null)
+                    || filled($b['client_code'] ?? null);
             });
         @endphp
 
@@ -219,7 +227,15 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 @foreach($bankAccounts as $index => $bank)
                     @php
-                        $bankFilled = filled($bank['bank_name'] ?? null) || filled($bank['bank_account_no'] ?? null) || filled($bank['bank_ifsc'] ?? null) || filled($bank['upi_id'] ?? null);
+                        $bankFilled = filled($bank['bank_name'] ?? null)
+                            || filled($bank['bank_account_no'] ?? null)
+                            || filled($bank['bank_ifsc'] ?? null)
+                            || filled($bank['upi_id'] ?? null)
+                            || filled($bank['swift_code'] ?? null)
+                            || filled($bank['branch'] ?? null)
+                            || filled($bank['bank_branch'] ?? null)
+                            || filled($bank['bsr_code'] ?? null)
+                            || filled($bank['client_code'] ?? null);
                     @endphp
                     @if($bankFilled)
                         <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
@@ -240,6 +256,22 @@
                                 <div>
                                     <span class="text-xs font-semibold text-slate-500 block">UPI ID</span>
                                     <span class="font-mono font-medium text-slate-800">{{ $bank['upi_id'] ?: '—' }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-500 block">SWIFT Code</span>
+                                    <span class="font-mono font-medium text-slate-800">{{ $bank['swift_code'] ?: '—' }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-500 block">Branch</span>
+                                    <span class="font-medium text-slate-800">{{ ($bank['branch'] ?? $bank['bank_branch'] ?? null) ?: '—' }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-500 block">BSR Code</span>
+                                    <span class="font-mono font-medium text-slate-800">{{ $bank['bsr_code'] ?: '—' }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-500 block">Client Code</span>
+                                    <span class="font-mono font-medium text-slate-800">{{ $bank['client_code'] ?: '—' }}</span>
                                 </div>
                                 @if(isset($bank['od_limit']) && (float)$bank['od_limit'] > 0)
                                 <div>

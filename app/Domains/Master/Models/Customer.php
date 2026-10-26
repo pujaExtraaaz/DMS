@@ -186,6 +186,27 @@ class Customer extends Model
         return $this->hasMany(\App\Domains\Sales\Models\Invoice::class);
     }
 
+    public function salesTargets(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Target\Models\SalesTarget::class, 'customer_id');
+    }
+
+    public function activeSalesTarget(): ?\App\Domains\Target\Models\SalesTarget
+    {
+        return $this->salesTargets()
+            ->where('status', 'active')
+            ->whereDate('ends_on', '>=', now())
+            ->latest('starts_on')
+            ->first();
+    }
+
+    public function latestSalesTarget(): ?\App\Domains\Target\Models\SalesTarget
+    {
+        return $this->salesTargets()
+            ->latest('starts_on')
+            ->first();
+    }
+
     public function defaultAddress(): ?PartyAddress
     {
         return $this->defaultBillingAddress() ?? $this->defaultDeliveryAddress() ?? $this->addresses()->first();

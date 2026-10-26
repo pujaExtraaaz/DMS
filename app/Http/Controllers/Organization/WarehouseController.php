@@ -138,13 +138,22 @@ class WarehouseController extends Controller
             'company_id' => 'required|exists:companies,id',
             'branch_id' => 'required|exists:branches,id',
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:30',
+            'code' => 'nullable|string|max:30',
             'address' => 'nullable|string',
             'is_default' => 'boolean',
             'is_active' => 'boolean',
         ]);
         $data['is_default'] = $request->boolean('is_default');
         $data['is_active'] = $request->boolean('is_active');
+
+        if (blank($data['code'] ?? null)) {
+            if ($warehouse && filled($warehouse->code)) {
+                $data['code'] = $warehouse->code;
+            } else {
+                $data['code'] = \App\Support\CodeGenerator::forWarehouse(isset($data['company_id']) ? (int) $data['company_id'] : null);
+            }
+        }
+
         return $data;
     }
 }

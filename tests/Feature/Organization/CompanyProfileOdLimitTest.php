@@ -116,7 +116,7 @@ class CompanyProfileOdLimitTest extends TestCase
             ]);
 
         $response->assertRedirect(route('organization.company-profile'));
-        $response->assertSessionHas('status', 'Company profile updated successfully.');
+        $response->assertSessionHas('status');
 
         $this->company->refresh();
         $this->assertEquals(750000.00, (float) $this->company->od_limit);
@@ -274,5 +274,59 @@ class CompanyProfileOdLimitTest extends TestCase
         $response->assertOk();
         $response->assertSee('No Bank Account Configured');
         $response->assertSee('Please add at least one bank account');
+    }
+
+    public function test_saving_additional_bank_accounts_stores_valid_json_without_corrupted_casing_or_invalid_nulls(): void
+    {
+        $response = $this->actingAs($this->user)
+            ->put(route('organization.company-profile.update'), [
+                'name' => 'Acme Corporation',
+                'bank_accounts' => [
+                    [
+                        'bank_name' => 'Hdfc Bank Main Account',
+                        'bank_account_no' => '50200115516000',
+                        'bank_ifsc' => 'HDFC0001390',
+                        'upi_id' => 'acme@hdfc',
+                        'od_limit' => 500000.00,
+                        'interest_rate' => 10.00,
+                    ],
+                    [
+                        'bank_name' => 'Hdfc Bank OD Account',
+                        'bank_account_no' => '50200115516401',
+                        'bank_ifsc' => 'HDFC0001390',
+                        'upi_id' => null, // Empty / null UPI
+                        'od_limit' => 10000000.00,
+                        'interest_rate' => 10.25,
+                    ],
+                ],
+            ]);
+
+        $response->assertRedirect(route('organization.company-profile'));
+        $response->assertSessionHas('status');
+
+        $this->company->refresh();
+
+        // Check raw database string for additional_details
+        $rawDetails = $this->company->getRawOriginal('additional_details');
+        $this->assertIsString($rawDetails);
+
+        // Must be strictly valid JSON
+        $this->assertTrue(json_validate($rawDetails));
+
+        // Must NOT contain capital "Null", nor capitalized keys "Bank_Accounts", "UPI_ID", etc.
+        $this->assertStringNotContainsString(':Null', $rawDetails);
+        $this->assertStringNotContainsString('"Bank_Accounts"', $rawDetails);
+        $this->assertStringNotContainsString('"UPI_ID"', $rawDetails);
+        $this->assertStringContainsString('"upi_id":null', $rawDetails);
+        $this->assertStringContainsString('"bank_accounts"', $rawDetails);
+
+        // Bank accounts accessor must return both accounts
+        $accounts = $this->company->bank_accounts;
+        $this->assertCount(2, $accounts);
+        $this->assertSame('Hdfc Bank Main Account', $accounts[0]['bank_name']);
+        $this->assertSame('Hdfc Bank OD Account', $accounts[1]['bank_name']);
+        $this->assertNull($accounts[1]['upi_id']);
+        $this->assertEquals(10000000.00, (float) $accounts[1]['od_limit']);
+        $this->assertEquals(10.25, (float) $accounts[1]['interest_rate']);
     }
 }

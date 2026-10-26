@@ -26,6 +26,7 @@ class SalesTarget extends Model
         'name',
         'target_type',
         'owner_type',
+        'customer_id',
         'salesperson_id',
         'sales_team_id',
         'branch_id',
@@ -64,6 +65,11 @@ class SalesTarget extends Model
             'carried_forward_amount' => 'decimal:2',
             'revision_number' => 'integer',
         ];
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Master\Models\Customer::class, 'customer_id');
     }
 
     public function salesperson(): BelongsTo
@@ -164,8 +170,31 @@ class SalesTarget extends Model
         return match ($this->owner_type) {
             'team' => $this->salesTeam?->name ?? 'Team',
             'branch' => $this->branch?->name ?? 'Branch',
+            'party' => $this->customer?->name ?? 'Party',
             default => $this->salesperson?->name ?? 'Individual Salesman',
         };
+    }
+
+    /**
+     * Get target progress status
+     */
+    public function getProgressStatusAttribute(): string
+    {
+        $achievement = $this->achievement;
+        $isAchieved = $achievement?->is_achieved ?? false;
+        if ($isAchieved) {
+            return 'Achieved';
+        }
+
+        if ($this->starts_on && $this->starts_on->isFuture()) {
+            return 'Not Started';
+        }
+
+        if ($this->ends_on && $this->ends_on->isPast()) {
+            return 'Overdue';
+        }
+
+        return 'In Progress';
     }
 }
 

@@ -28,6 +28,7 @@ class Invoice extends Model
         });
     }
     protected $fillable = [
+        'company_id',
         'invoice_no',
         'customer_id',
         'scheme_id',
@@ -77,6 +78,20 @@ class Invoice extends Model
             'scheme_benefit_amount' => 'decimal:2',
             'paid_amount' => 'decimal:2',
         ];
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Organization\Models\Company::class);
+    }
+
+    public function getSellingCompanyAttribute(): ?\App\Domains\Organization\Models\Company
+    {
+        return $this->company
+            ?? $this->order?->warehouse?->company
+            ?? $this->customer?->company
+            ?? $this->salesperson?->company
+            ?? \App\Domains\Organization\Models\Company::defaultCompany();
     }
 
     public function customer(): BelongsTo

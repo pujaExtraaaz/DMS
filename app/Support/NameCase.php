@@ -25,6 +25,8 @@ class NameCase
         'site_name',
         'bank_name',
         'branch_name',
+        'bank_branch',
+        'branch',
         'account_holder_name',
         'shipping_name',
         'beneficiary_name',
@@ -144,6 +146,8 @@ class NameCase
         'barcode',
         'barcode_scan',
         'bsr_code',
+        'swift_code',
+        'client_code',
         'udyam_registration_no',
         'msme_registration_no',
         'iec_code',
@@ -277,6 +281,36 @@ class NameCase
         'reorder_level',
         'view_name',
         'id',
+        // JSON, configuration, metadata and structured dictionary fields
+        'additional_details',
+        'details',
+        'extra_details',
+        'meta',
+        'metadata',
+        'payload',
+        'config',
+        'configuration',
+        'settings',
+        'options',
+        'params',
+        'parameters',
+        'attributes',
+        'data',
+        'properties',
+        'context',
+        'raw',
+        'logs',
+        'log',
+        'history',
+        'audit',
+        'bank_accounts',
+        'contacts',
+        'addresses',
+        'items',
+        'lines',
+        'custom_fields',
+        'json_data',
+        'raw_data',
         // Enum slugs and technical options
         'type',
         'party_type',
@@ -351,6 +385,11 @@ class NameCase
         } elseif (str_contains($field, '.')) {
             $parts = explode('.', $field);
             $field = end($parts);
+        }
+
+        // Exclude JSON / structured dictionary field suffixes
+        if (str_ends_with($field, '_details') || str_ends_with($field, '_data') || str_ends_with($field, '_meta') || str_ends_with($field, '_config') || str_ends_with($field, '_settings') || str_ends_with($field, '_items') || str_ends_with($field, '_list') || str_ends_with($field, '_json')) {
+            return false;
         }
 
         // 1. Strict Exclusions Check

@@ -314,6 +314,15 @@ class CompanyController extends Controller
             'email' => 'nullable|email|max:255',
             'website' => 'nullable|string|max:255',
 
+            // Contacts Repeater
+            'contacts' => 'nullable|array',
+            'contacts.*.phone' => 'nullable|string|max:30',
+            'contacts.*.email' => 'nullable|email|max:255',
+            'contacts.*.website' => 'nullable|string|max:255',
+            'contacts.*.state' => 'nullable|string|max:100',
+            'contacts.*.pincode' => 'nullable|string|max:12',
+            'contacts.*.address' => 'nullable|string',
+
             // Section 4: Business & Financial
             'nature_of_business' => 'nullable|string|max:255',
             'authorized_capital' => 'nullable|numeric|min:0',
@@ -331,10 +340,25 @@ class CompanyController extends Controller
             'is_active' => 'nullable',
 
             // Existing bank and settings
+            'bank_accounts' => 'nullable|array',
+            'bank_accounts.*.bank_name' => 'nullable|string|max:255',
+            'bank_accounts.*.bank_account_no' => 'nullable|string|max:50',
+            'bank_accounts.*.bank_ifsc' => 'nullable|string|max:20',
+            'bank_accounts.*.upi_id' => 'nullable|string|max:100',
+            'bank_accounts.*.swift_code' => ['nullable', 'string', 'min:8', 'max:11', 'regex:/^[A-Za-z]{4}[A-Za-z]{2}[0-9A-Za-z]{2}([0-9A-Za-z]{3})?$/'],
+            'bank_accounts.*.branch' => 'nullable|string|max:255',
+            'bank_accounts.*.bank_branch' => 'nullable|string|max:255',
+            'bank_accounts.*.bsr_code' => 'nullable|string|max:50',
+            'bank_accounts.*.client_code' => 'nullable|string|max:50',
             'bank_name' => 'nullable|string|max:255',
             'bank_account_no' => 'nullable|string|max:50',
             'bank_ifsc' => 'nullable|string|max:20',
             'upi_id' => 'nullable|string|max:100',
+            'swift_code' => ['nullable', 'string', 'min:8', 'max:11', 'regex:/^[A-Za-z]{4}[A-Za-z]{2}[0-9A-Za-z]{2}([0-9A-Za-z]{3})?$/'],
+            'branch' => 'nullable|string|max:255',
+            'bank_branch' => 'nullable|string|max:255',
+            'bsr_code' => 'nullable|string|max:50',
+            'client_code' => 'nullable|string|max:50',
             'purchase_terms_and_conditions' => 'nullable|string',
             'selling_terms_and_conditions' => 'nullable|string',
             'due_date_basis' => 'nullable|in:invoice_date,inward_date',
@@ -365,9 +389,109 @@ class CompanyController extends Controller
             'logo.file' => 'The uploaded logo must be a valid file.',
             'logo.mimes' => 'The company logo must be a file of type: PNG, JPG, JPEG, WEBP, or SVG.',
             'logo.max' => 'The company logo size must not exceed 2 MB.',
+            'bank_accounts.*.swift_code.regex' => 'The SWIFT Code must be a valid 8 or 11 character BIC/SWIFT code (e.g. HDFCINBB or HDFCINBBXXX).',
+            'swift_code.regex' => 'The SWIFT Code must be a valid 8 or 11 character BIC/SWIFT code (e.g. HDFCINBB or HDFCINBBXXX).',
         ];
 
         $data = $request->validate($rules, $messages);
+
+        // Process Bank Accounts and additional details
+        $rawDetails = $company?->additional_details ?? [];
+        if (is_string($rawDetails)) {
+            $sanitizedJson = preg_replace('/:\s*Null\b/', ':null', $rawDetails);
+            $decoded = json_decode($sanitizedJson, true);
+            $rawDetails = is_array($decoded) ? $decoded : [];
+        } elseif (! is_array($rawDetails)) {
+            $rawDetails = [];
+        }
+
+        $additionalDetails = $rawDetails;
+        unset(
+            $additionalDetails['Contacts'],
+            $additionalDetails['contacts'],
+            $additionalDetails['Bank_Accounts'],
+            $additionalDetails['bank_accounts']
+        );
+
+        $contacts = collect($request->input('contacts', []))
+            ->filter(fn ($c) => is_array($c) && count(array_filter($c, fn ($val) => ! is_null($val) && $val !== '')) > 0)
+            ->values();
+
+        if ($contacts->isNotEmpty()) {
+            $primaryContact = $contacts->first();
+            $data['phone'] = filled($primaryContact['phone'] ?? null) ? trim((string) $primaryContact['phone']) : ($data['phone'] ?? null);
+            $data['email'] = filled($primaryContact['email'] ?? null) ? trim((string) $primaryContact['email']) : ($data['email'] ?? null);
+            $data['website'] = filled($primaryContact['website'] ?? null) ? trim((string) $primaryContact['website']) : ($data['website'] ?? null);
+            $data['state'] = filled($primaryContact['state'] ?? null) ? trim((string) $primaryContact['state']) : ($data['state'] ?? null);
+            $data['pincode'] = filled($primaryContact['pincode'] ?? null) ? trim((string) $primaryContact['pincode']) : ($data['pincode'] ?? null);
+            $data['address'] = filled($primaryContact['address'] ?? null) ? trim((string) $primaryContact['address']) : ($data['address'] ?? null);
+
+            $additionalDetails['contacts'] = $contacts->slice(1)->values()->map(function ($c) {
+                return [
+                    'phone' => filled($c['phone'] ?? null) ? trim((string) $c['phone']) : null,
+                    'email' => filled($c['email'] ?? null) ? trim((string) $c['email']) : null,
+                    'website' => filled($c['website'] ?? null) ? trim((string) $c['website']) : null,
+                    'state' => filled($c['state'] ?? null) ? trim((string) $c['state']) : null,
+                    'pincode' => filled($c['pincode'] ?? null) ? trim((string) $c['pincode']) : null,
+                    'address' => filled($c['address'] ?? null) ? trim((string) $c['address']) : null,
+                ];
+            })->all();
+        } elseif ($request->has('contacts')) {
+            $additionalDetails['contacts'] = [];
+        } else {
+            $additionalDetails['contacts'] = $rawDetails['contacts'] ?? $rawDetails['Contacts'] ?? [];
+        }
+
+        $bankAccounts = collect($request->input('bank_accounts', []))
+            ->filter(fn ($b) => is_array($b) && count(array_filter($b, fn ($val) => ! is_null($val) && $val !== '')) > 0)
+            ->values();
+
+        if ($bankAccounts->isNotEmpty()) {
+            $primaryBank = $bankAccounts->first();
+            $data['bank_name'] = filled($primaryBank['bank_name'] ?? null) ? trim((string) $primaryBank['bank_name']) : null;
+            $data['bank_account_no'] = filled($primaryBank['bank_account_no'] ?? null) ? trim((string) $primaryBank['bank_account_no']) : null;
+            $data['bank_ifsc'] = filled($primaryBank['bank_ifsc'] ?? null) ? trim((string) $primaryBank['bank_ifsc']) : null;
+            $data['upi_id'] = filled($primaryBank['upi_id'] ?? null) ? trim((string) $primaryBank['upi_id']) : null;
+            $data['swift_code'] = filled($primaryBank['swift_code'] ?? null) ? strtoupper(trim((string) $primaryBank['swift_code'])) : null;
+            $primaryBranch = filled($primaryBank['branch'] ?? null) ? trim((string) $primaryBank['branch']) : (filled($primaryBank['bank_branch'] ?? null) ? trim((string) $primaryBank['bank_branch']) : null);
+            $data['bank_branch'] = $primaryBranch;
+            $data['branch'] = $primaryBranch;
+            $data['bsr_code'] = filled($primaryBank['bsr_code'] ?? null) ? trim((string) $primaryBank['bsr_code']) : null;
+            $data['client_code'] = filled($primaryBank['client_code'] ?? null) ? trim((string) $primaryBank['client_code']) : null;
+
+            $additionalDetails['bank_accounts'] = $bankAccounts->slice(1)->values()->map(function ($b) {
+                $branch = filled($b['branch'] ?? null) ? trim((string) $b['branch']) : (filled($b['bank_branch'] ?? null) ? trim((string) $b['bank_branch']) : null);
+                return [
+                    'bank_name' => filled($b['bank_name'] ?? null) ? trim((string) $b['bank_name']) : null,
+                    'bank_account_no' => filled($b['bank_account_no'] ?? null) ? trim((string) $b['bank_account_no']) : null,
+                    'bank_ifsc' => filled($b['bank_ifsc'] ?? null) ? trim((string) $b['bank_ifsc']) : null,
+                    'upi_id' => filled($b['upi_id'] ?? null) ? trim((string) $b['upi_id']) : null,
+                    'swift_code' => filled($b['swift_code'] ?? null) ? strtoupper(trim((string) $b['swift_code'])) : null,
+                    'branch' => $branch,
+                    'bank_branch' => $branch,
+                    'bsr_code' => filled($b['bsr_code'] ?? null) ? trim((string) $b['bsr_code']) : null,
+                    'client_code' => filled($b['client_code'] ?? null) ? trim((string) $b['client_code']) : null,
+                    'od_limit' => isset($b['od_limit']) && is_numeric($b['od_limit']) ? max(0, (float) $b['od_limit']) : 0.0,
+                    'interest_rate' => isset($b['interest_rate']) && is_numeric($b['interest_rate']) ? max(0, min(100, (float) $b['interest_rate'])) : 0.0,
+                ];
+            })->all();
+        } elseif ($request->has('bank_accounts')) {
+            $additionalDetails['bank_accounts'] = [];
+        } else {
+            $additionalDetails['bank_accounts'] = $rawDetails['bank_accounts'] ?? $rawDetails['Bank_Accounts'] ?? [];
+        }
+
+        $data['additional_details'] = $additionalDetails;
+        unset($data['contacts'], $data['bank_accounts']);
+
+        if (isset($data['branch']) && ! isset($data['bank_branch'])) {
+            $data['bank_branch'] = $data['branch'];
+        }
+        if (isset($data['swift_code']) && filled($data['swift_code'])) {
+            $data['swift_code'] = strtoupper(trim((string) $data['swift_code']));
+        }
+
+        unset($data['bank_accounts']);
 
         // Auto-generate code if not entered
         if (empty($data['code'])) {
