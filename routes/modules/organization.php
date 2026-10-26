@@ -27,6 +27,8 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::get('sister-concerns/dashboard', [\App\Http\Controllers\Organization\SisterConcernController::class, 'dashboard'])->name('sister-concerns.dashboard.redirect');
     Route::get('sister-concerns/companies', [\App\Http\Controllers\Organization\SisterConcernController::class, 'companies'])->name('sister-concerns.companies');
     Route::get('sister-concerns/transactions', [\App\Http\Controllers\Organization\SisterConcernController::class, 'transactions'])->name('sister-concerns.transactions');
+    Route::get('sister-concerns/reports', [\App\Http\Controllers\Organization\SisterConcernReportController::class, 'index'])->name('sister-concerns.reports');
+    Route::get('sister-concerns/reports/export', [\App\Http\Controllers\Organization\SisterConcernReportController::class, 'export'])->name('sister-concerns.reports.export');
     Route::post('sister-concerns/transactions', [\App\Http\Controllers\Organization\InterCompanyTransactionController::class, 'store'])->name('sister-concerns.transactions.store');
     Route::get('sister-concerns/transactions/{transaction}', [\App\Http\Controllers\Organization\InterCompanyTransactionController::class, 'show'])->name('sister-concerns.transactions.show');
     Route::put('sister-concerns/transactions/{transaction}', [\App\Http\Controllers\Organization\InterCompanyTransactionController::class, 'update'])->name('sister-concerns.transactions.update');

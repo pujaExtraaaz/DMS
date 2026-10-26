@@ -50,6 +50,7 @@
             <a href="{{ route('reports.balance-sheet') }}" class="{{ $itemClass }} {{ $linkClass(['reports.balance-sheet']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Balance Sheet</span></a>
             <a href="{{ route('reports.trial-balance') }}" class="{{ $itemClass }} {{ $linkClass(['reports.trial-balance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Trial Balance</span></a>
             <a href="{{ route('reports.od') }}" class="{{ $itemClass }} {{ $linkClass(['reports.od', 'od.report*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>OD Report</span></a>
+            <a href="{{ route('organization.sister-concerns.reports') }}" class="{{ $itemClass }} {{ $linkClass(['organization.sister-concerns.reports*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Sister Concern Reports</span></a>
         </div>
     </div>
 @endif

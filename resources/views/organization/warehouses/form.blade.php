@@ -6,7 +6,9 @@
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 <x-ui.select name="company_id" label="Company" required>@foreach($companies as $c)<option value="{{ $c->id }}" @selected(old('company_id', $item->company_id)==$c->id)>{{ $c->name }}</option>@endforeach</x-ui.select>
 <x-ui.select name="branch_id" label="Branch" required>@foreach($branches as $b)<option value="{{ $b->id }}" @selected(old('branch_id', $item->branch_id)==$b->id)>{{ $b->name }}</option>@endforeach</x-ui.select>
+<div class="md:col-span-2">
 <x-ui.input name="name" label="Name" :value="old('name', $item->name)" required />
+</div>
 </div>
 <div><label class="block text-sm font-medium text-gray-700 mb-1">Address</label><textarea name="address" rows="3" class="block w-full rounded-lg border-gray-300 text-sm">{{ old('address', $item->address) }}</textarea></div>
 <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_default" value="1" @checked(old('is_default', $item->is_default ?? false)) class="rounded border-gray-300 text-indigo-600"> Default warehouse</label>

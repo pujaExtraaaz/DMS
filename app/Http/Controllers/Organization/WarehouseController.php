@@ -146,9 +146,14 @@ class WarehouseController extends Controller
         $data['is_default'] = $request->boolean('is_default');
         $data['is_active'] = $request->boolean('is_active');
         if (blank($data['code'] ?? null)) {
-            $data['code'] = $warehouse && filled($warehouse->code)
-                ? $warehouse->code
-                : $this->warehouseCode((string) $data['name'], (int) $data['branch_id'], $warehouse?->id);
+            if ($warehouse && filled($warehouse->code)) {
+                $data['code'] = $warehouse->code;
+            } else {
+                $generated = \App\Support\CodeGenerator::forWarehouse(isset($data['company_id']) ? (int) $data['company_id'] : null);
+                $data['code'] = filled($generated)
+                    ? $generated
+                    : $this->warehouseCode((string) $data['name'], (int) $data['branch_id'], $warehouse?->id);
+            }
         }
 
         return $data;

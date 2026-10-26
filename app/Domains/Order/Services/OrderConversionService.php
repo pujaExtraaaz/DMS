@@ -98,6 +98,7 @@ class OrderConversionService
             $due = $this->dueDateService->forSalesInvoice($customer, $invoiceDate);
 
             $invoice = Invoice::create([
+                'company_id' => $lockedOrder->warehouse?->company_id ?? $customer->company_id ?? \App\Domains\Organization\Models\Company::resolveCurrent()?->id,
                 'invoice_no' => $this->invoiceNumberGenerator->generate(),
                 'customer_id' => $lockedOrder->customer_id,
                 'order_id' => $lockedOrder->id,

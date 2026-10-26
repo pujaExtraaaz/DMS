@@ -22,7 +22,7 @@ trait HasUppercaseNames
     public function uppercaseNameAttributes(): void
     {
         foreach ($this->attributes as $key => $value) {
-            if (is_string($value) && $this->isUppercaseNameAttribute($key)) {
+            if (is_string($value) && $this->isUppercaseNameAttribute($key) && ! $this->isJsonPayloadString($value)) {
                 $this->attributes[$key] = NameCase::format($value);
             }
         }
@@ -33,6 +33,23 @@ trait HasUppercaseNames
      */
     public function isUppercaseNameAttribute(string $key): bool
     {
+        // Never uppercase attributes that are cast to array, json, collection, object, etc.
+        if (method_exists($this, 'hasCast') && $this->hasCast($key, [
+            'array', 'json', 'object', 'collection', 'encrypted:array', 'encrypted:collection', 'encrypted:object'
+        ])) {
+            return false;
+        }
+
+        if (method_exists($this, 'getCasts')) {
+            $casts = $this->getCasts();
+            if (isset($casts[$key])) {
+                $cast = strtolower((string) $casts[$key]);
+                if (in_array($cast, ['array', 'json', 'object', 'collection'], true) || str_contains($cast, 'json') || str_contains($cast, 'array')) {
+                    return false;
+                }
+            }
+        }
+
         if (property_exists($this, 'uppercaseFields') && is_array($this->uppercaseFields)) {
             return in_array($key, $this->uppercaseFields, true);
         }
@@ -45,13 +62,36 @@ trait HasUppercaseNames
     }
 
     /**
+     * Determine if a string is a valid JSON payload string (which must never be title-cased).
+     */
+    protected function isJsonPayloadString(mixed $value): bool
+    {
+        if (! is_string($value)) {
+            return false;
+        }
+
+        $trimmed = trim($value);
+        if ($trimmed === '' || (! str_starts_with($trimmed, '{') && ! str_starts_with($trimmed, '['))) {
+            return false;
+        }
+
+        if (function_exists('json_validate')) {
+            return json_validate($trimmed);
+        }
+
+        json_decode($trimmed);
+
+        return json_last_error() === JSON_ERROR_NONE;
+    }
+
+    /**
      * Intercept attribute access to guarantee existing and loaded records always return uppercase.
      */
     public function getAttribute($key)
     {
         $value = parent::getAttribute($key);
 
-        if (is_string($value) && $this->isUppercaseNameAttribute($key)) {
+        if (is_string($value) && $this->isUppercaseNameAttribute($key) && ! $this->isJsonPayloadString($value)) {
             return NameCase::format($value);
         }
 
@@ -66,7 +106,7 @@ trait HasUppercaseNames
         $attributes = parent::attributesToArray();
 
         foreach ($attributes as $key => $value) {
-            if (is_string($value) && $this->isUppercaseNameAttribute($key)) {
+            if (is_string($value) && $this->isUppercaseNameAttribute($key) && ! $this->isJsonPayloadString($value)) {
                 $attributes[$key] = NameCase::format($value);
             }
         }
@@ -79,7 +119,7 @@ trait HasUppercaseNames
      */
     public function setAttribute($key, $value)
     {
-        if (is_string($value) && $this->isUppercaseNameAttribute($key)) {
+        if (is_string($value) && $this->isUppercaseNameAttribute($key) && ! $this->isJsonPayloadString($value)) {
             $value = NameCase::format($value);
         }
 

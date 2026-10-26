@@ -180,49 +180,60 @@
         @php
             $contacts = old('contacts');
             if (empty($contacts)) {
-                if ($item->exists) {
-                    $primary = [
-                        'phone' => $item->phone ?? '',
-                        'email' => $item->email ?? '',
-                        'website' => $item->website ?? '',
-                        'state' => $item->state ?? '',
-                        'pincode' => $item->pincode ?? '',
-                        'address' => $item->address ?? '',
-                    ];
-                    $additional = $item->additional_details['contacts'] ?? [];
-                    $contacts = array_merge([$primary], $additional);
-                } else {
-                    $contacts = [[
-                        'phone' => '',
-                        'email' => '',
-                        'website' => '',
-                        'state' => '',
-                        'pincode' => '',
-                        'address' => '',
-                    ]];
-                }
+                $contacts = $item->exists ? $item->contacts : [[
+                    'phone' => '',
+                    'email' => '',
+                    'website' => '',
+                    'state' => '',
+                    'pincode' => '',
+                    'address' => '',
+                ]];
             }
         @endphp
 
-        <div x-data='{ contacts: @json($contacts) }' class="space-y-4">
+        <div x-data="{ contacts: {{ \Illuminate\Support\Js::from($contacts) }} }" class="space-y-4">
             <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-700">Contact</h3>
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-800">Contact Details</h3>
+                    <p class="text-xs text-slate-500">Primary business contact and any additional department or branch contacts.</p>
+                </div>
                 <button type="button"
                         @click='contacts.push({ phone: "", email: "", website: "", state: "", pincode: "", address: "" })'
-                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
-                    + ADD
+                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
+                    + ADD CONTACT
                 </button>
             </div>
 
+            @if ($errors->has('contacts.*'))
+                <div class="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700">
+                    <p class="font-medium">Please correct the following contact information errors:</p>
+                    <ul class="list-disc list-inside mt-1 space-y-0.5">
+                        @foreach ($errors->get('contacts.*') as $messages)
+                            @foreach ($messages as $msg)
+                                <li>{{ $msg }}</li>
+                            @endforeach
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
             <div class="space-y-4">
                 <template x-for="(contact, index) in contacts" :key="index">
-                    <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3 relative shadow-xs">
                         <div class="flex items-center justify-between">
-                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Contact #${index + 1}`"></span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-700" x-text="`Contact #${index + 1}`"></span>
+                                <template x-if="index === 0">
+                                    <span class="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">Primary Contact</span>
+                                </template>
+                                <template x-if="index > 0">
+                                    <span class="inline-flex items-center rounded-md bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-800">Additional Contact</span>
+                                </template>
+                            </div>
                             <button type="button"
                                     x-show="contacts.length > 1"
                                     @click="contacts.splice(index, 1)"
-                                    class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
+                                    class="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:underline transition">
                                 Remove
                             </button>
                         </div>
@@ -230,29 +241,29 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Phone</label>
-                                <input type="text" :name="`contacts[${index}][phone]`" x-model="contact.phone" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <input type="text" :name="`contacts[${index}][phone]`" x-model="contact.phone" placeholder="e.g. +91 9876543210" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Email</label>
-                                <input type="email" :name="`contacts[${index}][email]`" x-model="contact.email" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <input type="email" :name="`contacts[${index}][email]`" x-model="contact.email" placeholder="e.g. contact@example.com" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Website</label>
-                                <input type="text" :name="`contacts[${index}][website]`" x-model="contact.website" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <input type="text" :name="`contacts[${index}][website]`" x-model="contact.website" placeholder="e.g. https://example.com" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">State</label>
-                                <input type="text" :name="`contacts[${index}][state]`" x-model="contact.state" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <input type="text" :name="`contacts[${index}][state]`" x-model="contact.state" placeholder="e.g. Maharashtra" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Pincode</label>
-                                <input type="text" :name="`contacts[${index}][pincode]`" x-model="contact.pincode" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <input type="text" :name="`contacts[${index}][pincode]`" x-model="contact.pincode" placeholder="e.g. 400001" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
                             </div>
                         </div>
 
                         <div>
                             <label class="block text-xs font-medium text-slate-700 mb-1">Address</label>
-                            <textarea :name="`contacts[${index}][address]`" x-model="contact.address" rows="3" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                            <textarea :name="`contacts[${index}][address]`" x-model="contact.address" rows="3" placeholder="Full postal address" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white"></textarea>
                         </div>
                     </div>
                 </template>
@@ -263,20 +274,17 @@
             $bankAccounts = old('bank_accounts');
             if (empty($bankAccounts)) {
                 if ($item->exists) {
-                    $primaryBank = [
-                        'bank_name' => $item->bank_name ?? '',
-                        'bank_account_no' => $item->bank_account_no ?? '',
-                        'bank_ifsc' => $item->bank_ifsc ?? '',
-                        'upi_id' => $item->upi_id ?? '',
-                    ];
-                    $additionalBanks = $item->additional_details['bank_accounts'] ?? [];
-                    $bankAccounts = array_merge([$primaryBank], $additionalBanks);
+                    $bankAccounts = $item->bank_accounts;
                 } else {
                     $bankAccounts = [[
                         'bank_name' => '',
                         'bank_account_no' => '',
                         'bank_ifsc' => '',
                         'upi_id' => '',
+                        'swift_code' => '',
+                        'branch' => '',
+                        'bsr_code' => '',
+                        'client_code' => '',
                     ]];
                 }
             }
@@ -286,7 +294,7 @@
             <div class="flex items-center justify-between">
                 <h3 class="text-sm font-semibold text-slate-700">Banking &amp; Payments</h3>
                 <button type="button"
-                        @click='bankAccounts.push({ bank_name: "", bank_account_no: "", bank_ifsc: "", upi_id: "" })'
+                        @click='bankAccounts.push({ bank_name: "", bank_account_no: "", bank_ifsc: "", upi_id: "", swift_code: "", branch: "", bsr_code: "", client_code: "" })'
                         class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
                     + ADD
                 </button>
@@ -321,6 +329,22 @@
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">UPI ID (for invoice QR)</label>
                                 <input type="text" :name="`bank_accounts[${index}][upi_id]`" x-model="account.upi_id" placeholder="business@bank" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">SWIFT Code</label>
+                                <input type="text" :name="`bank_accounts[${index}][swift_code]`" x-model="account.swift_code" placeholder="e.g. HDFCINBBXXX" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Branch</label>
+                                <input type="text" :name="`bank_accounts[${index}][branch]`" x-model="account.branch" placeholder="Branch Name / Location" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">BSR Code</label>
+                                <input type="text" :name="`bank_accounts[${index}][bsr_code]`" x-model="account.bsr_code" placeholder="7-digit BSR Code" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Client Code</label>
+                                <input type="text" :name="`bank_accounts[${index}][client_code]`" x-model="account.client_code" placeholder="Client / Corporate ID" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                         </div>
                     </div>

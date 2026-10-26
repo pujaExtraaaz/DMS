@@ -71,6 +71,11 @@ class CodeGenerator
         return self::next(\App\Domains\Organization\Models\InterCompanyTransaction::class, 'ICT', null, 'transaction_no');
     }
 
+    public static function forWarehouse(?int $companyId = null): string
+    {
+        return self::next(\App\Domains\Organization\Models\Warehouse::class, 'WH', $companyId, 'code');
+    }
+
     protected static function next(string $modelClass, string $prefix, ?int $companyId, string $column): string
     {
         $scope = $companyId ? (string) $companyId : 'GLOBAL';

@@ -34,6 +34,11 @@ class Company extends Model
         'bank_account_no',
         'bank_ifsc',
         'upi_id',
+        'swift_code',
+        'bank_branch',
+        'branch',
+        'bsr_code',
+        'client_code',
         'od_limit',
         'interest_rate',
         'additional_details',
@@ -68,7 +73,18 @@ class Company extends Model
     protected $appends = [
         'cin_number',
         'msme_reg_no',
+        'branch',
     ];
+
+    public function getBranchAttribute(): ?string
+    {
+        return $this->attributes['bank_branch'] ?? $this->attributes['branch'] ?? null;
+    }
+
+    public function setBranchAttribute(?string $value): void
+    {
+        $this->attributes['bank_branch'] = $value;
+    }
 
     public function getCinNumberAttribute(): ?string
     {
@@ -277,16 +293,33 @@ class Company extends Model
     public function getContactsAttribute(): array
     {
         $primary = [
-            'phone' => $this->phone,
-            'email' => $this->email,
-            'website' => $this->website,
-            'state' => $this->state,
-            'pincode' => $this->pincode,
-            'address' => $this->address,
+            'phone' => (string) ($this->phone ?? ''),
+            'email' => (string) ($this->email ?? ''),
+            'website' => (string) ($this->website ?? ''),
+            'state' => (string) ($this->state ?? ''),
+            'pincode' => (string) ($this->pincode ?? ''),
+            'address' => (string) ($this->address ?? ''),
         ];
-        $additional = $this->additional_details['contacts'] ?? [];
+        $details = is_array($this->additional_details)
+            ? $this->additional_details
+            : (is_string($this->additional_details) ? json_decode($this->additional_details, true) : []);
+        $additional = $details['contacts'] ?? $details['Contacts'] ?? [];
+        if (! is_array($additional)) {
+            $additional = [];
+        }
 
-        return array_merge([$primary], $additional);
+        $additionalWithDefaults = array_map(function ($c) {
+            return [
+                'phone' => (string) ($c['phone'] ?? $c['Phone'] ?? ''),
+                'email' => (string) ($c['email'] ?? $c['Email'] ?? ''),
+                'website' => (string) ($c['website'] ?? $c['Website'] ?? ''),
+                'state' => (string) ($c['state'] ?? $c['State'] ?? ''),
+                'pincode' => (string) ($c['pincode'] ?? $c['Pincode'] ?? ''),
+                'address' => (string) ($c['address'] ?? $c['Address'] ?? ''),
+            ];
+        }, $additional);
+
+        return array_merge([$primary], $additionalWithDefaults);
     }
 
     public function odAccounts(): HasMany
@@ -307,23 +340,55 @@ class Company extends Model
             'bank_account_no' => $this->bank_account_no,
             'bank_ifsc' => $this->bank_ifsc,
             'upi_id' => $this->upi_id,
+            'swift_code' => $this->swift_code,
+            'branch' => $this->branch,
+            'bank_branch' => $this->bank_branch,
+            'bsr_code' => $this->bsr_code,
+            'client_code' => $this->client_code,
             'od_limit' => $primaryOd ? (float) $primaryOd->od_limit : (float) ($this->attributes['od_limit'] ?? 0),
             'interest_rate' => $primaryOd ? (float) $primaryOd->interest_rate : (float) ($this->attributes['interest_rate'] ?? 0),
         ];
 
-        $additional = $this->additional_details['bank_accounts'] ?? [];
+        $details = is_array($this->additional_details)
+            ? $this->additional_details
+            : (is_string($this->additional_details) ? json_decode($this->additional_details, true) : []);
+        $additional = $details['bank_accounts'] ?? $details['Bank_Accounts'] ?? [];
+        if (! is_array($additional)) {
+            $additional = [];
+        }
+
         $additionalWithOd = array_map(function ($b) use ($odByAcc) {
-            $accNo = $b['bank_account_no'] ?? '';
+            $accNo = $b['bank_account_no'] ?? $b['Bank_Account_No'] ?? '';
             $od = filled($accNo) ? $odByAcc->get($accNo) : null;
+            $bankName = $b['bank_name'] ?? $b['Bank_Name'] ?? null;
+            $bankIfsc = $b['bank_ifsc'] ?? $b['Bank_Ifsc'] ?? null;
+            $upiId = $b['upi_id'] ?? $b['UPI_ID'] ?? null;
+            $swiftCode = $b['swift_code'] ?? $b['Swift_Code'] ?? null;
+            $branch = $b['branch'] ?? $b['bank_branch'] ?? $b['Branch'] ?? null;
+            $bsrCode = $b['bsr_code'] ?? $b['Bsr_Code'] ?? null;
+            $clientCode = $b['client_code'] ?? $b['Client_Code'] ?? null;
+
             if ($od) {
-                $b['od_limit'] = (float) $od->od_limit;
-                $b['interest_rate'] = (float) $od->interest_rate;
+                $odLimit = (float) $od->od_limit;
+                $interestRate = (float) $od->interest_rate;
             } else {
-                $b['od_limit'] = isset($b['od_limit']) ? (float) $b['od_limit'] : 0.0;
-                $b['interest_rate'] = isset($b['interest_rate']) ? (float) $b['interest_rate'] : 0.0;
+                $odLimit = isset($b['od_limit']) ? (float) $b['od_limit'] : (isset($b['OD_Limit']) ? (float) $b['OD_Limit'] : 0.0);
+                $interestRate = isset($b['interest_rate']) ? (float) $b['interest_rate'] : (isset($b['Interest_Rate']) ? (float) $b['Interest_Rate'] : 0.0);
             }
 
-            return $b;
+            return [
+                'bank_name' => $bankName,
+                'bank_account_no' => $accNo,
+                'bank_ifsc' => $bankIfsc,
+                'upi_id' => $upiId,
+                'swift_code' => $swiftCode,
+                'branch' => $branch,
+                'bank_branch' => $branch,
+                'bsr_code' => $bsrCode,
+                'client_code' => $clientCode,
+                'od_limit' => $odLimit,
+                'interest_rate' => $interestRate,
+            ];
         }, $additional);
 
         return array_merge([$primary], $additionalWithOd);
@@ -345,6 +410,10 @@ class Company extends Model
                 $bankName = trim((string) ($b['bank_name'] ?? 'Bank Account'));
                 $ifsc = trim((string) ($b['bank_ifsc'] ?? ''));
                 $upi = trim((string) ($b['upi_id'] ?? ''));
+                $swiftCode = trim((string) ($b['swift_code'] ?? ''));
+                $branch = trim((string) ($b['branch'] ?? $b['bank_branch'] ?? ''));
+                $bsrCode = trim((string) ($b['bsr_code'] ?? ''));
+                $clientCode = trim((string) ($b['client_code'] ?? ''));
                 $od = $odByAcc->get($accNo);
                 $odLimit = $od ? (float) $od->od_limit : (float) ($b['od_limit'] ?? 0);
                 $interestRate = $od ? (float) $od->interest_rate : (float) ($b['interest_rate'] ?? 0);
@@ -358,6 +427,11 @@ class Company extends Model
                     'bank_name' => $bankName,
                     'ifsc' => $ifsc,
                     'upi_id' => $upi,
+                    'swift_code' => $swiftCode,
+                    'branch' => $branch,
+                    'bank_branch' => $branch,
+                    'bsr_code' => $bsrCode,
+                    'client_code' => $clientCode,
                     'od_limit' => $odLimit,
                     'interest_rate' => $interestRate,
                     'masked_account' => $maskedAcc,

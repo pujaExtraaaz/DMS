@@ -137,7 +137,10 @@ class CustomerController extends Controller
     public function index(Request $request): View|Response
     {
         $query = Customer::query()
-            ->with(['customerType', 'area', 'route', 'salesperson', 'salesManager', 'businessGroup'])
+            ->with([
+                'customerType', 'area', 'route', 'salesperson', 'salesManager', 'businessGroup',
+                'salesTargets' => fn ($q) => $q->where('status', 'active')->with('achievement'),
+            ])
             ->when($request->filled('party_type'), function ($q) use ($request) {
                 $type = $request->party_type;
                 if ($type === Customer::PARTY_TYPE_SUNDRY_DEBTORS) {
@@ -155,6 +158,13 @@ class CustomerController extends Controller
                     $q->where('is_active', true);
                 } elseif ($request->status === 'inactive') {
                     $q->where('is_active', false);
+                }
+            })
+            ->when($request->filled('target_status'), function ($q) use ($request) {
+                if ($request->target_status === 'assigned') {
+                    $q->whereHas('salesTargets', fn ($tq) => $tq->where('status', 'active'));
+                } elseif ($request->target_status === 'unassigned') {
+                    $q->whereDoesntHave('salesTargets', fn ($tq) => $tq->where('status', 'active'));
                 }
             });
 
@@ -187,6 +197,7 @@ class CustomerController extends Controller
             'search' => $request->string('search'),
             'partyType' => $request->string('party_type'),
             'status' => $request->string('status'),
+            'targetStatus' => $request->string('target_status'),
             'areas' => Area::where('is_active', true)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
             'sort' => $sortData['sort'],
@@ -545,6 +556,7 @@ class CustomerController extends Controller
             'route',
             'salesperson',
             'salesManager',
+            'salesTargets' => fn ($q) => $q->latest('starts_on')->with(['achievement', 'creator']),
             'contacts' => fn ($q) => $q->orderBy('is_primary', 'desc')->orderBy('name'),
             'addresses' => fn ($q) => $q->orderBy('is_default_billing', 'desc')->orderBy('is_default_delivery', 'desc'),
             'bankAccounts' => fn ($q) => $q->orderBy('is_primary', 'desc'),
