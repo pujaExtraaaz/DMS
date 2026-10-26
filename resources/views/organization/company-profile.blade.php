@@ -183,12 +183,15 @@
             }
         @endphp
 
-        <div x-data='{ contacts: @json($contacts) }' class="space-y-4">
-            <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-700">Contact</h3>
+        <div x-ref="contactRoot" x-data='{ contacts: @json($contacts) }' x-init="$nextTick(() => window.DmsSearchableSelect && window.DmsSearchableSelect.enhanceAll($refs.contactRoot))" class="space-y-4">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-700">Contact</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Contact #1 is the phone, email, and address printed on invoices. Each extra contact you add is saved on this page and shown below as Contact #2, Contact #3, and so on.</p>
+                </div>
                 <button type="button"
-                        @click='contacts.push({ phone: "", email: "", website: "", state: "", pincode: "", address: "" })'
-                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
+                        @click='contacts.push({ phone: "", email: "", website: "", state: "", pincode: "", address: "" }); $nextTick(() => window.DmsSearchableSelect && window.DmsSearchableSelect.enhanceAll($refs.contactRoot))'
+                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shrink-0">
                     + ADD
                 </button>
             </div>
@@ -221,7 +224,12 @@
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">State</label>
-                                <input type="text" :name="`contacts[${index}][state]`" x-model="contact.state" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <select :name="`contacts[${index}][state]`" x-model="contact.state" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    <option value="">Select State / UT</option>
+                                    @foreach(\App\Support\IndianStates::allAlphabetical() as $stateCode => $stateName)
+                                        <option value="{{ $stateName }}">{{ $stateName }} ({{ $stateCode }})</option>
+                                    @endforeach
+                                </select>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Pincode</label>
