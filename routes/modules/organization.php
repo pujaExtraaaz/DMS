@@ -35,6 +35,9 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
 });
 
 Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|products.delete')->group(function () {
+    Route::post('brands/quick-store', [BrandController::class, 'quickStore'])->name('brands.quick-store');
+    Route::post('categories/quick-store', [CategoryController::class, 'quickStore'])->name('categories.quick-store');
+    Route::post('sub-categories/quick-store', [SubCategoryController::class, 'quickStore'])->name('sub-categories.quick-store');
     Route::resource('brands', BrandController::class)->except(['show']);
     Route::resource('categories', CategoryController::class)->except(['show']);
     Route::resource('sub-categories', SubCategoryController::class)->except(['show']);

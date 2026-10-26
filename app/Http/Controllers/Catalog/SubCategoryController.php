@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Catalog;
 
+use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
+use App\Domains\Organization\Models\Company;
 use App\Domains\Catalog\Models\SubCategory;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -12,13 +14,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 
 class SubCategoryController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = SubCategory::query()->with('category')
             ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->category_id))
@@ -31,6 +35,14 @@ class SubCategoryController extends Controller
             });
 
         $this->applySearch($query, $request->input('search'), ['name']);
+
+        if ($export = $this->exportIfRequested($request, $query, 'Sub-Categories', 'Sub Categories', ['Name', 'Category', 'Status'], fn ($item) => [
+            $item->name,
+            $item->category?->name ?? '',
+            $item->is_active ? 'Active' : 'Inactive',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,
@@ -58,6 +70,8 @@ class SubCategoryController extends Controller
         return view('masters.sub-categories.form', [
             'item' => new SubCategory,
             'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'companies' => Company::where('is_active', true)->orderBy('name')->get(),
         ]);
     }
 
@@ -72,6 +86,8 @@ class SubCategoryController extends Controller
         return view('masters.sub-categories.form', [
             'item' => $sub_category,
             'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'companies' => Company::where('is_active', true)->orderBy('name')->get(),
         ]);
     }
 
@@ -171,6 +187,55 @@ class SubCategoryController extends Controller
 
             return $this->flashError('Failed to delete sub-category: ' . $e->getMessage(), 'masters.sub-categories.index');
         }
+    }
+
+    public function quickStore(Request $request): JsonResponse
+    {
+        $rawName = trim((string) $request->input('name', ''));
+        $categoryId = $request->integer('category_id');
+        if ($rawName === '') {
+            return response()->json(['success' => false, 'message' => 'Sub category name is required.'], 422);
+        }
+        if (mb_strlen($rawName) > 255) {
+            return response()->json(['success' => false, 'message' => 'Sub category name cannot exceed 255 characters.'], 422);
+        }
+        if (! $categoryId || ! Category::whereKey($categoryId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Select a category before creating a sub category.'], 422);
+        }
+
+        $name = \App\Support\TitleCase::format($rawName);
+        $existing = SubCategory::query()
+            ->where('category_id', $categoryId)
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($rawName)])
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Sub category already exists and has been selected.',
+                'item' => [
+                    'id' => (string) $existing->id,
+                    'name' => $existing->name,
+                    'category_id' => (string) $existing->category_id,
+                ],
+            ]);
+        }
+
+        $subCategory = SubCategory::create([
+            'category_id' => $categoryId,
+            'name' => $name,
+            'is_active' => $request->boolean('is_active', true),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Sub category created successfully.',
+            'item' => [
+                'id' => (string) $subCategory->id,
+                'name' => $subCategory->name,
+                'category_id' => (string) $subCategory->category_id,
+            ],
+        ], 201);
     }
 
     protected function validated(Request $request, ?SubCategory $sub = null): array

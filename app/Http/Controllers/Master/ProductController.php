@@ -20,13 +20,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 
 class ProductController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = Product::query()
             ->with(['baseUom', 'brand', 'category', 'productType'])
@@ -48,6 +50,20 @@ class ProductController extends Controller
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'hsn_code', 'series', 'model', 'product_type']);
+
+        if ($export = $this->exportIfRequested($request, $query, 'Products', 'Products', ['Name', 'Part Number', 'Model', 'Brand', 'Category', 'Product Type', 'Base UOM', 'GST Rate', 'Status'], fn ($item) => [
+            $item->name,
+            $item->sku ?: '',
+            $item->model ?: '',
+            $item->brand?->name ?? '',
+            $item->category?->name ?? '',
+            $item->productType?->name ?? $item->product_type ?? '',
+            $item->baseUom?->name ?? '',
+            $item->tax_rate !== null ? (string) $item->tax_rate : '',
+            $item->is_active ? 'Active' : 'Inactive',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,
@@ -259,7 +275,19 @@ class ProductController extends Controller
             ]);
         }
 
-        if ($request->has('product_uoms.0.uom_id') && ! $request->filled('alternate_uom_id')) {
+        if ($request->boolean('sku_not_applicable')) {
+            $request->merge(['sku' => null]);
+        }
+
+        $altNotApplicable = $request->boolean('alternate_uom_not_applicable');
+        if ($altNotApplicable) {
+            $request->merge([
+                'alternate_uom_id' => null,
+                'conversion_factor' => null,
+            ]);
+        }
+
+        if (! $altNotApplicable && $request->has('product_uoms.0.uom_id') && ! $request->filled('alternate_uom_id')) {
             $request->merge([
                 'alternate_uom_id' => $request->input('product_uoms.0.uom_id'),
                 'conversion_factor' => $request->input('product_uoms.0.conversion_factor', $request->input('conversion_factor', 1)),
@@ -290,15 +318,21 @@ class ProductController extends Controller
             $request->merge(['width_in' => round((float) $request->input('width_cm') / 2.54, 2)]);
         }
 
-        $isFormSubmission = $request->boolean('has_dimensions')
+        $skipDimensions = $request->boolean('dimensions_not_applicable');
+        $isFormSubmission = ! $skipDimensions && (
+            $request->boolean('has_dimensions')
             || $request->has('height_cm')
             || $request->has('length_cm')
             || $request->has('width_cm')
-            || $request->has('net_weight');
+            || $request->has('net_weight')
+        );
 
         $data = $request->validate([
             'name' => 'required|string|max:255',
-            'sku' => 'required|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
+            'sku' => 'required_unless:sku_not_applicable,1|nullable|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
+            'sku_not_applicable' => 'nullable|boolean',
+            'alternate_uom_not_applicable' => 'nullable|boolean',
+            'dimensions_not_applicable' => 'nullable|boolean',
             'model' => 'nullable|string|max:100',
             'models' => 'nullable|string|max:100',
             'product_type_id' => 'nullable|exists:product_types,id',
@@ -316,12 +350,12 @@ class ProductController extends Controller
             'net_weight' => $isFormSubmission ? 'required|numeric|gt:0' : 'nullable|numeric|gt:0',
             'weight_unit' => 'nullable|string|max:20',
             'base_uom_id' => 'required|exists:uoms,id',
-            'alternate_uom_id' => 'required|exists:uoms,id|different:base_uom_id',
-            'conversion_factor' => 'required|numeric|gt:0',
+            'alternate_uom_id' => ($altNotApplicable ? 'nullable' : 'required').'|exists:uoms,id|different:base_uom_id',
+            'conversion_factor' => ($altNotApplicable ? 'nullable' : 'required').'|numeric|gt:0',
             'brand_id' => 'nullable|exists:brands,id',
             'category_id' => 'nullable|exists:categories,id',
             'sub_category_id' => 'nullable|exists:sub_categories,id',
-            'tax_rate' => 'nullable|numeric|min:0|max:100',
+            'tax_rate' => [$request->exists('tax_rate') ? 'required' : 'nullable', 'numeric', 'min:0', 'max:100'],
             'selling_price' => 'nullable|numeric|min:0',
             'trade_price' => 'nullable|numeric|min:0',
             'purchase_price' => 'nullable|numeric|min:0',
@@ -421,7 +455,7 @@ class ProductController extends Controller
 
         $data['product_type_id'] = $productTypeId;
         $data['product_type'] = $productTypeName;
-        unset($data['models']);
+        unset($data['models'], $data['sku_not_applicable'], $data['alternate_uom_not_applicable'], $data['dimensions_not_applicable']);
         $data['apply_discount_on_payable'] = $request->has('apply_discount_on_payable')
             ? $request->boolean('apply_discount_on_payable')
             : ($product?->apply_discount_on_payable ?? false);
@@ -431,24 +465,33 @@ class ProductController extends Controller
         $data['purchase_price'] = $data['purchase_price'] ?? 0;
         $data['calculation_mrp'] = $data['calculation_mrp'] ?? 0;
 
-        $conversion = (float) ($data['conversion_factor'] ?? 1);
-        $data['conversion_factor'] = $conversion;
+        if ($altNotApplicable) {
+            $data['alternate_uom_id'] = null;
+            $data['conversion_factor'] = null;
+            $data['alt_selling_price'] = null;
+            $data['alt_purchase_price'] = null;
+            $data['alt_trade_price'] = null;
+            $data['alt_calculation_mrp'] = null;
+        } else {
+            $conversion = (float) ($data['conversion_factor'] ?? 1);
+            $data['conversion_factor'] = $conversion;
 
-        $data['alt_selling_price'] = (isset($data['alt_selling_price']) && $data['alt_selling_price'] !== null && $data['alt_selling_price'] !== '')
-            ? (float) $data['alt_selling_price']
-            : round(((float) $data['selling_price']) * $conversion, 2);
+            $data['alt_selling_price'] = (isset($data['alt_selling_price']) && $data['alt_selling_price'] !== null && $data['alt_selling_price'] !== '')
+                ? (float) $data['alt_selling_price']
+                : round(((float) $data['selling_price']) * $conversion, 2);
 
-        $data['alt_purchase_price'] = (isset($data['alt_purchase_price']) && $data['alt_purchase_price'] !== null && $data['alt_purchase_price'] !== '')
-            ? (float) $data['alt_purchase_price']
-            : round(((float) $data['purchase_price']) * $conversion, 2);
+            $data['alt_purchase_price'] = (isset($data['alt_purchase_price']) && $data['alt_purchase_price'] !== null && $data['alt_purchase_price'] !== '')
+                ? (float) $data['alt_purchase_price']
+                : round(((float) $data['purchase_price']) * $conversion, 2);
 
-        $data['alt_trade_price'] = (isset($data['alt_trade_price']) && $data['alt_trade_price'] !== null && $data['alt_trade_price'] !== '')
-            ? (float) $data['alt_trade_price']
-            : round(((float) $data['trade_price']) * $conversion, 2);
+            $data['alt_trade_price'] = (isset($data['alt_trade_price']) && $data['alt_trade_price'] !== null && $data['alt_trade_price'] !== '')
+                ? (float) $data['alt_trade_price']
+                : round(((float) $data['trade_price']) * $conversion, 2);
 
-        $data['alt_calculation_mrp'] = (isset($data['alt_calculation_mrp']) && $data['alt_calculation_mrp'] !== null && $data['alt_calculation_mrp'] !== '')
-            ? (float) $data['alt_calculation_mrp']
-            : round(((float) $data['calculation_mrp']) * $conversion, 2);
+            $data['alt_calculation_mrp'] = (isset($data['alt_calculation_mrp']) && $data['alt_calculation_mrp'] !== null && $data['alt_calculation_mrp'] !== '')
+                ? (float) $data['alt_calculation_mrp']
+                : round(((float) $data['calculation_mrp']) * $conversion, 2);
+        }
 
         $data['discount_percent'] = $data['discount_percent'] ?? ($product?->discount_percent ?? 0);
         $data['discount_type'] = $data['discount_type'] ?? ($product?->discount_type ?? 'percent');
@@ -483,6 +526,15 @@ class ProductController extends Controller
         $data['net_weight'] = filled($request->input('net_weight'))
             ? (float) $request->input('net_weight')
             : ($product?->net_weight ?? null);
+        if ($skipDimensions) {
+            $data['height_cm'] = null;
+            $data['length_cm'] = null;
+            $data['width_cm'] = null;
+            $data['height_in'] = null;
+            $data['length_in'] = null;
+            $data['width_in'] = null;
+            $data['net_weight'] = null;
+        }
         $data['weight_unit'] = filled($request->input('weight_unit'))
             ? trim((string) $request->input('weight_unit'))
             : ($product?->weight_unit ?? 'KG');

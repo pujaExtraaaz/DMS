@@ -289,6 +289,12 @@ class NameCase
         'movement_type',
         'tracking_type',
         'status',
+        'credit_status',
+        'risk_status',
+        'credit_period_basis',
+        'alternate_uom_not_applicable',
+        'dimensions_not_applicable',
+        'sku_not_applicable',
         'stage',
         'gender',
         'msme_category',
@@ -373,6 +379,13 @@ class NameCase
             return false;
         }
 
+        // Credit enums and explicit Not Applicable flags must keep their stored slugs.
+        if (str_ends_with($field, '_basis') || str_ends_with($field, '_not_applicable') || str_ends_with($field, '_status')) {
+            if (! in_array($field, ['compliance_status'], true)) {
+                return false;
+            }
+        }
+
         // Exclude email & password
         if (str_contains($field, 'email') || str_contains($field, 'password')) {
             return false;
@@ -415,3 +428,4 @@ class NameCase
         return static::isApplicableField($fieldName);
     }
 }
+

@@ -4,8 +4,11 @@ namespace App\Http\Controllers\Catalog;
 
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
+use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -15,9 +18,9 @@ use Illuminate\View\View;
 
 class CategoryController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = Category::query()
             ->with('brand')
@@ -38,6 +41,14 @@ class CategoryController extends Controller
             $request->input('search'),
             ['name']
         );
+
+        if ($export = $this->exportIfRequested($request, $query, 'Categories', 'Categories', ['Name', 'Brand', 'Status'], fn ($item) => [
+            $item->name,
+            $item->brand?->name ?? '',
+            $item->is_active ? 'Active' : 'Inactive',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,
@@ -66,9 +77,8 @@ class CategoryController extends Controller
     {
         return view('masters.categories.form', [
             'item' => new Category,
-            'brands' => Brand::where('is_active', true)
-                ->orderBy('name')
-                ->get(),
+            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'companies' => Company::where('is_active', true)->orderBy('name')->get(),
         ]);
     }
 
@@ -86,9 +96,8 @@ class CategoryController extends Controller
     {
         return view('masters.categories.form', [
             'item' => $category,
-            'brands' => Brand::where('is_active', true)
-                ->orderBy('name')
-                ->get(),
+            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'companies' => Company::where('is_active', true)->orderBy('name')->get(),
         ]);
     }
 
@@ -236,6 +245,56 @@ class CategoryController extends Controller
                 'masters.categories.index'
             );
         }
+    }
+
+    public function quickStore(Request $request): JsonResponse
+    {
+        $rawName = trim((string) $request->input('name', ''));
+        if ($rawName === '') {
+            return response()->json(['success' => false, 'message' => 'Category name is required.'], 422);
+        }
+        if (mb_strlen($rawName) > 255) {
+            return response()->json(['success' => false, 'message' => 'Category name cannot exceed 255 characters.'], 422);
+        }
+
+        $brandId = $request->filled('brand_id') ? $request->integer('brand_id') : null;
+        if ($brandId && ! Brand::whereKey($brandId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Select a valid brand before creating this category.'], 422);
+        }
+
+        $name = \App\Support\TitleCase::format($rawName);
+        $existing = Category::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($rawName)])
+            ->when($brandId, fn ($q) => $q->where('brand_id', $brandId), fn ($q) => $q->whereNull('brand_id'))
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Category already exists and has been selected.',
+                'item' => [
+                    'id' => (string) $existing->id,
+                    'name' => $existing->name,
+                    'brand_id' => $existing->brand_id ? (string) $existing->brand_id : null,
+                ],
+            ]);
+        }
+
+        $category = Category::create([
+            'brand_id' => $brandId,
+            'name' => $name,
+            'is_active' => $request->boolean('is_active', true),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Category created successfully.',
+            'item' => [
+                'id' => (string) $category->id,
+                'name' => $category->name,
+                'brand_id' => $category->brand_id ? (string) $category->brand_id : null,
+            ],
+        ], 201);
     }
 
     protected function validated(

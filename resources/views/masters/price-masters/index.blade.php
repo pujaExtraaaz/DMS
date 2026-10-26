@@ -4,6 +4,7 @@
 <div id="listing-container" data-dynamic-container x-data="priceMasterIndex()">
     <x-ui.page-header title="Price Master">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('masters.price-masters.create')">+ Add Price</x-ui.button>
         </x-slot>
     </x-ui.page-header>

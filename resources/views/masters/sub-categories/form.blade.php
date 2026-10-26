@@ -1,10 +1,199 @@
 @extends('layouts.dms')
 @section('title', $item->exists ? 'Edit Sub Category' : 'Create Sub Category')
 @section('content')
-<x-ui.page-header :title="$item->exists ? 'Edit Sub Category' : 'Create Sub Category'"><x-slot name="actions"><x-ui.button variant="secondary" :href="route('masters.sub-categories.index')">Back</x-ui.button></x-slot></x-ui.page-header>
-<x-ui.card><form method="POST" action="{{ $item->exists ? route('masters.sub-categories.update', $item) : route('masters.sub-categories.store') }}" class="space-y-4 max-w-xl">@csrf @if($item->exists) @method('PUT') @endif
-<x-ui.select name="category_id" label="Category" required>@foreach($categories as $c)<option value="{{ $c->id }}" @selected(old('category_id', $item->category_id)==$c->id)>{{ $c->name }}</option>@endforeach</x-ui.select>
-<x-ui.input name="name" label="Name" :value="old('name', $item->name)" required />
-<label class="flex items-center gap-2 text-sm"><input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600"> Active</label>
-<x-ui.button type="submit" variant="primary">Save</x-ui.button></form></x-ui.card>
+<div x-data="catalogQuickCreate({
+    companies: @js($companies->map(fn ($c) => ['id' => (string) $c->id, 'name' => $c->name])->values()),
+    brands: @js($brands->map(fn ($b) => ['id' => (string) $b->id, 'name' => $b->name])->values()),
+    categories: @js($categories->map(fn ($c) => ['id' => (string) $c->id, 'name' => $c->name, 'brand_id' => $c->brand_id ? (string) $c->brand_id : null])->values()),
+    brandQuickUrl: @js(route('masters.brands.quick-store')),
+    categoryQuickUrl: @js(route('masters.categories.quick-store')),
+    categorySelectId: 'category_id',
+})" @keydown.escape.window="closeTopCreate()">
+<x-ui.page-header :title="$item->exists ? 'Edit Sub Category' : 'Create Sub Category'">
+    <x-slot name="actions"><x-ui.button variant="secondary" :href="route('masters.sub-categories.index')">Back</x-ui.button></x-slot>
+</x-ui.page-header>
+<x-ui.card>
+    <form method="POST" action="{{ $item->exists ? route('masters.sub-categories.update', $item) : route('masters.sub-categories.store') }}" class="space-y-4 max-w-xl">
+        @csrf
+        @if($item->exists) @method('PUT') @endif
+        <div class="space-y-1">
+            <div class="flex items-center justify-between">
+                <label for="category_id" class="block text-sm font-medium text-gray-700">Category <span class="text-red-500">*</span></label>
+                <button type="button" @click="openCategoryCreate('page')" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
+            </div>
+            <select id="category_id" name="category_id" required class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <option value="">Select</option>
+                @foreach($categories as $c)
+                    <option value="{{ $c->id }}" @selected(old('category_id', $item->category_id) == $c->id)>{{ $c->name }}</option>
+                @endforeach
+            </select>
+            @error('category_id')
+                <p class="text-xs text-red-600">{{ $message }}</p>
+            @enderror
+        </div>
+        <x-ui.input name="name" label="Name" :value="old('name', $item->name)" required />
+        <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600">
+            Active
+        </label>
+        <x-ui.button type="submit" variant="primary">Save</x-ui.button>
+    </form>
+</x-ui.card>
+@include('masters.partials.catalog-quick-modals')
+</div>
 @endsection
+
+@push('scripts')
+<script>
+function catalogQuickCreate(config) {
+    return {
+        companies: config.companies || [],
+        brands: config.brands || [],
+        categories: config.categories || [],
+        brandQuickUrl: config.brandQuickUrl,
+        categoryQuickUrl: config.categoryQuickUrl,
+        brandSelectId: config.brandSelectId || '',
+        categorySelectId: config.categorySelectId || '',
+        brandCreateOpen: false,
+        brandCreateContext: 'page',
+        brandCreateName: '',
+        brandCreateDetail: '',
+        brandCreateCompanyId: '',
+        brandCreateActive: true,
+        brandCreateError: '',
+        brandCreateSaving: false,
+        categoryCreateOpen: false,
+        categoryCreateContext: 'page',
+        categoryCreateName: '',
+        categoryCreateBrandId: '',
+        categoryCreateActive: true,
+        categoryCreateError: '',
+        categoryCreateSaving: false,
+        closeTopCreate() {
+            if (this.brandCreateOpen) { this.brandCreateOpen = false; return; }
+            if (this.categoryCreateOpen) { this.categoryCreateOpen = false; }
+        },
+        fillSelect(selectId, items, selected) {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            select.replaceChildren();
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Select';
+            select.appendChild(placeholder);
+            (items || []).forEach((item) => {
+                const option = document.createElement('option');
+                option.value = String(item.id);
+                option.textContent = item.name;
+                select.appendChild(option);
+            });
+            select.value = selected ? String(selected) : '';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        },
+        addOption(selectId, id, name) {
+            if (!selectId) return;
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            let option = Array.from(select.options).find((opt) => String(opt.value) === String(id));
+            if (!option) {
+                option = document.createElement('option');
+                option.value = String(id);
+                option.textContent = name;
+                select.appendChild(option);
+            }
+            select.value = String(id);
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        },
+        async postJson(url, payload) {
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(() => ({}));
+            return { ok: response.ok, data };
+        },
+        openBrandCreate(context) {
+            this.brandCreateContext = context || 'page';
+            this.brandCreateOpen = true;
+            this.brandCreateError = '';
+            this.brandCreateName = '';
+            this.brandCreateDetail = '';
+            this.brandCreateActive = true;
+            this.brandCreateCompanyId = this.companies[0] ? String(this.companies[0].id) : '';
+            this.fillSelect('catalog_brand_company', this.companies, this.brandCreateCompanyId);
+        },
+        async saveBrand() {
+            const name = (this.brandCreateName || '').trim();
+            if (!name) {
+                this.brandCreateError = 'Brand Name is required.';
+                return;
+            }
+            this.brandCreateSaving = true;
+            this.brandCreateError = '';
+            const result = await this.postJson(this.brandQuickUrl, {
+                name,
+                detail: this.brandCreateDetail || '',
+                company_id: this.brandCreateCompanyId || null,
+                is_active: !!this.brandCreateActive,
+            });
+            this.brandCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.brandCreateError = result.data.message || 'Could not create the brand.';
+                return;
+            }
+            const item = result.data.item;
+            if (!this.brands.some((brand) => String(brand.id) === String(item.id))) {
+                this.brands.push(item);
+            }
+            this.addOption(this.brandSelectId, item.id, item.name);
+            this.categoryCreateBrandId = String(item.id);
+            this.fillSelect('catalog_category_brand', this.brands, this.categoryCreateBrandId);
+            this.brandCreateOpen = false;
+        },
+        openCategoryCreate(context) {
+            this.categoryCreateContext = context || 'page';
+            this.categoryCreateOpen = true;
+            this.categoryCreateError = '';
+            this.categoryCreateName = '';
+            this.categoryCreateActive = true;
+            const pageBrand = this.brandSelectId ? document.getElementById(this.brandSelectId) : null;
+            this.categoryCreateBrandId = pageBrand && pageBrand.value ? String(pageBrand.value) : '';
+            this.fillSelect('catalog_category_brand', this.brands, this.categoryCreateBrandId);
+        },
+        async saveCategory() {
+            const name = (this.categoryCreateName || '').trim();
+            if (!name) {
+                this.categoryCreateError = 'Name is required.';
+                return;
+            }
+            this.categoryCreateSaving = true;
+            this.categoryCreateError = '';
+            const result = await this.postJson(this.categoryQuickUrl, {
+                name,
+                brand_id: this.categoryCreateBrandId || null,
+                is_active: !!this.categoryCreateActive,
+            });
+            this.categoryCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.categoryCreateError = result.data.message || 'Could not create the category.';
+                return;
+            }
+            const item = result.data.item;
+            if (!this.categories.some((category) => String(category.id) === String(item.id))) {
+                this.categories.push(item);
+            }
+            this.addOption(this.categorySelectId, item.id, item.name);
+            this.categoryCreateName = '';
+            this.categoryCreateOpen = false;
+        },
+    };
+}
+</script>
+@endpush

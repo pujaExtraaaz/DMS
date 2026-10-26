@@ -7,7 +7,9 @@ use App\Domains\Master\Models\PriceMaster;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -18,9 +20,9 @@ use Illuminate\View\View;
 
 class PriceMasterController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = PriceMaster::query()
             ->with(['customerType', 'product', 'uom'])
@@ -46,6 +48,17 @@ class PriceMasterController extends Controller
             },
             'created_at' => 'price_masters.created_at',
         ];
+
+        if ($export = $this->exportIfRequested($request, $query, 'Price-Master', 'Price Master', ['Customer Type', 'Product', 'Part Number', 'Unit', 'Rate', 'Min Qty'], fn ($item) => [
+            $item->customerType?->name ?? '',
+            $item->product?->name ?? '',
+            $item->product?->sku ?? '',
+            $item->uom?->name ?? '',
+            (string) $item->rate,
+            (string) $item->min_qty,
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting($query, $request, $allowedSorts, defaultSort: 'product', defaultDirection: 'asc');
 

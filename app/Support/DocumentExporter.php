@@ -742,5 +742,30 @@ class DocumentExporter
 
         return self::exportExcel($filename, 'Sales Invoices', $headers, $rows, $meta, $totals);
     }
+
+    public static function exportTabular(string $basename, string $title, array $headers, array $rows, string $format): Response|StreamedResponse
+    {
+        $format = $format === 'excel' ? 'xlsx' : $format;
+        $extension = $format === 'xlsx' ? 'xlsx' : $format;
+        $filename = $basename.'-'.now()->format('Ymd-His').'.'.$extension;
+        $meta = [
+            '_title' => $title,
+            'Exported At' => now()->format('d M Y H:i:s'),
+            'Total Records' => count($rows),
+        ];
+
+        if ($format === 'csv') {
+            return self::exportCsv($filename, $headers, $rows, $meta);
+        }
+
+        if ($format === 'pdf') {
+            return ReportExporter::pdf($filename, $title, $headers, $rows, [
+                'Generated' => now()->format('d M Y H:i'),
+                'Records' => (string) count($rows),
+            ]);
+        }
+
+        return self::exportExcel($filename, $title, $headers, $rows, $meta);
+    }
 }
 

@@ -238,6 +238,30 @@ class ProductDimensionsAndWeightTest extends TestCase
         $response->assertSessionHasErrors(['height_cm', 'length_cm', 'width_cm', 'net_weight']);
     }
 
+    public function test_dimensions_can_be_marked_not_applicable(): void
+    {
+        $payload = [
+            'name' => 'Product Without Dimensions',
+            'sku' => 'PRD-NA-DIM-01',
+            'base_uom_id' => $this->baseUom->id,
+            'alternate_uom_id' => $this->altUom->id,
+            'conversion_factor' => 1,
+            'has_dimensions' => 1,
+            'dimensions_not_applicable' => 1,
+            'is_active' => true,
+        ];
+
+        $response = $this->actingAs($this->user)->post(route('masters.products.store'), $payload);
+        $response->assertRedirect(route('masters.products.index'));
+
+        $product = Product::where('sku', 'PRD-NA-DIM-01')->first();
+        $this->assertNotNull($product);
+        $this->assertNull($product->height_cm);
+        $this->assertNull($product->length_cm);
+        $this->assertNull($product->width_cm);
+        $this->assertNull($product->net_weight);
+    }
+
     public function test_dimensions_and_net_weight_must_be_greater_than_zero(): void
     {
         $payload = [

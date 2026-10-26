@@ -37,6 +37,7 @@
             </div>
         </div>
         <div class="flex items-center gap-2">
+            <x-ui.export-menu />
             <button type="button"
                     @click="openAddModal()"
                     class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">

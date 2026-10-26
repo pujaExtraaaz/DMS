@@ -709,14 +709,35 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <x-ui.input name="credit_limit" label="Credit Limit (₹)" type="number" step="0.01" :value="old('credit_limit', $item->credit_limit ?? 0)" />
                 <x-ui.input name="credit_days" label="Credit Period (Days)" type="number" :value="old('credit_days', $item->credit_days ?? 0)" />
+                @php
+                    $creditStatuses = ['open' => 'Open', 'hold' => 'On Hold', 'blocked' => 'Blocked'];
+                    $currentCreditStatus = old('credit_status', $item->credit_status ?? 'open');
+                    foreach (['restricted' => 'Restricted', 'frozen' => 'Frozen', 'active' => 'Active'] as $legacyValue => $legacyLabel) {
+                        if ($currentCreditStatus === $legacyValue) {
+                            $creditStatuses[$legacyValue] = $legacyLabel;
+                        }
+                    }
+                    $creditBases = [
+                        'cumulative' => 'Cumulative / Balance',
+                        'invoice_date' => 'Invoice Date',
+                        'inward_date' => 'Inward Date',
+                        'receipt_date' => 'Receipt Date',
+                    ];
+                    $currentCreditBasis = old('credit_period_basis', $item->credit_period_basis ?? 'cumulative');
+                    foreach (['monthly' => 'Monthly', 'quarterly' => 'Quarterly', 'yearly' => 'Yearly'] as $legacyValue => $legacyLabel) {
+                        if ($currentCreditBasis === $legacyValue) {
+                            $creditBases[$legacyValue] = $legacyLabel;
+                        }
+                    }
+                @endphp
                 <x-ui.select name="credit_status" label="Credit Status">
-                    @foreach(['open' => 'Open', 'hold' => 'On Hold', 'blocked' => 'Blocked'] as $val => $label)
-                        <option value="{{ $val }}" @selected(old('credit_status', $item->credit_status ?? 'open')===$val)>{{ $label }}</option>
+                    @foreach($creditStatuses as $val => $label)
+                        <option value="{{ $val }}" @selected($currentCreditStatus===$val)>{{ $label }}</option>
                     @endforeach
                 </x-ui.select>
                 <x-ui.select name="credit_period_basis" label="Credit Period Basis">
-                    @foreach(['cumulative' => 'Cumulative / Balance', 'invoice_date' => 'Invoice Date', 'inward_date' => 'Inward Date', 'receipt_date' => 'Receipt Date'] as $val => $label)
-                        <option value="{{ $val }}" @selected(old('credit_period_basis', $item->credit_period_basis ?? 'cumulative')===$val)>{{ $label }}</option>
+                    @foreach($creditBases as $val => $label)
+                        <option value="{{ $val }}" @selected($currentCreditBasis===$val)>{{ $label }}</option>
                     @endforeach
                 </x-ui.select>
                 <x-ui.input name="interest_rate" label="Overdue Interest Rate (% per annum)" type="number" step="0.01" :value="old('interest_rate', $item->interest_rate ?? 18)" />

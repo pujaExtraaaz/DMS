@@ -296,4 +296,23 @@ class PartyTypeTest extends TestCase
         $this->assertContains('Hybrid Trader', $suppliers);
         $this->assertNotContains('Debtor Store', $suppliers);
     }
+
+    public function test_credit_status_and_period_basis_are_saved_as_selected(): void
+    {
+        $response = $this->actingAs($this->user)->post(route('masters.customers.store'), [
+            'name' => 'Credit Terms Party',
+            'party_type' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'customer_type_id' => $this->customerType->id,
+            'credit_status' => 'hold',
+            'credit_period_basis' => 'invoice_date',
+            'is_active' => true,
+        ]);
+
+        $response->assertRedirect(route('masters.customers.index'));
+        $response->assertSessionDoesntHaveErrors();
+
+        $party = Customer::where('name', 'Credit Terms Party')->firstOrFail();
+        $this->assertSame('hold', $party->credit_status);
+        $this->assertSame('invoice_date', $party->credit_period_basis);
+    }
 }

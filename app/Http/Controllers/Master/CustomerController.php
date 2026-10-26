@@ -26,11 +26,13 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 
 class CustomerController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
     public function __construct(
         protected GstLookupService $gstLookupService,
@@ -132,7 +134,7 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = Customer::query()
             ->with(['customerType', 'area', 'route', 'salesperson', 'salesManager', 'businessGroup'])
@@ -157,6 +159,18 @@ class CustomerController extends Controller
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'code', 'phone', 'gstin', 'email']);
+
+        if ($export = $this->exportIfRequested($request, $query, 'Parties', 'Parties', ['Name', 'Code', 'Party Type', 'Phone', 'GSTIN', 'Area', 'Status'], fn ($item) => [
+            $item->name,
+            $item->code,
+            $item->party_type_label,
+            $item->phone ?: '',
+            $item->gstin ?: '',
+            $item->area?->name ?? '',
+            $item->is_active ? 'Active' : 'Inactive',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,
@@ -697,8 +711,8 @@ class CustomerController extends Controller
             'pincode' => 'nullable|string|max:12',
             'credit_limit' => 'nullable|numeric|min:0',
             'credit_days' => 'nullable|integer|min:0',
-            'credit_status' => 'nullable|in:open,hold,blocked',
-            'credit_period_basis' => 'nullable|in:cumulative,invoice_date,inward_date,receipt_date',
+            'credit_status' => 'nullable|in:open,hold,blocked,restricted,frozen,active',
+            'credit_period_basis' => 'nullable|in:cumulative,invoice_date,inward_date,receipt_date,monthly,quarterly,yearly',
             'interest_rate' => 'nullable|numeric|min:0',
             'is_active' => 'boolean',
             'contacts' => 'nullable|array',

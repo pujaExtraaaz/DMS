@@ -18,6 +18,24 @@
         'is_default_sales' => (bool) $u->is_default_sales,
     ])->values()->toArray() : []);
     $uomOptions = $uoms->map(fn($u) => ['id' => (string) $u->id, 'name' => $u->name.' ('.$u->code.')', 'code' => (string) $u->code])->values()->toArray();
+    $altNotApplicable = old('alternate_uom_not_applicable');
+    if ($altNotApplicable === null) {
+        $altNotApplicable = $item->exists && blank($item->alternate_uom_id) && blank($primaryAlt?->uom_id);
+    } else {
+        $altNotApplicable = (string) $altNotApplicable === '1';
+    }
+    $dimensionsNotApplicable = old('dimensions_not_applicable');
+    if ($dimensionsNotApplicable === null) {
+        $dimensionsNotApplicable = $item->exists && blank($item->height_cm) && blank($item->length_cm) && blank($item->width_cm) && blank($item->net_weight);
+    } else {
+        $dimensionsNotApplicable = (string) $dimensionsNotApplicable === '1';
+    }
+    $skuNotApplicable = old('sku_not_applicable');
+    if ($skuNotApplicable === null) {
+        $skuNotApplicable = $item->exists && blank($item->sku);
+    } else {
+        $skuNotApplicable = (string) $skuNotApplicable === '1';
+    }
 @endphp
 
 <form method="POST"
@@ -43,7 +61,14 @@
           initialAltTradePrice: '{{ old('alt_trade_price', $item->alt_trade_price ?? ($primaryAlt?->trade_price ?? '')) }}',
           initialAltSellingPrice: '{{ old('alt_selling_price', $item->alt_selling_price ?? ($primaryAlt?->selling_price ?? '')) }}',
           initialAltMrp: '{{ old('alt_calculation_mrp', $item->alt_calculation_mrp ?? ($primaryAlt?->mrp ?? '')) }}',
-      })">
+          initialAltNotApplicable: @js((bool) $altNotApplicable),
+          categoryQuickUrl: @js(route('masters.categories.quick-store')),
+          subCategoryQuickUrl: @js(route('masters.sub-categories.quick-store')),
+          productTypeQuickUrl: @js(route('masters.product-types.quick-store')),
+          brandQuickUrl: @js(route('masters.brands.quick-store')),
+          companies: @js($companies->map(fn ($c) => ['id' => (string) $c->id, 'name' => $c->name])->values()),
+      })"
+      @keydown.escape.window="closeTopCreate()">
     @csrf @if($item->exists) @method('PUT') @endif
     <input type="hidden" name="has_dimensions" value="1">
 
@@ -54,7 +79,17 @@
             <x-ui.input name="name" label="Product Name" :value="old('name', $item->name)" placeholder="Enter product name" required />
 
             <!-- Part Number (formerly SKU) -->
-            <x-ui.input name="sku" label="Part Number" :value="old('sku', $item->sku)" placeholder="Enter Part Number" required />
+            <div class="space-y-1" x-data="{ skuNa: @js((bool) $skuNotApplicable) }">
+                <div class="flex items-center justify-between">
+                    <label for="sku" class="block text-sm font-medium text-gray-700">Part Number <span class="text-red-500" x-show="!skuNa">*</span></label>
+                    <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700">
+                        <input type="checkbox" name="sku_not_applicable" value="1" x-model="skuNa" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        Not Applicable
+                    </label>
+                </div>
+                <input type="text" id="sku" name="sku" :disabled="skuNa" :required="!skuNa" value="{{ old('sku', $item->sku) }}" placeholder="Enter Part Number" class="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400">
+                @error('sku') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+            </div>
 
             <!-- Model -->
             <x-ui.input name="model" label="Model" :value="old('model', $item->model ?? $item->models)" placeholder="E.G. T14 Gen 4, Sm-S928b" />
@@ -143,7 +178,8 @@
                         </label>
                         <span x-show="selectedBaseUomId" class="text-[11px] text-slate-500 font-medium">Distinct from Base UOM</span>
                     </div>
-                    <input type="hidden" name="alternate_uom_id" :value="selectedAltUomId" required>
+                    <input type="hidden" name="alternate_uom_not_applicable" :value="altUomNotApplicable ? 1 : 0">
+                    <input type="hidden" name="alternate_uom_id" :value="altUomNotApplicable ? '' : selectedAltUomId" :required="!altUomNotApplicable">
                     <div class="relative">
                         <input type="text"
                                id="alternate_uom_id_search_input"
@@ -183,6 +219,12 @@
                          x-transition:leave-end="opacity-0 scale-95"
                          class="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 divide-y divide-slate-100"
                          style="display: none;">
+                        <div x-show="!altUomSearchQuery || 'not applicable'.includes((altUomSearchQuery || '').toLowerCase().trim())"
+                             @click="selectAltUomNotApplicable()"
+                             :class="{ 'bg-indigo-50 text-indigo-900': altUomNotApplicable }"
+                             class="p-2.5 hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer text-xs font-semibold text-indigo-700">
+                            Not Applicable
+                        </div>
                         <template x-for="u in filteredAltUoms" :key="u.id">
                             <div @click="selectAltUom(u)"
                                  :class="{ 'bg-indigo-50 text-indigo-900 font-semibold': String(selectedAltUomId) === String(u.id) }"
@@ -201,7 +243,7 @@
                 </div>
 
                 <!-- Conversion Quantity Field & Dynamic Conversion Display -->
-                <div class="p-3 rounded-lg border border-indigo-100 bg-indigo-50/40 space-y-2">
+                <div class="p-3 rounded-lg border border-indigo-100 bg-indigo-50/40 space-y-2" x-show="!altUomNotApplicable">
                     <div class="flex items-center justify-between">
                         <label for="conversion_factor" class="block text-xs font-semibold text-slate-700">
                             Conversion Quantity <span class="text-red-500">*</span>
@@ -216,7 +258,7 @@
                                @input="onConversionFactorChange()"
                                step="0.0001"
                                min="0.0001"
-                               required
+                               :required="!altUomNotApplicable"
                                placeholder="E.G. 100"
                                class="block w-full rounded-lg border-gray-300 shadow-2xs text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-24 @error('conversion_factor') border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500 @enderror">
                         <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-slate-400 font-mono">
@@ -242,9 +284,10 @@
 
             <!-- Brand (Searchable Dropdown) -->
             <div class="space-y-1 relative" @click.outside="closeBrandDropdown()">
-                <label for="brand_id_search_input" class="block text-sm font-medium text-gray-700">
-                    Brand
-                </label>
+                <div class="flex items-center justify-between">
+                    <label for="brand_id_search_input" class="block text-sm font-medium text-gray-700">Brand</label>
+                    <button type="button" @click="openBrandCreate('product')" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
+                </div>
                 <input type="hidden" name="brand_id" :value="selectedBrandId">
                 <div class="relative">
                     <input type="text"
@@ -296,6 +339,7 @@
                     <div x-show="filteredBrands.length === 0" class="p-3 text-center text-xs text-slate-500 italic">
                         No brands found
                     </div>
+                    <button type="button" @click.stop="openBrandCreate('product')" class="w-full px-3 py-2 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50">+ Create Brand</button>
                 </div>
                 @error('brand_id')
                     <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
@@ -308,7 +352,10 @@
                     <label for="category_id_search_input" class="block text-sm font-medium text-gray-700">
                         Category
                     </label>
-                    <span x-show="selectedBrandId" class="text-[11px] text-indigo-600 font-medium">Filtered by Brand</span>
+                    <div class="flex items-center gap-3">
+                        <span x-show="selectedBrandId" class="text-[11px] text-indigo-600 font-medium">Filtered by Brand</span>
+                        <button type="button" @click="openCategoryCreate()" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
+                    </div>
                 </div>
                 <input type="hidden" name="category_id" :value="selectedCategoryId">
                 <div class="relative">
@@ -361,7 +408,9 @@
                     <div x-show="filteredCategories.length === 0" class="p-3 text-center text-xs text-slate-500 italic">
                         No categories found<span x-show="selectedBrandId"> for selected brand</span>
                     </div>
+                    <button type="button" @click.stop="openCategoryCreate('product')" class="w-full px-3 py-2 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50">+ Create Category</button>
                 </div>
+
                 @error('category_id')
                     <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
                 @enderror
@@ -373,7 +422,10 @@
                     <label for="sub_category_id_search_input" class="block text-sm font-medium text-gray-700">
                         Sub Category
                     </label>
-                    <span x-show="selectedCategoryId" class="text-[11px] text-indigo-600 font-medium">Filtered by Category</span>
+                    <div class="flex items-center gap-3">
+                        <span x-show="selectedCategoryId" class="text-[11px] text-indigo-600 font-medium">Filtered by Category</span>
+                        <button type="button" @click="openSubCategoryCreate()" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
+                    </div>
                 </div>
                 <input type="hidden" name="sub_category_id" :value="selectedSubCategoryId">
                 <div class="relative">
@@ -426,14 +478,19 @@
                     <div x-show="filteredSubCategories.length === 0" class="p-3 text-center text-xs text-slate-500 italic">
                         No subcategories found<span x-show="selectedCategoryId"> for selected category</span>
                     </div>
+                    <button type="button" @click.stop="openSubCategoryCreate()" class="w-full px-3 py-2 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50">+ Create Sub Category</button>
                 </div>
+
                 @error('sub_category_id')
                     <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
                 @enderror
             </div>
 
             <div class="space-y-1 md:col-span-2">
-                <label for="product_type_id" class="block text-sm font-medium text-gray-700">Product Type</label>
+                <div class="flex items-center justify-between">
+                    <label for="product_type_id" class="block text-sm font-medium text-gray-700">Product Type</label>
+                    <button type="button" @click="openProductTypeCreate()" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
+                </div>
                 <select name="product_type_id" id="product_type_id" class="block w-full rounded-lg border-gray-300 shadow-2xs text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     <option value="">Select product type</option>
                     @foreach($productTypes ?? [] as $pt)
@@ -443,6 +500,7 @@
                     @endforeach
                 </select>
                 <p class="text-[11px] text-slate-500">Use the brand, category, and sub-category above, then choose the product type. The list includes every active type.</p>
+
                 @error('product_type_id')
                     <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
                 @enderror
@@ -467,44 +525,7 @@
                 }
                 $selectedTracking = array_values(array_filter($selectedTracking, fn($t) => $t !== 'none'));
             @endphp
-            <div class="md:col-span-2 space-y-1" x-data="{
-                options: [
-                    { value: 'batch', label: 'Batch-wise' }
-                ],
-                selected: @json($selectedTracking),
-                searchQuery: '',
-                get filteredOptions() {
-                    if (!this.searchQuery || !this.searchQuery.trim()) {
-                        return this.options;
-                    }
-                    const q = this.searchQuery.toLowerCase().trim();
-                    return this.options.filter(opt => opt.label.toLowerCase().includes(q) || opt.value.toLowerCase().includes(q));
-                },
-                get allSelected() {
-                    const visible = this.filteredOptions;
-                    return visible.length > 0 && visible.every(opt => this.selected.includes(opt.value));
-                },
-                get isIndeterminate() {
-                    const visible = this.filteredOptions;
-                    const count = visible.filter(opt => this.selected.includes(opt.value)).length;
-                    return count > 0 && count < visible.length;
-                },
-                toggleSelectAll() {
-                    const visibleValues = this.filteredOptions.map(o => o.value);
-                    if (this.allSelected) {
-                        this.selected = this.selected.filter(val => !visibleValues.includes(val));
-                    } else {
-                        this.selected = Array.from(new Set([...this.selected, ...visibleValues]));
-                    }
-                },
-                toggleOption(val) {
-                    if (this.selected.includes(val)) {
-                        this.selected = this.selected.filter(v => v !== val);
-                    } else {
-                        this.selected = [...this.selected, val];
-                    }
-                }
-            }">
+            <div class="md:col-span-2 space-y-1" x-data="productTrackingManager(@json($selectedTracking))">
                 <label class="flex items-start gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 cursor-pointer">
                     <input type="checkbox" name="tracking_type[]" value="serial" @checked(in_array('serial', $selectedTracking, true)) class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
                     <span>
@@ -573,8 +594,14 @@
             initialWidthCm: '{{ old('width_cm', $item->width_cm ?? '') }}',
             initialWidthIn: '{{ old('width_in', $item->width_in ?? '') }}',
             initialNetWeight: '{{ old('net_weight', $item->net_weight ?? '') }}',
-            initialWeightUnit: '{{ old('weight_unit', $item->weight_unit ?? 'KG') }}'
+            initialWeightUnit: '{{ old('weight_unit', $item->weight_unit ?? 'KG') }}',
+            initialNotApplicable: @js((bool) $dimensionsNotApplicable)
         })" class="space-y-6">
+            <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input type="checkbox" name="dimensions_not_applicable" value="1" x-model="notApplicable" @change="onNotApplicableChange()" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                Not Applicable
+            </label>
+            <p class="text-xs text-slate-500 -mt-3" x-show="notApplicable" x-cloak>Leave dimensions and weight blank for this product.</p>
 
             <!-- 3 Dimension Columns: Height, Length, Width -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -604,7 +631,8 @@
                                        @input="onCmInput('height')"
                                        step="0.01"
                                        min="0.01"
-                                       required
+                                       :required="!notApplicable"
+                                       :disabled="notApplicable"
                                        placeholder="e.g. 68.00"
                                        class="block w-full rounded-lg border-gray-300 shadow-2xs text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-12 @error('height_cm') border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500 @enderror">
                                 <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-slate-400 font-mono font-semibold">
@@ -673,7 +701,8 @@
                                        @input="onCmInput('length')"
                                        step="0.01"
                                        min="0.01"
-                                       required
+                                       :required="!notApplicable"
+                                       :disabled="notApplicable"
                                        placeholder="e.g. 107.00"
                                        class="block w-full rounded-lg border-gray-300 shadow-2xs text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-12 @error('length_cm') border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500 @enderror">
                                 <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-slate-400 font-mono font-semibold">
@@ -742,7 +771,8 @@
                                        @input="onCmInput('width')"
                                        step="0.01"
                                        min="0.01"
-                                       required
+                                       :required="!notApplicable"
+                                       :disabled="notApplicable"
                                        placeholder="e.g. 14.00"
                                        class="block w-full rounded-lg border-gray-300 shadow-2xs text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-12 @error('width_cm') border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500 @enderror">
                                 <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-slate-400 font-mono font-semibold">
@@ -801,7 +831,8 @@
                                    x-model="netWeight"
                                    step="0.001"
                                    min="0.001"
-                                   required
+                                   :required="!notApplicable"
+                                   :disabled="notApplicable"
                                    placeholder="e.g. 2.500"
                                    class="block w-full rounded-l-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 @error('net_weight') border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500 @enderror">
                         </div>
@@ -856,15 +887,17 @@
                     <p class="text-xs text-slate-500 mt-0.5">Applicable tax rate for domestic sales and purchases.</p>
                 </div>
                 <div class="w-full sm:w-48">
-                    <label for="tax_rate" class="block text-xs font-semibold text-slate-700 mb-1">Tax Rate (%)</label>
+                    <label for="tax_rate" class="block text-xs font-semibold text-slate-700 mb-1">GST Rate (%) <span class="text-red-500">*</span></label>
                     <div class="relative">
                         <input type="number"
                                id="tax_rate"
                                name="tax_rate"
                                step="0.01"
                                min="0"
-                               value="{{ old('tax_rate', $item->tax_rate ?? 0) }}"
-                               placeholder="0.00"
+                               max="100"
+                               required
+                               value="{{ old('tax_rate', $item->exists ? $item->tax_rate : '') }}"
+                               placeholder="e.g. 18.00"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8 bg-white">
                         <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-slate-400 font-semibold">%</div>
                     </div>
@@ -941,7 +974,7 @@
                 </div>
 
                 <!-- Alternative UOM Pricing Card -->
-                <div class="rounded-xl border border-indigo-100 bg-indigo-50/20 p-5 shadow-2xs space-y-4">
+                <div class="rounded-xl border border-indigo-100 bg-indigo-50/20 p-5 shadow-2xs space-y-4" x-show="!altUomNotApplicable" x-cloak>
                     <div class="flex items-center justify-between border-b border-indigo-100 pb-3">
                         <div class="flex items-center gap-2">
                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -1221,6 +1254,93 @@
             <x-ui.button type="submit" variant="primary">{{ $item->exists ? 'Update Product' : 'Save Product' }}</x-ui.button>
         </div>
     </div>
+    @include('masters.partials.catalog-quick-modals')
+
+    <div x-show="subCategoryCreateOpen" x-cloak class="fixed inset-0 z-[70] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="subcategory-create-title" >
+        <div class="fixed inset-0 bg-slate-900/60" @click="subCategoryCreateOpen = false"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <div class="relative w-full max-w-xl rounded-xl border border-slate-200 bg-white shadow-2xl" @click.stop>
+                <div class="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                    <h3 id="subcategory-create-title" class="text-base font-semibold text-slate-900">Create Sub Category</h3>
+                    <button type="button" @click="subCategoryCreateOpen = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="Close">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="space-y-4 px-6 py-5">
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <label for="product_subcategory_category" class="block text-sm font-medium text-gray-700">Category <span class="text-red-500">*</span></label>
+                            <button type="button" @click="openCategoryCreate('subcategory')" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
+                        </div>
+                        <select id="product_subcategory_category" @change="subCategoryCreateCategoryId = $event.target.value" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Select</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label for="subcategory_quick_name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
+                        <input id="subcategory_quick_name" type="text" x-model="subCategoryCreateName" @keydown.enter.prevent="saveSubCategory()" maxlength="255" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" x-model="subCategoryCreateActive" class="rounded border-gray-300 text-indigo-600">
+                        Active
+                    </label>
+                    <p class="text-xs text-red-600" x-show="subCategoryCreateError" x-text="subCategoryCreateError"></p>
+                </div>
+                <div class="px-6 pb-5">
+                    <button type="button" @click="saveSubCategory()" :disabled="subCategoryCreateSaving" class="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="productTypeCreateOpen" x-cloak class="fixed inset-0 z-[70] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="product-type-create-title" >
+        <div class="fixed inset-0 bg-slate-900/60" @click="productTypeCreateOpen = false"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <div class="relative flex max-h-[85vh] w-full max-w-[700px] flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl" @click.stop>
+                <div class="flex shrink-0 items-center justify-between border-b border-slate-100 bg-slate-50/80 px-6 py-4">
+                    <div>
+                        <h3 id="product-type-create-title" class="text-sm font-bold text-slate-900 sm:text-base">Add New Product Type</h3>
+                        <p class="text-xs text-slate-500">Provide product classification details below.</p>
+                    </div>
+                    <button type="button" @click="productTypeCreateOpen = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="Close">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+                    <div>
+                        <label for="product_type_quick_name" class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700">Product Type Name <span class="text-red-500">*</span></label>
+                        <input id="product_type_quick_name" type="text" x-model="productTypeCreateName" @blur="applyProductTypeTitleCase()" @keydown.enter.prevent="saveProductType()" maxlength="100" placeholder="e.g. Finished Goods, Spare Part, Hardware" class="block w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm shadow-2xs placeholder:text-slate-400 focus:border-indigo-500 focus:ring-indigo-500">
+                        <p class="mt-1 text-[11px] text-slate-500">Names are automatically formatted to Title Case (e.g. Finished Goods, Spare Part).</p>
+                    </div>
+                    <div>
+                        <label for="product_type_quick_description" class="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700">Description <span class="text-xs font-normal lowercase text-slate-400">(optional)</span></label>
+                        <textarea id="product_type_quick_description" x-model="productTypeCreateDescription" rows="3" maxlength="1000" placeholder="Enter short description or purpose for this product type..." class="block w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm shadow-2xs placeholder:text-slate-400 focus:border-indigo-500 focus:ring-indigo-500"></textarea>
+                    </div>
+                    <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                        <input type="checkbox" x-model="productTypeCreateTrackSerial" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                        <span>
+                            <span class="block text-sm font-semibold text-slate-800">Track serial numbers</span>
+                            <span class="block text-xs text-slate-500">Purchase invoices ask for a serial number on every product of this type.</span>
+                        </span>
+                    </label>
+                    <div class="border-t border-slate-100 pt-2">
+                        <label class="inline-flex cursor-pointer select-none items-center gap-3">
+                            <input type="checkbox" x-model="productTypeCreateActive" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                            <span>
+                                <span class="text-sm font-semibold text-slate-800">Active</span>
+                                <span class="block text-xs text-slate-500">Active types can be assigned to new and existing products.</span>
+                            </span>
+                        </label>
+                    </div>
+                    <p class="text-xs font-medium text-red-600" x-show="productTypeCreateError" x-text="productTypeCreateError"></p>
+                </div>
+                <div class="flex shrink-0 items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/80 px-6 py-4">
+                    <button type="button" @click="productTypeCreateOpen = false" :disabled="productTypeCreateSaving" class="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
+                    <button type="button" @click="saveProductType()" :disabled="productTypeCreateSaving" class="rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50" x-text="productTypeCreateSaving ? 'Saving...' : 'Create Product Type'"></button>
+                </div>
+            </div>
+        </div>
+    </div>
 </form>
 
 @if(isset($priceHistory) && $priceHistory->count())
@@ -1310,6 +1430,48 @@ function searchableUnitRow(uoms, initialId, onChange) {
     };
 }
 
+function productTrackingManager(selected) {
+    return {
+        options: [
+            { value: 'batch', label: 'Batch-wise' }
+        ],
+        selected: selected || [],
+        searchQuery: '',
+        get filteredOptions() {
+            if (!this.searchQuery || !this.searchQuery.trim()) {
+                return this.options;
+            }
+            const q = this.searchQuery.toLowerCase().trim();
+            return this.options.filter(function (opt) {
+                return opt.label.toLowerCase().includes(q) || opt.value.toLowerCase().includes(q);
+            });
+        },
+        get allSelected() {
+            const visible = this.filteredOptions;
+            return visible.length > 0 && visible.every(function (opt) { return this.selected.includes(opt.value); }, this);
+        },
+        get isIndeterminate() {
+            const visible = this.filteredOptions;
+            const count = visible.filter(function (opt) { return this.selected.includes(opt.value); }, this).length;
+            return count > 0 && count < visible.length;
+        },
+        toggleSelectAll() {
+            const visibleValues = this.filteredOptions.map(function (o) { return o.value; });
+            if (this.allSelected) {
+                this.selected = this.selected.filter(function (val) { return visibleValues.indexOf(val) === -1; });
+            } else {
+                this.selected = Array.from(new Set(this.selected.concat(visibleValues)));
+            }
+        },
+        toggleOption(val) {
+            if (this.selected.includes(val)) {
+                this.selected = this.selected.filter(function (v) { return v !== val; });
+            } else {
+                this.selected = this.selected.concat([val]);
+            }
+        }
+    };
+}
 function productCatalogManager(config) {
     return {
         uoms: config.uoms || [],
@@ -1320,6 +1482,40 @@ function productCatalogManager(config) {
         // Selection IDs & values
         selectedBaseUomId: config.initialBaseUomId || '',
         selectedAltUomId: config.initialAltUomId || '',
+        altUomNotApplicable: !!config.initialAltNotApplicable,
+        categoryQuickUrl: config.categoryQuickUrl,
+        subCategoryQuickUrl: config.subCategoryQuickUrl,
+        productTypeQuickUrl: config.productTypeQuickUrl,
+        brandQuickUrl: config.brandQuickUrl,
+        companies: config.companies || [],
+        brandCreateOpen: false,
+        brandCreateContext: 'product',
+        brandCreateName: '',
+        brandCreateDetail: '',
+        brandCreateCompanyId: '',
+        brandCreateActive: true,
+        brandCreateError: '',
+        brandCreateSaving: false,
+        categoryCreateContext: 'product',
+        categoryCreateOpen: false,
+        categoryCreateBrandId: '',
+        categoryCreateName: '',
+        categoryCreateActive: true,
+        categoryCreateError: '',
+        categoryCreateSaving: false,
+        subCategoryCreateOpen: false,
+        subCategoryCreateCategoryId: '',
+        subCategoryCreateName: '',
+        subCategoryCreateActive: true,
+        subCategoryCreateError: '',
+        subCategoryCreateSaving: false,
+        productTypeCreateOpen: false,
+        productTypeCreateName: '',
+        productTypeCreateDescription: '',
+        productTypeCreateTrackSerial: false,
+        productTypeCreateActive: true,
+        productTypeCreateError: '',
+        productTypeCreateSaving: false,
         conversionFactor: config.initialConversionFactor || 1,
         selectedBrandId: config.initialBrandId || '',
         selectedCategoryId: config.initialCategoryId || '',
@@ -1365,7 +1561,10 @@ function productCatalogManager(config) {
                 const found = this.uoms.find(u => String(u.id) === String(this.selectedBaseUomId));
                 if (found) this.uomSearchQuery = found.name;
             }
-            if (this.selectedAltUomId) {
+            if (this.altUomNotApplicable) {
+                this.selectedAltUomId = '';
+                this.altUomSearchQuery = 'Not Applicable';
+            } else if (this.selectedAltUomId) {
                 const found = this.uoms.find(u => String(u.id) === String(this.selectedAltUomId));
                 if (found) this.altUomSearchQuery = found.name;
             }
@@ -1517,10 +1716,17 @@ function productCatalogManager(config) {
             });
         },
         openAltUomDropdown() {
+            if (this.altUomNotApplicable || this.altUomSearchQuery === 'Not Applicable') {
+                this.altUomSearchQuery = '';
+            }
             this.altUomIsOpen = true;
         },
         closeAltUomDropdown() {
             this.altUomIsOpen = false;
+            if (this.altUomNotApplicable) {
+                this.altUomSearchQuery = 'Not Applicable';
+                return;
+            }
             if (this.selectedAltUomId) {
                 const found = this.uoms.find(u => String(u.id) === String(this.selectedAltUomId));
                 this.altUomSearchQuery = found ? found.name : '';
@@ -1528,12 +1734,24 @@ function productCatalogManager(config) {
                 this.altUomSearchQuery = '';
             }
         },
+        selectAltUomNotApplicable() {
+            this.altUomNotApplicable = true;
+            this.selectedAltUomId = '';
+            this.altUomSearchQuery = 'Not Applicable';
+            this.conversionFactor = '';
+            this.altUomIsOpen = false;
+        },
         selectAltUom(u) {
+            this.altUomNotApplicable = false;
             this.selectedAltUomId = String(u.id);
             this.altUomSearchQuery = u.name;
             this.altUomIsOpen = false;
+            if (!this.conversionFactor) {
+                this.conversionFactor = 1;
+            }
         },
         clearAltUom() {
+            this.altUomNotApplicable = false;
             this.selectedAltUomId = '';
             this.altUomSearchQuery = '';
             this.altUomIsOpen = false;
@@ -1689,6 +1907,231 @@ function productCatalogManager(config) {
             this.selectedSubCategoryId = '';
             this.subCategorySearchQuery = '';
             this.subCategoryIsOpen = false;
+        },
+        async postJson(url, payload) {
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(() => ({}));
+            return { ok: response.ok, data };
+        },
+        closeTopCreate() {
+            if (this.brandCreateOpen) { this.brandCreateOpen = false; return; }
+            if (this.categoryCreateOpen) { this.categoryCreateOpen = false; return; }
+            if (this.productTypeCreateOpen) { this.productTypeCreateOpen = false; return; }
+            if (this.subCategoryCreateOpen) { this.subCategoryCreateOpen = false; }
+        },
+        fillSelect(selectId, items, selected) {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            select.replaceChildren();
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Select';
+            select.appendChild(placeholder);
+            (items || []).forEach((item) => {
+                const option = document.createElement('option');
+                option.value = String(item.id);
+                option.textContent = item.name;
+                select.appendChild(option);
+            });
+            select.value = selected ? String(selected) : '';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        },
+        openBrandCreate(context) {
+            this.brandCreateContext = context || 'product';
+            this.brandCreateOpen = true;
+            this.brandCreateError = '';
+            this.brandCreateName = '';
+            this.brandCreateDetail = '';
+            this.brandCreateActive = true;
+            this.brandCreateCompanyId = this.companies[0] ? String(this.companies[0].id) : '';
+            this.brandIsOpen = false;
+            this.fillSelect('catalog_brand_company', this.companies, this.brandCreateCompanyId);
+        },
+        async saveBrand() {
+            const name = (this.brandCreateName || '').trim();
+            if (!name) {
+                this.brandCreateError = 'Brand Name is required.';
+                return;
+            }
+            this.brandCreateSaving = true;
+            this.brandCreateError = '';
+            const result = await this.postJson(this.brandQuickUrl, {
+                name,
+                detail: this.brandCreateDetail || '',
+                company_id: this.brandCreateCompanyId || null,
+                is_active: !!this.brandCreateActive,
+            });
+            this.brandCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.brandCreateError = result.data.message || 'Could not create the brand.';
+                return;
+            }
+            const item = result.data.item;
+            if (!this.brands.some(b => String(b.id) === String(item.id))) {
+                this.brands.push(item);
+            }
+            if (this.brandCreateContext === 'product') {
+                this.selectBrand(item);
+            }
+            this.categoryCreateBrandId = String(item.id);
+            this.fillSelect('catalog_category_brand', this.brands, this.categoryCreateBrandId);
+            this.brandCreateName = '';
+            this.brandCreateDetail = '';
+            this.brandCreateOpen = false;
+        },
+        openCategoryCreate(context) {
+            this.categoryCreateContext = context || 'product';
+            this.categoryCreateOpen = true;
+            this.categoryCreateError = '';
+            this.categoryCreateBrandId = this.selectedBrandId || '';
+            this.categoryCreateName = '';
+            this.categoryCreateActive = true;
+            if (this.categoryCreateContext !== 'subcategory') {
+                this.categoryIsOpen = false;
+            }
+            this.fillSelect('catalog_category_brand', this.brands, this.categoryCreateBrandId);
+        },
+        async saveCategory() {
+            const name = (this.categoryCreateName || '').trim();
+            if (!name) {
+                this.categoryCreateError = 'Name is required.';
+                return;
+            }
+            this.categoryCreateSaving = true;
+            this.categoryCreateError = '';
+            const result = await this.postJson(this.categoryQuickUrl, {
+                name,
+                brand_id: this.categoryCreateBrandId || null,
+                is_active: !!this.categoryCreateActive,
+            });
+            this.categoryCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.categoryCreateError = result.data.message || 'Could not create the category.';
+                return;
+            }
+            const item = result.data.item;
+            if (!this.categories.some(c => String(c.id) === String(item.id))) {
+                this.categories.push(item);
+            }
+            if (item.brand_id) {
+                const brand = this.brands.find(b => String(b.id) === String(item.brand_id));
+                if (brand) {
+                    this.selectedBrandId = String(brand.id);
+                    this.brandSearchQuery = brand.name;
+                }
+            }
+            this.selectCategory(item);
+            this.subCategoryCreateCategoryId = String(item.id);
+            if (this.subCategoryCreateOpen) {
+                this.fillSelect('product_subcategory_category', this.categories, item.id);
+            }
+            this.categoryCreateName = '';
+            this.categoryCreateOpen = false;
+        },
+        openSubCategoryCreate() {
+            this.subCategoryCreateOpen = true;
+            this.subCategoryCreateError = '';
+            this.subCategoryCreateCategoryId = this.selectedCategoryId || '';
+            this.subCategoryCreateName = '';
+            this.subCategoryCreateActive = true;
+            this.subCategoryIsOpen = false;
+            this.fillSelect('product_subcategory_category', this.categories, this.subCategoryCreateCategoryId);
+        },
+        async saveSubCategory() {
+            const name = (this.subCategoryCreateName || '').trim();
+            if (!this.subCategoryCreateCategoryId) {
+                this.subCategoryCreateError = 'Category is required.';
+                return;
+            }
+            if (!name) {
+                this.subCategoryCreateError = 'Name is required.';
+                return;
+            }
+            this.subCategoryCreateSaving = true;
+            this.subCategoryCreateError = '';
+            const result = await this.postJson(this.subCategoryQuickUrl, {
+                name,
+                category_id: this.subCategoryCreateCategoryId,
+                is_active: !!this.subCategoryCreateActive,
+            });
+            this.subCategoryCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.subCategoryCreateError = result.data.message || 'Could not create the sub category.';
+                return;
+            }
+            const item = result.data.item;
+            if (!this.subCategories.some(sc => String(sc.id) === String(item.id))) {
+                this.subCategories.push(item);
+            }
+            const parent = this.categories.find(c => String(c.id) === String(item.category_id));
+            if (parent) {
+                this.selectCategory(parent);
+            }
+            this.selectSubCategory(item);
+            this.subCategoryCreateName = '';
+            this.subCategoryCreateOpen = false;
+        },
+        openProductTypeCreate() {
+            this.productTypeCreateOpen = true;
+            this.productTypeCreateError = '';
+            this.productTypeCreateName = '';
+            this.productTypeCreateDescription = '';
+            this.productTypeCreateTrackSerial = false;
+            this.productTypeCreateActive = true;
+        },
+        applyProductTypeTitleCase() {
+            const value = this.productTypeCreateName || '';
+            this.productTypeCreateName = value.replace(/\b\w+/g, function (word) {
+                return word.charAt(0).toUpperCase() + word.substr(1).toLowerCase();
+            });
+        },
+        async saveProductType() {
+            const name = (this.productTypeCreateName || '').trim();
+            if (!name) {
+                this.productTypeCreateError = 'Product Type Name is required.';
+                return;
+            }
+            if (name.length > 100) {
+                this.productTypeCreateError = 'Product Type Name cannot exceed 100 characters.';
+                return;
+            }
+            this.productTypeCreateSaving = true;
+            this.productTypeCreateError = '';
+            const result = await this.postJson(this.productTypeQuickUrl, {
+                name,
+                description: this.productTypeCreateDescription || '',
+                track_serial: !!this.productTypeCreateTrackSerial,
+                is_active: !!this.productTypeCreateActive,
+            });
+            this.productTypeCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.productTypeCreateError = result.data.message || 'Could not create the product type.';
+                return;
+            }
+            const item = result.data.item;
+            const select = document.getElementById('product_type_id');
+            if (select && !Array.from(select.options).some(opt => String(opt.value) === String(item.id))) {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = item.name + (this.productTypeCreateTrackSerial ? ' — serial numbers' : '');
+                select.appendChild(option);
+            }
+            if (select) {
+                select.value = String(item.id);
+            }
+            this.productTypeCreateName = '';
+            this.productTypeCreateDescription = '';
+            this.productTypeCreateOpen = false;
         }
     };
 }
@@ -1703,6 +2146,19 @@ function productDimensionsManager(config) {
         widthIn: config.initialWidthIn || '',
         netWeight: config.initialNetWeight || '',
         weightUnit: config.initialWeightUnit || 'KG',
+        notApplicable: !!config.initialNotApplicable,
+
+        onNotApplicableChange() {
+            if (this.notApplicable) {
+                this.heightCm = '';
+                this.heightIn = '';
+                this.lengthCm = '';
+                this.lengthIn = '';
+                this.widthCm = '';
+                this.widthIn = '';
+                this.netWeight = '';
+            }
+        },
 
         init() {
             // Auto-compute inches if CM exists but inches is empty

@@ -11,7 +11,9 @@ use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
 use App\Support\CodeGenerator;
 use App\Support\TitleCase;
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,9 +22,9 @@ use Illuminate\View\View;
 
 class ProductTypeController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View|JsonResponse
+    public function index(Request $request): View|JsonResponse|Response
     {
         if ($request->routeIs('masters.product-types.list')) {
             return $this->list();
@@ -39,6 +41,16 @@ class ProductTypeController extends Controller
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'code', 'description']);
+
+        if ($export = $this->exportIfRequested($request, $query, 'Product-Types', 'Product Types', ['Name', 'Code', 'Description', 'Products', 'Status'], fn ($item) => [
+            $item->name,
+            $item->code,
+            $item->description ?: '',
+            (string) ($item->products_count ?? 0),
+            $item->is_active ? 'Active' : 'Inactive',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,
@@ -417,6 +429,17 @@ class ProductTypeController extends Controller
             $code = strtoupper($rawCode);
         }
 
+        $description = trim((string) $request->input('description', ''));
+        if (mb_strlen($description) > 1000) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Description cannot exceed 1000 characters.',
+                'errors' => [
+                    'description' => ['Description cannot exceed 1000 characters.'],
+                ],
+            ], 422);
+        }
+
         $companyId = auth()->user()?->company_id ?? Company::defaultCompanyId() ?? null;
 
         try {
@@ -424,8 +447,8 @@ class ProductTypeController extends Controller
                 'company_id' => $companyId,
                 'name' => $formattedName,
                 'code' => $code,
-                'description' => trim((string) $request->input('description', '')) ?: null,
-                'is_active' => true,
+                'description' => $description !== '' ? $description : null,
+                'is_active' => $request->boolean('is_active', true),
                 'track_serial' => $request->boolean('track_serial'),
             ]);
             $this->syncSerialTracking($productType);

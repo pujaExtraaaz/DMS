@@ -29,12 +29,12 @@ class WarehouseController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'code', 'city']);
+        $this->applySearch($query, $request->input('search'), ['name']);
 
         $sortData = $this->applySorting(
             $query,
             $request,
-            ['name', 'code', 'is_active', 'created_at'],
+            ['name', 'is_active', 'created_at'],
             defaultSort: 'name',
             defaultDirection: 'asc'
         );
@@ -138,13 +138,39 @@ class WarehouseController extends Controller
             'company_id' => 'required|exists:companies,id',
             'branch_id' => 'required|exists:branches,id',
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:30',
+            'code' => 'nullable|string|max:30',
             'address' => 'nullable|string',
             'is_default' => 'boolean',
             'is_active' => 'boolean',
         ]);
         $data['is_default'] = $request->boolean('is_default');
         $data['is_active'] = $request->boolean('is_active');
+        if (blank($data['code'] ?? null)) {
+            $data['code'] = $warehouse && filled($warehouse->code)
+                ? $warehouse->code
+                : $this->warehouseCode((string) $data['name'], (int) $data['branch_id'], $warehouse?->id);
+        }
+
         return $data;
+    }
+
+    protected function warehouseCode(string $name, int $branchId, ?int $ignoreId = null): string
+    {
+        $base = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $name));
+        $base = substr($base !== '' ? $base : 'WH', 0, 24);
+        $code = $base;
+        $suffix = 2;
+
+        while (Warehouse::query()
+            ->where('branch_id', $branchId)
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->where('code', $code)
+            ->exists()) {
+            $tail = (string) $suffix;
+            $code = substr($base, 0, 30 - strlen($tail)).$tail;
+            $suffix++;
+        }
+
+        return $code;
     }
 }
