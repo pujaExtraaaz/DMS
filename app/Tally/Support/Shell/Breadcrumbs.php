@@ -155,7 +155,7 @@ class Breadcrumbs
             return [...$crumbs, ['label' => 'Stock movements', 'url' => null]];
         }
 
-        if (preg_match('/^stock\.(in|out|transfer|adjustment)\./', $route, $stockMatch) === 1) {
+        if (preg_match('/^stock\.(in|out|transfer|adjustment|rejection_in|rejection_out|physical)\./', $route, $stockMatch) === 1) {
             $stockType = \Tally\Inventory\StockTransactionType::from($stockMatch[1]);
             $index = $stockType->routeName('index');
             $crumbs[] = ['label' => $stockType->label(), 'url' => $route === $index ? null : tally_route($index)];

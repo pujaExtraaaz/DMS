@@ -121,7 +121,7 @@ class VoucherController extends ApiController
             'narration' => ['nullable', 'string', 'max:1000'],
             'post' => ['sometimes', 'boolean'],
             'entries' => ['required', 'array', 'min:2'],
-            'entries.*.ledger_id' => ['required', 'integer', Rule::exists('ledgers', 'id')->where('company_id', $company->id)],
+            'entries.*.ledger_id' => ['required', 'integer', Rule::exists('acct_ledgers', 'id')->where('company_id', $company->id)],
             'entries.*.debit' => ['nullable', 'numeric', 'min:0'],
             'entries.*.credit' => ['nullable', 'numeric', 'min:0'],
             'entries.*.narration' => ['nullable', 'string', 'max:255'],

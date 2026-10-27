@@ -19,6 +19,7 @@ class UnitRequest extends FormRequest
         $this->merge([
             'name' => trim((string) $this->input('name')),
             'symbol' => trim((string) $this->input('symbol')),
+            'gst_uqc' => strtoupper(trim((string) $this->input('gst_uqc'))) ?: null,
             'decimal_places' => $this->input('decimal_places'),
             'is_active' => $this->boolean('is_active'),
         ]);
@@ -53,6 +54,7 @@ class UnitRequest extends FormRequest
                     }
                 },
             ],
+            'gst_uqc' => ['nullable', 'string', 'max:8', 'regex:/^[A-Z0-9]{1,8}$/'],
             'decimal_places' => ['required', 'integer', 'min:0', 'max:4'],
             'is_active' => ['required', 'boolean'],
         ];

@@ -46,6 +46,7 @@
                             <td class="px-6 py-4 text-slate-600">{{ $payment->invoice?->invoice_no ?? '—' }}</td>
                             <td class="px-6 py-4">
                                 <x-ui.badge>{{ strtoupper(str_replace('_', ' ', $payment->method)) }}</x-ui.badge>
+@if($payment->bankLedger)<div class="mt-1 text-xs text-slate-500">{{ $payment->bankLedger->name }}</div>@endif
                             </td>
                             <td class="px-6 py-4 text-right font-semibold text-slate-900">₹{{ number_format($payment->amount, 2) }}</td>
                             <td class="px-6 py-4 text-slate-600 text-sm">{{ $payment->paid_at?->format('d M Y') ?? '—' }}</td>

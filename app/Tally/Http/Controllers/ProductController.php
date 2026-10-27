@@ -61,6 +61,7 @@ class ProductController extends Controller
             'units' => $company->units()->where('is_active', true)->orderBy('name')->get(),
             'taxRates' => $company->taxRates()->where('is_active', true)->orderBy('name')->get(),
             'hsnSacs' => $company->hsnSacs()->where('is_active', true)->orderBy('code')->get(),
+            'godowns' => $company->godowns()->where('is_active', true)->orderBy('name')->get(),
         ]);
     }
 
@@ -68,8 +69,10 @@ class ProductController extends Controller
     {
         $data = $request->validated();
         $extras = $request->input('extra_barcodes', '');
-        unset($data['extra_barcodes']);
+        $openings = $data['openings'] ?? [];
+        unset($data['extra_barcodes'], $data['openings']);
         $product = $context->company()->products()->create($data);
+        $this->syncGodownOpenings($product, $openings);
         app(\Tally\Inventory\BarcodeDirectory::class)->sync($product, preg_split('/\r\n|\r|\n/', (string) $extras) ?: []);
         $this->syncOpeningStock($context, $request->user());
 
@@ -80,7 +83,7 @@ class ProductController extends Controller
 
     public function show(WorkspaceContext $context, Product $product): View
     {
-        $product->load(['productGroup', 'primaryUnit', 'alternateUnit', 'hsnSac', 'taxRate', 'barcodes']);
+        $product->load(['productGroup', 'primaryUnit', 'alternateUnit', 'hsnSac', 'taxRate', 'barcodes', 'godownOpenings.godown']);
 
         return view('tally::products.show', [
             'company' => $context->company(),
@@ -92,9 +95,12 @@ class ProductController extends Controller
     {
         $company = $context->company();
 
+        $product->load('godownOpenings');
+
         return view('tally::products.edit', [
             'company' => $company,
             'product' => $product,
+            'godowns' => $company->godowns()->orderBy('name')->get(),
             'groups' => ProductGroup::flatten(
                 $company->productGroups()
                     ->where(function ($query) use ($product) {
@@ -138,8 +144,10 @@ class ProductController extends Controller
     public function update(ProductRequest $request, Product $product): RedirectResponse
     {
         $data = $request->validated();
-        unset($data['extra_barcodes']);
+        $openings = $data['openings'] ?? [];
+        unset($data['extra_barcodes'], $data['openings']);
         $product->update($data);
+        $this->syncGodownOpenings($product, $openings);
         app(\Tally\Inventory\BarcodeDirectory::class)->sync($product, preg_split('/\r\n|\r|\n/', (string) $request->input('extra_barcodes', '')) ?: []);
         $this->syncOpeningStock(app(\Tally\Context\WorkspaceContext::class), $request->user());
 
@@ -213,6 +221,98 @@ class ProductController extends Controller
         }
 
         return $query->orderBy('name');
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function syncGodownOpenings(Product $product, array $rows): void
+    {
+        $placing = false;
+
+        foreach ($rows as $row) {
+            if (is_array($row) && ($row['godown_id'] ?? '') !== '' && (float) ($row['quantity'] ?? 0) > 0) {
+                $placing = true;
+            }
+        }
+
+        $context = app(\Tally\Context\WorkspaceContext::class);
+        $company = $context->company();
+        $branch = $context->branch();
+        $year = $context->financialYear();
+
+        if ($placing && (! $company || ! $branch || ! $year)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'openings' => 'Select a branch and financial year before placing opening stock in a godown.',
+            ]);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($product, $rows, $placing, $company, $branch, $year): void {
+            $existing = $product->godownOpenings()->get();
+
+            if ($existing->isNotEmpty()) {
+                \Tally\Models\StockMovement::query()
+                    ->where('reference_type', (new \Tally\Models\StockGodownOpening)->getMorphClass())
+                    ->whereIn('reference_id', $existing->modelKeys())
+                    ->delete();
+            }
+
+            $product->godownOpenings()->delete();
+
+            foreach ($rows as $row) {
+                if (! is_array($row) || ($row['godown_id'] ?? '') === '' || $row['godown_id'] === null) {
+                    continue;
+                }
+
+                $quantity = (string) ($row['quantity'] ?? '0');
+
+                if ((float) $quantity <= 0) {
+                    continue;
+                }
+
+                $rate = (string) ($row['rate'] ?? '0');
+                $product->godownOpenings()->create([
+                    'company_id' => $product->company_id,
+                    'godown_id' => (int) $row['godown_id'],
+                    'batch_name' => trim((string) ($row['batch_name'] ?? '')),
+                    'quantity' => $quantity,
+                    'rate' => $rate === '' ? '0' : $rate,
+                    'value' => number_format(((float) $quantity) * (float) ($rate === '' ? 0 : $rate), 2, '.', ''),
+                ]);
+            }
+
+            if (! $placing || ! $company || ! $branch || ! $year) {
+                return;
+            }
+
+            $movements = app(\Tally\Inventory\StockMovementService::class);
+            $date = $year->start_date->toDateString();
+
+            foreach ($product->godownOpenings()->with('godown')->get() as $opening) {
+                if (! $opening->godown) {
+                    continue;
+                }
+
+                $scaled = \Tally\Inventory\Quantity::scale((string) $opening->quantity, 4);
+
+                if ($scaled <= 0) {
+                    continue;
+                }
+
+                $movements->move(
+                    $company,
+                    $branch,
+                    $year,
+                    $product,
+                    $opening->godown,
+                    $date,
+                    $scaled,
+                    (string) $opening->rate,
+                    \Tally\Inventory\StockMovementType::Adjustment,
+                    $opening,
+                );
+            }
+        });
     }
 
     private function company(WorkspaceContext $context): Company|RedirectResponse

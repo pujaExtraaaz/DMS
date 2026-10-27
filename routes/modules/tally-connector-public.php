@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('api/tally-connector')->middleware(VerifyTallyConnectorToken::class)->group(function () {
     Route::get('health', [TallyConnectorController::class, 'health']);
     Route::get('pending', [TallyConnectorController::class, 'pending']);
+    Route::get('exports', [TallyConnectorController::class, 'exports']);
+    Route::post('imports', [TallyConnectorController::class, 'imports']);
     Route::post('{tally_sync_queue}/result', [TallyConnectorController::class, 'result'])->whereNumber('tally_sync_queue');
     Route::get('preview/{type}/{id?}', [TallyConnectorController::class, 'preview'])->whereNumber('id');
 

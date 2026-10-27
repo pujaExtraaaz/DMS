@@ -15,6 +15,7 @@
     </style>
 </head>
 <body>
+    @php($symbol = $voucher->company->currency_symbol ?: '₹')
     <p class="muted">{{ $voucher->company->legal_name ?: $voucher->company->name }} · {{ $voucher->branch->name }} · {{ $voucher->financialYear->name }}</p>
     @if ($voucher->company->gstin)
         <p>GSTIN {{ $voucher->company->gstin }}</p>
@@ -36,14 +37,16 @@
             @foreach ($voucher->entries as $entry)
                 <tr>
                     <td>{{ $entry->ledger->name }}</td>
-                    <td class="money">{{ \Tally\Support\IndianCurrency::format($entry->debit) }}</td>
-                    <td class="money">{{ \Tally\Support\IndianCurrency::format($entry->credit) }}</td>
+                    <td class="money">{{ \Tally\Support\IndianCurrency::format($entry->debit, $symbol) }}</td>
+                    <td class="money">{{ \Tally\Support\IndianCurrency::format($entry->credit, $symbol) }}</td>
                     <td>{{ $entry->narration ?: '—' }}</td>
                 </tr>
             @endforeach
         </tbody>
     </table>
-    <p>Amount in words: {{ \Tally\Support\IndianCurrency::words($voucher->total_debit) }}</p>
+    @if (app(\Tally\Preferences\PreferenceStore::class)->enabled($voucher->company, 'print.amount_in_words'))
+        <p>Amount in words: {{ \Tally\Support\IndianCurrency::words($voucher->total_debit, \Tally\Support\IndianCurrency::majorUnit($voucher->company?->currency_formal_name)) }}</p>
+    @endif
     <script type="text/php">
         if (isset($pdf)) {
             $pdf->page_text(480, 810, "Page {PAGE_NUM} of {PAGE_COUNT}", null, 9, [0.35, 0.4, 0.47]);

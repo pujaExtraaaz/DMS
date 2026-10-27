@@ -26,6 +26,13 @@ class VoucherEntry extends AccountingModel
         'base_credit',
         'narration',
         'reference',
+        'bank_transaction_type',
+        'instrument_number',
+        'instrument_date',
+        'payment_favouring',
+        'bank_name',
+        'bank_account_number',
+        'bank_ifsc',
     ];
 
     /**
@@ -35,6 +42,7 @@ class VoucherEntry extends AccountingModel
     {
         return [
             'line_number' => 'integer',
+            'instrument_date' => 'date',
             'debit' => 'decimal:2',
             'credit' => 'decimal:2',
             'base_debit' => 'decimal:2',

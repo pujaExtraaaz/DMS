@@ -17,6 +17,7 @@ class PreferenceStore
         'display.date_format' => 'd M Y',
         'display.currency_symbol' => '₹',
         'sales.enforce_credit_limit' => false,
+        'sales.credit_limit_action' => 'block',
         'inventory.repeat_scan_increments' => true,
         'print.amount_in_words' => true,
         'payroll.enabled' => false,

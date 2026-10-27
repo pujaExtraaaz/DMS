@@ -31,53 +31,53 @@ class DomainModelsUppercaseTest extends TestCase
     public function test_domain_models_uppercase_assigned_names(): void
     {
         $brand = new Brand(['name' => 'apple']);
-        $this->assertSame('APPLE', $brand->name);
+        $this->assertSame('Apple', $brand->name);
 
         $category = new Category(['name' => 'jeans']);
-        $this->assertSame('JEANS', $category->name);
+        $this->assertSame('Jeans', $category->name);
 
         $subCategory = new SubCategory(['name' => 'slim fit']);
-        $this->assertSame('SLIM FIT', $subCategory->name);
+        $this->assertSame('Slim Fit', $subCategory->name);
 
         $product = new Product(['name' => 'Sony professional Display']);
-        $this->assertSame('SONY PROFESSIONAL DISPLAY', $product->name);
+        $this->assertSame('Sony Professional Display', $product->name);
 
         $customer = new Customer(['name' => 'avit digital', 'shipping_name' => 'avit warehouse']);
-        $this->assertSame('AVIT DIGITAL', $customer->name);
-        $this->assertSame('AVIT WAREHOUSE', $customer->shipping_name);
+        $this->assertSame('Avit Digital', $customer->name);
+        $this->assertSame('Avit Warehouse', $customer->shipping_name);
 
         $company = new Company(['name' => 'Sam manufacturing', 'legal_name' => 'sam pvt ltd']);
-        $this->assertSame('SAM MANUFACTURING', $company->name);
-        $this->assertSame('SAM PVT LTD', $company->legal_name);
+        $this->assertSame('Sam Manufacturing', $company->name);
+        $this->assertSame('Sam Pvt Ltd', $company->legal_name);
 
         $warehouse = new Warehouse(['name' => 'midc pune warehouse']);
-        $this->assertSame('MIDC PUNE WAREHOUSE', $warehouse->name);
+        $this->assertSame('MIDC Pune Warehouse', $warehouse->name);
 
         $branch = new Branch(['name' => 'pune branch']);
-        $this->assertSame('PUNE BRANCH', $branch->name);
+        $this->assertSame('Pune Branch', $branch->name);
 
         $businessGroup = new BusinessGroup(['name' => 'trojan distributors']);
-        $this->assertSame('TROJAN DISTRIBUTORS', $businessGroup->name);
+        $this->assertSame('Trojan Distributors', $businessGroup->name);
 
         $freightBill = new FreightBill(['transporter_name' => 'vrl logistics']);
-        $this->assertSame('VRL LOGISTICS', $freightBill->transporter_name);
+        $this->assertSame('Vrl Logistics', $freightBill->transporter_name);
 
         $expenseType = new ExpenseType(['name' => 'installation']);
-        $this->assertSame('INSTALLATION', $expenseType->name);
+        $this->assertSame('Installation', $expenseType->name);
 
         $scheme = new Scheme(['name' => 'festive discount', 'created_by_name' => 'john doe']);
-        $this->assertSame('FESTIVE DISCOUNT', $scheme->name);
-        $this->assertSame('JOHN DOE', $scheme->created_by_name);
+        $this->assertSame('Festive Discount', $scheme->name);
+        $this->assertSame('John Doe', $scheme->created_by_name);
 
         $employee = new Employee(['name' => 'john smith']);
-        $this->assertSame('JOHN SMITH', $employee->name);
+        $this->assertSame('John Smith', $employee->name);
 
         $user = new User(['name' => 'admin user']);
-        $this->assertSame('ADMIN USER', $user->name);
+        $this->assertSame('Admin User', $user->name);
 
         $tallyParty = new TallyParty(['legal_name' => 'Bulk Foods Depot', 'contact_person' => 'ravi kumar']);
-        $this->assertSame('BULK FOODS DEPOT', $tallyParty->legal_name);
-        $this->assertSame('RAVI KUMAR', $tallyParty->contact_person);
+        $this->assertSame('Bulk Foods Depot', $tallyParty->legal_name);
+        $this->assertSame('Ravi Kumar', $tallyParty->contact_person);
     }
 
     public function test_existing_database_records_display_in_uppercase(): void
@@ -90,8 +90,7 @@ class DomainModelsUppercaseTest extends TestCase
             'selling_price' => 1200.00,
         ]);
 
-        $this->assertSame('PREMIUM BASMATI RICE 25KG', $product->name);
+        $this->assertSame('Premium Basmati Rice 25kg', $product->name);
         $this->assertSame('SKU-RICE-01', $product->sku);
     }
 }
-

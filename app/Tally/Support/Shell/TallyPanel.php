@@ -46,7 +46,7 @@ class TallyPanel
                 self::button('Alt+F6', 'Reversing Journal', 'vouchers.journal.create', null, $requestReversing, ['reversing' => 1]),
                 self::button('Alt+F11', 'Voucher Class', 'vouchers.classes.index', null, $route === 'vouchers.classes.index'),
                 self::button('F11', 'Features', 'companies.features', null, false),
-                self::button('F12', 'Configure', 'preferences.edit', null, false),
+                self::button('F12', 'Configure', 'companies.features', null, $route === 'companies.features', ['section' => 'accounting']),
             ];
         }
 
@@ -56,7 +56,7 @@ class TallyPanel
                 self::button('Alt+F2', 'Period', null, 'period', false),
                 self::button('F3', 'Company', null, 'company', false),
                 self::button('F10', 'More Reports', 'reports.menu', null, $route === 'reports.menu'),
-                self::button('F12', 'Configure', 'preferences.edit', null, false),
+                self::button('F12', 'Configure', 'companies.features', null, $route === 'companies.features', ['section' => 'accounting']),
             ];
         }
 
@@ -65,7 +65,7 @@ class TallyPanel
                 self::button('F2', 'Date', null, 'date', false),
                 self::button('Alt+F2', 'Period', null, 'period', false),
                 self::button('F3', 'Company', null, 'company', false),
-                self::button('F12', 'Configure', 'preferences.edit', null, false),
+                self::button('F12', 'Configure', 'companies.features', null, $route === 'companies.features', ['section' => 'accounting']),
             ];
         }
 
@@ -75,7 +75,7 @@ class TallyPanel
                 self::button('Alt+F2', 'Period', null, 'period', false),
                 self::button('F3', 'Company', null, 'company', false),
                 self::button('F10', 'Other Masters', 'masters.menu', null, false),
-                self::button('F12', 'Configure', 'preferences.edit', null, false),
+                self::button('F12', 'Configure', 'companies.features', null, $route === 'companies.features', ['section' => 'accounting']),
             ];
         }
 
@@ -83,7 +83,7 @@ class TallyPanel
             self::button('F2', 'Date', null, 'date', false),
             self::button('Alt+F2', 'Period', null, 'period', false),
             self::button('F3', 'Company', null, 'company', false),
-            self::button('F12', 'Configure', 'preferences.edit', null, false),
+            self::button('F12', 'Configure', 'companies.features', null, $route === 'companies.features', ['section' => 'accounting']),
         ];
     }
 

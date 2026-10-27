@@ -8,6 +8,9 @@ enum StockTransactionType: string
     case Out = 'out';
     case Transfer = 'transfer';
     case Adjustment = 'adjustment';
+    case RejectionIn = 'rejection_in';
+    case RejectionOut = 'rejection_out';
+    case Physical = 'physical';
 
     public function label(): string
     {
@@ -16,6 +19,9 @@ enum StockTransactionType: string
             self::Out => 'Delivery Note',
             self::Transfer => 'Stock transfer',
             self::Adjustment => 'Stock Journal',
+            self::RejectionIn => 'Rejections In',
+            self::RejectionOut => 'Rejections Out',
+            self::Physical => 'Physical Stock',
         };
     }
 
@@ -26,6 +32,9 @@ enum StockTransactionType: string
             self::Out => 'STO',
             self::Transfer => 'STF',
             self::Adjustment => 'STA',
+            self::RejectionIn => 'RJI',
+            self::RejectionOut => 'RJO',
+            self::Physical => 'PHY',
         };
     }
 

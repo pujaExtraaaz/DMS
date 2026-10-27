@@ -17,11 +17,21 @@ class InvoiceNumberer
 
     public function peek(Company $company, Branch $branch, FinancialYear $financialYear, InvoiceKind $kind): string
     {
-        return $this->numbers->peek($company, $branch, $financialYear, $kind->voucherType());
+        return $this->numbers->peek($company, $branch, $financialYear, $kind->voucherType(), null);
     }
 
-    public function allocate(Company $company, Branch $branch, FinancialYear $financialYear, InvoiceKind $kind): string
+    public function allocate(Company $company, Branch $branch, FinancialYear $financialYear, InvoiceKind $kind, ?\DateTimeInterface $on = null): string
     {
-        return $this->numbers->allocate($company, $branch, $financialYear, $kind->voucherType());
+        return $this->numbers->allocate($company, $branch, $financialYear, $kind->voucherType(), $on);
+    }
+
+    public function resolve(Company $company, Branch $branch, FinancialYear $financialYear, InvoiceKind $kind, ?string $typed, ?\DateTimeInterface $on = null): string
+    {
+        return $this->numbers->resolve($company, $branch, $financialYear, $kind->voucherType(), $typed, $on, 'invoice_number');
+    }
+
+    public function method(Company $company, InvoiceKind $kind): string
+    {
+        return $this->numbers->method($company, $kind->voucherType());
     }
 }

@@ -12,7 +12,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search Product, SKU Or Serial..."
+            search-placeholder="Search Product, Part Number Or Serial..."
             :reset-url="route('reports.stock')"
         >
             <x-slot name="filters">

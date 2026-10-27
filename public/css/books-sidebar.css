@@ -20,6 +20,18 @@
   z-index: 40;
 }
 
+@media (min-width: 1024px) {
+  aside.dms-sidebar.books-rail-collapsed {
+    width: 72px;
+    min-width: 72px;
+  }
+
+  aside.dms-sidebar.books-rail-open {
+    width: 16rem;
+    min-width: 16rem;
+  }
+}
+
 .books-aside.is-collapsed {
   display: none !important;
   width: 0 !important;

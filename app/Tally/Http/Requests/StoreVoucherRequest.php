@@ -35,6 +35,13 @@ class StoreVoucherRequest extends FormRequest
                 'cost_centre_id' => $entry['cost_centre_id'] ?? null,
                 'business_unit_id' => $entry['business_unit_id'] ?? null,
                 'department_id' => $entry['department_id'] ?? null,
+                'bank_transaction_type' => $entry['bank_transaction_type'] ?? null,
+                'instrument_number' => $entry['instrument_number'] ?? null,
+                'instrument_date' => ($entry['instrument_date'] ?? '') !== '' ? $entry['instrument_date'] : null,
+                'payment_favouring' => $entry['payment_favouring'] ?? null,
+                'bank_name' => $entry['bank_name'] ?? null,
+                'bank_account_number' => $entry['bank_account_number'] ?? null,
+                'bank_ifsc' => strtoupper(trim((string) ($entry['bank_ifsc'] ?? ''))) ?: null,
             ];
         }
 
@@ -54,6 +61,10 @@ class StoreVoucherRequest extends FormRequest
         $this->merge([
             'narration' => trim((string) $this->input('narration')),
             'reference_number' => trim((string) $this->input('reference_number')),
+            'reference_date' => $this->input('reference_date') ?: null,
+            'effective_date' => $this->input('effective_date') ?: null,
+            'place_of_supply' => trim((string) $this->input('place_of_supply')) ?: null,
+            'is_invoice' => $this->boolean('is_invoice'),
             'name_on_receipt' => trim((string) $this->input('name_on_receipt')),
             'is_post_dated' => $this->boolean('is_post_dated'),
             'is_optional' => $this->boolean('is_optional'),
@@ -62,6 +73,7 @@ class StoreVoucherRequest extends FormRequest
             'nature_of_payment' => trim((string) $this->input('nature_of_payment')),
             'reverses_on' => $this->input('reverses_on') ?: null,
             'entries' => $entries,
+            'advance_name' => trim((string) $this->input('advance_name', 'Advance')),
             'allocations' => $allocations,
             'action' => $this->input('action') === 'post' ? 'post' : 'draft',
         ]);
@@ -74,7 +86,12 @@ class StoreVoucherRequest extends FormRequest
     {
         return [
             'voucher_date' => ['required', 'date'],
+            'voucher_number' => ['nullable', 'string', 'max:30'],
             'reference_number' => ['nullable', 'string', 'max:50'],
+            'reference_date' => ['nullable', 'date'],
+            'effective_date' => ['nullable', 'date'],
+            'place_of_supply' => ['nullable', 'string', 'max:80'],
+            'is_invoice' => ['nullable', 'boolean'],
             'narration' => ['nullable', 'string', 'max:1000'],
             'name_on_receipt' => ['nullable', 'string', 'max:160'],
             'is_post_dated' => ['nullable', 'boolean'],
@@ -93,6 +110,14 @@ class StoreVoucherRequest extends FormRequest
             'entries.*.cost_centre_id' => ['nullable', 'integer'],
             'entries.*.business_unit_id' => ['nullable', 'integer'],
             'entries.*.department_id' => ['nullable', 'integer'],
+            'entries.*.bank_transaction_type' => ['nullable', 'string', 'max:30'],
+            'entries.*.instrument_number' => ['nullable', 'string', 'max:30'],
+            'entries.*.instrument_date' => ['nullable', 'date'],
+            'entries.*.payment_favouring' => ['nullable', 'string', 'max:160'],
+            'entries.*.bank_name' => ['nullable', 'string', 'max:120'],
+            'entries.*.bank_account_number' => ['nullable', 'string', 'max:30'],
+            'entries.*.bank_ifsc' => ['nullable', 'string', 'max:11'],
+            'advance_name' => ['nullable', 'string', 'max:40'],
             'allocations' => ['nullable', 'array'],
             'allocations.*.bill_id' => ['nullable', 'integer'],
             'allocations.*.amount' => ['nullable', 'numeric', 'min:0'],

@@ -11,6 +11,7 @@ use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Purchasing\Services\PurchaseOrderService;
 use App\Domains\Organization\Services\FinancialYearService;
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -43,7 +44,9 @@ class PurchaseOrderController extends Controller
             $query,
             $request->input('search'),
             ['po_no', 'notes'],
-            ['supplier' => ['name', 'code']]
+            [
+                'supplier' => ['name', 'code'],
+            ]
         );
 
         $allowedSorts = [
@@ -110,6 +113,8 @@ class PurchaseOrderController extends Controller
             'notes' => 'nullable|string',
             'submit_for_approval' => 'nullable|boolean',
             'is_freight_applicable' => 'nullable|boolean',
+            'freight_mode' => 'nullable|in:amount,percent',
+            'freight_percent' => 'nullable|numeric|min:0|max:100',
             'freight_amount' => 'nullable|numeric|min:0',
             'freight_tax_rate' => 'nullable|numeric|min:0|max:100',
             'freight_tax_amount' => 'nullable|numeric|min:0',
@@ -127,6 +132,7 @@ class PurchaseOrderController extends Controller
             'items.*.weight' => 'nullable|numeric|min:0',
             'items.*.batch_no' => 'nullable|string|max:60',
             'items.*.batch_name' => 'nullable|string|max:60',
+            'items.*.serial_no' => 'nullable|string|max:100',
         ]);
 
         $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
@@ -237,6 +243,8 @@ class PurchaseOrderController extends Controller
             'notes' => 'nullable|string',
             'submit_for_approval' => 'nullable|boolean',
             'is_freight_applicable' => 'nullable|boolean',
+            'freight_mode' => 'nullable|in:amount,percent',
+            'freight_percent' => 'nullable|numeric|min:0|max:100',
             'freight_amount' => 'nullable|numeric|min:0',
             'freight_tax_rate' => 'nullable|numeric|min:0|max:100',
             'freight_tax_amount' => 'nullable|numeric|min:0',
@@ -254,6 +262,7 @@ class PurchaseOrderController extends Controller
             'items.*.weight' => 'nullable|numeric|min:0',
             'items.*.batch_no' => 'nullable|string|max:60',
             'items.*.batch_name' => 'nullable|string|max:60',
+            'items.*.serial_no' => 'nullable|string|max:100',
         ]);
 
         $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
@@ -366,6 +375,22 @@ class PurchaseOrderController extends Controller
 
             return $this->flashError($e->getMessage() ?: 'Failed to delete purchase order.', 'purchasing.orders.index');
         }
+    }
+
+    public function updateNotes(Request $request, PurchaseOrder $order): JsonResponse
+    {
+        $data = $request->validate([
+            'notes' => 'nullable|string|max:5000',
+        ]);
+
+        $order->update([
+            'notes' => filled($data['notes'] ?? null) ? trim((string) $data['notes']) : null,
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'notes' => $order->notes,
+        ]);
     }
 
     public function preview(PurchaseOrder $order): View

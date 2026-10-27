@@ -42,6 +42,22 @@
             @endif
             @include('tally::vouchers._dimensions', ['index' => $index, 'entry' => $entry, 'businessUnits' => $businessUnits ?? [], 'departments' => $departments ?? []])
         @endif
+        @if (! empty($bank))
+            <details class="ref-line">
+                <summary>Cheque / bank</summary>
+                <select class="input" name="entries[{{ $index }}][bank_transaction_type]">
+                    @foreach (['' => 'None', 'Cheque' => 'Cheque', 'e-Fund Transfer' => 'e-Fund Transfer', 'Cash' => 'Cash', 'Others' => 'Others'] as $value => $label)
+                        <option value="{{ $value }}" @selected(($entry['bank_transaction_type'] ?? '') === $value)>{{ $label }}</option>
+                    @endforeach
+                </select>
+                <input class="input" name="entries[{{ $index }}][instrument_number]" maxlength="30" placeholder="Number" value="{{ $entry['instrument_number'] ?? '' }}">
+                <input class="input" type="date" name="entries[{{ $index }}][instrument_date]" value="{{ $entry['instrument_date'] ?? '' }}">
+                <input class="input" name="entries[{{ $index }}][payment_favouring]" maxlength="160" placeholder="Favouring" value="{{ $entry['payment_favouring'] ?? '' }}">
+                <input class="input" name="entries[{{ $index }}][bank_name]" maxlength="120" placeholder="Bank" value="{{ $entry['bank_name'] ?? '' }}">
+                <input class="input" name="entries[{{ $index }}][bank_account_number]" maxlength="30" placeholder="Account no." value="{{ $entry['bank_account_number'] ?? '' }}">
+                <input class="input" name="entries[{{ $index }}][bank_ifsc]" maxlength="11" placeholder="IFSC" value="{{ $entry['bank_ifsc'] ?? '' }}">
+            </details>
+        @endif
     </td>
     @if (($mode ?? '') === 'journal')
         <td><input class="input money" data-amount="debit" name="entries[{{ $index }}][debit]" inputmode="decimal" value="{{ $entry['debit'] ?? '' }}"></td>

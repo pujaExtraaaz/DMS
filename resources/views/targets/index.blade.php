@@ -124,7 +124,7 @@
                         @focus="open = true"
                         @input="open = true"
                         placeholder="Search & Select Target By Name, Brand, Product, Or Supplier..."
-                        class="block w-full rounded-xl border-slate-300 pl-9 pr-20 text-sm placeholder:text-slate-400 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm transition"
+                        class="block w-full rounded-xl border-slate-300 pl-10 pr-20 text-sm placeholder:text-slate-400 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm transition"
                     />
                     <div class="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
                         <button

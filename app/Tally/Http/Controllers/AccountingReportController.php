@@ -15,6 +15,7 @@ use Tally\Reporting\LedgerBalances;
 use Tally\Reporting\OutstandingReport;
 use Tally\Tax\GstReport;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class AccountingReportController extends Controller
@@ -366,7 +367,7 @@ class AccountingReportController extends Controller
         }
 
         $bills = Bill::query()
-            ->with('entry')
+            ->with(['entry', 'ledger'])
             ->where('company_id', $company->id)
             ->whereIn('id', $billIds === [] ? [0] : $billIds)
             ->get()
@@ -376,9 +377,15 @@ class AccountingReportController extends Controller
             foreach ($report['rows'] as $row) {
                 $bill = $bills->get($row['bill_id']);
                 $due = $bill?->due_date?->toDateString() ?? $to;
-                $calculated = $interest->onOutstanding($row['outstanding'], $rate === '' ? '0' : $rate, $due, $to);
+                $ledger = $bill?->ledger;
+                $usesLedgerRate = $ledger && $ledger->calculatesInterest() && $ledger->interest_rate !== null;
+                $annual = $usesLedgerRate ? (string) $ledger->interest_rate : ($rate === '' ? '0' : $rate);
+                $style = $usesLedgerRate ? (string) ($ledger->interest_style ?: '365_day_year') : '365_day_year';
+                $calculated = $interest->onOutstanding($row['outstanding'], $annual, $due, $to, 365, $style);
                 $rows[] = $row + [
                     'kind' => $kind,
+                    'ledger_id' => $bill?->ledger_id,
+                    'entry_voucher_id' => $bill?->entry?->voucher_id,
                     'days' => $calculated['days'],
                     'interest' => $calculated['interest'],
                     'voucher_url' => $bill?->entry?->voucher_id ? tally_route('vouchers.show', $bill->entry->voucher_id) : null,
@@ -392,6 +399,81 @@ class AccountingReportController extends Controller
             'filters' => ['from' => $from, 'to' => $to, 'branch_id' => $branchId, 'rate' => $rate],
             'branches' => $company->branches()->where('is_active', true)->orderBy('name')->get(),
             'rows' => $rows,
+        ]);
+    }
+
+    public function postInterest(Request $request, WorkspaceContext $context, OutstandingReport $outstanding, InterestCalculator $interest, \Tally\Accounting\InterestVoucher $poster): RedirectResponse
+    {
+        $scope = $this->scope($context, 'Interest');
+
+        if ($scope instanceof View) {
+            return redirect()->route('books.tally.reports.interest');
+        }
+
+        [$company, $year, $from, $to, $branchId] = $scope;
+        $branch = $branchId
+            ? \Tally\Models\Branch::query()->where('company_id', $company->id)->whereKey($branchId)->first()
+            : $context->branch();
+
+        if (! $branch || ! $request->user()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'interest' => 'Select a branch before posting interest.',
+            ]);
+        }
+
+        $built = $this->interest($request, $context, $outstanding, $interest);
+        $rows = $built->getData()['rows'] ?? [];
+        $voucher = $poster->post($company, $branch, $year, $request->user(), $to, $rows);
+
+        return redirect()
+            ->route('books.tally.vouchers.show', $voucher)
+            ->with('status', 'Interest voucher posted.');
+    }
+
+    public function gstr9(WorkspaceContext $context, GstReport $report): View
+    {
+        $scope = $this->scope($context, 'GSTR-9');
+
+        if ($scope instanceof View) {
+            return $scope;
+        }
+
+        [$company, $year] = $scope;
+        $from = $year->start_date->toDateString();
+        $to = $year->end_date->toDateString();
+
+        return view('tally::reports.gstr9', [
+            'company' => $company,
+            'year' => $year,
+            'from' => $from,
+            'to' => $to,
+            'report' => $report->build($company, $from, $to, null),
+        ]);
+    }
+
+    public function ims(WorkspaceContext $context): View
+    {
+        $company = $context->company();
+
+        if (! $company) {
+            return view('tally::workspace.needs-company', [
+                'title' => 'IMS',
+                'message' => 'Select a company before opening this list.',
+            ]);
+        }
+
+        $invoices = \Tally\Models\Invoice::query()
+            ->with('party')
+            ->where('company_id', $company->id)
+            ->where('kind', \Tally\Invoicing\InvoiceKind::Purchase)
+            ->where('status', \Tally\Accounting\VoucherStatus::Posted)
+            ->orderByDesc('invoice_date')
+            ->orderByDesc('id')
+            ->paginate(50);
+
+        return view('tally::reports.ims', [
+            'company' => $company,
+            'invoices' => $invoices,
         ]);
     }
 

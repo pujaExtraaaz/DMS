@@ -15,7 +15,7 @@
             </x-form.field>
             <button class="btn btn-primary" type="submit">Apply</button>
         </form>
-        <p class="form-note">Posted vouchers only. Each row is one voucher. Debit and credit on a posted voucher are equal.</p>
+        <p class="form-note">Vouchers and unposted invoices for this company. A saved invoice appears here immediately, marked Unposted, even before its ledger voucher is posted.</p>
         <div class="table-wrap">
             <table class="data">
                 <thead>
@@ -39,7 +39,7 @@
                             <td class="money">{{ $row['credit'] }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="6">No posted vouchers in this period.</td></tr>
+                        <tr><td colspan="6">No vouchers or unposted invoices in this period.</td></tr>
                     @endforelse
                 </tbody>
                 <tfoot>

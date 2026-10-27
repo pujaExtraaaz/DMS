@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search Name, Code, Phone, GSTIN..."
+            search-placeholder="Search Name, Phone, GSTIN..."
             :reset-url="route('masters.customers.index')"
         >
             <x-slot name="filters">
@@ -66,9 +66,6 @@
                     <x-ui.sortable-th column="name" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                         Party Name
                     </x-ui.sortable-th>
-                    <x-ui.sortable-th column="code" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
-                        Code
-                    </x-ui.sortable-th>
                     <x-ui.sortable-th column="party_type" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                         Party Type
                     </x-ui.sortable-th>
@@ -88,8 +85,13 @@
                         <a href="{{ route('masters.customers.edit', $item) }}" class="text-indigo-600 hover:text-indigo-800 hover:underline">
                             {{ $item->name }}
                         </a>
+                        @if($item->businessGroup)
+                            <div class="text-[11px] text-purple-700 font-normal flex items-center gap-1 mt-0.5" title="Business Group">
+                                <span class="font-emoji">{{ $item->businessGroup->logo_emoji ?: '🏢' }}</span>
+                                <span class="truncate max-w-[200px]">{{ $item->businessGroup->name }}</span>
+                            </div>
+                        @endif
                     </td>
-                    <td class="px-6 py-4 text-sm font-mono text-slate-600">{{ $item->code }}</td>
                     <td class="px-6 py-4 text-sm">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
                             {{ $item->party_type_key === 'sundry_creditors' ? 'bg-amber-100 text-amber-800' : ($item->party_type_key === 'both' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800') }}">
@@ -99,14 +101,32 @@
                     <td class="px-6 py-4 text-sm text-slate-600">{{ $item->phone ?: '—' }}</td>
                     <td class="px-6 py-4 text-sm font-mono text-slate-600">{{ $item->gstin ?: '—' }}</td>
                     <td class="px-6 py-4 text-sm text-slate-600">{{ $item->area?->name ?? '—' }}</td>
-                    <td class="px-6 py-4 text-right">
-                        <div class="flex items-center justify-end gap-2">
-                            <x-ui.button variant="ghost" size="sm" :href="route('masters.customers.edit', $item)">Edit</x-ui.button>
+                    <td class="px-6 py-4 text-right whitespace-nowrap">
+                        <div class="flex items-center justify-end gap-1.5">
+                            <a href="{{ route('masters.customers.show', $item) }}"
+                               data-view-party="{{ $item->id }}"
+                               class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:text-indigo-600 hover:bg-slate-100 transition border border-transparent hover:border-slate-200"
+                               title="View Party Details">
+                                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                                <span>View</span>
+                            </a>
+                            <a href="{{ route('masters.customers.edit', $item) }}"
+                               data-edit-party="{{ $item->id }}"
+                               class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:text-indigo-600 hover:bg-slate-100 transition border border-transparent hover:border-slate-200"
+                               title="Edit Party">
+                                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                                <span>Edit</span>
+                            </a>
                             <button type="button"
-                                    @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}', '{{ addslashes($item->code) }}')"
+                                    @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}')"
                                     data-delete-customer="{{ $item->id }}"
                                     data-delete-party="{{ $item->id }}"
-                                    class="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 transition border border-transparent hover:border-red-200"
+                                    class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 transition border border-transparent hover:border-red-200"
                                     title="Delete Party">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -122,7 +142,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="p-0">
+                    <td colspan="6" class="p-0">
                         <x-ui.empty-state
                             title="No matching parties found"
                             description="Try clearing search or filters to see more results."
@@ -189,10 +209,6 @@
                                         <span class="font-medium">Party Name:</span>
                                         <span class="font-semibold text-slate-900" x-text="deletingPartyName"></span>
                                     </div>
-                                    <div class="flex justify-between items-center text-slate-600">
-                                        <span class="font-medium">Party Code:</span>
-                                        <span class="font-mono text-slate-700" x-text="deletingPartyCode"></span>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -244,17 +260,15 @@ function partyIndex() {
         isDeleting: false,
         deletingPartyId: null,
         deletingPartyName: '',
-        deletingPartyCode: '',
         notification: {
             show: false,
             type: 'success',
             message: '',
         },
 
-        promptDelete(id, name, code) {
+        promptDelete(id, name) {
             this.deletingPartyId = id;
             this.deletingPartyName = name;
-            this.deletingPartyCode = code;
             this.showDeleteModal = true;
         },
 
@@ -263,7 +277,6 @@ function partyIndex() {
             this.showDeleteModal = false;
             this.deletingPartyId = null;
             this.deletingPartyName = '';
-            this.deletingPartyCode = '';
         },
 
         async executeDelete() {

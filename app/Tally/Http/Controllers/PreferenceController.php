@@ -6,24 +6,12 @@ use Tally\Context\WorkspaceContext;
 use Tally\Preferences\PreferenceStore;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
 
 class PreferenceController extends Controller
 {
-    public function edit(WorkspaceContext $context, PreferenceStore $preferences): View
+    public function edit(): RedirectResponse
     {
-        $company = $context->company();
-        $user = request()->user();
-        $values = [];
-
-        foreach (array_keys(PreferenceStore::DEFAULTS) as $key) {
-            $values[$key] = $preferences->get($company, str_starts_with($key, 'display.') || $key === 'dashboard.as_on' ? $user : null, $key);
-        }
-
-        return view('tally::preferences.edit', [
-            'company' => $company,
-            'values' => $values,
-        ]);
+        return redirect()->to(tally_route('books.tally.companies.features', ['section' => 'accounting']));
     }
 
     public function update(Request $request, WorkspaceContext $context, PreferenceStore $preferences): RedirectResponse

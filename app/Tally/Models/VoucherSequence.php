@@ -18,7 +18,9 @@ class VoucherSequence extends AccountingModel
         'branch_id',
         'financial_year_id',
         'voucher_type',
+        'period_key',
         'prefix',
+        'suffix',
         'next_number',
         'padding',
     ];
@@ -52,6 +54,11 @@ class VoucherSequence extends AccountingModel
 
     public function format(int $number): string
     {
-        return sprintf('%s-%0'.$this->padding.'d', $this->prefix, $number);
+        return \Tally\Accounting\VoucherNumberFormat::make(
+            (string) $this->prefix,
+            $this->suffix,
+            (int) $this->padding,
+            $number,
+        );
     }
 }

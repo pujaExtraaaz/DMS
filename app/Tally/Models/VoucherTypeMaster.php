@@ -9,7 +9,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class VoucherTypeMaster extends AccountingModel
 {
-    protected $fillable = ['company_id', 'name', 'abbreviation', 'category', 'prefix', 'next_number', 'padding'];
+    protected $fillable = [
+        'company_id',
+        'name',
+        'abbreviation',
+        'category',
+        'numbering_method',
+        'prefix',
+        'suffix',
+        'next_number',
+        'padding',
+        'restart',
+    ];
 
     public function company(): BelongsTo
     {

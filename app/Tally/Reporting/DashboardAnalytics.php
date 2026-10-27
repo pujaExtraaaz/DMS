@@ -72,22 +72,28 @@ class DashboardAnalytics
 
         $receivables = $this->outstanding->receivables($company, $asOn, $branchId);
         $payables = $this->outstanding->payables($company, $asOn, $branchId);
+        $unposted = $this->unpostedTotals($company, $branchId, $year, $asOn);
         $gst = $this->gst->build($company, $from, $asOn, $branchId);
         $stock = $this->stockPosition($company, $branchId, $year);
         $purchaseTrend = $this->trend($company, $branchId, $year, InvoiceKind::Purchase, $asOn);
+        $incomeDelta = $unposted['sales'] - $unposted['credit_notes'];
+        $purchaseDelta = $unposted['purchases'] - $unposted['debit_notes'];
+        $grossCents = (($pnl['gross_side'] ?? 'profit') === 'loss' ? -1 : 1) * Money::cents($pnl['gross_profit']) + $incomeDelta - $purchaseDelta;
+        $netCents = (int) $pnl['net_cents'] + $incomeDelta - $purchaseDelta;
 
         return [
             'as_on' => $asOn,
-            'revenue' => $this->sumLines($pnl['direct_income']),
-            'purchases' => $this->sumTotals($purchaseTrend),
+            'revenue' => Money::format(Money::cents($this->sumLines($pnl['direct_income'])) + $incomeDelta),
+            'purchases' => Money::format(Money::cents($this->sumTotals($purchaseTrend)) + $unposted['purchases']),
             'expenses' => Money::format($expenses),
             'cogs' => $this->sumLines($pnl['cogs']),
-            'gross_profit' => $pnl['gross_profit'],
-            'gross_side' => $pnl['gross_side'],
-            'net_profit' => $pnl['net_profit'],
-            'net_side' => $pnl['net_side'],
-            'receivables' => $receivables['net'],
-            'payables' => $payables['net'],
+            'gross_profit' => Money::format(abs($grossCents)),
+            'gross_side' => $grossCents >= 0 ? 'profit' : 'loss',
+            'net_profit' => Money::format(abs($netCents)),
+            'net_side' => $netCents >= 0 ? 'profit' : 'loss',
+            'receivables' => Money::format(Money::cents($receivables['net']) + $unposted['sales'] - $unposted['credit_notes']),
+            'payables' => Money::format(Money::cents($payables['net']) + $unposted['purchases'] - $unposted['debit_notes']),
+            'unposted_note' => $this->unpostedElsewhere($company, $branchId, $year, $asOn),
             'receivables_overdue' => $receivables['overdue'],
             'payables_overdue' => $payables['overdue'],
             'cash' => Money::format($cash),
@@ -451,6 +457,62 @@ class DashboardAnalytics
             });
 
         return ['quantity' => $quantity, 'value' => $value];
+    }
+
+    /**
+     * @return array{sales: int, purchases: int, credit_notes: int, debit_notes: int}
+     */
+    private function unpostedTotals(Company $company, ?int $branchId, FinancialYear $year, string $asOn): array
+    {
+        $rows = Invoice::query()
+            ->where('company_id', $company->id)
+            ->where('financial_year_id', $year->id)
+            ->where('status', VoucherStatus::Draft)
+            ->whereNull('voucher_id')
+            ->whereDate('invoice_date', '<=', $asOn)
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->selectRaw('kind, SUM(grand_total) as total')
+            ->groupBy('kind')
+            ->pluck('total', 'kind');
+        $cents = fn (string $kind): int => Money::cents((string) ($rows[$kind] ?? '0'));
+
+        return [
+            'sales' => $cents(InvoiceKind::Sales->value),
+            'purchases' => $cents(InvoiceKind::Purchase->value),
+            'credit_notes' => $cents(InvoiceKind::CreditNote->value),
+            'debit_notes' => $cents(InvoiceKind::DebitNote->value),
+        ];
+    }
+
+    private function unpostedElsewhere(Company $company, ?int $branchId, FinancialYear $year, string $asOn): ?string
+    {
+        if (! $branchId) {
+            return null;
+        }
+
+        $rows = Invoice::query()
+            ->with('branch')
+            ->where('company_id', $company->id)
+            ->where('financial_year_id', $year->id)
+            ->where('status', VoucherStatus::Draft)
+            ->whereNull('voucher_id')
+            ->whereDate('invoice_date', '<=', $asOn)
+            ->where('branch_id', '!=', $branchId)
+            ->get()
+            ->groupBy(fn (Invoice $invoice) => $invoice->branch?->name ?: 'Another branch');
+
+        if ($rows->isEmpty()) {
+            return null;
+        }
+
+        $parts = $rows->map(function ($invoices, $name) {
+            $sales = $invoices->where('kind', InvoiceKind::Sales)->sum(fn (Invoice $invoice) => (float) $invoice->grand_total);
+            $purchases = $invoices->where('kind', InvoiceKind::Purchase)->sum(fn (Invoice $invoice) => (float) $invoice->grand_total);
+
+            return $name.' has unposted sales '.number_format($sales, 2).' and purchases '.number_format($purchases, 2);
+        })->implode('; ');
+
+        return 'These tiles follow the selected branch. '.$parts.'. Open Day Book and choose All branches to see them.';
     }
 
     private function money(mixed $value): string

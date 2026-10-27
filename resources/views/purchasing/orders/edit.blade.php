@@ -20,12 +20,10 @@
                     + Add Supplier
                 </button>
             </div>
-            <select name="supplier_id" id="supplier_id" class="block w-full rounded-lg border-gray-300 text-sm" required onchange="handleSupplierChange(this.value)">
-                <option value="">Select supplier</option>
-                @foreach($suppliers as $s)
-                    <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', $order->supplier_id) == $s->id)>{{ $s->name }}</option>
-                @endforeach
-            </select>
+            @include('purchasing.orders.partials.supplier-search', [
+                'suppliers' => $suppliers,
+                'selected' => old('supplier_id', $order->supplier_id),
+            ])
         </div>
         <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Warehouse</label>
@@ -150,6 +148,7 @@
                     'product_id' => $it->product_id,
                     'batch_no' => $it->batch_no,
                     'batch_name' => $it->batch_no,
+                    'serial_no' => $it->serial_no,
                     'uom_id' => $it->uom_id,
                     'quantity' => (float)$it->quantity,
                     'unit_cost' => (float)$it->unit_cost,
@@ -166,6 +165,7 @@
                     'product_id' => null,
                     'batch_no' => '',
                     'batch_name' => '',
+                    'serial_no' => '',
                     'uom_id' => null,
                     'quantity' => 1,
                     'unit_cost' => 0,
@@ -309,43 +309,16 @@
             </div>
         </div>
 
-        <div id="freight_fields_container" style="{{ old('is_freight_applicable', $order->is_freight_applicable ? 1 : 0) ? 'display: block;' : 'display: none;' }}" class="space-y-4 pt-1">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Freight Amount (₹)</label>
-                    <input type="number" step="0.01" min="0" name="freight_amount" id="po_freight_amount"
-                           value="{{ old('freight_amount', number_format((float) ($order->freight_amount ?? 0), 2, '.', '')) }}"
-                           oninput="recalculatePoTotals()"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="0.00">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Freight Tax Rate (%)</label>
-                    <input type="number" step="0.01" min="0" max="100" name="freight_tax_rate" id="po_freight_tax_rate"
-                           value="{{ old('freight_tax_rate', number_format((float) ($order->freight_tax_rate ?? 0), 2, '.', '')) }}"
-                           oninput="recalculatePoTotals()"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="0.00">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Freight Tax Amount (₹)</label>
-                    <input type="number" step="0.01" min="0" name="freight_tax_amount" id="po_freight_tax_amount"
-                           value="{{ old('freight_tax_amount', number_format((float) ($order->freight_tax_amount ?? 0), 2, '.', '')) }}" readonly
-                           class="block w-full rounded-lg border-gray-200 bg-slate-100 text-slate-600 text-sm cursor-not-allowed">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Freight Total (₹)</label>
-                    <input type="number" step="0.01" min="0" name="freight_total" id="po_freight_total"
-                           value="{{ old('freight_total', number_format((float) ($order->freight_total ?? 0), 2, '.', '')) }}" readonly
-                           class="block w-full rounded-lg border-gray-200 bg-slate-100 text-slate-700 font-semibold text-sm cursor-not-allowed">
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-700 mb-1">Freight Notes / Transporter Details (Optional)</label>
-                <input type="text" name="freight_notes" id="po_freight_notes"
-                       value="{{ old('freight_notes', $order->freight_notes) }}"
-                       maxlength="1000"
-                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="E.G. Transporter Name, Terms (Paid/To-Pay), Dispatch Terms...">
-            </div>
-        </div>
+        @include('purchasing.orders.partials.freight-fields', [
+            'freightApplicable' => old('is_freight_applicable', $order->is_freight_applicable ? 1 : 0),
+            'freightMode' => old('freight_mode', $order->freight_mode ?? 'amount'),
+            'freightPercent' => old('freight_percent', number_format((float) ($order->freight_percent ?? 0), 2, '.', '')),
+            'freightAmount' => old('freight_amount', number_format((float) ($order->freight_amount ?? 0), 2, '.', '')),
+            'freightTaxRate' => old('freight_tax_rate', number_format((float) ($order->freight_tax_rate ?? 0), 2, '.', '')),
+            'freightTaxAmount' => old('freight_tax_amount', number_format((float) ($order->freight_tax_amount ?? 0), 2, '.', '')),
+            'freightTotal' => old('freight_total', number_format((float) ($order->freight_total ?? 0), 2, '.', '')),
+            'freightNotes' => old('freight_notes', $order->freight_notes),
+        ])
     </div>
 
     <!-- Notes & Order Summary Section -->
@@ -409,7 +382,7 @@
                 <input type="text"
                        id="po-dropdown-search-box"
                        class="block w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 bg-white placeholder-gray-400"
-                       placeholder="Search Product By Name Or SKU..."
+                       placeholder="Search Product By Name Or Part Number..."
                        autocomplete="off"
                        oninput="handleDropdownFilter(this.value)"
                        onkeydown="handleDropdownSearchKeydown(event)">
@@ -634,7 +607,7 @@ function handleDropdownFilter(query, selectedIdOverride = null) {
                  onmouseenter="highlightPoDropdownItem(${idx})">
                 <div class="min-w-0 pr-2">
                     <div class="truncate ${isSelected ? 'text-indigo-900 font-medium' : 'text-gray-900'}">${escapeHtml(p.name)}</div>
-                    ${p.sku ? `<div class="text-[10px] text-gray-400 truncate">SKU: ${escapeHtml(p.sku)}</div>` : ''}
+                    ${p.sku ? `<div class="text-[10px] text-gray-400 truncate">Part No: ${escapeHtml(p.sku)}</div>` : ''}
                 </div>
                 <div class="text-right shrink-0">
                     <span class="text-[11px] font-mono text-gray-600">₹${p.purchase_price.toFixed(2)}</span>
@@ -878,6 +851,14 @@ function toggleFreightFields() {
     recalculatePoTotals();
 }
 
+function toggleFreightMode() {
+    const mode = document.getElementById('po_freight_mode')?.value || 'amount';
+    const percentWrap = document.getElementById('freight_percent_wrap');
+    const amountWrap = document.getElementById('freight_amount_wrap');
+    if (percentWrap) percentWrap.style.display = mode === 'percent' ? '' : 'none';
+    if (amountWrap) amountWrap.style.display = mode === 'amount' ? '' : 'none';
+}
+
 function recalculatePoTotals() {
     let subtotal = 0;
     let taxTotal = 0;
@@ -900,10 +881,13 @@ function recalculatePoTotals() {
     });
 
     const isFreightApplicable = document.getElementById('po_is_freight_applicable')?.value === '1';
+    const freightMode = document.getElementById('po_freight_mode')?.value || 'amount';
     const freightAmountInput = document.getElementById('po_freight_amount');
+    const freightPercentInput = document.getElementById('po_freight_percent');
     const freightTaxRateInput = document.getElementById('po_freight_tax_rate');
     const freightTaxAmountInput = document.getElementById('po_freight_tax_amount');
     const freightTotalInput = document.getElementById('po_freight_total');
+    const freightCalculated = document.getElementById('freight_calculated_amount');
 
     let freightAmount = 0;
     let freightTaxRate = 0;
@@ -911,8 +895,16 @@ function recalculatePoTotals() {
     let freightTotal = 0;
 
     if (isFreightApplicable) {
-        freightAmount = parseFloat(freightAmountInput?.value) || 0;
         freightTaxRate = parseFloat(freightTaxRateInput?.value) || 0;
+        if (freightMode === 'percent') {
+            const freightPercent = Math.min(100, Math.max(0, parseFloat(freightPercentInput?.value) || 0));
+            freightAmount = subtotal * freightPercent / 100;
+            if (freightAmountInput) {
+                freightAmountInput.value = freightAmount.toFixed(2);
+            }
+        } else {
+            freightAmount = parseFloat(freightAmountInput?.value) || 0;
+        }
         freightTaxAmount = (freightAmount * freightTaxRate) / 100;
         freightTotal = freightAmount + freightTaxAmount;
 
@@ -941,6 +933,7 @@ function recalculatePoTotals() {
 
     if (summarySubtotal) summarySubtotal.textContent = '₹' + subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (summaryTax) summaryTax.textContent = '₹' + taxTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (freightCalculated) freightCalculated.textContent = '₹' + freightAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (summaryFreight) summaryFreight.textContent = '₹' + freightAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (summaryFreightTax) summaryFreightTax.textContent = '₹' + freightTaxAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (summaryGrandTotal) summaryGrandTotal.textContent = '₹' + grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -959,7 +952,7 @@ function addPoRow() {
             input.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
         } else if (input.name.includes('[quantity]')) {
             input.value = '1';
-        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]')) {
+        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]') || input.name.includes('[serial_no]')) {
             input.value = '';
         } else {
             input.value = '0';

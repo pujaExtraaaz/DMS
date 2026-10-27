@@ -34,6 +34,7 @@
             </main>
         </div>
         @livewireScripts
-        <script src="{{ asset('js/name-uppercase.js') }}" defer></script>
+        <script src="{{ asset('js/title-case.js') }}" defer></script>
+        <script src="{{ asset('js/searchable-select.js') }}" defer></script>
     </body>
 </html>

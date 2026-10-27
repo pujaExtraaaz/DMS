@@ -24,7 +24,7 @@
                        @focus="openDropdown()"
                        @input="openDropdown()"
                        @click.outside="closeDropdown()"
-                       placeholder="Search Product Name Or SKU..."
+                       placeholder="Search Product Name Or Part Number..."
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
                 <button type="button" x-show="selectedId" @click="clearSelection()"
                         class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold">&times;</button>
@@ -111,7 +111,7 @@
                         Product
                     </x-ui.sortable-th>
                     <x-ui.sortable-th column="sku" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                        SKU / Serial No.
+                        Part Number / Serial No.
                     </x-ui.sortable-th>
                     <x-ui.sortable-th column="brand" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
                         Brand

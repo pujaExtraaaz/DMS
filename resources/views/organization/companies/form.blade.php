@@ -9,11 +9,33 @@
         @csrf @if($item->exists) @method('PUT') @endif
 
         <div>
-            <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity</h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity &amp; Classification</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <x-ui.input name="name" label="Trade Name" :value="old('name', $item->name)" required />
+                <x-ui.input name="code" label="Company Code" :value="old('code', $item->code)" placeholder="e.g. CMP-0001" required />
                 <x-ui.input name="legal_name" label="Legal Name" :value="old('legal_name', $item->legal_name)" />
-                <div class="md:col-span-2" x-data="{
+                <div>
+                    <label for="company_type" class="block text-sm font-medium text-slate-700 mb-1">Company Type <span class="text-red-500">*</span></label>
+                    <select id="company_type" name="company_type" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 shadow-xs">
+                        <option value="">-- Select Company Type --</option>
+                        @foreach(['Private Limited Company', 'Public Limited Company', 'Limited Liability Partnership (LLP)', 'Partnership Firm', 'Sole Proprietorship', 'One Person Company (OPC)', 'Joint Venture', 'Section 8 Company / NGO', 'Associate Entity'] as $ct)
+                            <option value="{{ $ct }}" @selected(old('company_type', $item->company_type ?? 'Private Limited Company') === $ct)>{{ $ct }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label for="business_group_id" class="block text-sm font-medium text-slate-700 mb-1">Business Group</label>
+                    <select id="business_group_id" name="business_group_id" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 shadow-xs">
+                        <option value="">-- None / Standalone Entity --</option>
+                        @foreach($businessGroups as $bg)
+                            <option value="{{ $bg->id }}" @selected(old('business_group_id', $item->business_group_id) == $bg->id)>{{ $bg->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <x-ui.input name="incorporation_no" label="Incorporation No." :value="old('incorporation_no', $item->incorporation_no)" />
+                <x-ui.input name="incorporation_date" label="Incorporation Date" type="date" :value="old('incorporation_date', $item->incorporation_date?->format('Y-m-d'))" />
+                <x-ui.input name="logo_emoji" label="Logo (Emoji)" :value="old('logo_emoji', $item->logo_emoji ?? '🏢')" placeholder="e.g. 🏢" />
+                <div class="md:col-span-2 lg:col-span-3" x-data="{
                     savedLogoUrl: '{{ $item->logo_url ?? '' }}',
                     previewUrl: '',
                     removed: false,
@@ -350,6 +372,43 @@
                     >{{ old('selling_terms_and_conditions', $item->selling_terms_and_conditions) }}</textarea>
                 </div>
 
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-sm font-semibold text-slate-700 mb-3">Business &amp; Financial</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <x-ui.input name="nature_of_business" label="Nature of Business" :value="old('nature_of_business', $item->nature_of_business)" placeholder="e.g. Consumer Electronics Distribution" />
+                <x-ui.input name="authorized_capital" label="Authorized Capital (₹)" type="number" step="0.01" min="0" :value="old('authorized_capital', $item->authorized_capital)" />
+                <x-ui.input name="paid_up_capital" label="Paid-up Capital (₹)" type="number" step="0.01" min="0" :value="old('paid_up_capital', $item->paid_up_capital)" />
+                <x-ui.input name="annual_turnover" label="Annual Turnover (₹)" type="number" step="0.01" min="0" :value="old('annual_turnover', $item->annual_turnover)" />
+                <x-ui.input name="financial_year" label="Financial Year" :value="old('financial_year', $item->financial_year ?? '2026-2027')" />
+                <x-ui.input name="accounting_software" label="Accounting Software" :value="old('accounting_software', $item->accounting_software ?? 'TallyPrime')" />
+                <x-ui.input name="branches_count_manual" label="Branches" type="number" min="0" :value="old('branches_count_manual', $item->branches_count_manual ?? 0)" />
+                <x-ui.input name="employees_count_manual" label="Employees" type="number" min="0" :value="old('employees_count_manual', $item->employees_count_manual ?? 0)" />
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-sm font-semibold text-slate-700 mb-3">Relationship &amp; Compliance</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                    <label for="relationship_type" class="block text-sm font-medium text-slate-700 mb-1">Relationship Type</label>
+                    <select id="relationship_type" name="relationship_type" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 shadow-xs">
+                        @foreach(['Sister Concern', 'Subsidiary', 'Holding', 'Associate', 'Joint Venture'] as $rel)
+                            <option value="{{ $rel }}" @selected(old('relationship_type', $item->relationship_type ?? 'Sister Concern') === $rel)>{{ $rel }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <x-ui.input name="shareholding_percentage" label="Shareholding (%)" type="number" step="0.01" min="0" max="100" :value="old('shareholding_percentage', $item->shareholding_percentage ?? 0)" />
+                <div>
+                    <label for="compliance_status" class="block text-sm font-medium text-slate-700 mb-1">Compliance Status</label>
+                    <select id="compliance_status" name="compliance_status" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 shadow-xs">
+                        @foreach(['Compliant', 'Pending Review', 'Non-Compliant'] as $cs)
+                            <option value="{{ $cs }}" @selected(old('compliance_status', $item->compliance_status ?? 'Compliant') === $cs)>{{ $cs }}</option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
         </div>
 

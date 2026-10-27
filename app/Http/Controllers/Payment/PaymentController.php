@@ -7,6 +7,8 @@ use App\Domains\Organization\Services\FinancialYearService;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Payment\Services\OutstandingLedgerService;
 use App\Domains\Sales\Models\Invoice;
+use App\Domains\Sync\Support\BooksCompany;
+use Tally\Banking\BankBook;
 use App\Http\Controllers\Controller;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
@@ -27,7 +29,7 @@ class PaymentController extends Controller
     public function index(Request $request): View
     {
         $query = Payment::query()
-            ->with(['customer', 'invoice', 'recorder'])
+            ->with(['customer', 'invoice', 'recorder', 'bankLedger.bankAccount'])
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
             ->when($request->filled('method'), fn ($q) => $q->where('method', $request->method))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('paid_at', '>=', $request->date_from))
@@ -88,6 +90,7 @@ class PaymentController extends Controller
                 ->whereIn('status', ['issued', 'partial'])
                 ->orderByDesc('invoice_date')
                 ->get(),
+            'bankLedgers' => $this->bankLedgers(),
         ]);
     }
 
@@ -97,9 +100,14 @@ class PaymentController extends Controller
             'invoice_id' => 'required|exists:invoices,id',
             'amount' => 'required|numeric|min:0.01',
             'method' => 'required|in:cash,upi,bank,cheque,other',
+            'bank_ledger_id' => 'nullable|integer|required_if:method,bank',
             'paid_at' => 'nullable|date',
             'notes' => 'nullable|string',
         ]);
+
+        $validated['bank_ledger_id'] = $validated['method'] === 'bank'
+            ? $this->assertBankLedger((int) $validated['bank_ledger_id'])
+            : null;
 
         // FY lock — block payments dated inside a closed period.
         $this->financialYearService->assertOpen($validated['paid_at'] ?? now());
@@ -118,6 +126,7 @@ class PaymentController extends Controller
                 'customer_id' => $invoice->customer_id,
                 'amount' => $validated['amount'],
                 'method' => $validated['method'],
+                'bank_ledger_id' => $validated['bank_ledger_id'],
                 'status' => 'completed',
                 'paid_at' => $validated['paid_at'] ?? now(),
                 'recorded_by' => auth()->id(),
@@ -144,11 +153,41 @@ class PaymentController extends Controller
 
     public function show(Payment $payment): View
     {
-        $payment->load(['customer', 'invoice', 'recorder']);
+        $payment->load(['customer', 'invoice', 'recorder', 'bankLedger.bankAccount']);
 
         return view('payments.show', compact('payment'));
     }
 
+
+    /**
+     * Bank ledgers from the company Bank Master (Books bank accounts).
+     */
+    protected function bankLedgers()
+    {
+        $companyId = auth()->user()?->company_id;
+        if (! $companyId) {
+            return collect();
+        }
+
+        $books = BooksCompany::forOrganization((int) $companyId);
+        if (! $books) {
+            return collect();
+        }
+
+        return app(BankBook::class)->bankLedgers($books);
+    }
+
+    protected function assertBankLedger(int $ledgerId): int
+    {
+        $allowed = $this->bankLedgers()->pluck('id')->map(fn ($id) => (int) $id)->all();
+        if (! in_array($ledgerId, $allowed, true)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'bank_ledger_id' => 'Select the bank account that received this payment.',
+            ]);
+        }
+
+        return $ledgerId;
+    }
     protected function generatePaymentNo(): string
     {
         $date = now()->format('Ymd');

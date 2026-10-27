@@ -162,7 +162,7 @@ class PurchaseInvoiceController extends Controller
             'defaultPaymentOrderDate' => null,
             'suppliers' => Customer::whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])->where('is_active', true)->orderBy('name')->get(),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
-            'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'products' => $this->invoiceProducts(),
             'odAccounts' => $odAccounts,
         ]);
     }
@@ -238,6 +238,8 @@ class PurchaseInvoiceController extends Controller
                 ]);
             }
         }
+
+        $this->assertTrackedSerials($validated['items']);
 
         $invoice = $this->service->createInvoice($validated, $request->user());
 
@@ -329,7 +331,7 @@ class PurchaseInvoiceController extends Controller
             ->orderBy('name')
             ->get();
         $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get();
-        $products = Product::where('is_active', true)->orderBy('name')->get();
+        $products = $this->invoiceProducts();
 
         $companyId = $invoice->company_id ?? $request->user()?->company_id ?? Company::defaultCompanyId();
         $odAccountsQuery = OdAccount::query()->orderBy('bank_name');
@@ -498,6 +500,7 @@ class PurchaseInvoiceController extends Controller
         }
 
         $this->financialYearService->assertOpen($validated['invoice_date'], $invoice->company_id);
+        $this->assertTrackedSerials($validated['items']);
 
         try {
             $updatedInvoice = $this->service->updateInvoice($invoice, $validated, $request->user());
@@ -731,5 +734,49 @@ class PurchaseInvoiceController extends Controller
     public function purchaseOrderData(PurchaseOrder $order)
     {
         return $this->orderItems($order);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    protected function assertTrackedSerials(array $items): void
+    {
+        $products = Product::with('productType:id,track_serial')->whereIn('id', collect($items)->pluck('product_id')->filter())->get()->keyBy('id');
+        $errors = [];
+
+        foreach ($items as $index => $item) {
+            $product = $products->get($item['product_id'] ?? null);
+            if (! $product?->productType?->track_serial && ! $product?->isSerialTracked()) {
+                continue;
+            }
+
+            $needed = min(30, max(1, (int) round((float) ($item['quantity'] ?? 1))));
+            $entered = collect($item['serial_numbers'] ?? [])
+                ->map(fn ($serial) => trim((string) $serial))
+                ->filter()
+                ->count();
+
+            if ($entered < $needed) {
+                $errors["items.{$index}.serial_numbers"] = ($product->name ?: 'This product').' needs '.$needed.' serial number'.($needed === 1 ? '' : 's').'.';
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
+    protected function invoiceProducts()
+    {
+        return Product::with('productType:id,track_serial')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->each(function (Product $product) {
+                if ($product->productType?->track_serial && ! $product->isSerialTracked()) {
+                    $current = (string) ($product->tracking_type ?: 'none');
+                    $product->tracking_type = $current === 'none' || $current === '' ? 'serial' : $current.',serial';
+                }
+            });
     }
 }

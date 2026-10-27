@@ -63,15 +63,15 @@ class ProductsImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            $sku = trim((string) ($data['sku'] ?? '')) ?: CodeGenerator::forProduct($companyId);
+            $sku = trim((string) ($data['part_number'] ?? $data['part_no'] ?? $data['partnumber'] ?? $data['sku'] ?? '')) ?: CodeGenerator::forProduct($companyId);
 
             $brand = filled($data['brand'] ?? null)
-                ? ($brands[strtolower((string) $data['brand'])] ?? Brand::create(['company_id' => $companyId, 'name' => trim((string) $data['brand']), 'code' => CodeGenerator::forBrand($companyId), 'is_active' => true]))
+                ? ($brands[strtolower((string) $data['brand'])] ?? Brand::create(['company_id' => $companyId, 'name' => trim((string) $data['brand']), 'is_active' => true]))
                 : null;
             if ($brand && ! $brands->has(strtolower($brand->name))) $brands->put(strtolower($brand->name), $brand);
 
             $category = filled($data['category'] ?? null)
-                ? ($categories[strtolower((string) $data['category'])] ?? Category::create(['company_id' => $companyId, 'brand_id' => $brand?->id, 'name' => trim((string) $data['category']), 'code' => strtoupper('CAT-'.substr(md5($data['category']), 0, 6)), 'is_active' => true]))
+                ? ($categories[strtolower((string) $data['category'])] ?? Category::create(['brand_id' => $brand?->id, 'name' => trim((string) $data['category']), 'is_active' => true]))
                 : null;
             if ($category && ! $categories->has(strtolower($category->name))) $categories->put(strtolower($category->name), $category);
 
@@ -90,7 +90,9 @@ class ProductsImport implements ToCollection, WithHeadingRow
                 'selling_price' => (float) ($data['selling_price'] ?? 0),
                 'trade_price' => (float) ($data['trade_price'] ?? $data['selling_price'] ?? 0),
                 'calculation_mrp' => (float) ($data['mrp'] ?? 0),
+                'series' => trim((string) ($data['series'] ?? '')) ?: null,
                 'color_variant' => trim((string) ($data['color_variant'] ?? '')) ?: null,
+                'warranty' => trim((string) ($data['warranty'] ?? '')) ?: null,
                 'sender_warranty_months' => filled($data['sender_warranty_months'] ?? null) ? (int) $data['sender_warranty_months'] : null,
                 'customer_warranty_months' => filled($data['customer_warranty_months'] ?? null) ? (int) $data['customer_warranty_months'] : null,
                 'discount_percent' => (float) ($data['discount_percent'] ?? 0),

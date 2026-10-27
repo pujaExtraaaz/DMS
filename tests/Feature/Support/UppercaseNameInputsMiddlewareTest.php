@@ -29,15 +29,15 @@ class UppercaseNameInputsMiddlewareTest extends TestCase
         ]);
 
         $response = $middleware->handle($request, function ($req) {
-            $this->assertSame('SONY PROFESSIONAL DISPLAY', $req->input('name'));
-            $this->assertSame('AVIT DIGITAL', $req->input('legal_name'));
-            $this->assertSame('BULK FOODS DEPOT', $req->input('transporter_name'));
+            $this->assertSame('Sony Professional Display', $req->input('name'));
+            $this->assertSame('Avit Digital', $req->input('legal_name'));
+            $this->assertSame('Bulk Foods Depot', $req->input('transporter_name'));
             $this->assertSame('admin@example.com', $req->input('email'));
             $this->assertSame('secret123', $req->input('password'));
-            $this->assertSame('JOHN SMITH', $req->input('nested.name'));
+            $this->assertSame('John Smith', $req->input('nested.name'));
             $this->assertSame('sku-xyz', $req->input('nested.sku'));
-            $this->assertSame('ITEM ONE', $req->input('items.0.name'));
-            $this->assertSame('ITEM TWO', $req->input('items.1.name'));
+            $this->assertSame('Item One', $req->input('items.0.name'));
+            $this->assertSame('Item Two', $req->input('items.1.name'));
             $this->assertSame(5, $req->input('items.0.qty'));
 
             return response('OK');
@@ -46,4 +46,3 @@ class UppercaseNameInputsMiddlewareTest extends TestCase
         $this->assertSame('OK', $response->getContent());
     }
 }
-

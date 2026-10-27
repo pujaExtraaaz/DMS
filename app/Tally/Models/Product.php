@@ -31,7 +31,11 @@ class Product extends AccountingModel
         'primary_unit_id',
         'alternate_unit_id',
         'name',
+        'alias',
         'code',
+        'part_number',
+        'description',
+        'type_of_supply',
         'barcode',
         'hsn_sac_id',
         'tax_rate_id',
@@ -115,6 +119,11 @@ class Product extends AccountingModel
     public function taxRate(): BelongsTo
     {
         return $this->belongsTo(TaxRate::class);
+    }
+
+    public function godownOpenings(): HasMany
+    {
+        return $this->hasMany(StockGodownOpening::class);
     }
 
     public function movements(): \Illuminate\Database\Eloquent\Relations\HasMany

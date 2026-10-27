@@ -90,8 +90,7 @@ class StockTransactionController extends Controller
             $request->validated(),
         );
 
-        return redirect()
-            ->route($type->routeName('show'), $transaction)
+        return tally_redirect($type->routeName('show'), $transaction)
             ->with('status', $type->label().' posted.');
     }
 
@@ -111,8 +110,7 @@ class StockTransactionController extends Controller
         $this->guard($request, $stockTransaction);
         $stock->cancel($stockTransaction);
 
-        return redirect()
-            ->route($stockTransaction->type->routeName('show'), $stockTransaction)
+        return tally_redirect($stockTransaction->type->routeName('show'), $stockTransaction)
             ->with('status', $stockTransaction->type->label().' cancelled.');
     }
 
@@ -121,7 +119,7 @@ class StockTransactionController extends Controller
         $name = (string) $request->route()?->getName();
 
         foreach (StockTransactionType::cases() as $type) {
-            if (str_starts_with($name, 'stock.'.$type->value.'.')) {
+            if (preg_match('/(?:^|\.)stock\.'.preg_quote($type->value, '/').'\./', $name) === 1) {
                 return $type;
             }
         }

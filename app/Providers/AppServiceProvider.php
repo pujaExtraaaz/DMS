@@ -68,6 +68,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OrderConversionService::class);
         $this->app->singleton(CommunicationService::class);
         $this->app->singleton(ProductDiscountService::class);
+        $this->app->singleton(\App\Domains\Target\Services\SalesTargetCalculationService::class);
     }
 
     public function boot(): void
@@ -94,6 +95,10 @@ class AppServiceProvider extends ServiceProvider
 
         // Automatically snapshot master pricing whenever it changes.
         Product::observe(ProductPriceObserver::class);
+
+        // Sales Target Real-Time Calculation Observers
+        Invoice::observe(\App\Domains\Target\Observers\SalesInvoiceTargetObserver::class);
+        CreditNote::observe(\App\Domains\Target\Observers\SalesInvoiceTargetObserver::class);
 
         // Books sync lives here so Sales, Purchasing, and Inventory controllers stay unchanged.
         $booksSync = BooksSyncObserver::class;

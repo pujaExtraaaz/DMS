@@ -42,12 +42,20 @@ final class SyncLinks
                 continue;
             }
             $row = self::rowFor($value);
-            if ($row && $row->sync_status === 'conflict') {
+            if ($row && $row->sync_status === 'conflict' && ! self::isPostedLock($row->last_error ?? null)) {
                 return $row;
             }
         }
 
         return null;
+    }
+
+    public static function isPostedLock(?string $message): bool
+    {
+        $message = strtolower((string) $message);
+
+        return str_contains($message, 'left unchanged')
+            && (str_contains($message, 'posted') || str_contains($message, 'converted'));
     }
 
     public static function forget(string $entityKey, Model $model): void

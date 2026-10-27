@@ -23,7 +23,7 @@ class BillAllocationService
     /**
      * @param  list<array<string, mixed>>  $rows
      */
-    public function sync(Voucher $voucher, array $rows): void
+    public function sync(Voucher $voucher, array $rows, ?string $advanceName = null): void
     {
         if (! in_array($voucher->voucher_type, [
             VoucherType::Receipt,
@@ -46,6 +46,8 @@ class BillAllocationService
                 'bill_id' => $row['bill_id'],
                 'voucher_id' => $voucher->id,
                 'ledger_id' => $row['ledger_id'],
+                'reference_type' => 'agst_ref',
+                'reference_name' => null,
                 'amount' => Money::format($row['amount']),
             ]);
         }
@@ -64,13 +66,16 @@ class BillAllocationService
             }
 
             $advance = $cents - $used;
+            $name = $advanceName === null ? 'Advance' : trim($advanceName);
 
-            if ($advance > 0) {
+            if ($advance > 0 && $name !== '') {
                 BillAllocation::query()->create([
                     'company_id' => $voucher->company_id,
                     'bill_id' => null,
                     'voucher_id' => $voucher->id,
                     'ledger_id' => $ledgerId,
+                    'reference_type' => 'advance',
+                    'reference_name' => $name,
                     'amount' => Money::format($advance),
                 ]);
             }
@@ -100,7 +105,7 @@ class BillAllocationService
 
                 return $bill;
             })
-            ->filter(fn (Bill $bill) => $bill->outstanding_cents > 0)
+            ->filter(fn (Bill $bill) => $bill->outstanding_cents > 0 && ($bill->ledger?->maintainsBillWise() ?? true))
             ->values();
     }
 
@@ -127,7 +132,7 @@ class BillAllocationService
         foreach ($voucher->entries as $entry) {
             $ledger = $entry->ledger;
 
-            if (! $ledger) {
+            if (! $ledger || ! $ledger->maintainsBillWise()) {
                 continue;
             }
 

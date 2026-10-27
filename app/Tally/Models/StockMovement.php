@@ -92,9 +92,26 @@ class StockMovement extends AccountingModel
         return $this->morphTo();
     }
 
+    public function scopeWithoutPlacedOpening($query)
+    {
+        return $query->where(function ($query) {
+            $query->whereNull('reference_type')
+                ->orWhere('reference_type', '!=', StockGodownOpening::class);
+        });
+    }
+
+    public function isPlacedOpening(): bool
+    {
+        return $this->reference_type === StockGodownOpening::class;
+    }
+
     public function referenceLabel(): string
     {
         $reference = $this->reference;
+
+        if ($reference instanceof StockGodownOpening) {
+            return 'Opening';
+        }
 
         if ($reference instanceof Invoice) {
             return $reference->invoice_number;

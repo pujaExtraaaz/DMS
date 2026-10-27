@@ -22,6 +22,7 @@ class Unit extends AccountingModel
         'company_id',
         'name',
         'symbol',
+        'gst_uqc',
         'decimal_places',
         'is_active',
     ];

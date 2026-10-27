@@ -34,7 +34,7 @@
         <div class="p-4 rounded-xl bg-rose-50/60 border border-rose-200">
             <span class="text-xs font-semibold uppercase text-rose-700 tracking-wider">Source Item (Deducted)</span>
             <div class="mt-2 text-base font-bold text-slate-900">{{ $reclassification->fromProduct?->name }}</div>
-            <div class="text-xs font-mono text-slate-500 mt-0.5">SKU: {{ $reclassification->fromProduct?->sku ?? '—' }}</div>
+            <div class="text-xs font-mono text-slate-500 mt-0.5">Part No: {{ $reclassification->fromProduct?->sku ?? '—' }}</div>
             <div class="mt-3 text-sm font-semibold text-rose-700 font-mono">
                 -{{ number_format((float) $reclassification->quantity, 2) }} {{ $reclassification->uom?->code ?? '' }}
             </div>
@@ -50,7 +50,7 @@
         <div class="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200">
             <span class="text-xs font-semibold uppercase text-emerald-700 tracking-wider">Destination Item (Credited)</span>
             <div class="mt-2 text-base font-bold text-slate-900">{{ $reclassification->toProduct?->name }}</div>
-            <div class="text-xs font-mono text-slate-500 mt-0.5">SKU: {{ $reclassification->toProduct?->sku ?? '—' }}</div>
+            <div class="text-xs font-mono text-slate-500 mt-0.5">Part No: {{ $reclassification->toProduct?->sku ?? '—' }}</div>
             <div class="mt-3 text-sm font-semibold text-emerald-700 font-mono">
                 +{{ number_format((float) $reclassification->quantity, 2) }} {{ $reclassification->uom?->code ?? '' }}
             </div>

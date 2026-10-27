@@ -9,6 +9,7 @@
             :cash-ledgers="$cashLedgers"
             :other-ledgers="$otherLedgers"
             :next-number="$nextNumber"
+            :numbering-method="$numberingMethod ?? 'automatic'"
             :cost-centres="$costCentres"
             :business-units="$businessUnits ?? []"
             :departments="$departments ?? []"

@@ -5,6 +5,7 @@ namespace Tally\Documents;
 use Tally\Invoicing\InvoiceKind;
 use Tally\Models\Invoice;
 use Tally\Models\PurchaseOrder;
+use Tally\Preferences\PreferenceStore;
 use Tally\Support\IndianCurrency;
 
 /**
@@ -26,7 +27,7 @@ class TradingDocument
             $invoice->branch,
             $invoice->kind->documentLabel(),
             $invoice->invoice_number,
-            $invoice->invoice_date->format('d M Y'),
+            $invoice->invoice_date->format(app(PreferenceStore::class)->dateFormat($invoice->company, request()->user())),
             $invoice->kind->partyLabel(),
             $invoice->party,
             $invoice->reference_number,
@@ -53,7 +54,7 @@ class TradingDocument
             $order->branch,
             'Purchase order',
             $order->number,
-            $order->order_date->format('d M Y'),
+            $order->order_date->format(app(PreferenceStore::class)->dateFormat($order->company, request()->user())),
             'Supplier',
             $order->supplier,
             $order->reference_number,
@@ -94,6 +95,8 @@ class TradingDocument
         string $tax,
         string $grand,
     ): array {
+        $symbol = trim((string) ($company->currency_symbol ?? '')) ?: '₹';
+        $major = IndianCurrency::majorUnit($company->currency_formal_name ?? null);
         $rows = [];
 
         foreach ($lines as $line) {
@@ -101,15 +104,15 @@ class TradingDocument
                 'item' => $line->item_name,
                 'hsn' => $line->hsnSac?->code,
                 'quantity' => rtrim(rtrim((string) $line->quantity, '0'), '.'),
-                'rate' => IndianCurrency::format($line->rate),
-                'discount' => IndianCurrency::format($line->discount),
-                'taxable' => IndianCurrency::format($line->taxable_amount),
-                'cgst' => IndianCurrency::format($line->cgst_amount),
-                'sgst' => IndianCurrency::format($line->sgst_amount),
-                'igst' => IndianCurrency::format($line->igst_amount),
-                'cess' => IndianCurrency::format($line->cess_amount),
-                'tax' => IndianCurrency::format($line->tax_amount),
-                'amount' => IndianCurrency::format($line->line_total),
+                'rate' => IndianCurrency::format($line->rate, $symbol),
+                'discount' => IndianCurrency::format($line->discount, $symbol),
+                'taxable' => IndianCurrency::format($line->taxable_amount, $symbol),
+                'cgst' => IndianCurrency::format($line->cgst_amount, $symbol),
+                'sgst' => IndianCurrency::format($line->sgst_amount, $symbol),
+                'igst' => IndianCurrency::format($line->igst_amount, $symbol),
+                'cess' => IndianCurrency::format($line->cess_amount, $symbol),
+                'tax' => IndianCurrency::format($line->tax_amount, $symbol),
+                'amount' => IndianCurrency::format($line->line_total, $symbol),
             ];
         }
 
@@ -135,11 +138,11 @@ class TradingDocument
             'place' => $place,
             'terms' => $terms,
             'lines' => $rows,
-            'subtotal' => IndianCurrency::format($subtotal),
-            'discount' => IndianCurrency::format($discount),
-            'tax' => IndianCurrency::format($tax),
-            'grand' => IndianCurrency::format($grand),
-            'words' => IndianCurrency::words($grand),
+            'subtotal' => IndianCurrency::format($subtotal, $symbol),
+            'discount' => IndianCurrency::format($discount, $symbol),
+            'tax' => IndianCurrency::format($tax, $symbol),
+            'grand' => IndianCurrency::format($grand, $symbol),
+            'words' => IndianCurrency::words($grand, $major),
         ];
     }
 }

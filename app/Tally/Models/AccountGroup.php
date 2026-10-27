@@ -27,6 +27,7 @@ class AccountGroup extends AccountingModel
         'name',
         'code',
         'nature',
+        'affects_gross_profit',
         'sort_order',
         'is_system',
         'is_active',
@@ -39,6 +40,7 @@ class AccountGroup extends AccountingModel
     {
         return [
             'nature' => AccountNature::class,
+            'affects_gross_profit' => 'boolean',
             'sort_order' => 'integer',
             'is_system' => 'boolean',
             'is_active' => 'boolean',

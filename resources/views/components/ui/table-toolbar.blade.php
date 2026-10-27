@@ -44,7 +44,7 @@
                     data-dynamic-search
                     placeholder="{{ \App\Support\TitleCase::format($searchPlaceholder) }}"
                     autocomplete="off"
-                    class="block w-full rounded-lg border-slate-300 pl-9 pr-9 text-sm placeholder:text-slate-400 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm transition"
+                    class="block w-full rounded-lg border-slate-300 pl-10 pr-9 text-sm placeholder:text-slate-400 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm transition"
                 />
 
                 {{-- Clear 'X' button --}}

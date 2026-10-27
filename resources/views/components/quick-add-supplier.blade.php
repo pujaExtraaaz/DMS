@@ -34,8 +34,8 @@
 
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Supplier Name *</label>
-                    <input type="text" x-model="form.name" @input="form.name = ($event.target.value || '').toUpperCase()" data-is-name="true" required placeholder="Business Or Company Name"
-                           class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <input type="text" x-model="form.name" data-is-name="true" required placeholder="Business Or Company Name"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
@@ -142,7 +142,8 @@ function quickAddSupplierModal(targetSelectName) {
                     this.form.state = extracted.state;
                 }
                 if (data.success && data.party) {
-                    this.form.name = (data.party.name || this.form.name || '').toUpperCase();
+                    const rawPartyName = data.party.name || this.form.name || '';
+                    this.form.name = typeof window.dmsToTitleCase === 'function' ? window.dmsToTitleCase(rawPartyName) : rawPartyName;
                     this.form.state = data.party.state || this.form.state;
                     this.form.pincode = data.party.pincode || this.form.pincode;
                     this.form.address = data.party.address || data.party.address_line_1 || this.form.address;

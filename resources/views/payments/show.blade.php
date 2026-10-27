@@ -7,6 +7,9 @@
 <div class="flex justify-between"><dt>Invoice</dt><dd>{{ $payment->invoice->invoice_no }}</dd></div>
 <div class="flex justify-between"><dt>Amount</dt><dd class="font-semibold">₹{{ number_format($payment->amount, 2) }}</dd></div>
 <div class="flex justify-between"><dt>Method</dt><dd>{{ strtoupper($payment->method) }}</dd></div>
+@if($payment->bankLedger)
+<div class="flex justify-between"><dt>Bank account</dt><dd>{{ $payment->bankLedger->name }}@if($payment->bankLedger->bankAccount?->account_number) — {{ $payment->bankLedger->bankAccount->account_number }}@endif</dd></div>
+@endif
 <div class="flex justify-between"><dt>Paid At</dt><dd>{{ optional($payment->paid_at)->format('d M Y H:i') }}</dd></div>
 @if($payment->notes)<div><dt class="text-gray-500">Notes</dt><dd class="mt-1">{{ $payment->notes }}</dd></div>@endif
 </dl></x-ui.card>

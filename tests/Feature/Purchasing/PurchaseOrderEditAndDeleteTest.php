@@ -230,7 +230,7 @@ class PurchaseOrderEditAndDeleteTest extends TestCase
 
         $response->assertSee($order->po_no);
         $response->assertSee($this->supplier->name);
-        $response->assertSee('Hydraulic Valve');
+        $response->assertSee($this->product->name);
         $response->assertSee('BATCH-001');
         $response->assertSee('Test notes for draft order');
     }

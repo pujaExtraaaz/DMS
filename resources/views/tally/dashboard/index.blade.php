@@ -3,13 +3,14 @@
         $company = $workspace->company();
         $branch = $workspace->branch();
         $year = $workspace->financialYear();
-        $money = function (?string $value): string {
+        $symbol = $company?->currency_symbol ?: '₹';
+        $money = function (?string $value) use ($symbol): string {
             $value = trim((string) ($value ?: '0.00'));
             if ($value === '') {
                 $value = '0.00';
             }
 
-            return str_starts_with($value, '₹') ? $value : '₹'.$value;
+            return str_starts_with($value, $symbol) ? $value : $symbol.$value;
         };
     @endphp
 
@@ -73,8 +74,11 @@
                     >
                 </div>
                 <x-ui.button type="submit" variant="secondary" size="sm">Apply</x-ui.button>
-                <p class="text-xs text-slate-500 pb-2">Figures refresh for the selected date within {{ $year?->name }}.</p>
+                <p class="text-xs text-slate-500 pb-2">Figures refresh for the selected date within {{ $year?->name }}. Unposted invoices on this branch are included.</p>
             </form>
+            @if (! empty($cards['unposted_note'] ?? null))
+                <p class="mt-3 text-sm font-medium text-amber-800">{{ $cards['unposted_note'] }}</p>
+            @endif
         </x-ui.card>
 
         @if ($cards)
@@ -225,7 +229,6 @@
                         ['Import', 'utilities.import'],
                         ['Export', 'utilities.export'],
                         ['Audit trail', 'audit.index'],
-                        ['Tally connector', 'connector.show'],
                     ] as [$label, $route])
                         @if (tally_route_has($route))
                             <x-ui.button variant="secondary" size="sm" class="!justify-start" :href="tally_route($route)">{{ $label }}</x-ui.button>

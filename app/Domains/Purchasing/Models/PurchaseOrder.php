@@ -26,6 +26,8 @@ class PurchaseOrder extends Model
         'due_date',
         'status',
         'is_freight_applicable',
+        'freight_mode',
+        'freight_percent',
         'freight_amount',
         'freight_tax_rate',
         'freight_tax_amount',
@@ -53,6 +55,7 @@ class PurchaseOrder extends Model
             'credit_days' => 'integer',
             'approved_at' => 'datetime',
             'is_freight_applicable' => 'boolean',
+            'freight_percent' => 'decimal:4',
             'freight_amount' => 'decimal:2',
             'freight_tax_rate' => 'decimal:2',
             'freight_tax_amount' => 'decimal:2',
@@ -145,7 +148,7 @@ class PurchaseOrder extends Model
 
     public function isEditable(): bool
     {
-        return in_array($this->status, ['draft', 'pending_approval'], true)
+        return in_array($this->status, ['draft', 'pending_approval', 'approved'], true)
             && ! $this->inwards()->exists()
             && ! $this->invoices()->exists();
     }

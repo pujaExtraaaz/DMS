@@ -16,7 +16,6 @@ class UppercaseNamesCommandTest extends TestCase
         // Insert a record directly via DB to bypass model mutators
         $id = DB::table('brands')->insertGetId([
             'name' => 'test brand lowercase',
-            'code' => 'TBL001',
             'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
@@ -35,7 +34,6 @@ class UppercaseNamesCommandTest extends TestCase
     {
         $id = DB::table('brands')->insertGetId([
             'name' => 'sony pro display',
-            'code' => 'SPD001',
             'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
@@ -46,7 +44,7 @@ class UppercaseNamesCommandTest extends TestCase
             ->assertExitCode(0);
 
         $updatedValue = DB::table('brands')->where('id', $id)->value('name');
-        $this->assertEquals('SONY PRO DISPLAY', $updatedValue);
+        $this->assertEquals(\App\Support\TitleCase::format('sony pro display'), $updatedValue);
 
         // Clean up
         DB::table('brands')->where('id', $id)->delete();

@@ -452,6 +452,10 @@ class ParityBooks
             ->join('acct_products', 'acct_products.id', '=', 'acct_stock_movements.product_id')
             ->where('acct_stock_movements.company_id', $company->id)
             ->when($branchId, fn ($query) => $query->where('acct_stock_movements.branch_id', $branchId))
+            ->where(function ($query) {
+                $query->whereNull('acct_stock_movements.reference_type')
+                    ->orWhere('acct_stock_movements.reference_type', '!=', \Tally\Models\StockGodownOpening::class);
+            })
             ->selectRaw('acct_products.id, acct_products.name, acct_products.opening_quantity, SUM(acct_stock_movements.quantity) as moved')
             ->groupBy('acct_products.id', 'acct_products.name', 'acct_products.opening_quantity')
             ->get();

@@ -30,12 +30,12 @@ class SubCategoryController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'code', 'detail']);
+        $this->applySearch($query, $request->input('search'), ['name']);
 
         $sortData = $this->applySorting(
             $query,
             $request,
-            ['name', 'code', 'is_active', 'created_at'],
+            ['name', 'is_active', 'created_at'],
             defaultSort: 'name',
             defaultDirection: 'asc'
         );
@@ -178,10 +178,10 @@ class SubCategoryController extends Controller
         $data = $request->validate([
             'category_id' => 'required|exists:categories,id',
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:30',
             'is_active' => 'boolean',
         ]);
         $data['is_active'] = $request->boolean('is_active');
+
         return $data;
     }
 }

@@ -61,7 +61,15 @@
                     <td class="px-6 py-4 text-sm font-medium text-slate-900">{{ $item->customerType?->name ?: '—' }}</td>
                     <td class="px-6 py-4 text-sm font-medium text-slate-900">{{ $item->product?->name ?: '—' }}</td>
                     <td class="px-6 py-4 text-sm text-slate-600">{{ $item->uom?->code ?: '—' }}</td>
-                    <td class="px-6 py-4 text-sm text-right font-medium text-slate-900">₹{{ number_format($item->rate, 2) }}</td>
+                    @php $pricing = $item->pricingSummary(); @endphp
+                    <td class="px-6 py-4 text-sm text-right font-medium text-slate-900">
+                        <div>₹{{ number_format($pricing['entered'], 2) }}</div>
+                        <div class="mt-0.5 text-[11px] font-normal text-slate-500">
+                            {{ $pricing['includes_gst'] ? 'Including GST' : 'Excluding GST' }}
+                            · GST ₹{{ number_format($pricing['gst'], 2) }}
+                            · Final ₹{{ number_format($pricing['final'], 2) }}
+                        </div>
+                    </td>
                     <td class="px-6 py-4 text-sm text-right text-slate-600">{{ $item->min_qty !== null ? $item->min_qty : '—' }}</td>
                     <td class="px-6 py-4 text-right">
                         <div class="flex items-center justify-end gap-2">
@@ -72,7 +80,7 @@
                                         customerType: '{{ addslashes($item->customerType?->name ?? '—') }}',
                                         product: '{{ addslashes($item->product?->name ?? '—') }}',
                                         unit: '{{ addslashes($item->uom?->code ?? '—') }}',
-                                        rate: '₹{{ number_format($item->rate, 2) }}',
+                                        rate: '₹{{ number_format($pricing['entered'], 2) }}',
                                         minQty: '{{ $item->min_qty !== null ? $item->min_qty : '—' }}'
                                     })"
                                     data-delete-price="{{ $item->id }}"

@@ -22,6 +22,13 @@ if (! function_exists('tally_super_admin')) {
     }
 }
 
+if (! function_exists('tally_redirect')) {
+    function tally_redirect(string $name, mixed $parameters = []): \Illuminate\Http\RedirectResponse
+    {
+        return redirect()->to(tally_route($name, $parameters));
+    }
+}
+
 if (! function_exists('tally_route_has')) {
     function tally_route_has(string $name): bool
     {

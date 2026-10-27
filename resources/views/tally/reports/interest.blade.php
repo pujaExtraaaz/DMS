@@ -13,7 +13,17 @@
             </x-form.field>
             <button class="btn btn-primary" type="submit">Apply</button>
         </form>
-        <p class="form-note">Simple interest on the outstanding amount from the due date. This report does not post an interest voucher.</p>
+        @if ($errors->any())
+            <p class="flash is-error" role="alert">{{ $errors->first() }}</p>
+        @endif
+        <p class="form-note">Simple interest on the outstanding amount from the due date. A ledger with interest turned on uses its own rate and style. Other bills use the annual rate above. Post interest writes one journal: customers are debited and Interest Received is credited, or Interest Paid is debited and suppliers are credited. The same bill is not charged twice for this date.</p>
+        <form method="POST" action="{{ tally_route('books.tally.reports.interest.post') }}">
+            @csrf
+            <input type="hidden" name="to" value="{{ $filters['to'] }}">
+            <input type="hidden" name="rate" value="{{ $filters['rate'] }}">
+            <input type="hidden" name="branch_id" value="{{ $filters['branch_id'] ?? 'all' }}">
+            <button class="btn btn-primary" type="submit">Post interest voucher</button>
+        </form>
         <div class="table-wrap">
             <table class="data">
                 <thead><tr><th>Kind</th><th>Party</th><th>Bill</th><th>Due</th><th class="money">Outstanding</th><th>Days</th><th class="money">Interest</th></tr></thead>

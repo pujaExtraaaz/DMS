@@ -71,6 +71,36 @@
     <x-tally::form.field name="credit_days" label="Credit days">
         <x-tally::form.input name="credit_days" type="number" min="0" step="1" value="{{ old('credit_days', $ledger->credit_days) }}" :disabled="$ledger->is_system" />
     </x-tally::form.field>
+    <x-tally::form.field name="maintain_bill_wise" label="Bill-wise">
+        <input type="hidden" name="maintain_bill_wise" value="0">
+        <label class="check">
+            <input type="checkbox" name="maintain_bill_wise" value="1" @checked(filter_var(old('maintain_bill_wise', $ledger->maintain_bill_wise ?? true), FILTER_VALIDATE_BOOLEAN)) @disabled($ledger->is_system)>
+            <span>Maintain balances bill-by-bill</span>
+        </label>
+    </x-tally::form.field>
+    <x-tally::form.field name="cost_centres_applicable" label="Cost centres">
+        <input type="hidden" name="cost_centres_applicable" value="0">
+        <label class="check">
+            <input type="checkbox" name="cost_centres_applicable" value="1" @checked(filter_var(old('cost_centres_applicable', $ledger->cost_centres_applicable ?? false), FILTER_VALIDATE_BOOLEAN)) @disabled($ledger->is_system)>
+            <span>Cost centres are applicable</span>
+        </label>
+    </x-tally::form.field>
+    <x-tally::form.field name="calculate_interest" label="Interest">
+        <input type="hidden" name="calculate_interest" value="0">
+        <label class="check">
+            <input type="checkbox" name="calculate_interest" value="1" @checked(filter_var(old('calculate_interest', $ledger->calculate_interest ?? false), FILTER_VALIDATE_BOOLEAN)) @disabled($ledger->is_system)>
+            <span>Calculate interest on outstanding bills</span>
+        </label>
+    </x-tally::form.field>
+    <x-tally::form.field name="interest_rate" label="Interest rate %">
+        <x-tally::form.input name="interest_rate" type="number" min="0" step="0.0001" value="{{ old('interest_rate', $ledger->interest_rate) }}" :disabled="$ledger->is_system" />
+    </x-tally::form.field>
+    <x-tally::form.field name="interest_style" label="Interest style">
+        <select id="interest_style" name="interest_style" class="input" @disabled($ledger->is_system)>
+            <option value="365_day_year" @selected(old('interest_style', $ledger->interest_style ?? '365_day_year') === '365_day_year')>365-day year</option>
+            <option value="30_day_month" @selected(old('interest_style', $ledger->interest_style ?? '365_day_year') === '30_day_month')>30-day month</option>
+        </select>
+    </x-tally::form.field>
     <x-tally::form.field name="deduction_section_id" label="TDS / TCS section">
         <select id="deduction_section_id" name="deduction_section_id" class="input" @disabled($ledger->is_system)>
             <option value="">None</option>
@@ -94,6 +124,21 @@
         </label>
     </x-tally::form.field>
     <x-tally::form.active :checked="$ledger->is_active ?? true" />
+    <x-tally::form.field name="mailing_name" label="Mailing name">
+        <x-tally::form.input name="mailing_name" value="{{ old('mailing_name', $ledger->mailing_name) }}" maxlength="255" :disabled="$ledger->is_system" />
+    </x-tally::form.field>
+    <x-tally::form.field name="alias" label="Alias">
+        <x-tally::form.input name="alias" value="{{ old('alias', $ledger->alias) }}" maxlength="255" :disabled="$ledger->is_system" />
+    </x-tally::form.field>
+    <x-tally::form.field name="contact_person" label="Contact person">
+        <x-tally::form.input name="contact_person" value="{{ old('contact_person', $ledger->contact_person) }}" maxlength="255" :disabled="$ledger->is_system" />
+    </x-tally::form.field>
+    <x-tally::form.field name="country" label="Country">
+        <x-tally::form.input name="country" value="{{ old('country', $ledger->country) }}" maxlength="80" :disabled="$ledger->is_system" />
+    </x-tally::form.field>
+    <x-tally::form.field name="pincode" label="Pincode">
+        <x-tally::form.input name="pincode" value="{{ old('pincode', $ledger->pincode) }}" maxlength="12" :disabled="$ledger->is_system" />
+    </x-tally::form.field>
     <x-tally::form.field name="address" label="Address" class="span-full">
         <x-tally::form.textarea name="address" :value="old('address', $ledger->address)" :disabled="$ledger->is_system" />
     </x-tally::form.field>

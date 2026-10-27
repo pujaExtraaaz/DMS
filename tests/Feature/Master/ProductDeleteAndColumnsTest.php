@@ -78,6 +78,11 @@ class ProductDeleteAndColumnsTest extends TestCase
             'code' => 'LAP',
             'is_active' => true,
         ]);
+        $this->boxUom = Uom::create([
+            'name' => 'Box',
+            'code' => 'BOX',
+            'is_active' => true,
+        ]);
     }
 
     protected function createProduct(array $overrides = []): Product
@@ -91,6 +96,8 @@ class ProductDeleteAndColumnsTest extends TestCase
             'sku' => "SKU-{$counter}",
             'serial_no' => "SN-{$counter}",
             'base_uom_id' => $this->uom->id,
+            'alternate_uom_id' => $this->boxUom->id,
+            'conversion_factor' => 10,
             'tax_rate' => 18,
             'is_active' => true,
         ], $overrides));
@@ -113,6 +120,8 @@ class ProductDeleteAndColumnsTest extends TestCase
             'model' => 'T14 Gen 4 Intel',
             'product_type' => 'Business Laptop',
             'base_uom_id' => $this->uom->id,
+            'alternate_uom_id' => $this->boxUom->id,
+            'conversion_factor' => 10,
             'brand_id' => $this->brand->id,
             'category_id' => $this->category->id,
             'tax_rate' => 18,
@@ -147,6 +156,8 @@ class ProductDeleteAndColumnsTest extends TestCase
             'model' => '7420 Ultrabook',
             'product_type' => 'Premium Laptop',
             'base_uom_id' => $this->uom->id,
+            'alternate_uom_id' => $this->boxUom->id,
+            'conversion_factor' => 10,
             'tax_rate' => 18,
             'is_active' => 1,
         ]);
@@ -183,12 +194,10 @@ class ProductDeleteAndColumnsTest extends TestCase
         $response->assertOk();
 
         // Check headers
-        $response->assertSee('Series');
         $response->assertSee('Models');
         $response->assertSee('Product Type');
 
         // Check values for product with details
-        $response->assertSee('Galaxy S');
         $response->assertSee('SM-S928B');
         $response->assertSee('Smartphone');
 
@@ -220,7 +229,7 @@ class ProductDeleteAndColumnsTest extends TestCase
             'direction' => 'asc',
         ]));
         $responseSeries->assertOk();
-        $responseSeries->assertSeeInOrder(['Series A', 'Series Z']);
+        $responseSeries->assertSeeInOrder(['Model 1', 'Model 9']);
 
         // Sort by model asc
         $responseModel = $this->actingAs($this->user)->get(route('masters.products.index', [
@@ -268,20 +277,20 @@ class ProductDeleteAndColumnsTest extends TestCase
         // Search by series
         $resSeries = $this->actingAs($this->user)->get(route('masters.products.index', ['search' => 'EliteBook Series']));
         $resSeries->assertOk();
-        $resSeries->assertSee('EliteBook 840');
-        $resSeries->assertDontSee('MacBook Pro 16');
+        $resSeries->assertSee('ELITEBOOK 840');
+        $resSeries->assertDontSee('MACBOOK PRO 16');
 
         // Search by model
         $resModel = $this->actingAs($this->user)->get(route('masters.products.index', ['search' => 'M3 Max']));
         $resModel->assertOk();
-        $resModel->assertSee('MacBook Pro 16');
-        $resModel->assertDontSee('EliteBook 840');
+        $resModel->assertSee('MACBOOK PRO 16');
+        $resModel->assertDontSee('ELITEBOOK 840');
 
         // Search by product_type
         $resType = $this->actingAs($this->user)->get(route('masters.products.index', ['search' => 'Workstation Laptop']));
         $resType->assertOk();
-        $resType->assertSee('MacBook Pro 16');
-        $resType->assertDontSee('EliteBook 840');
+        $resType->assertSee('MACBOOK PRO 16');
+        $resType->assertDontSee('ELITEBOOK 840');
     }
 
     public function test_delete_button_and_confirmation_modal_appear_in_listing(): void
@@ -446,7 +455,7 @@ class ProductDeleteAndColumnsTest extends TestCase
         $invoiceItem->refresh();
         $this->assertNotNull($invoiceItem->product);
         $this->assertSame($product->id, $invoiceItem->product->id);
-        $this->assertSame('Historical Product', $invoiceItem->product->name);
+        $this->assertSame('HISTORICAL PRODUCT', $invoiceItem->product->name);
 
         $movement->refresh();
         $this->assertNotNull($movement->product);

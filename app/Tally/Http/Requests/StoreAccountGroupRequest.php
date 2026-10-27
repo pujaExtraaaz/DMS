@@ -41,6 +41,7 @@ class StoreAccountGroupRequest extends FormRequest
             'code' => $code === '' ? null : $code,
             'parent_id' => $parentId,
             'nature' => $nature,
+            'affects_gross_profit' => $this->boolean('affects_gross_profit'),
             'is_active' => $this->boolean('is_active'),
         ]);
     }
@@ -84,12 +85,13 @@ class StoreAccountGroupRequest extends FormRequest
                 'string',
                 'max:32',
                 'regex:/^[A-Z0-9][A-Z0-9_-]{0,31}$/',
-                Rule::unique('account_groups', 'code')
+                Rule::unique('acct_account_groups', 'code')
                     ->where(fn ($query) => $query->where('company_id', $company->id))
                     ->ignore($group),
             ],
             'parent_id' => ['nullable', 'integer', new AccountGroupParentIsValid($company, $group)],
             'nature' => ['required_without:parent_id', 'nullable', Rule::enum(AccountNature::class)],
+            'affects_gross_profit' => ['required', 'boolean'],
             'is_active' => ['required', 'boolean'],
         ];
     }

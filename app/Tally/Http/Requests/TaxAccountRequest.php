@@ -39,7 +39,7 @@ class TaxAccountRequest extends FormRequest
                 'nullable',
                 'integer',
                 'distinct',
-                Rule::exists('ledgers', 'id')->where(function ($query) use ($company) {
+                Rule::exists('acct_ledgers', 'id')->where(function ($query) use ($company) {
                     $query->where('company_id', $company->id)->where('is_active', true);
                 }),
             ];

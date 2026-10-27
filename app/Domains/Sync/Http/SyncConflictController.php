@@ -3,6 +3,7 @@
 namespace App\Domains\Sync\Http;
 
 use App\Domains\Sync\Support\SyncGuard;
+use App\Domains\Sync\Support\SyncLinks;
 use App\Domains\Sync\Support\SyncRegistry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
@@ -63,6 +64,17 @@ class SyncConflictController
 
         $fresh = DB::table('sync_entity_links')->where('id', $row->id)->first();
         if ($fresh && $fresh->sync_status === 'conflict') {
+            if (SyncLinks::isPostedLock($fresh->last_error ?? null)) {
+                DB::table('sync_entity_links')->where('id', $row->id)->update([
+                    'sync_status' => 'synced',
+                    'last_error' => null,
+                    'last_synced_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                return back()->with('status', 'The posted copy was left unchanged.');
+            }
+
             return back()->with('error', $fresh->last_error ?: 'That copy is posted, so it was left unchanged.');
         }
 

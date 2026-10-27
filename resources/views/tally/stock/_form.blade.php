@@ -1,5 +1,6 @@
 @php
-    $rows = old('lines', array_fill(0, 4, ['product_id' => '', 'godown_id' => '', 'quantity' => '', 'rate' => '', 'direction' => 'increase']));
+    $journalSide = $type === \Tally\Inventory\StockTransactionType::Adjustment ? 'decrease' : 'increase';
+    $rows = old('lines', array_fill(0, 4, ['product_id' => '', 'godown_id' => '', 'quantity' => '', 'rate' => '', 'direction' => $journalSide]));
 @endphp
 <div class="form-grid">
     <x-tally::form.field name="transaction_date" label="Date" required>
@@ -45,7 +46,7 @@
                 @if ($type !== \Tally\Inventory\StockTransactionType::Transfer)
                     <th>Godown</th>
                 @endif
-                <th>Quantity</th>
+                <th>{{ $type === \Tally\Inventory\StockTransactionType::Physical ? 'Counted quantity' : 'Quantity' }}</th>
                 <th>Rate</th>
                 <th class="money">Value</th>
                 <th>Batch</th>
@@ -53,7 +54,7 @@
                 <th>Expiry</th>
                 <th>Serial</th>
                 @if ($type === \Tally\Inventory\StockTransactionType::Adjustment)
-                    <th>Direction</th>
+                    <th>Side</th>
                 @endif
             </tr>
         </thead>
@@ -96,8 +97,8 @@
                     @if ($type === \Tally\Inventory\StockTransactionType::Adjustment)
                         <td>
                             <select class="input" name="lines[{{ $index }}][direction]">
-                                <option value="increase" @selected(($line['direction'] ?? 'increase') === 'increase')>Increase</option>
-                                <option value="decrease" @selected(($line['direction'] ?? '') === 'decrease')>Decrease</option>
+                                <option value="decrease" @selected(($line['direction'] ?? 'decrease') === 'decrease')>Consumption (out)</option>
+                                <option value="increase" @selected(($line['direction'] ?? '') === 'increase')>Production (in)</option>
                             </select>
                         </td>
                     @endif
@@ -106,7 +107,17 @@
         </tbody>
     </table>
 </div>
-<p class="form-note">Blank rows are ignored. Value is quantity × rate. Stock cannot fall below zero in a godown. Opening quantity on the product is not stored in a godown.</p>
+@if ($type === \Tally\Inventory\StockTransactionType::Adjustment)
+    <p class="form-note">Stock Journal. Consumption takes stock out of the godown. Production brings stock in. Put both sides on this voucher. Value is quantity times rate.</p>
+@elseif ($type === \Tally\Inventory\StockTransactionType::Physical)
+    <p class="form-note">Enter the quantity you counted in the godown. The difference from the current balance is posted. A count that already matches is skipped.</p>
+@elseif ($type === \Tally\Inventory\StockTransactionType::RejectionIn)
+    <p class="form-note">Goods coming back in, such as a sales rejection. This increases stock and does not post an accounting voucher.</p>
+@elseif ($type === \Tally\Inventory\StockTransactionType::RejectionOut)
+    <p class="form-note">Goods going back out, such as a purchase rejection. This decreases stock and does not post an accounting voucher.</p>
+@else
+    <p class="form-note">Blank rows are ignored. Value is quantity × rate. Stock cannot fall below zero in a godown. Opening quantity on the product is not stored in a godown.</p>
+@endif
 <script>
     (function () {
         const table = document.currentScript.previousElementSibling.previousElementSibling;

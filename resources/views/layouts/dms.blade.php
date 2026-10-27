@@ -26,7 +26,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <link rel="stylesheet" href="{{ asset('css/pwa-mobile.css') }}">
     <style>
-        input.uppercase, textarea.uppercase, [data-is-name="true"] { text-transform: uppercase; }
+        input.uppercase, textarea.uppercase { text-transform: uppercase; }
     </style>
     @livewireStyles
 </head>
@@ -34,30 +34,29 @@
     <div
         x-data="{
             sidebarOpen: false,
-            sidebarCollapsed: localStorage.getItem('dmsSidebarCollapsed') === 'true',
+            // In Accounting Books, always start collapsed (server also paints lg:w-[72px]).
+            sidebarCollapsed: {{ books_show_aside() ? 'true' : 'localStorage.getItem(\'dmsSidebarCollapsed\') === \'true\'' }},
+            sidebarAnimate: false,
             booksAsideCollapsed: false,
             hasBooksAside: {{ books_show_aside() ? 'true' : 'false' }},
             installPrompt: null,
             showInstall: false,
             toggleCollapsed() {
-                // In Accounting workspace: chevron toggles the Books (second) sidebar only.
-                if (this.hasBooksAside) {
-                    this.booksAsideCollapsed = !this.booksAsideCollapsed;
-                    sessionStorage.setItem('booksAsideCollapsed', this.booksAsideCollapsed ? 'true' : 'false');
-                    return;
-                }
+                this.sidebarAnimate = true;
+                this.booksAsideCollapsed = false;
                 this.sidebarCollapsed = !this.sidebarCollapsed;
                 localStorage.setItem('dmsSidebarCollapsed', this.sidebarCollapsed ? 'true' : 'false');
             },
             init() {
-                // Books aside defaults open when entering Accounting workspace.
-                // Only honour a prior collapse if the user toggled it this session (sessionStorage).
+                this.booksAsideCollapsed = false;
+                const stored = localStorage.getItem('dmsSidebarCollapsed');
                 if (this.hasBooksAside) {
-                    this.booksAsideCollapsed = sessionStorage.getItem('booksAsideCollapsed') === 'true';
+                    this.sidebarCollapsed = stored === null ? true : stored === 'true';
                 } else {
-                    this.booksAsideCollapsed = false;
-                    sessionStorage.removeItem('booksAsideCollapsed');
+                    this.sidebarCollapsed = stored === 'true';
+                    this.sidebarAnimate = true;
                 }
+
                 window.addEventListener('beforeinstallprompt', (e) => {
                     e.preventDefault();
                     this.installPrompt = e;
@@ -80,7 +79,7 @@
             @include('partials.books-aside')
         @endif
 
-        <div class="relative z-0 flex flex-1 flex-col min-w-0 h-[100dvh] overflow-hidden bg-slate-100">
+        <div class="relative flex flex-1 flex-col min-w-0 h-[100dvh] overflow-hidden bg-slate-100">
             <header class="shrink-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-sm pt-[env(safe-area-inset-top)]">
                 <div class="flex items-center justify-between h-14 sm:h-16 px-3 sm:px-6 lg:px-8">
                     <div class="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -103,7 +102,7 @@
                             <span class="sr-only">Toggle sidebar</span>
                             <svg
                                 class="h-5 w-5 transition-transform duration-300"
-                                :class="(hasBooksAside ? booksAsideCollapsed : sidebarCollapsed) ? 'rotate-180' : ''"
+                                :class="sidebarCollapsed ? 'rotate-180' : ''"
                                 fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
                             >
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
@@ -189,10 +188,6 @@
                         </button>
                     </div>
 
-                    @unless(request()->routeIs('help.*'))
-                        <x-ui.screen-help />
-                    @endunless
-
                     @yield('content')
                 </div>
             </main>
@@ -203,7 +198,8 @@
 
     @livewireScripts
     <script src="{{ asset('js/dynamic-tables.js') }}" defer></script>
-    <script src="{{ asset('js/name-uppercase.js') }}" defer></script>
+    <script src="{{ asset('js/title-case.js') }}" defer></script>
+    <script src="{{ asset('js/searchable-select.js') }}" defer></script>
     @stack('scripts')
     @include('partials.sync-conflict')
 </body>

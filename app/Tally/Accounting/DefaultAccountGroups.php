@@ -27,12 +27,12 @@ class DefaultAccountGroups
             ['name' => 'Fixed Assets', 'code' => 'FIXED_ASSETS', 'nature' => AccountNature::Asset],
             ['name' => 'Investments', 'code' => 'INVESTMENTS', 'nature' => AccountNature::Asset],
             ['name' => 'Loans', 'code' => 'LOANS', 'nature' => AccountNature::Liability],
-            ['name' => 'Direct Expenses', 'code' => 'DIRECT_EXPENSES', 'nature' => AccountNature::Expense],
+            ['name' => 'Direct Expenses', 'code' => 'DIRECT_EXPENSES', 'nature' => AccountNature::Expense, 'gross' => true],
             ['name' => 'Indirect Expenses', 'code' => 'INDIRECT_EXPENSES', 'nature' => AccountNature::Expense],
-            ['name' => 'Direct Incomes', 'code' => 'DIRECT_INCOMES', 'nature' => AccountNature::Income],
+            ['name' => 'Direct Incomes', 'code' => 'DIRECT_INCOMES', 'nature' => AccountNature::Income, 'gross' => true],
             ['name' => 'Indirect Incomes', 'code' => 'INDIRECT_INCOMES', 'nature' => AccountNature::Income],
-            ['name' => 'Purchase Accounts', 'code' => 'PURCHASE', 'nature' => AccountNature::Expense],
-            ['name' => 'Sales Accounts', 'code' => 'SALES', 'nature' => AccountNature::Income],
+            ['name' => 'Purchase Accounts', 'code' => 'PURCHASE', 'nature' => AccountNature::Expense, 'gross' => true],
+            ['name' => 'Sales Accounts', 'code' => 'SALES', 'nature' => AccountNature::Income, 'gross' => true],
         ];
     }
 
@@ -59,6 +59,7 @@ class DefaultAccountGroups
                 'name' => $node['name'],
                 'code' => $node['code'],
                 'nature' => $node['nature'],
+                'affects_gross_profit' => (bool) ($node['gross'] ?? false),
                 'sort_order' => $order,
                 'is_system' => true,
                 'is_active' => true,

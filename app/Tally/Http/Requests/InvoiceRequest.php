@@ -44,6 +44,7 @@ class InvoiceRequest extends FormRequest
         $this->merge([
             'party_ledger_id' => $this->input('party_ledger_id') ?: null,
             'account_ledger_id' => $this->input('account_ledger_id') ?: null,
+            'bill_name' => trim((string) $this->input('bill_name')),
             'reference_number' => trim((string) $this->input('reference_number')),
             'narration' => trim((string) $this->input('narration')),
             'lines' => $lines,
@@ -70,6 +71,8 @@ class InvoiceRequest extends FormRequest
     {
         return [
             'invoice_date' => ['required', 'date'],
+            'invoice_number' => ['nullable', 'string', 'max:30'],
+            'bill_name' => ['nullable', 'string', 'max:40'],
             'party_ledger_id' => ['required', 'integer'],
             'account_ledger_id' => ['required', 'integer'],
             'reference_number' => ['nullable', 'string', 'max:50'],

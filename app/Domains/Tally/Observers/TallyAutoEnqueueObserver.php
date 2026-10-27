@@ -5,36 +5,33 @@ namespace App\Domains\Tally\Observers;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
-use App\Domains\Sales\Models\Invoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
+use App\Domains\Sales\Models\Invoice;
 use App\Domains\Tally\Services\TallyExportService;
 use App\Domains\TallySync\Support\SyncGate;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Auto-enqueue supported documents to the Tally queue on create AND on transition
- * to a posted status. Silent on failure — Tally sync must NEVER break the main flow.
- *
- * Masters (Product, Customer, Uom) sync immediately on save/update.
- * Vouchers (Invoice, Payment, etc.) sync only when they reach a posted status.
+ * Queues DMS rows after the Books copy has been written, so a posted sale
+ * is sent once as the Books voucher.
  */
 class TallyAutoEnqueueObserver
 {
     protected static bool $muted = false;
 
-    public function __construct(
-        protected TallyExportService $tallyService
-    ) {
+    public function __construct(protected TallyExportService $tallyService) {}
+
+    public static function muted(): bool
+    {
+        return static::$muted;
     }
 
-    /**
-     * Run a callback without queueing anything back to Tally
-     * (used when the data being saved came from Tally in the first place).
-     */
     public static function withoutSync(callable $callback): mixed
     {
         $previous = static::$muted;
@@ -49,57 +46,62 @@ class TallyAutoEnqueueObserver
 
     public function created(Model $model): void
     {
-        if (static::$muted || ! SyncGate::enabled()) {
-            return;
-        }
-
-        // Master records sync immediately on creation.
-        if ($model instanceof Product || $model instanceof Customer || $model instanceof Uom) {
-            $this->maybeEnqueueMaster($model);
-            return;
-        }
-
-        // Purchase Orders should sync to Tally only after approval.
-        if ($model instanceof PurchaseOrder) {
-            return;
-        }
-
-        $this->maybeEnqueue($model);
+        $this->schedule($model, true);
     }
 
     public function updated(Model $model): void
+    {
+        $this->schedule($model, false);
+    }
+
+    protected function schedule(Model $model, bool $created): void
     {
         if (static::$muted || ! SyncGate::enabled()) {
             return;
         }
 
-        // Masters sync on any field change (name, HSN, GST rate, address etc.)
-        if ($model instanceof Product || $model instanceof Customer || $model instanceof Uom) {
-            $this->maybeEnqueueMaster($model);
-            return;
-        }
+        $class = $model::class;
+        $id = $model->getKey();
+        $statusChanged = $model->wasChanged('status');
+        $isMaster = $model instanceof Product || $model instanceof Customer || $model instanceof Uom || $model instanceof Warehouse;
 
-        if (! $model->wasChanged('status')) {
-            return;
-        }
+        DB::afterCommit(function () use ($class, $id, $created, $statusChanged, $isMaster) {
+            if (static::$muted || ! SyncGate::enabled()) {
+                return;
+            }
 
-        // Purchase Orders sync only when they become approved.
-        if ($model instanceof PurchaseOrder && $model->status !== 'approved') {
-            return;
-        }
+            $fresh = $class::query()->find($id);
+            if (! $fresh) {
+                return;
+            }
 
-        $this->maybeEnqueue($model);
+            if ($isMaster) {
+                $this->maybeEnqueueMaster($fresh);
+
+                return;
+            }
+
+            if ($fresh instanceof PurchaseOrder && $fresh->status !== 'approved') {
+                return;
+            }
+
+            if (! $created && ! $statusChanged) {
+                return;
+            }
+
+            $this->maybeEnqueue($fresh);
+        });
     }
 
     protected function maybeEnqueueMaster(Model $model): void
     {
         try {
             $this->tallyService->enqueueMaster($model);
-        } catch (\Throwable $e) {
+        } catch (\Throwable $exception) {
             Log::warning('Tally master enqueue failed', [
                 'model' => $model::class,
-                'id'    => $model->getKey(),
-                'error' => $e->getMessage(),
+                'id' => $model->getKey(),
+                'error' => $exception->getMessage(),
             ]);
         }
     }
@@ -118,12 +120,11 @@ class TallyAutoEnqueueObserver
 
         try {
             $this->tallyService->enqueuePostedDocument($model);
-        } catch (\Throwable $e) {
-            // Never bubble Tally issues into the primary transaction.
+        } catch (\Throwable $exception) {
             Log::warning('Tally auto-enqueue failed', [
                 'model' => $model::class,
-                'id'    => $model->getKey(),
-                'error' => $e->getMessage(),
+                'id' => $model->getKey(),
+                'error' => $exception->getMessage(),
             ]);
         }
     }

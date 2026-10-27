@@ -321,7 +321,7 @@
                                                     <div class="flex items-center justify-between gap-3">
                                                         <div class="min-w-0">
                                                             <div class="truncate font-medium text-gray-900" x-text="product.name"></div>
-                                                            <div class="mt-0.5 text-xs text-gray-500" x-text="product.sku ? 'SKU: ' + product.sku : 'No SKU'"></div>
+                                                            <div class="mt-0.5 text-xs text-gray-500" x-text="product.sku ? 'Part No: ' + product.sku : 'No Part Number'"></div>
                                                         </div>
                                                         <span class="shrink-0 rounded bg-gray-100 px-2 py-1 text-xs text-gray-500" x-text="product.base_uom_name || ''"></span>
                                                     </div>

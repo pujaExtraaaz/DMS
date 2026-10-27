@@ -37,10 +37,10 @@ class ConnectorStatus
                 'XmlHelpers',
             ],
             'enable_steps' => [
-                'Set TALLY_SYNC_ENABLED=true in .env',
-                'Set TALLY_CONNECTOR_TOKEN and TALLY_COMPANY',
-                'Run php artisan config:clear',
-                'Office PC: run the Tally connector against /api/tally-connector/*',
+                'In TallyPrime open the company, then Exchange, Data Synchronization, and set this computer as Server on port 9000.',
+                'Set TALLY_SYNC_ENABLED=true, TALLY_CONNECTOR_TOKEN, and TALLY_COMPANY (the exact Tally company name) in .env.',
+                'Run php artisan config:clear.',
+                'On the Tally PC, put config.json next to tally_connector.exe and run it. It polls every 5 to 10 seconds.',
             ],
         ];
     }

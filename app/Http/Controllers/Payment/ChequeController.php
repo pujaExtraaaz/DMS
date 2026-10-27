@@ -83,7 +83,7 @@ class ChequeController extends Controller
         $validated = $request->validate([
             'cheque_no' => 'required|string|max:50',
             'customer_id' => 'required|exists:customers,id',
-            'purpose' => 'required|in:security,pdc',
+            'purpose' => 'required|in:security,pdc,credit',
             'direction' => 'required|in:received_from_client,received_from_vendor,issued_to_vendor',
             'amount' => 'required|numeric|min:0.01',
             'bank_name' => 'nullable|string|max:255',

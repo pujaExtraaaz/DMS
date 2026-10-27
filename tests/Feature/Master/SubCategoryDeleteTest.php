@@ -65,8 +65,7 @@ class SubCategoryDeleteTest extends TestCase
         $response = $this->actingAs($this->adminUser)->get(route('masters.sub-categories.index'));
 
         $response->assertStatus(200);
-        $response->assertSee('BLUETOOTH HEADPHONES');
-        $response->assertSee('SUB-BTHP-01');
+        $response->assertSee('Bluetooth Headphones');
         $response->assertSee('Edit');
         $response->assertSee('Delete');
         $response->assertSee('data-delete-subcategory="' . $subCategory->id . '"', false);

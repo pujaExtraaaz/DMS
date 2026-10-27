@@ -7,6 +7,7 @@ use Tally\Accounting\Money;
 use Tally\Accounting\VoucherStatus;
 use Tally\Models\Company;
 use Tally\Models\FinancialYear;
+use Tally\Models\Invoice;
 use Tally\Models\Ledger;
 use Tally\Models\Voucher;
 use Tally\Models\VoucherEntry;
@@ -26,7 +27,7 @@ class FinancialReports
             ->with('entries.ledger')
             ->where('company_id', $company->id)
             ->where('financial_year_id', $year->id)
-            ->where('status', VoucherStatus::Posted)
+            ->where('status', '!=', VoucherStatus::Cancelled)
             ->tap(fn ($query) => DateRange::apply($query, 'voucher_date', $from, $to))
             ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
             ->when($search !== '', function ($query) use ($like) {
@@ -54,6 +55,42 @@ class FinancialReports
                 'credit' => $voucher->total_credit,
                 'url' => $this->dayBookUrl($voucher),
             ];
+        }
+
+        $drafts = Invoice::query()
+            ->with('party')
+            ->where('company_id', $company->id)
+            ->where('financial_year_id', $year->id)
+            ->where('status', VoucherStatus::Draft)
+            ->whereNull('voucher_id')
+            ->tap(fn ($query) => DateRange::apply($query, 'invoice_date', $from, $to))
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($search !== '', function ($query) use ($like) {
+                $query->where(function ($query) use ($like) {
+                    $query->where('invoice_number', 'like', $like)
+                        ->orWhere('narration', 'like', $like)
+                        ->orWhere('reference_number', 'like', $like);
+                });
+            })
+            ->orderBy('invoice_date')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($drafts as $invoice) {
+            $amount = (string) $invoice->grand_total;
+            $rows[] = [
+                'date' => $invoice->invoice_date->format('d M Y'),
+                'number' => $invoice->invoice_number,
+                'type' => $invoice->kind->label().' (Unposted)',
+                'particulars' => $invoice->party?->name ?? '—',
+                'narration' => $invoice->narration,
+                'debit' => $amount,
+                'credit' => $amount,
+                'url' => tally_route($invoice->kind->routeName('edit'), $invoice),
+            ];
+            $cents = Money::cents($amount);
+            $debit += $cents;
+            $credit += $cents;
         }
 
         return [

@@ -16,6 +16,21 @@ class PartyService
     /**
      * @param  array<string, mixed>  $data
      */
+    private function creditDays(Company $company, array $data, ?Party $party): ?int
+    {
+        $days = $data['credit_days'] ?? null;
+
+        if ($days !== '' && $days !== null) {
+            return (int) $days;
+        }
+
+        if ($party) {
+            return null;
+        }
+
+        return $company->default_credit_days !== null ? (int) $company->default_credit_days : null;
+    }
+
     public function save(Company $company, array $data, ?Party $party = null): Party
     {
         return DB::transaction(function () use ($company, $data, $party) {
@@ -46,7 +61,7 @@ class PartyService
             'gst_registration_type' => ($data['gst_registration_type'] ?? null) ?: null,
             'pan' => ($data['pan'] ?? null) ?: null,
                 'credit_limit' => ($data['credit_limit'] ?? null) !== '' && ($data['credit_limit'] ?? null) !== null ? $data['credit_limit'] : null,
-                'credit_days' => ($data['credit_days'] ?? null) !== '' && ($data['credit_days'] ?? null) !== null ? $data['credit_days'] : null,
+                'credit_days' => $this->creditDays($company, $data, $party),
                 'payment_term_id' => ($data['payment_term_id'] ?? null) ?: null,
                 'is_active' => (bool) ($data['is_active'] ?? true),
                 'is_system' => false,

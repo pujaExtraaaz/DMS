@@ -13,6 +13,8 @@ use Tally\Models\DepositSlip;
 use Tally\Models\DepositSlipLine;
 use Tally\Models\FinancialYear;
 use Tally\Models\GatewaySettlement;
+use Tally\Models\Ledger;
+use Tally\Models\MerchantProfile;
 use Tally\Models\PaymentAdvice;
 use Tally\Models\Branch;
 use Illuminate\Contracts\View\View;
@@ -106,7 +108,7 @@ class BankingInstrumentController extends Controller
                 ->where('financial_year_id', $year->id)
                 ->orderByDesc('slip_date')
                 ->get(),
-            'nextNumber' => $this->nextNumber($company, 'deposit_slips', 'slip_number', 'DS-'),
+            'nextNumber' => $this->nextNumber($company, (new DepositSlip)->getTable(), 'slip_number', 'DS-'),
         ]);
     }
 
@@ -120,12 +122,12 @@ class BankingInstrumentController extends Controller
 
         [$company, $branch, $year] = $scope;
         $data = $request->validate([
-            'bank_account_id' => ['required', Rule::exists('bank_accounts', 'id')->where('company_id', $company->id)],
-            'slip_number' => ['required', 'string', 'max:30', Rule::unique('deposit_slips', 'slip_number')->where('company_id', $company->id)],
+            'bank_account_id' => ['required', Rule::exists((new BankAccount)->getTable(), 'id')->where('company_id', $company->id)],
+            'slip_number' => ['required', 'string', 'max:30', Rule::unique((new DepositSlip)->getTable(), 'slip_number')->where('company_id', $company->id)],
             'slip_date' => ['required', 'date'],
             'narration' => ['nullable', 'string', 'max:500'],
             'instrument_ids' => ['required', 'array', 'min:1'],
-            'instrument_ids.*' => ['integer', Rule::exists('bank_instruments', 'id')->where('company_id', $company->id)],
+            'instrument_ids.*' => ['integer', Rule::exists((new BankInstrument)->getTable(), 'id')->where('company_id', $company->id)],
         ]);
 
         DB::transaction(function () use ($company, $branch, $year, $data) {
@@ -184,7 +186,7 @@ class BankingInstrumentController extends Controller
                 ->where('financial_year_id', $year->id)
                 ->orderByDesc('advice_date')
                 ->get(),
-            'nextNumber' => $this->nextNumber($company, 'payment_advices', 'advice_number', 'PA-'),
+            'nextNumber' => $this->nextNumber($company, (new PaymentAdvice)->getTable(), 'advice_number', 'PA-'),
         ]);
     }
 
@@ -202,12 +204,12 @@ class BankingInstrumentController extends Controller
             'bank_account_id' => $request->input('bank_account_id') ?: null,
         ]);
         $data = $request->validate([
-            'advice_number' => ['required', 'string', 'max:30', Rule::unique('payment_advices', 'advice_number')->where('company_id', $company->id)],
+            'advice_number' => ['required', 'string', 'max:30', Rule::unique((new PaymentAdvice)->getTable(), 'advice_number')->where('company_id', $company->id)],
             'advice_date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'min:0.01', 'decimal:0,2'],
             'favouring' => ['nullable', 'string', 'max:160'],
-            'party_ledger_id' => ['nullable', Rule::exists('ledgers', 'id')->where('company_id', $company->id)],
-            'bank_account_id' => ['nullable', Rule::exists('bank_accounts', 'id')->where('company_id', $company->id)],
+            'party_ledger_id' => ['nullable', Rule::exists((new Ledger)->getTable(), 'id')->where('company_id', $company->id)],
+            'bank_account_id' => ['nullable', Rule::exists((new BankAccount)->getTable(), 'id')->where('company_id', $company->id)],
             'narration' => ['nullable', 'string', 'max:500'],
         ]);
         unset($data['favouring']);
@@ -259,12 +261,12 @@ class BankingInstrumentController extends Controller
             'charges' => $request->input('charges') === '' ? '0' : $request->input('charges'),
         ]);
         $data = $request->validate([
-            'reference' => ['required', 'string', 'max:40', Rule::unique('gateway_settlements', 'reference')->where('company_id', $company->id)],
+            'reference' => ['required', 'string', 'max:40', Rule::unique((new GatewaySettlement)->getTable(), 'reference')->where('company_id', $company->id)],
             'settlement_date' => ['required', 'date'],
             'gross_amount' => ['required', 'numeric', 'min:0.01', 'decimal:0,2'],
             'charges' => ['nullable', 'numeric', 'min:0', 'decimal:0,2'],
-            'merchant_profile_id' => ['nullable', Rule::exists('merchant_profiles', 'id')->where('company_id', $company->id)],
-            'bank_account_id' => ['nullable', Rule::exists('bank_accounts', 'id')->where('company_id', $company->id)],
+            'merchant_profile_id' => ['nullable', Rule::exists((new MerchantProfile)->getTable(), 'id')->where('company_id', $company->id)],
+            'bank_account_id' => ['nullable', Rule::exists((new BankAccount)->getTable(), 'id')->where('company_id', $company->id)],
         ]);
         $gross = Money::cents((string) $data['gross_amount']);
         $charges = Money::cents((string) ($data['charges'] ?? '0'));
@@ -371,9 +373,11 @@ class BankingInstrumentController extends Controller
             'mode' => $mode,
             'company' => $company,
             'rows' => $rows,
-            'accounts' => $this->accounts($company),
-            'parties' => $this->parties($company),
-            'nextNumber' => $this->nextNumber($company, 'bank_instruments', 'number', 'CHQ-'),
+            'accounts' => $mode === 'register' ? $this->accounts($company) : collect(),
+            'parties' => $mode === 'register' ? $this->parties($company) : collect(),
+            'nextNumber' => $mode === 'register'
+                ? $this->nextNumber($company, (new BankInstrument)->getTable(), 'number', 'CHQ-')
+                : null,
         ]);
     }
 
@@ -389,12 +393,12 @@ class BankingInstrumentController extends Controller
         ]);
 
         return $request->validate([
-            'number' => ['required', 'string', 'max:30', Rule::unique('bank_instruments', 'number')->where('company_id', $company->id)->ignore($ignoreId)],
+            'number' => ['required', 'string', 'max:30', Rule::unique((new BankInstrument)->getTable(), 'number')->where('company_id', $company->id)->ignore($ignoreId)],
             'instrument_date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'min:0.01', 'decimal:0,2'],
             'favouring' => ['required', 'string', 'max:160'],
-            'bank_account_id' => ['nullable', Rule::exists('bank_accounts', 'id')->where('company_id', $company->id)],
-            'party_ledger_id' => ['nullable', Rule::exists('ledgers', 'id')->where('company_id', $company->id)],
+            'bank_account_id' => ['nullable', Rule::exists((new BankAccount)->getTable(), 'id')->where('company_id', $company->id)],
+            'party_ledger_id' => ['nullable', Rule::exists((new Ledger)->getTable(), 'id')->where('company_id', $company->id)],
             'narration' => ['nullable', 'string', 'max:500'],
             'status' => ['nullable', Rule::in(['open', 'printed', 'deposited', 'cancelled'])],
         ]);

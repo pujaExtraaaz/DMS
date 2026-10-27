@@ -70,17 +70,22 @@ class ProductNameCapitalizationTest extends TestCase
             'code' => 'ELEC',
             'is_active' => true,
         ]);
+        $this->boxUom = Uom::create([
+            'name' => 'Box',
+            'code' => 'BOX',
+            'is_active' => true,
+        ]);
     }
 
     public function test_product_model_accessor_and_mutator_standardize_capitalization(): void
     {
         $cases = [
-            'apple iphone 18' => 'Apple iphone 18',
-            'apple iphone 18 pro' => 'Apple iphone 18 pro',
+            'apple iphone 18' => 'Apple Iphone 18',
+            'apple iphone 18 pro' => 'Apple Iphone 18 Pro',
             'assorted Biscuits' => 'Assorted Biscuits',
             'chips' => 'Chips',
             'premium Basmati Rice 25kg' => 'Premium Basmati Rice 25kg',
-            'SONY FW-43EZ20L' => 'SONY FW-43EZ20L',
+            'SONY FW-43EZ20L' => 'Sony FW-43EZ20L',
             'Widget X' => 'Widget X',
             '  chips  ' => 'Chips',
         ];
@@ -98,6 +103,8 @@ class ProductNameCapitalizationTest extends TestCase
             'name' => 'apple iphone 18 pro',
             'sku' => 'IPHONE-18-PRO',
             'base_uom_id' => $this->uom->id,
+            'alternate_uom_id' => $this->boxUom->id,
+            'conversion_factor' => 10,
             'brand_id' => $this->brand->id,
             'category_id' => $this->category->id,
             'tax_rate' => 18,
@@ -112,11 +119,11 @@ class ProductNameCapitalizationTest extends TestCase
         // Check raw database storage
         $stored = DB::table('products')->where('sku', 'IPHONE-18-PRO')->first();
         $this->assertNotNull($stored);
-        $this->assertSame('Apple iphone 18 pro', $stored->name);
+        $this->assertSame('Apple Iphone 18 Pro', $stored->name);
 
         // Check Eloquent model
         $product = Product::where('sku', 'IPHONE-18-PRO')->first();
-        $this->assertSame('Apple iphone 18 pro', $product->name);
+        $this->assertSame('Apple Iphone 18 Pro', $product->name);
     }
 
     public function test_product_update_normalizes_name_to_start_with_capital_letter(): void
@@ -127,6 +134,8 @@ class ProductNameCapitalizationTest extends TestCase
             'sku' => 'PROD-UPD-01',
             'serial_no' => 'SN-UPD-01',
             'base_uom_id' => $this->uom->id,
+            'alternate_uom_id' => $this->boxUom->id,
+            'conversion_factor' => 10,
             'tax_rate' => 18,
             'is_active' => true,
         ]);
@@ -135,6 +144,8 @@ class ProductNameCapitalizationTest extends TestCase
             'name' => 'premium Basmati Rice 25kg',
             'sku' => 'PROD-UPD-01',
             'base_uom_id' => $this->uom->id,
+            'alternate_uom_id' => $this->boxUom->id,
+            'conversion_factor' => 10,
             'is_active' => 1,
         ];
 
@@ -180,7 +191,7 @@ class ProductNameCapitalizationTest extends TestCase
         $response->assertStatus(200);
         $content = $response->getContent();
 
-        $this->assertStringContainsString('Apple iphone 18', $content);
+        $this->assertStringContainsString('Apple Iphone 18', $content);
         $this->assertStringNotContainsString('>apple iphone 18<', $content);
     }
 
@@ -198,7 +209,7 @@ class ProductNameCapitalizationTest extends TestCase
         foreach (['apple', 'Apple', 'APPLE'] as $searchTerm) {
             $response = $this->actingAs($this->user)->get(route('masters.products.index', ['search' => $searchTerm]));
             $response->assertStatus(200);
-            $response->assertSee('Apple iphone 18');
+            $response->assertSee('Apple Iphone 18');
         }
     }
 
@@ -218,9 +229,9 @@ class ProductNameCapitalizationTest extends TestCase
         $response->assertStatus(200);
         $content = $response->getContent();
 
-        $this->assertStringContainsString('Apple iphone 18', $content);
+        $this->assertStringContainsString('Apple Iphone 18', $content);
         $this->assertStringNotContainsString('"name":"apple iphone 18"', $content);
-        $this->assertStringContainsString('"name":"Apple iphone 18"', $content);
+        $this->assertStringContainsString('"name":"Apple Iphone 18"', $content);
     }
 }
 

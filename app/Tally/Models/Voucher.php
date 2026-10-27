@@ -25,11 +25,16 @@ class Voucher extends AccountingModel
         'voucher_type',
         'voucher_number',
         'voucher_date',
+        'effective_date',
+        'party_ledger_id',
         'reference_number',
+        'reference_date',
+        'place_of_supply',
         'narration',
         'name_on_receipt',
         'is_post_dated',
         'is_optional',
+        'is_invoice',
         'is_memo',
         'voucher_class_id',
         'nature_of_payment',
@@ -62,6 +67,9 @@ class Voucher extends AccountingModel
         return [
             'voucher_type' => VoucherType::class,
             'voucher_date' => 'date',
+            'effective_date' => 'date',
+            'reference_date' => 'date',
+            'is_invoice' => 'boolean',
             'status' => VoucherStatus::class,
             'total_debit' => 'decimal:2',
             'total_credit' => 'decimal:2',
@@ -80,6 +88,21 @@ class Voucher extends AccountingModel
     public function company(): BelongsTo
     {
         return $this->belongsTo(Company::class);
+    }
+
+    public function partyLedger(): BelongsTo
+    {
+        return $this->belongsTo(Ledger::class, 'party_ledger_id');
+    }
+
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
+    }
+
+    public function inventoryLines(): HasMany
+    {
+        return $this->hasMany(VoucherInventoryLine::class);
     }
 
     public function branch(): BelongsTo

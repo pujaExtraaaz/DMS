@@ -25,6 +25,7 @@
                     <option value="">All purposes</option>
                     <option value="pdc" @selected(request('purpose')==='pdc')>PDC</option>
                     <option value="security" @selected(request('purpose')==='security')>Security</option>
+                    <option value="credit" @selected(request('purpose')==='credit')>Credit</option>
                 </select>
 
                 <select name="customer_id" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>

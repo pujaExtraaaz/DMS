@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 use Tally\Accounting\VoucherStatus;
 use Tally\Accounting\VoucherType;
+use Tally\Models\Ledger;
 use Tally\Models\Party;
 use Tally\Models\Voucher;
 use Tally\Models\VoucherEntry;
@@ -92,7 +93,14 @@ class PaymentSync
             'total_credit' => $amount,
         ];
 
-        $moneyLedgerId = BooksCompany::receiptLedger($company, $payment->method ?? null)->id;
+        $moneyLedger = $this->moneyLedger($company, $payment);
+        $moneyLedgerId = $moneyLedger->id;
+        if (strtolower((string) $payment->method) === 'bank' && $moneyLedger->name) {
+            $bankNote = 'Received in '.$moneyLedger->name;
+            $attributes['narration'] = $attributes['narration']
+                ? $attributes['narration'].' · '.$bankNote
+                : $bankNote;
+        }
 
         DB::transaction(function () use (&$voucher, $attributes, $payment, $company, $party, $amount, $moneyLedgerId) {
             $voucher ? $voucher->update($attributes) : $voucher = Voucher::query()->create($attributes);
@@ -119,6 +127,21 @@ class PaymentSync
         });
     }
 
+
+    private function moneyLedger(\Tally\Models\Company $company, Payment $payment): Ledger
+    {
+        if (strtolower((string) $payment->method) === 'bank' && $payment->bank_ledger_id) {
+            $selected = Ledger::query()
+                ->where('company_id', $company->id)
+                ->whereKey($payment->bank_ledger_id)
+                ->first();
+            if ($selected) {
+                return $selected;
+            }
+        }
+
+        return BooksCompany::receiptLedger($company, $payment->method ?? null);
+    }
     private function pushBillAllocation(Voucher $voucher, Payment $payment, Party $party): void
     {
         if (! $voucher->isPosted() || ! $payment->invoice) {

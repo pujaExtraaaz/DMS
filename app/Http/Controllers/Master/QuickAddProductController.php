@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Master;
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Master\Models\Product;
+use App\Domains\Master\Models\ProductType;
 use App\Domains\Master\Models\ProductUom;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
@@ -26,18 +27,19 @@ class QuickAddProductController extends Controller
     {
         if ($request->has('name')) {
             $request->merge([
-                'name' => Str::ucfirst(trim((string) $request->input('name'))),
+                'name' => \App\Support\TitleCase::format((string) $request->input('name')),
             ]);
         }
 
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'nullable|string|max:50|unique:products,sku',
-            'series' => 'nullable|string|max:100',
             'model' => 'nullable|string|max:100',
             'models' => 'nullable|string|max:100',
+            'product_type_id' => 'nullable|exists:product_types,id',
             'product_type' => 'nullable|string|max:100',
             'hsn_code' => 'nullable|string|max:20',
+            'warranty' => 'nullable|string|max:100',
             'base_uom_id' => 'required|exists:uoms,id',
             'brand_id' => 'nullable|exists:brands,id',
             'category_id' => 'nullable|exists:categories,id',
@@ -45,10 +47,21 @@ class QuickAddProductController extends Controller
             'purchase_price' => 'nullable|numeric|min:0',
             'selling_price' => 'nullable|numeric|min:0',
             'calculation_mrp' => 'nullable|numeric|min:0',
-            'color_variant' => 'nullable|string|max:60',
         ]);
 
-        $product = DB::transaction(function () use ($data) {
+        $productTypeId = $request->input('product_type_id');
+        $productTypeName = $request->input('product_type');
+        if (!empty($productTypeId)) {
+            $pt = ProductType::find($productTypeId);
+            $productTypeName = $pt?->name ?? $productTypeName;
+        } elseif (!empty($productTypeName)) {
+            $pt = ProductType::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower(trim($productTypeName))])->first();
+            if ($pt) {
+                $productTypeId = $pt->id;
+            }
+        }
+
+        $product = DB::transaction(function () use ($data, $productTypeId, $productTypeName) {
             $companyId = auth()->user()?->company_id ?? Company::defaultCompanyId() ?? Company::query()->value('id');
 
             $product = Product::create([
@@ -57,7 +70,8 @@ class QuickAddProductController extends Controller
                 'sku' => $data['sku'] ?? CodeGenerator::forProduct($companyId),
                 'series' => $data['series'] ?? null,
                 'model' => $data['model'] ?? $data['models'] ?? null,
-                'product_type' => $data['product_type'] ?? null,
+                'product_type' => $productTypeName,
+                'product_type_id' => $productTypeId,
                 'serial_no' => CodeGenerator::forProductSerial(),
                 'hsn_code' => $data['hsn_code'] ?? null,
                 'base_uom_id' => (int) $data['base_uom_id'],

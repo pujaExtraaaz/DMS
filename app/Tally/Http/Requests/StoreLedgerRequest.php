@@ -33,6 +33,11 @@ class StoreLedgerRequest extends FormRequest
             'opening_balance_type' => $this->input('opening_balance_type') ?: OpeningBalanceType::Debit->value,
             'is_active' => $this->exists('is_active') ? $this->boolean('is_active') : true,
             'is_control_account' => $this->boolean('is_control_account'),
+            'maintain_bill_wise' => $this->exists('maintain_bill_wise') ? $this->boolean('maintain_bill_wise') : true,
+            'cost_centres_applicable' => $this->boolean('cost_centres_applicable'),
+            'calculate_interest' => $this->boolean('calculate_interest'),
+            'interest_style' => $this->input('interest_style') === '30_day_month' ? '30_day_month' : '365_day_year',
+            'interest_rate' => $this->input('interest_rate') === '' || $this->input('interest_rate') === null ? null : $this->input('interest_rate'),
             'parent_ledger_id' => $parent === '' || $parent === null ? null : (int) $parent,
         ];
 
@@ -44,7 +49,7 @@ class StoreLedgerRequest extends FormRequest
         $flow = trim((string) $this->input('cash_flow_class'));
         $cleaned['cash_flow_class'] = in_array($flow, ['Operating', 'Investing', 'Financing'], true) ? $flow : null;
 
-        foreach (['address', 'state', 'phone', 'email', 'gstin', 'gst_registration_type', 'pan', 'credit_limit', 'credit_days', 'bank_name', 'account_number', 'ifsc'] as $field) {
+        foreach (['address', 'contact_person', 'state', 'country', 'pincode', 'mailing_name', 'alias', 'phone', 'email', 'gstin', 'gst_registration_type', 'pan', 'credit_limit', 'credit_days', 'bank_name', 'account_number', 'ifsc'] as $field) {
             $value = $this->input($field);
 
             if (! is_string($value) && ! is_numeric($value)) {
@@ -104,14 +109,14 @@ class StoreLedgerRequest extends FormRequest
                 'string',
                 'max:32',
                 'regex:/^[A-Z0-9][A-Z0-9_-]{0,31}$/',
-                Rule::unique('ledgers', 'code')
+                Rule::unique('acct_ledgers', 'code')
                     ->where(fn ($query) => $query->where('company_id', $company->id))
                     ->ignore($ledger),
             ],
             'account_group_id' => [
                 'required',
                 'integer',
-                Rule::exists('account_groups', 'id')->where(function ($query) use ($company, $ledger) {
+                Rule::exists('acct_account_groups', 'id')->where(function ($query) use ($company, $ledger) {
                     $query->where('company_id', $company->id)->where(function ($query) use ($ledger) {
                         $query->where('is_active', true);
 
@@ -124,7 +129,12 @@ class StoreLedgerRequest extends FormRequest
             'opening_balance' => ['required', 'numeric', 'min:0', 'decimal:0,2', 'max:9999999999999.99'],
             'opening_balance_type' => ['required', Rule::enum(OpeningBalanceType::class)],
             'address' => ['nullable', 'string', 'max:500'],
+            'contact_person' => ['nullable', 'string', 'max:255'],
             'state' => ['nullable', 'string', 'max:255'],
+            'country' => ['nullable', 'string', 'max:80'],
+            'pincode' => ['nullable', 'string', 'max:12'],
+            'mailing_name' => ['nullable', 'string', 'max:255'],
+            'alias' => ['nullable', 'string', 'max:255'],
             'gst_registration_type' => ['nullable', Rule::enum(GstRegistrationType::class)],
             'phone' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
@@ -133,7 +143,7 @@ class StoreLedgerRequest extends FormRequest
                 'string',
                 'size:15',
                 'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/',
-                Rule::unique('ledgers', 'gstin')
+                Rule::unique('acct_ledgers', 'gstin')
                     ->where(fn ($query) => $query->where('company_id', $company->id))
                     ->ignore($ledger),
             ],
@@ -143,11 +153,16 @@ class StoreLedgerRequest extends FormRequest
             'deduction_section_id' => [
                 'nullable',
                 'integer',
-                Rule::exists('deduction_sections', 'id')->where(fn ($query) => $query->where('company_id', $company->id)),
+                Rule::exists('acct_deduction_sections', 'id')->where(fn ($query) => $query->where('company_id', $company->id)),
             ],
             'cash_flow_class' => ['nullable', Rule::in(['Operating', 'Investing', 'Financing'])],
             'is_active' => ['required', 'boolean'],
             'is_control_account' => ['nullable', 'boolean'],
+            'maintain_bill_wise' => ['required', 'boolean'],
+            'cost_centres_applicable' => ['required', 'boolean'],
+            'calculate_interest' => ['required', 'boolean'],
+            'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100', Rule::requiredIf(fn () => $this->boolean('calculate_interest'))],
+            'interest_style' => ['required', Rule::in(['365_day_year', '30_day_month'])],
             'parent_ledger_id' => [
                 'nullable',
                 'integer',
@@ -163,7 +178,7 @@ class StoreLedgerRequest extends FormRequest
                 'string',
                 'max:30',
                 'regex:/^[A-Za-z0-9]{6,30}$/',
-                Rule::unique('bank_accounts', 'account_number')
+                Rule::unique('acct_bank_accounts', 'account_number')
                     ->where(fn ($query) => $query->where('company_id', $company->id))
                     ->ignore($ledger?->bankAccount()->value('id')),
             ],

@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search PO No, Supplier, Notes..."
+            search-placeholder="Search PO no, supplier, notes..."
             :reset-url="route('purchasing.orders.index')"
         >
             <x-slot name="filters">

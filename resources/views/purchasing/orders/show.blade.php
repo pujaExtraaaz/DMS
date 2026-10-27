@@ -109,7 +109,13 @@
             </div>
             @if($order->is_freight_applicable || (float) $order->freight_amount > 0)
                 <div class="flex justify-between text-slate-600">
-                    <span>Freight Charges:</span>
+                    <span>
+                        Freight Charges
+                        @if(($order->freight_mode ?? 'amount') === 'percent')
+                            ({{ rtrim(rtrim(number_format((float) $order->freight_percent, 2), '0'), '.') }}% of taxable amount)
+                        @endif
+                        :
+                    </span>
                     <span class="font-mono font-medium">₹{{ number_format((float) $order->freight_amount, 2) }}</span>
                 </div>
                 @if((float) $order->freight_tax_amount > 0)

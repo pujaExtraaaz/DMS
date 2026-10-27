@@ -18,6 +18,7 @@ class Payment extends Model
         'customer_id',
         'amount',
         'method',
+        'bank_ledger_id',
         'status',
         'paid_at',
         'recorded_by',
@@ -45,6 +46,11 @@ class Payment extends Model
     public function recorder(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recorded_by');
+    }
+
+    public function bankLedger(): BelongsTo
+    {
+        return $this->belongsTo(\Tally\Models\Ledger::class, 'bank_ledger_id');
     }
 
     public function allocations(): HasMany

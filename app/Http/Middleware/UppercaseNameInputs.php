@@ -10,7 +10,7 @@ use Symfony\Component\HttpFoundation\Response;
 class UppercaseNameInputs
 {
     /**
-     * Handle an incoming request and ensure all name fields are uppercase.
+     * Handle an incoming request and ensure all applicable human-readable text fields are formatted in Title Case.
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -25,14 +25,15 @@ class UppercaseNameInputs
     }
 
     /**
-     * Recursively uppercase input values where keys represent names.
+     * Recursively normalize input values where keys represent human-readable text fields into Title Case.
      */
-    protected function transformInput(array $data): array
+    protected function transformInput(array $data, ?string $parentKey = null): array
     {
         foreach ($data as $key => $value) {
+            $effectiveField = is_numeric($key) ? ($parentKey ?? (string) $key) : (string) $key;
             if (is_array($value)) {
-                $data[$key] = $this->transformInput($value);
-            } elseif (is_string($value) && NameCase::isNameField((string) $key)) {
+                $data[$key] = $this->transformInput($value, $effectiveField);
+            } elseif (is_string($value) && !is_numeric($effectiveField) && NameCase::isApplicableField($effectiveField)) {
                 $data[$key] = NameCase::format($value);
             }
         }
@@ -40,4 +41,3 @@ class UppercaseNameInputs
         return $data;
     }
 }
-

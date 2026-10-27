@@ -4,6 +4,7 @@ use App\Http\Controllers\Reporting\DashboardController;
 use App\Http\Controllers\Reporting\FinancialReportController;
 use App\Http\Controllers\Reporting\ReportController;
 use Illuminate\Support\Facades\Route;
+use Tally\Http\Controllers\TallyConnectorAdminController;
 
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
@@ -29,3 +30,11 @@ Route::prefix('reports')->name('reports.')->middleware('role_or_permission:super
     Route::get('/balance-sheet', [FinancialReportController::class, 'balanceSheet'])->name('balance-sheet');
     Route::get('/trial-balance', [FinancialReportController::class, 'trialBalance'])->name('trial-balance');
 });
+
+Route::middleware('role_or_permission:super-admin|reports.view|reports.create|reports.edit|reports.manage')->group(function () {
+    Route::get('/tally-connector/download', [TallyConnectorAdminController::class, 'download'])->name('tally-connector.download');
+    Route::get('/tally-connector', [TallyConnectorAdminController::class, 'show'])->name('tally-connector.show');
+});
+
+Route::redirect('/reports/tally-connector', '/tally-connector');
+Route::redirect('/reports/tally-connector/download', '/tally-connector/download');

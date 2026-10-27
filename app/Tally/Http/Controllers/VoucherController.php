@@ -182,7 +182,8 @@ class VoucherController extends Controller
                 ['ledger_id' => '', 'debit' => '', 'credit' => '', 'narration' => '', 'reference' => ''],
             ]),
             'nextNumber' => $numbers->peek($company, $branch, $year, $type),
-            'costCentres' => $company->costCentres()->where('is_active', true)->orderBy('name')->get(),
+            'numberingMethod' => $numbers->method($company, $type),
+            'costCentres' => $this->costCentresFor($company),
             'businessUnits' => \Tally\Models\BusinessUnit::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
             'departments' => \Tally\Models\Department::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
             'openBills' => $this->openBills($bills, $company, $year),
@@ -271,9 +272,16 @@ class VoucherController extends Controller
                 'cost_centre_id' => $entry->cost_centre_id,
                 'business_unit_id' => $entry->business_unit_id,
                 'department_id' => $entry->department_id,
+                'bank_transaction_type' => $entry->bank_transaction_type,
+                'instrument_number' => $entry->instrument_number,
+                'instrument_date' => $entry->instrument_date?->toDateString(),
+                'payment_favouring' => $entry->payment_favouring,
+                'bank_name' => $entry->bank_name,
+                'bank_account_number' => $entry->bank_account_number,
+                'bank_ifsc' => $entry->bank_ifsc,
             ])->all()),
             'nextNumber' => $voucher->voucher_number,
-            'costCentres' => $company->costCentres()->where('is_active', true)->orderBy('name')->get(),
+            'costCentres' => $this->costCentresFor($company),
             'businessUnits' => \Tally\Models\BusinessUnit::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
             'departments' => \Tally\Models\Department::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
             'openBills' => $this->openBills($bills, $company, $year, $voucher->id),
@@ -328,7 +336,7 @@ class VoucherController extends Controller
             ]),
             'action' => tally_route('books.tally.vouchers.correct.store', $voucher),
             'nextNumber' => 'Correction',
-            'costCentres' => $company->costCentres()->where('is_active', true)->orderBy('name')->get(),
+            'costCentres' => $this->costCentresFor($company),
             'businessUnits' => \Tally\Models\BusinessUnit::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
             'departments' => \Tally\Models\Department::query()->where('company_id', $company->id)->where('is_active', true)->orderBy('name')->get(),
             'openBills' => $this->openBills($bills, $company, $year),
@@ -358,7 +366,7 @@ class VoucherController extends Controller
         $voucher->loadMissing('invoice');
 
         if ($voucher->invoice) {
-            return redirect()->route(
+            return tally_redirect(
                 $voucher->invoice->kind->routeName($voucher->invoice->isCancelled() ? 'show' : 'edit'),
                 $voucher->invoice,
             );
@@ -406,9 +414,16 @@ class VoucherController extends Controller
                 'narration' => $entry->narration,
                 'reference' => $entry->reference,
                 'cost_centre_id' => $entry->cost_centre_id,
+                'bank_transaction_type' => $entry->bank_transaction_type,
+                'instrument_number' => $entry->instrument_number,
+                'instrument_date' => $entry->instrument_date?->toDateString(),
+                'payment_favouring' => $entry->payment_favouring,
+                'bank_name' => $entry->bank_name,
+                'bank_account_number' => $entry->bank_account_number,
+                'bank_ifsc' => $entry->bank_ifsc,
             ])->all()),
             'nextNumber' => $voucher->voucher_number,
-            'costCentres' => $company->costCentres()->where('is_active', true)->orderBy('name')->get(),
+            'costCentres' => $this->costCentresFor($company),
             'openBills' => $this->openBills($bills, $company, $year, $voucher->id),
             'balances' => $this->ledgerBalanceMap($company, $voucher->branch_id, $year),
             'postOnly' => true,
@@ -708,7 +723,7 @@ class VoucherController extends Controller
             $transaction = StockTransaction::query()->find((int) $match[1]);
 
             if ($transaction) {
-                return redirect()->route($transaction->type->routeName('show'), $transaction);
+                return tally_redirect($transaction->type->routeName('show'), $transaction);
             }
         }
 
@@ -768,7 +783,7 @@ class VoucherController extends Controller
         $invoice = $voucher->invoice;
 
         if ($invoice) {
-            return redirect()->route($invoice->kind->routeName($invoice->isCancelled() ? 'show' : 'edit'), $invoice);
+            return tally_redirect($invoice->kind->routeName($invoice->isCancelled() ? 'show' : 'edit'), $invoice);
         }
 
         return redirect()
@@ -790,8 +805,21 @@ class VoucherController extends Controller
         ];
     }
 
+    private function costCentresFor(Company $company): \Illuminate\Support\Collection
+    {
+        if (! $company->usesCostCentres()) {
+            return collect();
+        }
+
+        return $company->costCentres()->where('is_active', true)->orderBy('name')->get();
+    }
+
     private function openBills(BillAllocationService $bills, Company $company, FinancialYear $year, ?int $ignoreVoucherId = null): \Illuminate\Support\Collection
     {
+        if (! $company->usesBillWise()) {
+            return collect();
+        }
+
         $asOf = now()->toDateString();
         $start = $year->start_date->toDateString();
         $end = $year->end_date->toDateString();

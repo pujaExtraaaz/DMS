@@ -78,9 +78,31 @@ class StockMovementService
         }
 
         return DB::transaction(function () use ($product, $uom, $quantity, $type, $reference, $notes, $user, $warehouseId, $unitCost, $landedUnitCost, $batchNo) {
+            $baseUom = $product->baseUom ?? ($product->base_uom_id ? Uom::find($product->base_uom_id) : null);
+            $effectiveUom = $baseUom ?? $uom;
+            $effectiveQty = $quantity;
+            $effectiveCost = $unitCost;
+            $effectiveLandedCost = $landedUnitCost;
+
+            if ($baseUom && (int) $uom->id !== (int) $baseUom->id) {
+                $conversionService = app(\App\Domains\Master\Services\UomConversionService::class);
+                $factor = $conversionService->getConversionFactor($product, $uom);
+                $effectiveQty = $quantity * $factor;
+                if ($unitCost !== null && $factor > 0) {
+                    $effectiveCost = $unitCost / $factor;
+                }
+                if ($landedUnitCost !== null && $factor > 0) {
+                    $effectiveLandedCost = $landedUnitCost / $factor;
+                }
+                $uomCode = $uom->code ?? $uom->name;
+                $baseCode = $baseUom->code ?? $baseUom->name;
+                $uomNote = "[{$quantity} {$uomCode} = {$effectiveQty} {$baseCode}]";
+                $notes = $notes ? ($notes . ' ' . $uomNote) : $uomNote;
+            }
+
             $attrs = [
                 'product_id' => $product->id,
-                'uom_id' => $uom->id,
+                'uom_id' => $effectiveUom->id,
                 'warehouse_id' => $warehouseId,
             ];
 
@@ -88,15 +110,15 @@ class StockMovementService
                 ->lockForUpdate()
                 ->firstOrCreate($attrs, ['quantity' => 0]);
 
-            $newBalance = (float) $stockLevel->quantity + $quantity;
+            $newBalance = (float) $stockLevel->quantity + $effectiveQty;
 
             if ($newBalance < 0 && ! config('dms.allow_negative_stock', true)) {
                 $available = (float) $stockLevel->quantity;
-                $required = abs($quantity);
+                $required = abs($effectiveQty);
                 $warehouseLabel = $warehouseId ? " warehouse #{$warehouseId}" : '';
 
                 throw new InvalidArgumentException(
-                    "Insufficient stock: {$product->name} ({$uom->name}){$warehouseLabel}. "
+                    "Insufficient stock: {$product->name} ({$effectiveUom->name}){$warehouseLabel}. "
                     ."Available: {$available}, required: {$required}."
                 );
             }
@@ -106,9 +128,9 @@ class StockMovementService
             $movement = StockMovement::create([
                 'warehouse_id' => $warehouseId,
                 'product_id' => $product->id,
-                'uom_id' => $uom->id,
+                'uom_id' => $effectiveUom->id,
                 'type' => $type,
-                'quantity' => $quantity,
+                'quantity' => $effectiveQty,
                 'balance_after' => $newBalance,
                 'reference_type' => $reference?->getMorphClass(),
                 'reference_id' => $reference?->getKey(),
@@ -116,23 +138,23 @@ class StockMovementService
                 'created_by' => $user?->id,
             ]);
 
-            if ($quantity > 0) {
-                $cost = $unitCost ?? (float) ($product->purchase_price ?? 0);
+            if ($effectiveQty > 0) {
+                $cost = $effectiveCost ?? (float) ($product->purchase_price ?? 0);
                 $this->valuationService->addLayer(
                     $product,
-                    $uom,
-                    $quantity,
+                    $effectiveUom,
+                    $effectiveQty,
                     $cost,
                     $warehouseId,
                     $reference,
-                    $landedUnitCost,
+                    $effectiveLandedCost,
                     $batchNo,
                 );
             } else {
                 $this->valuationService->consume(
                     $product,
-                    $uom,
-                    abs($quantity),
+                    $effectiveUom,
+                    abs($effectiveQty),
                     $warehouseId,
                     $movement,
                     $reference,

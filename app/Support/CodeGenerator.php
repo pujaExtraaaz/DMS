@@ -2,9 +2,6 @@
 
 namespace App\Support;
 
-use App\Domains\Catalog\Models\Brand;
-use App\Domains\Catalog\Models\Category;
-use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Company;
@@ -39,6 +36,11 @@ class CodeGenerator
         return self::next(SubCategory::class, 'SCAT', $companyId, 'code');
     }
 
+    public static function forProductType(?int $companyId = null): string
+    {
+        return self::next(\App\Domains\Master\Models\ProductType::class, 'PT', $companyId, 'code');
+    }
+
     public static function forProduct(?int $companyId = null): string
     {
         return self::next(Product::class, 'PROD', $companyId, 'sku');
@@ -62,6 +64,11 @@ class CodeGenerator
     public static function forEmployee(?int $companyId = null): string
     {
         return self::next(\App\Domains\Hrms\Models\Employee::class, 'EMP', $companyId, 'employee_code');
+    }
+
+    public static function forInterCompanyTransaction(): string
+    {
+        return self::next(\App\Domains\Organization\Models\InterCompanyTransaction::class, 'ICT', null, 'transaction_no');
     }
 
     protected static function next(string $modelClass, string $prefix, ?int $companyId, string $column): string

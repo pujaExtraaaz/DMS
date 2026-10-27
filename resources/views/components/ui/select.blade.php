@@ -8,6 +8,7 @@
 ])
 
 @php
+    $errors = $errors ?? session('errors', new \Illuminate\Support\ViewErrorBag());
     $fieldName = $name ?? $attributes->get('name');
     $hasError = $error || ($fieldName && $errors->has($fieldName));
     $errorMessage = $error ?? ($fieldName ? $errors->first($fieldName) : null);

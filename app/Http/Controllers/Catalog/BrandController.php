@@ -7,7 +7,6 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
-use App\Support\CodeGenerator;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -34,12 +33,12 @@ class BrandController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'code', 'detail']);
+        $this->applySearch($query, $request->input('search'), ['name', 'detail']);
 
         $sortData = $this->applySorting(
             $query,
             $request,
-            ['name', 'code', 'is_active', 'created_at'],
+            ['name', 'is_active', 'created_at'],
             defaultSort: 'name',
             defaultDirection: 'asc'
         );
@@ -69,54 +68,23 @@ class BrandController extends Controller
     {
         $data = $this->validated($request);
 
-        $maxAttempts = 5;
+        try {
+            Brand::create($data);
+        } catch (QueryException $e) {
+            $isDuplicate = isset($e->errorInfo[1]) && $e->errorInfo[1] === 1062;
+            $message = $e->getMessage();
 
-        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-            try {
-                DB::transaction(function () use ($data) {
-                    $payload = $data;
-                    $payload['code'] = CodeGenerator::forBrand($payload['company_id'] ?? null);
+            $isNameDuplicate = $isDuplicate && (
+                str_contains($message, 'brands_name_unique') ||
+                str_contains($message, 'brands.name') ||
+                str_contains($message, "for key 'name'")
+            );
 
-                    return Brand::create($payload);
-                });
-                break;
-            } catch (QueryException $e) {
-                $isDuplicate = isset($e->errorInfo[1]) && $e->errorInfo[1] === 1062;
-                $message = $e->getMessage();
-
-                // If duplicate code collided, retry with the next sequence
-                $isCodeDuplicate = $isDuplicate && (
-                    str_contains($message, 'brands_code_unique') ||
-                    str_contains($message, 'brands.code') ||
-                    str_contains($message, "for key 'code'")
-                );
-
-                if ($isCodeDuplicate) {
-                    if ($attempt < $maxAttempts) {
-                        usleep(random_int(10000, 30000));
-                        continue;
-                    }
-
-                    return back()->withInput()->withErrors(['code' => 'Unable to generate a unique brand code due to concurrent requests. Please try again.']);
-                }
-
-                // If duplicate brand name
-                $isNameDuplicate = $isDuplicate && (
-                    str_contains($message, 'brands_name_unique') ||
-                    str_contains($message, 'brands.name') ||
-                    str_contains($message, "for key 'name'")
-                );
-
-                if ($isNameDuplicate) {
-                    return back()->withInput()->withErrors(['name' => 'Brand name already exists.']);
-                }
-
-                if ($isDuplicate) {
-                    return back()->withInput()->withErrors(['name' => 'Brand with this name or code already exists.']);
-                }
-
-                throw $e;
+            if ($isNameDuplicate || $isDuplicate) {
+                return back()->withInput()->withErrors(['name' => 'Brand name already exists.']);
             }
+
+            throw $e;
         }
 
         return $this->flashSuccess('Brand created successfully.', 'masters.brands.index');
@@ -133,9 +101,6 @@ class BrandController extends Controller
     public function update(Request $request, Brand $brand): RedirectResponse
     {
         $data = $this->validated($request, $brand);
-
-        // Keep the original brand code unchanged on edit
-        $data['code'] = $brand->code;
 
         try {
             $brand->update($data);
@@ -254,24 +219,12 @@ class BrandController extends Controller
             'is_active' => 'boolean',
         ];
 
-        // On edit, validate existing code if present (though it's preserved as original)
-        if ($brand) {
-            $rules['code'] = 'nullable|string|max:30|unique:brands,code,' . $brand->id;
-        }
-
         $data = $request->validate($rules, [
             'name.unique' => 'Brand name already exists.',
         ]);
 
         $data['is_active'] = $request->boolean('is_active');
         $data['company_id'] = $data['company_id'] ?? auth()->user()?->company_id;
-
-        if ($brand) {
-            $data['code'] = $brand->code;
-        } else {
-            // Never allow manual code entry on create
-            unset($data['code']);
-        }
 
         return $data;
     }
