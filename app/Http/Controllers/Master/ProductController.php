@@ -30,10 +30,104 @@ class ProductController extends Controller
 
     public function index(Request $request): View|Response
     {
+        // 1. Resolve raw filter inputs
+        $rawBrandId = $request->input('brand_id');
+        $rawCategoryId = $request->input('category_id');
+        $rawSubCategoryId = $request->input('sub_category_id', $request->input('subcategory_id'));
+
+        // 2. Fetch all active brands
+        $brands = Brand::where('is_active', true)->orderBy('name')->get();
+        $brandId = ($rawBrandId && $brands->contains('id', (int) $rawBrandId)) ? (int) $rawBrandId : null;
+
+        // 3. Fetch all active categories & resolve categories relevant to selected brand
+        $allCategories = Category::where('is_active', true)->orderBy('name')->get();
+
+        if ($brandId) {
+            // Check if categories exist that belong to this brand
+            $categoriesForBrand = $allCategories->filter(function ($c) use ($brandId) {
+                return (int) $c->brand_id === (int) $brandId;
+            });
+
+            // If no direct brand_id match, check if any categories have products under this brand
+            if ($categoriesForBrand->isEmpty()) {
+                $categoryIdsWithProducts = Product::where('brand_id', $brandId)
+                    ->whereNotNull('category_id')
+                    ->distinct()
+                    ->pluck('category_id')
+                    ->all();
+
+                $categoriesForBrand = $allCategories->filter(function ($c) use ($categoryIdsWithProducts) {
+                    return in_array($c->id, $categoryIdsWithProducts, true);
+                });
+            }
+
+            // If still empty (no brand-category relationship found), show available categories without incorrectly excluding records
+            $categories = $categoriesForBrand->isNotEmpty() ? $categoriesForBrand->values() : $allCategories;
+        } else {
+            $categories = $allCategories;
+        }
+
+        // Validate and reset category selection if invalid for selected brand
+        $categoryId = ($rawCategoryId && $categories->contains('id', (int) $rawCategoryId)) ? (int) $rawCategoryId : null;
+        if ($rawCategoryId && ! $categoryId) {
+            // Reset dependent subcategory if parent category became invalid
+            $rawSubCategoryId = null;
+        }
+
+        // 4. Fetch all active subcategories & resolve subcategories for selected category and brand
+        $allSubCategories = SubCategory::where('is_active', true)->orderBy('name')->get();
+
+        if ($categoryId) {
+            // Subcategories belonging to the selected category
+            $subCatsForCategory = $allSubCategories->filter(function ($sc) use ($categoryId) {
+                return (int) $sc->category_id === (int) $categoryId;
+            });
+
+            if ($brandId && $subCatsForCategory->isNotEmpty()) {
+                $subCatIdsWithBrandProducts = Product::where('brand_id', $brandId)
+                    ->where('category_id', $categoryId)
+                    ->whereNotNull('sub_category_id')
+                    ->distinct()
+                    ->pluck('sub_category_id')
+                    ->all();
+
+                if (! empty($subCatIdsWithBrandProducts)) {
+                    $brandSpecificSubCats = $subCatsForCategory->filter(function ($sc) use ($subCatIdsWithBrandProducts) {
+                        return in_array($sc->id, $subCatIdsWithBrandProducts, true);
+                    });
+                    if ($brandSpecificSubCats->isNotEmpty()) {
+                        $subCatsForCategory = $brandSpecificSubCats;
+                    }
+                }
+            }
+
+            $subCategories = $subCatsForCategory->values();
+        } elseif ($brandId) {
+            // Brand is selected, but Category is 'All'
+            $subCatIdsForBrand = Product::where('brand_id', $brandId)
+                ->whereNotNull('sub_category_id')
+                ->distinct()
+                ->pluck('sub_category_id')
+                ->all();
+
+            $brandSubCats = $allSubCategories->filter(function ($sc) use ($categories, $subCatIdsForBrand) {
+                return in_array($sc->id, $subCatIdsForBrand, true) || $categories->contains('id', $sc->category_id);
+            });
+
+            $subCategories = $brandSubCats->isNotEmpty() ? $brandSubCats->values() : $allSubCategories;
+        } else {
+            $subCategories = $allSubCategories;
+        }
+
+        // Validate and reset subcategory selection if invalid
+        $subCategoryId = ($rawSubCategoryId && $subCategories->contains('id', (int) $rawSubCategoryId)) ? (int) $rawSubCategoryId : null;
+
+        // 5. Query Products
         $query = Product::query()
-            ->with(['baseUom', 'brand', 'category', 'productType'])
-            ->when($request->filled('brand_id'), fn ($q) => $q->where('brand_id', $request->brand_id))
-            ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->category_id))
+            ->with(['baseUom', 'brand', 'category', 'subCategory', 'productType'])
+            ->when($brandId, fn ($q) => $q->where('brand_id', $brandId))
+            ->when($categoryId, fn ($q) => $q->where('category_id', $categoryId))
+            ->when($subCategoryId, fn ($q) => $q->where('sub_category_id', $subCategoryId))
             ->when($request->filled('product_type'), function ($q) use ($request) {
                 $val = $request->input('product_type');
                 $q->where(function ($sub) use ($val) {
@@ -51,12 +145,13 @@ class ProductController extends Controller
 
         $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'hsn_code', 'series', 'model', 'product_type']);
 
-        if ($export = $this->exportIfRequested($request, $query, 'Products', 'Products', ['Name', 'Part Number', 'Model', 'Brand', 'Category', 'Product Type', 'Base UOM', 'GST Rate', 'Status'], fn ($item) => [
+        if ($export = $this->exportIfRequested($request, $query, 'Products', 'Products', ['Name', 'Part Number', 'Model', 'Brand', 'Category', 'Subcategory', 'Product Type', 'Base UOM', 'GST Rate', 'Status'], fn ($item) => [
             $item->name,
             $item->sku ?: '',
             $item->model ?: '',
             $item->brand?->name ?? '',
             $item->category?->name ?? '',
+            $item->subCategory?->name ?? '',
             $item->productType?->name ?? $item->product_type ?? '',
             $item->baseUom?->name ?? '',
             $item->tax_rate !== null ? (string) $item->tax_rate : '',
@@ -87,13 +182,28 @@ class ProductController extends Controller
 
         return view('masters.products.index', [
             'items' => $items,
-            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
-            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'brands' => $brands,
+            'categories' => $categories,
+            'subCategories' => $subCategories,
+            'allCategoriesData' => $allCategories->map(fn ($c) => [
+                'id' => (string) $c->id,
+                'brand_id' => $c->brand_id ? (string) $c->brand_id : null,
+                'name' => $c->name,
+            ])->values(),
+            'allSubCategoriesData' => $allSubCategories->map(fn ($sc) => [
+                'id' => (string) $sc->id,
+                'category_id' => $sc->category_id ? (string) $sc->category_id : null,
+                'name' => $sc->name,
+            ])->values(),
             'productTypes' => ProductType::where('is_active', true)->orderBy('name')->get(),
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
             'search' => $request->string('search'),
+            'brandId' => $brandId,
+            'categoryId' => $categoryId,
+            'subCategoryId' => $subCategoryId,
             'productType' => $request->string('product_type'),
+            'status' => $request->string('status'),
         ]);
     }
 

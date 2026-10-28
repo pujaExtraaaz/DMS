@@ -148,6 +148,7 @@ class NameCase
         'bsr_code',
         'swift_code',
         'client_code',
+        'basis',
         'udyam_registration_no',
         'msme_registration_no',
         'iec_code',
@@ -419,7 +420,7 @@ class NameCase
         }
 
         // Credit enums and explicit Not Applicable flags must keep their stored slugs.
-        if (str_ends_with($field, '_basis') || str_ends_with($field, '_not_applicable') || str_ends_with($field, '_status')) {
+        if (str_ends_with($field, '_basis') || $field === 'basis' || str_ends_with($field, '_not_applicable') || str_ends_with($field, '_status')) {
             if (! in_array($field, ['compliance_status'], true)) {
                 return false;
             }

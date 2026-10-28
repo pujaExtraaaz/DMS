@@ -16,48 +16,74 @@
             :reset-url="route('masters.products.index')"
         >
             <x-slot name="filters">
-                <select
-                    name="brand_id"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                <div
+                    class="flex flex-wrap items-center gap-2"
+                    data-hierarchical-filter-group
+                    data-all-categories='@json($allCategoriesData ?? [])'
+                    data-all-subcategories='@json($allSubCategoriesData ?? [])'
                 >
-                    <option value="">Brand: All</option>
-                    @foreach($brands ?? [] as $b)
-                        <option value="{{ $b->id }}" @selected(request('brand_id') == $b->id)>{{ $b->name }}</option>
-                    @endforeach
-                </select>
+                    <select
+                        name="brand_id"
+                        id="filter-brand-id"
+                        data-dynamic-filter
+                        aria-label="Filter by Brand"
+                        class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                    >
+                        <option value="">Brand: All</option>
+                        @foreach($brands ?? [] as $b)
+                            <option value="{{ $b->id }}" @selected((string) ($brandId ?? request('brand_id')) === (string) $b->id)>{{ $b->name }}</option>
+                        @endforeach
+                    </select>
 
-                <select
-                    name="category_id"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">Category: All</option>
-                    @foreach($categories ?? [] as $cat)
-                        <option value="{{ $cat->id }}" @selected(request('category_id') == $cat->id)>{{ $cat->name }}</option>
-                    @endforeach
-                </select>
+                    <select
+                        name="category_id"
+                        id="filter-category-id"
+                        data-dynamic-filter
+                        aria-label="Filter by Category"
+                        class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                    >
+                        <option value="">Category: All</option>
+                        @foreach($categories ?? [] as $cat)
+                            <option value="{{ $cat->id }}" @selected((string) ($categoryId ?? request('category_id')) === (string) $cat->id)>{{ $cat->name }}</option>
+                        @endforeach
+                    </select>
 
-                <select
-                    name="product_type"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">Product Type: All</option>
-                    @foreach($productTypes ?? [] as $pt)
-                        <option value="{{ $pt->name }}" @selected(request('product_type') == $pt->name || request('product_type') == $pt->id)>{{ $pt->name }}</option>
-                    @endforeach
-                </select>
+                    <select
+                        name="sub_category_id"
+                        id="filter-sub-category-id"
+                        data-dynamic-filter
+                        aria-label="Filter by Subcategory"
+                        class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                    >
+                        <option value="">Subcategory: All</option>
+                        @foreach($subCategories ?? [] as $sc)
+                            <option value="{{ $sc->id }}" @selected((string) ($subCategoryId ?? request('sub_category_id', request('subcategory_id'))) === (string) $sc->id)>{{ $sc->name }}</option>
+                        @endforeach
+                    </select>
 
-                <select
-                    name="status"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">Status: All</option>
-                    <option value="active" @selected(request('status') === 'active')>Active</option>
-                    <option value="inactive" @selected(request('status') === 'inactive')>Inactive</option>
-                </select>
+                    <select
+                        name="product_type"
+                        data-dynamic-filter
+                        aria-label="Filter by Product Type"
+                        class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                    >
+                        <option value="">Product Type: All</option>
+                        @foreach($productTypes ?? [] as $pt)
+                            <option value="{{ $pt->name }}" @selected(request('product_type') == $pt->name || request('product_type') == $pt->id)>{{ $pt->name }}</option>
+                        @endforeach
+                    </select>
+
+                    <select
+                        name="status"
+                        data-dynamic-filter
+                        aria-label="Filter by Status"
+                        class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                    >
+                        <option value="">Status: All</option>
+                        <option value="active" @selected(request('status') === 'active')>Active</option>
+                        <option value="inactive" @selected(request('status') === 'inactive')>Inactive</option>
+                    </select>
+                </div>
             </x-slot>
         </x-ui.table-toolbar>
 
@@ -89,7 +115,14 @@
                     @forelse($items as $item)
                         <tr class="hover:bg-slate-50/75 transition-colors">
                             <td class="px-4 py-3 font-mono text-xs text-slate-600">{{ $item->serial_no ?: '—' }}</td>
-                            <td class="px-4 py-3 font-medium text-slate-900">{{ $item->name }}</td>
+                            <td class="px-4 py-3 font-medium text-slate-900">
+                                <div>{{ $item->name }}</div>
+                                @if($item->brand || $item->category || $item->subCategory)
+                                    <div class="text-[11px] text-slate-400 font-normal mt-0.5">
+                                        {{ collect([$item->brand?->name, $item->category?->name, $item->subCategory?->name])->filter()->join(' · ') }}
+                                    </div>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 font-mono text-xs text-slate-600">{{ $item->sku }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->models ?: ($item->model ?: '—') }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->product_type ?: '—' }}</td>
@@ -363,6 +396,59 @@ function productIndex() {
         }
     };
 }
+
+(function() {
+    if (window.__hierarchicalFiltersBound) return;
+    window.__hierarchicalFiltersBound = true;
+
+    // Listen on capture phase so invalid dependent dropdown selections
+    // are reset BEFORE dynamic-tables.js builds the URL and triggers fetchAndSwap.
+    document.addEventListener('change', function(e) {
+        const filter = e.target;
+        if (!filter || !filter.matches || !filter.matches('[data-dynamic-filter]')) return;
+
+        const group = filter.closest('[data-hierarchical-filter-group]');
+        if (!group) return;
+
+        const brandSelect = group.querySelector('select[name="brand_id"]');
+        const categorySelect = group.querySelector('select[name="category_id"]');
+        const subCategorySelect = group.querySelector('select[name="sub_category_id"]');
+
+        if (!brandSelect || !categorySelect || !subCategorySelect) return;
+
+        let allCats = [];
+        let allSubCats = [];
+        try {
+            allCats = JSON.parse(group.getAttribute('data-all-categories') || '[]');
+            allSubCats = JSON.parse(group.getAttribute('data-all-subcategories') || '[]');
+        } catch (_) {}
+
+        if (filter === brandSelect) {
+            const newBrandId = brandSelect.value;
+            const currentCatId = categorySelect.value;
+
+            if (currentCatId && newBrandId) {
+                // Check if current category is tied to another brand
+                const currentCat = allCats.find(c => String(c.id) === String(currentCatId));
+                if (currentCat && currentCat.brand_id && String(currentCat.brand_id) !== String(newBrandId)) {
+                    categorySelect.value = '';
+                    subCategorySelect.value = '';
+                }
+            }
+        } else if (filter === categorySelect) {
+            const newCatId = categorySelect.value;
+            const currentSubId = subCategorySelect.value;
+
+            if (currentSubId && newCatId) {
+                // Check if current subcategory belongs to another category
+                const currentSub = allSubCats.find(sc => String(sc.id) === String(currentSubId));
+                if (currentSub && currentSub.category_id && String(currentSub.category_id) !== String(newCatId)) {
+                    subCategorySelect.value = '';
+                }
+            }
+        }
+    }, true);
+})();
 </script>
 @endpush
 @endsection

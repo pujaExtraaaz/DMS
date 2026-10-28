@@ -212,6 +212,48 @@ class BrandController extends Controller
     }
 
 
+    public function search(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $query = trim((string) $request->input('q', $request->input('search', $request->input('query', ''))));
+
+        if ($query === '' || mb_strlen($query) < 1) {
+            return response()->json([]);
+        }
+
+        // Multi-tenant company isolation
+        $companyId = $request->filled('company_id')
+            ? $request->integer('company_id')
+            : ($user?->company_id ?? Company::defaultCompanyId());
+
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id) {
+            $companyId = $user->company_id;
+        }
+
+        $brands = Brand::query()
+            ->when($companyId, function ($q) use ($companyId) {
+                $q->where(function ($sub) use ($companyId) {
+                    $sub->where('company_id', $companyId)
+                        ->orWhereNull('company_id');
+                });
+            })
+            ->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($query) . '%'])
+            ->orderBy('name', 'asc')
+            ->limit(10)
+            ->get(['id', 'name', 'company_id', 'is_active', 'detail']);
+
+        return response()->json(
+            $brands->map(fn (Brand $brand) => [
+                'id' => (string) $brand->id,
+                'name' => $brand->name,
+                'company_id' => $brand->company_id,
+                'is_active' => (bool) $brand->is_active,
+                'detail' => $brand->detail,
+                'edit_url' => route('masters.brands.edit', $brand),
+            ])
+        );
+    }
+
     public function quickStore(Request $request): JsonResponse
     {
         $rawName = trim((string) $request->input('name', ''));
@@ -269,6 +311,31 @@ class BrandController extends Controller
     {
         if ($request->has('name')) {
             $request->merge(['name' => trim((string) $request->input('name'))]);
+        }
+
+        $rawName = trim((string) $request->input('name', ''));
+        $normalized = mb_strtolower($rawName);
+
+        // Normalize whitespace and perform case-insensitive duplicate check
+        $companyId = $request->filled('company_id')
+            ? $request->integer('company_id')
+            : ($request->user()?->company_id ?? Company::defaultCompanyId());
+
+        $existing = Brand::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [$normalized])
+            ->when($companyId, function ($q) use ($companyId) {
+                $q->where(function ($sub) use ($companyId) {
+                    $sub->where('company_id', $companyId)
+                        ->orWhereNull('company_id');
+                });
+            })
+            ->when($brand, fn ($q) => $q->where('id', '!=', $brand->id))
+            ->first();
+
+        if ($existing) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'name' => 'Brand name already exists.',
+            ]);
         }
 
         $rules = [

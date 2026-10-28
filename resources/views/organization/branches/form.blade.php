@@ -5,8 +5,8 @@
 <x-ui.card><form method="POST" action="{{ $item->exists ? route('organization.branches.update', $item) : route('organization.branches.store') }}" class="space-y-4 max-w-2xl">@csrf @if($item->exists) @method('PUT') @endif
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 <x-ui.select name="company_id" label="Company" required>@foreach($companies as $c)<option value="{{ $c->id }}" @selected(old('company_id', $item->company_id)==$c->id)>{{ $c->name }}</option>@endforeach</x-ui.select>
-<x-ui.input name="name" label="Name" :value="old('name', $item->name)" required />
-<x-ui.input name="code" label="Code" :value="old('code', $item->code)" required />
+<x-ui.input name="name" label="Name" :value="old('name', $item->getRawOriginal('name'))" />
+<x-ui.input name="code" label="Code" :value="old('code', $item->getRawOriginal('code'))" />
 <x-ui.input name="gstin" label="GSTIN" :value="old('gstin', $item->gstin)" />
 <x-ui.input name="phone" label="Phone" :value="old('phone', $item->phone)" />
 <x-ui.input name="state" label="State" :value="old('state', $item->state)" />

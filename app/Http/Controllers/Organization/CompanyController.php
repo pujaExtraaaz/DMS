@@ -493,9 +493,9 @@ class CompanyController extends Controller
 
         unset($data['bank_accounts']);
 
-        // Auto-generate code if not entered
+        // Auto-generate or preserve code if not entered
         if (empty($data['code'])) {
-            $data['code'] = CodeGenerator::forCompany();
+            $data['code'] = $company?->code ?: CodeGenerator::forCompany();
         }
 
         $data['is_active'] = $request->boolean('is_active');

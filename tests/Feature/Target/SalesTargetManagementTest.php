@@ -419,25 +419,25 @@ class SalesTargetManagementTest extends TestCase
         $text = strip_tags($content);
 
         // 1. Verify all sections exist in sequential order
-        $posCommercials = strpos($text, '8 · Commercials');
-        $posTargetMgmt = strpos($text, '9 · Sales Target Management');
-        $posHrCrm = strpos($text, '10 · HR · CRM');
-        $posBooks = strpos($text, '11 · Accounting (Books)');
-        $posReports = strpos($text, '12 · Reports');
-        $posGuide = strpos($text, '13 · Guide');
+        $posCommercials = strpos($text, 'Commercials');
+        $posTargetMgmt = strpos($text, 'Sales Target Management');
+        $posHrCrm = strpos($text, 'HR · CRM');
+        $posBooks = strpos($text, 'Accounting (Books)');
+        $posReports = strpos($text, 'Reports');
+        $posGuide = strpos($text, 'Guide');
 
-        $this->assertNotFalse($posCommercials, '8 · Commercials missing in sidebar');
-        $this->assertNotFalse($posTargetMgmt, '9 · Sales Target Management missing in sidebar');
-        $this->assertNotFalse($posHrCrm, '10 · HR · CRM missing in sidebar');
-        $this->assertNotFalse($posBooks, '11 · Accounting (Books) missing in sidebar');
-        $this->assertNotFalse($posReports, '12 · Reports missing in sidebar');
-        $this->assertNotFalse($posGuide, '13 · Guide missing in sidebar');
+        $this->assertNotFalse($posCommercials, 'Commercials missing in sidebar');
+        $this->assertNotFalse($posTargetMgmt, 'Sales Target Management missing in sidebar');
+        $this->assertNotFalse($posHrCrm, 'HR · CRM missing in sidebar');
+        $this->assertNotFalse($posBooks, 'Accounting (Books) missing in sidebar');
+        $this->assertNotFalse($posReports, 'Reports missing in sidebar');
+        $this->assertNotFalse($posGuide, 'Guide missing in sidebar');
 
-        $this->assertLessThan($posTargetMgmt, $posCommercials, '8 · Commercials must appear before 9 · Sales Target Management');
-        $this->assertLessThan($posHrCrm, $posTargetMgmt, '9 · Sales Target Management must appear immediately before 10 · HR · CRM');
-        $this->assertLessThan($posBooks, $posHrCrm, '10 · HR · CRM must appear before 11 · Accounting (Books)');
-        $this->assertLessThan($posReports, $posBooks, '11 · Accounting (Books) must appear before 12 · Reports');
-        $this->assertLessThan($posGuide, $posReports, '12 · Reports must appear before 13 · Guide');
+        $this->assertLessThan($posTargetMgmt, $posCommercials, 'Commercials must appear before Sales Target Management');
+        $this->assertLessThan($posHrCrm, $posTargetMgmt, 'Sales Target Management must appear immediately before HR · CRM');
+        $this->assertLessThan($posBooks, $posHrCrm, 'HR · CRM must appear before Accounting (Books)');
+        $this->assertLessThan($posReports, $posBooks, 'Accounting (Books) must appear before Reports');
+        $this->assertLessThan($posGuide, $posReports, 'Reports must appear before Guide');
 
         // 2. Verify all 7 links are present in sidebar
         $response->assertSee(route('sales-targets.dashboard'));
@@ -465,9 +465,9 @@ class SalesTargetManagementTest extends TestCase
             $response = $this->actingAs($this->adminUser)->get($url);
             $response->assertOk();
 
-            // 9 · Sales Target Management standalone top-level section should be present
-            $response->assertSeeText('9 · Sales Target Management');
-            $response->assertSeeText('10 · HR · CRM');
+            // Sales Target Management standalone top-level section should be present
+            $response->assertSeeText('Sales Target Management');
+            $response->assertSeeText('HR · CRM');
         }
     }
 

@@ -1,14 +1,21 @@
 @if($can('masters.view', 'products.view', 'customers.view', 'price-master.view'))
-    @php $sNum = $num(); @endphp
+    @php
+        $sNum = $num();
+        $sectionActive = $is('masters.*');
+        $primaryRoute = $can('customers.view', 'masters.view')
+            ? route('masters.customers.index')
+            : ($can('products.view', 'masters.view') ? route('masters.products.index') : route('masters.brands.index'));
+    @endphp
     <div
         data-sidebar-section="masters"
         class="sidebar-section-item transition-all rounded-xl"
         @dragover="onDragOver($event)"
         @dragleave="onDragLeave($event)"
         @drop="onDrop($event)"
-        x-data="{ open: {{ $is('masters.*') ? 'true' : 'false' }} }"
+        x-data="{ open: {{ $sectionActive ? 'true' : 'false' }} }"
     >
-        <div class="flex items-center gap-1">
+        {{-- Expanded Header --}}
+        <div x-show="!$root.sidebarCollapsed" class="flex items-center gap-1">
             <span
                 x-show="customizing"
                 x-cloak
@@ -32,12 +39,37 @@
                     <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                 </button>
             </div>
-            <button type="button" class="{{ $sectionBtn }} flex-1" x-show="!$root.sidebarCollapsed" x-cloak @click="if (!customizing) open = !open">
-                <span><span class="section-num">{{ $sNum }}</span> · Masters</span>
-                <svg class="h-3.5 w-3.5 shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+            <button
+                type="button"
+                class="{{ $sectionBtn }} flex-1 group"
+                @click="if (!customizing) open = !open"
+            >
+                <span class="flex items-center gap-2.5 min-w-0">
+                    <svg class="h-4 w-4 shrink-0 text-slate-400 group-hover:text-slate-200 transition" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                    </svg>
+                    <span class="truncate">Masters</span>
+                </span>
+                <svg class="h-3.5 w-3.5 shrink-0 transition-transform text-slate-400" :class="open && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
             </button>
         </div>
-        <div x-show="open || $root.sidebarCollapsed" x-cloak class="space-y-0.5">
+
+        {{-- Collapsed Icon Link --}}
+        <div x-show="$root.sidebarCollapsed" x-cloak class="flex justify-center py-0.5">
+            <a
+                href="{{ $primaryRoute }}"
+                title="Masters"
+                aria-label="Masters"
+                class="flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 {{ $sectionActive ? 'bg-indigo-600/90 text-white shadow-lg shadow-indigo-900/30' : 'text-slate-400 hover:bg-slate-800/80 hover:text-white' }}"
+            >
+                <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                </svg>
+            </a>
+        </div>
+
+        {{-- Submenu (Expanded Only) --}}
+        <div x-show="open && !$root.sidebarCollapsed" x-cloak class="space-y-0.5">
             @if($can('products.view', 'masters.view'))
                 <a href="{{ route('masters.brands.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.brands.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Brands</span></a>
                 <a href="{{ route('masters.categories.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.categories.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Categories</span></a>
@@ -57,4 +89,3 @@
         </div>
     </div>
 @endif
-

@@ -148,8 +148,15 @@ class BranchController extends Controller
     {
         $data = $request->validate([
             'company_id' => 'required|exists:companies,id',
-            'name' => 'required|string|max:255',
-            'code' => 'required|string|max:30',
+            'name' => 'nullable|string|max:255',
+            'code' => [
+                'nullable',
+                'string',
+                'max:30',
+                \Illuminate\Validation\Rule::unique('branches', 'code')
+                    ->where(fn ($query) => $query->where('company_id', $request->company_id))
+                    ->ignore($branch?->id),
+            ],
             'address' => 'nullable|string',
             'state' => 'nullable|string|max:100',
             'pincode' => 'nullable|string|max:12',
@@ -157,6 +164,8 @@ class BranchController extends Controller
             'gstin' => 'nullable|string|max:20',
             'is_active' => 'boolean',
         ]);
+        $data['name'] = filled($data['name'] ?? null) ? trim((string) $data['name']) : null;
+        $data['code'] = filled($data['code'] ?? null) ? trim((string) $data['code']) : null;
         $data['is_active'] = $request->boolean('is_active');
 
         return $data;

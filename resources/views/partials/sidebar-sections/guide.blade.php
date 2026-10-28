@@ -1,4 +1,7 @@
-@php $sNum = $num(); @endphp
+@php
+    $sNum = $num();
+    $sectionActive = request()->routeIs('guide');
+@endphp
 <div
     data-sidebar-section="guide"
     class="sidebar-section-item transition-all rounded-xl"
@@ -6,7 +9,8 @@
     @dragleave="onDragLeave($event)"
     @drop="onDrop($event)"
 >
-    <div class="flex items-center gap-1">
+    {{-- Expanded Link --}}
+    <div x-show="!$root.sidebarCollapsed" class="flex items-center gap-1">
         <span
             x-show="customizing"
             x-cloak
@@ -32,19 +36,28 @@
         </div>
         <a
             href="{{ route('guide') }}"
-            class="{{ $sectionBtn }} flex-1 {{ request()->routeIs('guide') ? 'bg-slate-800/60 text-slate-300' : '' }}"
-            x-show="!$root.sidebarCollapsed"
-            x-cloak
+            class="{{ $sectionBtn }} flex-1 group {{ $sectionActive ? 'bg-slate-800/60 text-slate-300' : '' }}"
         >
-            <span><span class="section-num">{{ $sNum }}</span> · Guide</span>
+            <span class="flex items-center gap-2.5 min-w-0">
+                <svg class="h-4 w-4 shrink-0 text-slate-400 group-hover:text-slate-200 transition" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+                </svg>
+                <span class="truncate">Guide</span>
+            </span>
         </a>
     </div>
-    <a
-        href="{{ route('guide') }}"
-        class="flex items-center justify-center rounded-xl px-2 py-2 text-[10px] font-bold uppercase tracking-[0.12em] {{ request()->routeIs('guide') ? 'bg-slate-800/60 text-slate-300' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-300' }} transition"
-        x-show="$root.sidebarCollapsed"
-        x-cloak
-        title="Guide"
-    ><span class="section-num">{{ $sNum }}</span></a>
-</div>
 
+    {{-- Collapsed Icon Link --}}
+    <div x-show="$root.sidebarCollapsed" x-cloak class="flex justify-center py-0.5">
+        <a
+            href="{{ route('guide') }}"
+            title="Guide"
+            aria-label="Guide"
+            class="flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 {{ $sectionActive ? 'bg-indigo-600/90 text-white shadow-lg shadow-indigo-900/30' : 'text-slate-400 hover:bg-slate-800/80 hover:text-white' }}"
+        >
+            <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+            </svg>
+        </a>
+    </div>
+</div>

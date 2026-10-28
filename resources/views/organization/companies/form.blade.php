@@ -11,8 +11,7 @@
         <div>
             <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity &amp; Classification</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <x-ui.input name="name" label="Trade Name" :value="old('name', $item->name)" required />
-                <x-ui.input name="code" label="Company Code" :value="old('code', $item->code)" placeholder="e.g. CMP-0001" required />
+                <x-ui.input name="name" label="Trade Name" :value="old('name', $item->name)" class="md:col-span-2 lg:col-span-1" required />
                 <x-ui.input name="legal_name" label="Legal Name" :value="old('legal_name', $item->legal_name)" />
                 <div>
                     <label for="company_type" class="block text-sm font-medium text-slate-700 mb-1">Company Type <span class="text-red-500">*</span></label>
@@ -35,7 +34,7 @@
                 <x-ui.input name="incorporation_no" label="Incorporation No." :value="old('incorporation_no', $item->incorporation_no)" />
                 <x-ui.input name="incorporation_date" label="Incorporation Date" type="date" :value="old('incorporation_date', $item->incorporation_date?->format('Y-m-d'))" />
                 <x-ui.input name="logo_emoji" label="Logo (Emoji)" :value="old('logo_emoji', $item->logo_emoji ?? '🏢')" placeholder="e.g. 🏢" />
-                <div class="md:col-span-2 lg:col-span-3" x-data="{
+                <div class="md:col-span-2 lg:col-span-2" x-data="{
                     savedLogoUrl: '{{ $item->logo_url ?? '' }}',
                     previewUrl: '',
                     removed: false,

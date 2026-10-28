@@ -2,6 +2,7 @@
 
 namespace App\Domains\Organization\Models;
 
+use App\Support\CodeGenerator;
 use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -75,6 +76,15 @@ class Company extends Model
         'msme_reg_no',
         'branch',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Company $company) {
+            if (blank($company->code)) {
+                $company->code = CodeGenerator::forCompany();
+            }
+        });
+    }
 
     public function getBranchAttribute(): ?string
     {

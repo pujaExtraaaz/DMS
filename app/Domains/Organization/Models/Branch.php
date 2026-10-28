@@ -35,19 +35,40 @@ class Branch extends Model
 
     public function getNameAttribute($value): string
     {
-        $val = NameCase::format($value);
-        if ($this->trashed()) {
-            return str_contains($val ?? '', '(ARCHIVED)') ? (string) $val : "{$val} (ARCHIVED)";
+        if (blank($value)) {
+            $name = 'Unnamed Branch';
+        } else {
+            $name = NameCase::format($value);
         }
 
-        return (string) $val;
+        if ($this->trashed()) {
+            return str_contains($name ?? '', '(ARCHIVED)') ? (string) $name : "{$name} (ARCHIVED)";
+        }
+
+        return (string) $name;
     }
 
     public function getDisplayNameAttribute(): string
     {
-        $rawName = $this->getRawOriginal('name') ?? $this->attributes['name'] ?? '';
+        $rawName = $this->getRawOriginal('name') ?? $this->attributes['name'] ?? null;
+        $name = filled($rawName) ? $rawName : 'Unnamed Branch';
 
-        return $this->trashed() ? "{$rawName} (Archived)" : (string) $rawName;
+        return $this->trashed() ? "{$name} (Archived)" : (string) $name;
+    }
+
+    public function getDisplayCodeAttribute(): string
+    {
+        return filled($this->attributes['code'] ?? null) ? (string) $this->attributes['code'] : '—';
+    }
+
+    public function setNameAttribute($value): void
+    {
+        $this->attributes['name'] = filled($value) ? trim((string) $value) : null;
+    }
+
+    public function setCodeAttribute($value): void
+    {
+        $this->attributes['code'] = filled($value) ? trim((string) $value) : null;
     }
 
     public function getIsArchivedAttribute(): bool

@@ -85,7 +85,7 @@ class CompanyDefaultFeatureTest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'success' => true,
-            'message' => "Company 'Company Alpha' is now set as the default company.",
+            'message' => "{$this->companyA->name} set as default company.",
         ]);
 
         $this->assertTrue($this->companyA->fresh()->is_default);
@@ -101,6 +101,7 @@ class CompanyDefaultFeatureTest extends TestCase
 
         // Switch default to Beta
         $response = $this->actingAs($this->adminUser)
+            ->from(route('organization.companies.index'))
             ->post(route('organization.companies.set-default', $this->companyB));
 
         $response->assertRedirect(route('organization.companies.index'));
@@ -174,6 +175,9 @@ class CompanyDefaultFeatureTest extends TestCase
         $response = $this->actingAs($this->adminUser)
             ->put(route('organization.companies.update', $this->companyA), [
                 'name' => 'Company Alpha Updated',
+                'company_type' => 'Private Limited Company',
+                'gstin' => '27ABCDE1234F1Z5',
+                'pan' => 'ABCDE1234F',
                 'is_active' => '0', // Attempt to deactivate
             ]);
 
