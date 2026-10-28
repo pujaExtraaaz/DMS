@@ -17,12 +17,20 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit')->group(function () {
     Route::post('customer-types/quick-store', [CustomerTypeController::class, 'quickStore'])->name('customer-types.quick-store');
+    Route::put('customer-types/{customerType}/quick-update', [CustomerTypeController::class, 'quickUpdate'])->name('customer-types.quick-update');
+    Route::delete('customer-types/{customerType}/quick-destroy', [CustomerTypeController::class, 'quickDestroy'])->name('customer-types.quick-destroy');
     Route::get('customer-types/list', [CustomerTypeController::class, 'list'])->name('customer-types.list');
     Route::resource('customer-types', CustomerTypeController::class);
     Route::post('product-types/quick-store', [ProductTypeController::class, 'quickStore'])->name('product-types.quick-store');
     Route::get('product-types/list', [ProductTypeController::class, 'list'])->name('product-types.list');
     Route::resource('product-types', ProductTypeController::class);
+    Route::post('areas/quick-store', [AreaController::class, 'quickStore'])->name('areas.quick-store');
+    Route::put('areas/{area}/quick-update', [AreaController::class, 'quickUpdate'])->name('areas.quick-update');
+    Route::delete('areas/{area}/quick-destroy', [AreaController::class, 'quickDestroy'])->name('areas.quick-destroy');
     Route::resource('areas', AreaController::class);
+    Route::post('routes/quick-store', [RouteController::class, 'quickStore'])->name('routes.quick-store');
+    Route::put('routes/{route}/quick-update', [RouteController::class, 'quickUpdate'])->name('routes.quick-update');
+    Route::delete('routes/{route}/quick-destroy', [RouteController::class, 'quickDestroy'])->name('routes.quick-destroy');
     Route::resource('routes', RouteController::class);
     Route::resource('uoms', UomController::class);
     Route::resource('vehicles', VehicleController::class);
@@ -41,7 +49,9 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::post('customers/quick-add', [CustomerController::class, 'quickAdd'])->name('customers.quick-add');
         Route::get('customers/business-groups', [CustomerController::class, 'businessGroups'])->name('customers.business-groups');
         Route::get('customers/{customer}/addresses', [CustomerController::class, 'addresses'])->name('customers.addresses');
+        Route::get('customers/{customer}/gem-documents/{document}', [CustomerController::class, 'gemDocument'])->name('customers.gem-documents.show');
         Route::get('cities', [CustomerController::class, 'cities'])->name('cities');
+        Route::post('cities/quick-store', [CustomerController::class, 'storeCity'])->name('cities.quick-store');
         Route::resource('customers', CustomerController::class);
         Route::get('parties', [CustomerController::class, 'index'])->name('parties.index');
         Route::delete('parties/{customer}', [CustomerController::class, 'destroy'])->name('parties.destroy');

@@ -169,7 +169,8 @@
                     <td>
                         <div class="bold">{{ $item->item_name }}</div>
                         @if($item->batch_no)<div style="color: #4b5563;">Batch: {{ $item->batch_no }}</div>@endif
-                        @if($item->serial_no)<div style="color: #4b5563;">S/N: {{ $item->serial_no }}</div>@endif
+                        @php $printedSerials = is_array($item->serial_numbers ?? null) ? $item->serial_numbers : []; @endphp
+                        @if($printedSerials !== [])<div style="color: #4b5563;">S/N: {{ implode(', ', $printedSerials) }}</div>@endif
                     </td>
                     <td>{{ $item->hsn_code ?: '-' }}</td>
                     <td class="text-right">{{ number_format($item->quantity, 0) }}</td>

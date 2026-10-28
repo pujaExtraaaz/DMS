@@ -138,6 +138,7 @@
                         <th class="px-3 py-2 text-left">Disc Type</th>
                         <th class="px-3 py-2 text-left">Disc Value</th>
                         <th class="px-3 py-2 text-left">Batch</th>
+                        <th class="px-3 py-2 text-left">Serial</th>
                         <th class="px-3 py-2 text-right">Line Total</th>
                         <th></th>
                     </tr>
@@ -174,6 +175,9 @@
                                     <p class="mt-1 text-[10px] text-slate-500" x-text="`Avail: ${row.batch_meta.available_qty} @ ₹${row.batch_meta.selling_price ?? row.batch_meta.unit_cost}` + (row.batch_meta.expiry_date ? ` · exp ${row.batch_meta.expiry_date}` : '')"></p>
                                 </template>
                             </td>
+                            <td class="px-3 py-2">
+                                <input type="text" :name="`items[${idx}][serial_numbers]`" x-model="row.serial_numbers" placeholder="123456" class="block w-32 rounded-lg border-gray-300 text-sm">
+                            </td>
                             <td class="px-3 py-2 text-right text-sm font-medium" x-text="fmt(lineTotal(row))"></td>
                             <td class="px-3 py-2 text-right"><button type="button" x-show="lines.length > 1" @click="removeLine(idx)" class="text-xs text-red-600 hover:text-red-800">Remove</button></td>
                         </tr>
@@ -181,7 +185,7 @@
                 </tbody>
                 <tfoot class="bg-slate-50 font-medium">
                     <tr>
-                        <td colspan="7" class="px-3 py-2 text-right">Sub-total (post item discount)</td>
+                        <td colspan="8" class="px-3 py-2 text-right">Sub-total (post item discount)</td>
                         <td class="px-3 py-2 text-right" x-text="fmt(subTotal())"></td>
                         <td></td>
                     </tr>
@@ -457,7 +461,7 @@ function invoiceForm(products, uoms, schemes = []) {
             this.lines.push({
                 _key: ++this._seq,
                 product_id: '', uom_id: '',
-                quantity: 1, unit_price: 0, discount_type: 'percent', discount_value: 0, batch_no: '', batch_meta: null,
+                quantity: 1, unit_price: 0, discount_type: 'percent', discount_value: 0, batch_no: '', serial_numbers: '', batch_meta: null,
             });
         },
         async openBatchPicker(idx) {

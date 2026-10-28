@@ -88,6 +88,113 @@ class RouteController extends Controller
         return $this->flashSuccess('Route deleted successfully.', 'masters.routes.index');
     }
 
+    public function quickStore(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $name = trim((string) $request->input('name', ''));
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Delivery route name is required.'], 422);
+        }
+        if (mb_strlen($name) > 255) {
+            return response()->json(['success' => false, 'message' => 'Delivery route name cannot exceed 255 characters.'], 422);
+        }
+
+        $exists = Route::query()->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])->exists();
+        if ($exists) {
+            return response()->json(['success' => false, 'message' => 'A delivery route with this name already exists.'], 422);
+        }
+
+        $areaId = $request->filled('area_id') ? (int) $request->input('area_id') : null;
+        if ($areaId && ! Area::query()->whereKey($areaId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Select a valid area.'], 422);
+        }
+
+        $route = Route::create([
+            'name' => $name,
+            'code' => $this->uniqueRouteCode($name),
+            'area_id' => $areaId,
+            'is_active' => true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery route created successfully.',
+            'item' => [
+                'id' => $route->id,
+                'name' => $route->fresh()->name,
+                'code' => $route->code,
+                'area_id' => $route->area_id,
+            ],
+        ], 201);
+    }
+
+    public function quickUpdate(Request $request, Route $route): \Illuminate\Http\JsonResponse
+    {
+        $name = trim((string) $request->input('name', ''));
+        if ($name === '') {
+            return response()->json(['success' => false, 'message' => 'Delivery route name is required.'], 422);
+        }
+        if (mb_strlen($name) > 255) {
+            return response()->json(['success' => false, 'message' => 'Delivery route name cannot exceed 255 characters.'], 422);
+        }
+
+        $exists = Route::query()
+            ->where('id', '!=', $route->id)
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
+            ->exists();
+        if ($exists) {
+            return response()->json(['success' => false, 'message' => 'A delivery route with this name already exists.'], 422);
+        }
+
+        $areaId = $request->filled('area_id') ? (int) $request->input('area_id') : null;
+        if ($areaId && ! Area::query()->whereKey($areaId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Select a valid area.'], 422);
+        }
+
+        $route->update([
+            'name' => $name,
+            'area_id' => $areaId,
+        ]);
+        $route->refresh();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery route updated successfully.',
+            'item' => [
+                'id' => $route->id,
+                'name' => $route->name,
+                'code' => $route->code,
+                'area_id' => $route->area_id,
+            ],
+        ]);
+    }
+
+    public function quickDestroy(Route $route): \Illuminate\Http\JsonResponse
+    {
+        $route->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery route deleted successfully.',
+        ]);
+    }
+
+    protected function uniqueRouteCode(string $name): string
+    {
+        $baseCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $name) ?? '');
+        if ($baseCode === '') {
+            $baseCode = 'ROUTE';
+        }
+        $baseCode = substr($baseCode, 0, 15);
+        $code = $baseCode;
+        $suffix = 1;
+        while (Route::query()->where('code', $code)->exists()) {
+            $code = substr($baseCode, 0, 14).$suffix;
+            $suffix++;
+        }
+
+        return $code;
+    }
+
     protected function validated(Request $request, ?Route $route = null): array
     {
         $rules = ['name' => 'required|string|max:255', 'code' => 'required|string|max:20|unique:routes,code', 'area_id' => 'nullable|exists:areas,id', 'is_active' => 'boolean'];

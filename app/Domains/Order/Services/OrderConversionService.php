@@ -3,6 +3,7 @@
 namespace App\Domains\Order\Services;
 
 use App\Domains\Inventory\Services\StockMovementService;
+use App\Domains\Purchasing\Services\SerialBatchService;
 use App\Domains\Master\Services\UomConversionService;
 use App\Domains\Order\Models\Order;
 use App\Domains\Payment\Services\OutstandingLedgerService;
@@ -13,6 +14,7 @@ use App\Domains\Sales\Services\InvoiceNumberGenerator;
 use App\Models\User;
 use App\Support\AuditLogService;
 use App\Support\DueDateService;
+use App\Support\WarrantyPeriod;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -27,6 +29,7 @@ class OrderConversionService
         protected AuditLogService $auditLogService,
         protected UomConversionService $uomConversionService,
         protected DueDateService $dueDateService,
+        protected SerialBatchService $serialBatchService,
     ) {}
 
     public function convertToInvoice(
@@ -169,7 +172,9 @@ class OrderConversionService
                  *
                  * Invoice keeps the customer's selected UOM and quantity.
                  */
-                InvoiceItem::create([
+                $serials = WarrantyPeriod::split($item->serial_numbers);
+
+                $invoiceItem = InvoiceItem::create([
                     'invoice_id' => $invoice->id,
                     'product_id' => $item->product_id,
                     'uom_id' => $item->uom_id,
@@ -178,7 +183,12 @@ class OrderConversionService
                     'discount_amount' => $lineDiscount,
                     'tax_amount' => $lineTax,
                     'line_total' => $item->line_total,
+                    'serial_numbers' => $serials !== [] ? $serials : null,
                 ]);
+
+                if ($serials !== [] && $item->product) {
+                    $this->serialBatchService->sellSerials($serials, $invoice, $item->product, $invoiceItem);
+                }
 
                 /*
                  * IMPORTANT:

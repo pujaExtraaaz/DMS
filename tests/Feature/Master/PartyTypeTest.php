@@ -315,4 +315,82 @@ class PartyTypeTest extends TestCase
         $this->assertSame('hold', $party->credit_status);
         $this->assertSame('invoice_date', $party->credit_period_basis);
     }
+
+    public function test_opening_date_and_reference_can_be_saved_and_edited(): void
+    {
+        $created = $this->actingAs($this->user)->post(route('masters.customers.store'), [
+            'name' => 'Referred Party',
+            'party_type' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'customer_type_id' => $this->customerType->id,
+            'opened_on' => '2024-12-23',
+            'reference_by' => 'Amit Sharma',
+            'is_active' => true,
+        ]);
+
+        $created->assertRedirect(route('masters.customers.index'));
+        $party = Customer::where('name', 'Referred Party')->firstOrFail();
+        $this->assertSame('2024-12-23', $party->opened_on->toDateString());
+        $this->assertSame('Amit Sharma', $party->reference_by);
+
+        $this->actingAs($this->user)
+            ->get(route('masters.customers.show', $party))
+            ->assertOk()
+            ->assertSee('23 Dec 2024')
+            ->assertSee('Amit Sharma');
+
+        $this->actingAs($this->user)->put(route('masters.customers.update', $party), [
+            'name' => 'Referred Party',
+            'party_type' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'customer_type_id' => $this->customerType->id,
+            'opened_on' => '2025-01-02',
+            'reference_by' => 'Neha Gupta',
+            'is_active' => true,
+        ])->assertRedirect(route('masters.customers.index'));
+
+        $party->refresh();
+        $this->assertSame('2025-01-02', $party->opened_on->toDateString());
+        $this->assertSame('Neha Gupta', $party->reference_by);
+    }
+
+    public function test_hold_and_blocked_stop_billing_and_credit_basis_sets_the_due_date(): void
+    {
+        $party = Customer::create([
+            'name' => 'Credit Control Party',
+            'code' => 'CCP-1',
+            'party_type' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'customer_type_id' => $this->customerType->id,
+            'credit_days' => 30,
+            'credit_period_basis' => 'inward_date',
+            'credit_status' => 'open',
+            'is_active' => true,
+        ]);
+
+        $due = app(\App\Support\DueDateService::class)->forSalesInvoice($party, '2026-10-01', null, null, '2026-10-05');
+        $this->assertSame('inward_date', $due['due_date_basis']);
+        $this->assertSame('2026-11-04', $due['due_date']);
+
+        $party->credit_period_basis = 'receipt_date';
+        $party->save();
+        $receiptDue = app(\App\Support\DueDateService::class)->forSalesInvoice($party, '2026-10-01', null, null, null, '2026-10-10');
+        $this->assertSame('receipt_date', $receiptDue['due_date_basis']);
+        $this->assertSame('2026-11-09', $receiptDue['due_date']);
+
+        $check = app(\App\Domains\Sales\Services\CreditCheckService::class);
+
+        $party->credit_status = 'open';
+        $party->save();
+        $this->assertFalse($check->evaluate($party->fresh())['blocked']);
+
+        $party->credit_status = 'hold';
+        $party->save();
+        $held = $check->evaluate($party->fresh());
+        $this->assertTrue($held['blocked']);
+        $this->assertStringContainsString('On Hold', $held['reasons'][0]);
+
+        $party->credit_status = 'blocked';
+        $party->save();
+        $blocked = $check->evaluate($party->fresh());
+        $this->assertTrue($blocked['blocked']);
+        $this->assertStringContainsString('Blocked', $blocked['reasons'][0]);
+    }
 }

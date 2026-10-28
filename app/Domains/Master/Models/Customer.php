@@ -30,6 +30,14 @@ class Customer extends Model
         'party_type',
         'phone',
         'email',
+        'opened_on',
+        'reference_by',
+        'udyam_number',
+        'gem_registered',
+        'gem_authorization_code',
+        'gem_valid_until',
+        'website',
+        'location_link',
         'address',
         'gstin',
         'state',
@@ -96,6 +104,37 @@ class Customer extends Model
         return $this->credit_status === 'frozen';
     }
 
+    public function blocksNewCredit(): bool
+    {
+        return in_array($this->credit_status, ['hold', 'blocked', 'frozen', 'restricted'], true);
+    }
+
+    public function creditStatusLabel(): string
+    {
+        return match ($this->credit_status) {
+            'hold' => 'On Hold',
+            'blocked' => 'Blocked',
+            'frozen' => 'Frozen',
+            'restricted' => 'Restricted',
+            'active', 'open', null, '' => 'Open',
+            default => ucfirst(str_replace('_', ' ', (string) $this->credit_status)),
+        };
+    }
+
+    public function creditPeriodBasisLabel(): string
+    {
+        return match ($this->credit_period_basis) {
+            'invoice_date' => 'Invoice Date',
+            'inward_date' => 'Inward Date',
+            'receipt_date' => 'Receipt Date',
+            'monthly' => 'Monthly',
+            'quarterly' => 'Quarterly',
+            'yearly' => 'Yearly',
+            'cumulative', null, '' => 'Cumulative / Balance',
+            default => ucfirst(str_replace('_', ' ', (string) $this->credit_period_basis)),
+        };
+    }
+
     public function scopeSuppliers($query)
     {
         return $query->whereIn('party_type', [self::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', self::PARTY_TYPE_BOTH]);
@@ -112,7 +151,10 @@ class Customer extends Model
             'credit_limit' => 'decimal:2',
             'credit_days' => 'integer',
             'interest_rate' => 'decimal:2',
+            'opened_on' => 'date',
             'is_active' => 'boolean',
+            'gem_registered' => 'boolean',
+            'gem_valid_until' => 'date',
         ];
     }
 
@@ -159,6 +201,11 @@ class Customer extends Model
     public function contacts(): HasMany
     {
         return $this->hasMany(PartyContact::class);
+    }
+
+    public function gemAuthorizations(): HasMany
+    {
+        return $this->hasMany(PartyGemAuthorization::class);
     }
 
     public function addresses(): HasMany

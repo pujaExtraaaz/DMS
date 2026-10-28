@@ -6,7 +6,13 @@ use App\Domains\Inventory\Models\ProductBatch;
 use App\Domains\Inventory\Models\ProductSerial;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Purchasing\Models\PurchaseInvoiceItem;
+use App\Domains\Purchasing\Models\PurchaseInwardItem;
+use App\Domains\Sales\Models\Invoice;
+use App\Domains\Sales\Models\InvoiceItem;
 use App\Models\User;
+use App\Support\WarrantyPeriod;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -54,19 +60,20 @@ class SerialBatchService
         }
 
         return DB::transaction(function () use ($clean, $product, $warehouseId, $source) {
+            $warranty = $this->purchaseWarrantyAttributes($product, $source);
             $created = [];
             foreach ($clean as $serialNumber) {
-                $created[] = ProductSerial::create([
+                $created[] = ProductSerial::create(array_merge($warranty, [
                     'product_id' => $product->id,
                     'warehouse_id' => $warehouseId,
                     'serial_number' => $serialNumber,
                     'status' => 'in_stock',
                     'source_type' => $source?->getMorphClass(),
                     'source_id' => $source?->getKey(),
-                    'purchase_inward_item_id' => $source instanceof \App\Domains\Purchasing\Models\PurchaseInwardItem
+                    'purchase_inward_item_id' => $source instanceof PurchaseInwardItem
                         ? $source->id
                         : null,
-                ]);
+                ]));
             }
 
             return $created;
@@ -115,7 +122,7 @@ class SerialBatchService
     public function findSerial(string $serialNumber): ?ProductSerial
     {
         return ProductSerial::query()
-            ->with(['product', 'warehouse', 'inwardItem.inward', 'source', 'reservedFor'])
+            ->with(['product', 'warehouse', 'inwardItem.inward', 'source', 'reservedFor', 'customer', 'salesInvoice'])
             ->where('serial_number', $serialNumber)
             ->first();
     }
@@ -225,6 +232,157 @@ class SerialBatchService
 
             return $serials->all();
         });
+    }
+
+    /**
+     * Replace the purchase warranty with the customer warranty from the sales invoice.
+     * An in-stock serial is marked delivered. A serial first typed on the sale is created.
+     *
+     * @param  array<int, string>  $serialNumbers
+     * @return array<int, ProductSerial>
+     */
+    public function sellSerials(array $serialNumbers, Invoice $invoice, Product $product, ?InvoiceItem $line = null): array
+    {
+        $clean = collect($serialNumbers)
+            ->map(fn ($serial) => trim((string) $serial))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($clean->isEmpty()) {
+            return [];
+        }
+
+        return DB::transaction(function () use ($clean, $invoice, $product) {
+            $existing = ProductSerial::query()
+                ->whereIn('serial_number', $clean->all())
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('serial_number');
+
+            $stamp = $this->customerWarrantyAttributes($product, $invoice);
+            $soldAt = Carbon::parse($invoice->invoice_date)->startOfDay();
+            $saved = [];
+
+            foreach ($clean as $number) {
+                $serial = $existing->get($number);
+
+                if ($serial) {
+                    if ((int) $serial->product_id !== (int) $product->id) {
+                        throw ValidationException::withMessages([
+                            'serials' => "Serial {$number} belongs to a different product.",
+                        ]);
+                    }
+
+                    if ($serial->sales_invoice_id && (int) $serial->sales_invoice_id !== (int) $invoice->id) {
+                        throw ValidationException::withMessages([
+                            'serials' => "Serial {$number} is already sold on another invoice.",
+                        ]);
+                    }
+
+                    if (! in_array($serial->status, ['in_stock', 'reserved', 'available', 'delivered', 'sold'], true)) {
+                        throw ValidationException::withMessages([
+                            'serials' => "Serial {$number} is {$serial->status} and cannot be sold.",
+                        ]);
+                    }
+
+                    $serial->update(array_merge($stamp, [
+                        'status' => 'delivered',
+                        'sold_at' => $soldAt,
+                        'delivered_at' => $soldAt,
+                        'reserved_for_type' => null,
+                        'reserved_for_id' => null,
+                        'reservation_note' => null,
+                    ]));
+                    $saved[] = $serial->fresh();
+
+                    continue;
+                }
+
+                $saved[] = ProductSerial::create(array_merge($stamp, [
+                    'product_id' => $product->id,
+                    'serial_number' => $number,
+                    'status' => 'delivered',
+                    'sold_at' => $soldAt,
+                    'delivered_at' => $soldAt,
+                    'source_type' => $invoice->getMorphClass(),
+                    'source_id' => $invoice->getKey(),
+                ]));
+            }
+
+            return $saved;
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function purchaseWarrantyAttributes(Product $product, ?Model $source): array
+    {
+        $period = $this->periodFor($product);
+        $start = $this->receivedOn($source);
+
+        return [
+            'warranty_label' => $period['label'],
+            'warranty_months' => $period['months'],
+            'warranty_start_on' => $period['months'] ? $start->toDateString() : null,
+            'warranty_expires_on' => WarrantyPeriod::expiresOn($start, $period['months'])?->toDateString(),
+            'customer_id' => null,
+            'sales_invoice_id' => null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function customerWarrantyAttributes(Product $product, Invoice $invoice): array
+    {
+        $period = $this->periodFor($product);
+        $start = Carbon::parse($invoice->invoice_date)->startOfDay();
+
+        return [
+            'customer_id' => $invoice->customer_id,
+            'sales_invoice_id' => $invoice->id,
+            'warranty_label' => $period['label'],
+            'warranty_months' => $period['months'],
+            'warranty_start_on' => $period['months'] ? $start->toDateString() : null,
+            'warranty_expires_on' => WarrantyPeriod::expiresOn($start, $period['months'])?->toDateString(),
+        ];
+    }
+
+    /**
+     * @return array{label: ?string, months: ?int}
+     */
+    private function periodFor(Product $product): array
+    {
+        $label = filled($product->warranty) ? $product->warranty : null;
+        $months = WarrantyPeriod::months($label);
+        if ($months === null && filled($product->warranty_months)) {
+            $months = (int) $product->warranty_months;
+        }
+
+        return ['label' => $label, 'months' => $months];
+    }
+
+    private function receivedOn(?Model $source): Carbon
+    {
+        if ($source instanceof PurchaseInwardItem) {
+            $source->loadMissing('inward');
+            $date = $source->inward?->inward_date;
+            if ($date) {
+                return Carbon::parse($date)->startOfDay();
+            }
+        }
+
+        if ($source instanceof PurchaseInvoiceItem) {
+            $source->loadMissing('invoice');
+            $date = $source->invoice?->invoice_date;
+            if ($date) {
+                return Carbon::parse($date)->startOfDay();
+            }
+        }
+
+        return now()->startOfDay();
     }
 
     public function releaseReservation(Model $reservationOwner): int

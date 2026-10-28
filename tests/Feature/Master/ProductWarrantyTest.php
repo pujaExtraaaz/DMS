@@ -108,6 +108,7 @@ class ProductWarrantyTest extends TestCase
         $response->assertSee('Warranty');
         $response->assertSee('name="warranty"', false);
         $response->assertSee('id="warranty"', false);
+        $response->assertSee('Sample expiry from today', false);
     }
 
     public function test_edit_product_form_renders_warranty_field_with_prefilled_value(): void
@@ -148,6 +149,14 @@ class ProductWarrantyTest extends TestCase
             $product = Product::where('sku', $sku)->first();
             $this->assertNotNull($product);
             $this->assertSame($warrantyText, $product->warranty);
+            $expectedMonths = match ($warrantyText) {
+                '6 Months' => 6,
+                '1 Year' => 12,
+                '2 Years' => 24,
+                '3 Years On-site' => 36,
+                default => null,
+            };
+            $this->assertSame($expectedMonths, $product->warranty_months);
         }
     }
 
@@ -194,6 +203,7 @@ class ProductWarrantyTest extends TestCase
 
         $product->refresh();
         $this->assertSame('3 Years Premium Support Plus', $product->warranty);
+        $this->assertSame(36, $product->warranty_months);
     }
 
     public function test_can_clear_warranty_on_edit(): void
@@ -219,6 +229,7 @@ class ProductWarrantyTest extends TestCase
 
         $product->refresh();
         $this->assertNull($product->warranty);
+        $this->assertNull($product->warranty_months);
     }
 
     public function test_warranty_validates_maximum_length(): void

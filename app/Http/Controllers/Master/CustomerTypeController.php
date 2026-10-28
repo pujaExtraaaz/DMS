@@ -139,6 +139,66 @@ class CustomerTypeController extends Controller
         }
     }
 
+    public function quickUpdate(Request $request, CustomerType $customerType): JsonResponse
+    {
+        $name = trim((string) $request->input('name', ''));
+
+        if ($name === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Classification Name is required.',
+            ], 422);
+        }
+
+        if (mb_strlen($name) > 255) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Classification Name cannot exceed 255 characters.',
+            ], 422);
+        }
+
+        $exists = CustomerType::query()
+            ->where('id', '!=', $customerType->id)
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A classification with this name already exists.',
+            ], 422);
+        }
+
+        $customerType->update(['name' => $name]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Classification updated successfully.',
+            'item' => [
+                'id' => $customerType->id,
+                'name' => $customerType->fresh()->name,
+                'code' => $customerType->code,
+            ],
+        ]);
+    }
+
+    public function quickDestroy(CustomerType $customerType): JsonResponse
+    {
+        if ($customerType->priceMasters()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This classification is used on a price list and cannot be deleted.',
+            ], 422);
+        }
+
+        $customerType->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Classification deleted successfully.',
+        ]);
+    }
+
     public function list(): JsonResponse
     {
         return response()->json([

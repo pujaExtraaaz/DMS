@@ -67,9 +67,6 @@
         }
         currentController = new AbortController();
 
-        // Visual loading feedback
-        targetContainer.classList.add('opacity-60', 'pointer-events-none', 'transition-opacity', 'duration-200');
-
         try {
             const res = await fetch(targetUrl, {
                 signal: currentController.signal,
@@ -80,7 +77,6 @@
             });
 
             if (!res.ok) {
-                targetContainer.classList.remove('opacity-60', 'pointer-events-none');
                 return;
             }
 
@@ -137,23 +133,32 @@
                 console.error('Dynamic table update failed:', err);
             }
         } finally {
-            targetContainer.classList.remove('opacity-60', 'pointer-events-none');
+            currentController = null;
         }
     }
 
-    // Debounced search typing handler
-    document.addEventListener('input', function (e) {
-        const input = e.target.closest('[data-dynamic-search]');
-        if (!input) return;
-
+    function runSearch(input) {
         const container = getContainer(input);
         if (!container) return;
 
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            const newUrl = buildUrlWithParams(container, { page: null });
-            fetchAndSwap(newUrl, false, container);
-        }, 320);
+        const newUrl = buildUrlWithParams(container, { page: null });
+        fetchAndSwap(newUrl, false, container);
+    }
+
+    // Search runs when the user presses Enter, not on every keystroke.
+    document.addEventListener('keydown', function (e) {
+        const input = e.target.closest('[data-dynamic-search]');
+        if (!input || e.key !== 'Enter') return;
+
+        e.preventDefault();
+        runSearch(input);
+    });
+
+    document.addEventListener('dms:search', function (e) {
+        const input = e.target.closest ? e.target.closest('[data-dynamic-search]') : null;
+        if (!input) return;
+        runSearch(input);
     });
 
     // Instant filter select / date changes

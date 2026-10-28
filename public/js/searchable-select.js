@@ -192,7 +192,7 @@
             width: 100%;
             height: 34px;
             box-sizing: border-box;
-            padding: 0.375rem 0.625rem 0.375rem 2.25rem;
+            padding: 0.375rem 0.625rem;
             font-size: 0.8125rem;
             line-height: 1.25rem;
             color: #0f172a;
@@ -525,7 +525,7 @@
 
                 // Check if can be cleared
                 const hasEmptyOption = optionsData.some(o => o.value === '');
-                const canClear = !select.required || hasEmptyOption;
+                const canClear = hasEmptyOption;
                 clearBtn.style.display = canClear ? 'inline-flex' : 'none';
             } else {
                 const placeholder = select.getAttribute('placeholder') ||
@@ -555,14 +555,6 @@
             const searchBox = document.createElement('div');
             searchBox.className = 'dms-searchable-search-box';
 
-            const searchIcon = document.createElement('div');
-            searchIcon.className = 'dms-searchable-search-icon';
-            searchIcon.innerHTML = `
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 100%; height: 100%;">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M16.65 11a5.65 5.65 0 11-11.3 0 5.65 5.65 0 0111.3 0z"/>
-                </svg>
-            `;
-
             searchInput = document.createElement('input');
             searchInput.type = 'text';
             searchInput.className = 'dms-searchable-search-input';
@@ -570,7 +562,6 @@
             searchInput.autocomplete = 'off';
             searchInput.spellcheck = false;
 
-            searchBox.appendChild(searchIcon);
             searchBox.appendChild(searchInput);
             searchWrapper.appendChild(searchBox);
             menuEl.appendChild(searchWrapper);

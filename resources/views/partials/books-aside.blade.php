@@ -1,5 +1,5 @@
 @once
-    <link rel="stylesheet" href="{{ asset('css/books-sidebar.css') }}?v=8">
+    <link rel="stylesheet" href="{{ asset('css/books-sidebar.css') }}?v=9">
 @endonce
 
 @php
@@ -201,9 +201,6 @@ window.booksAqNavFactory = window.booksAqNavFactory || function booksAqNavFactor
         @endif
 
         <div class="books-aside__search">
-            <svg class="books-aside__search-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35m1.6-4.4a6.75 6.75 0 11-13.5 0 6.75 6.75 0 0113.5 0z" />
-            </svg>
             <input
                 type="search"
                 x-ref="booksSearch"

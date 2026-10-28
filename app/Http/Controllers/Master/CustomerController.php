@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Master;
 
+use App\Domains\Catalog\Models\Brand;
 use App\Domains\Crm\Models\Lead;
 use App\Domains\Crm\Models\LeadActivity;
 use App\Domains\Crm\Models\LeadConversion;
 use App\Domains\Master\Models\Area;
+use App\Domains\Master\Models\CustomCity;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\CustomerType;
 use App\Domains\Master\Models\Route;
@@ -18,11 +20,13 @@ use App\Support\AuditLogService;
 use App\Support\CodeGenerator;
 use App\Support\IndianCities;
 use App\Support\IndianStates;
+use App\Support\NameCase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
@@ -101,6 +105,70 @@ class CustomerController extends Controller
             'state' => $state,
             'cities' => $cities,
         ]);
+    }
+
+    public function storeCity(Request $request): JsonResponse
+    {
+        $state = trim((string) $request->input('state', ''));
+        $name = NameCase::format(trim((string) $request->input('name', ''))) ?? '';
+
+        $knownState = null;
+        foreach (IndianStates::namesAlphabetical() as $stateName) {
+            if (strcasecmp($stateName, $state) === 0) {
+                $knownState = $stateName;
+                break;
+            }
+        }
+
+        if ($knownState === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select a state before adding a city.',
+            ], 422);
+        }
+
+        if ($name === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'City name is required.',
+            ], 422);
+        }
+
+        if (mb_strlen($name) > 255) {
+            return response()->json([
+                'success' => false,
+                'message' => 'City name cannot exceed 255 characters.',
+            ], 422);
+        }
+
+        $existing = IndianCities::getCitiesForState($knownState);
+        foreach ($existing as $city) {
+            if (strcasecmp($city, $name) === 0) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'This city is already in the list.',
+                    'item' => ['state' => $knownState, 'name' => $city],
+                ]);
+            }
+        }
+
+        if (! IndianCities::isValidCityForState($name, $knownState)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This city belongs to another state.',
+            ], 422);
+        }
+
+        $city = CustomCity::query()->firstOrCreate([
+            'state' => $knownState,
+            'name' => $name,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'City added. It will stay available in this state.',
+            'item' => ['state' => $city->state, 'name' => $city->name],
+        ], 201);
     }
 
     /**
@@ -352,7 +420,7 @@ class CustomerController extends Controller
 
     public function edit(Customer $customer): View
     {
-        $customer->load(['contacts', 'addresses', 'bankAccounts', 'creditCheques', 'businessGroup']);
+        $customer->load(['contacts', 'addresses', 'bankAccounts', 'creditCheques', 'businessGroup', 'gemAuthorizations.documents', 'gemAuthorizations.brand']);
 
         $addresses = $customer->activeAddresses()->get()->map(function ($a) {
             return [
@@ -545,6 +613,24 @@ class CustomerController extends Controller
         }
     }
 
+    public function gemDocument(Customer $customer, \App\Domains\Master\Models\PartyGemDocument $document): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $document->loadMissing('authorization');
+        abort_unless(
+            $document->authorization && (int) $document->authorization->customer_id === (int) $customer->id,
+            404
+        );
+
+        $download = request()->boolean('download');
+
+        return Storage::disk($document->disk ?: 'public')->response(
+            $document->path,
+            $document->original_name,
+            [],
+            $download ? 'attachment' : 'inline'
+        );
+    }
+
     public function show(Request $request, Customer $customer): View|JsonResponse
     {
         $customer->load([
@@ -560,6 +646,8 @@ class CustomerController extends Controller
             'contacts' => fn ($q) => $q->orderBy('is_primary', 'desc')->orderBy('name'),
             'addresses' => fn ($q) => $q->orderBy('is_default_billing', 'desc')->orderBy('is_default_delivery', 'desc'),
             'bankAccounts' => fn ($q) => $q->orderBy('is_primary', 'desc'),
+            'gemAuthorizations.brand',
+            'gemAuthorizations.documents',
         ]);
 
         if ($request->wantsJson() || $request->ajax()) {
@@ -716,6 +804,21 @@ class CustomerController extends Controller
             'sales_manager_id' => 'nullable|exists:users,id',
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
+            'opened_on' => 'nullable|date',
+            'reference_by' => 'nullable|string|max:255',
+            'udyam_number' => 'nullable|string|max:50',
+            'website' => 'nullable|string|max:255',
+            'location_link' => 'nullable|string|max:500',
+            'gem_authorizations' => 'nullable|array',
+            'gem_authorizations.*.id' => 'nullable|integer',
+            'gem_authorizations.*.brand_id' => 'nullable|integer|exists:brands,id',
+            'gem_authorizations.*.gem_registered' => 'nullable|in:0,1',
+            'gem_authorizations.*.gem_authorized' => 'nullable|in:0,1',
+            'gem_authorizations.*.authorization_number' => 'nullable|string|max:100',
+            'gem_authorizations.*.remove_document_ids' => 'nullable|array',
+            'gem_authorizations.*.remove_document_ids.*' => 'integer',
+            'gem_authorizations.*.documents' => 'nullable|array',
+            'gem_authorizations.*.documents.*' => 'file|mimes:jpg,jpeg,png,webp,pdf|max:5120',
             'gstin' => 'nullable|string|max:20',
             'pan' => 'nullable|string|max:20',
             'address' => 'nullable|string',
@@ -831,6 +934,39 @@ class CustomerController extends Controller
                     }
                 }
             }
+
+            $seenBrands = [];
+            foreach ($request->input('gem_authorizations', []) as $index => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $registered = ($row['gem_registered'] ?? '0') === '1';
+                $active = filled($row['brand_id'] ?? null)
+                    || $registered
+                    || filled($row['authorization_number'] ?? null)
+                    || $request->hasFile("gem_authorizations.{$index}.documents");
+
+                if (! $active) {
+                    continue;
+                }
+
+                $brandId = (string) ($row['brand_id'] ?? '');
+                if ($brandId === '') {
+                    $validator->errors()->add("gem_authorizations.{$index}.brand_id", 'Select a Brand/OEM.');
+                } elseif (isset($seenBrands[$brandId])) {
+                    $validator->errors()->add("gem_authorizations.{$index}.brand_id", 'This Brand/OEM is already added for this party.');
+                } else {
+                    $seenBrands[$brandId] = true;
+                }
+
+                if ($registered && ($row['gem_authorized'] ?? '0') === '1' && blank($row['authorization_number'] ?? null)) {
+                    $validator->errors()->add(
+                        "gem_authorizations.{$index}.authorization_number",
+                        'GEM Authorization Number is required when this party is authorized for the OEM on GEM.'
+                    );
+                }
+            }
         });
 
         $data = $validator->validate();
@@ -841,7 +977,12 @@ class CustomerController extends Controller
             default => $data['party_type'],
         };
         $data['is_active'] = $request->boolean('is_active');
-        $data['customer_type_id'] = $data['customer_type_id'] ?? CustomerType::query()->value('id');
+        $data['customer_type_id'] = filled($data['customer_type_id'] ?? null) ? $data['customer_type_id'] : null;
+        $data['udyam_number'] = filled($data['udyam_number'] ?? null) ? trim($data['udyam_number']) : null;
+        $data['opened_on'] = filled($data['opened_on'] ?? null) ? $data['opened_on'] : null;
+        $data['reference_by'] = filled($data['reference_by'] ?? null) ? trim($data['reference_by']) : null;
+        $data['website'] = filled($data['website'] ?? null) ? trim($data['website']) : null;
+        $data['location_link'] = filled($data['location_link'] ?? null) ? trim($data['location_link']) : null;
         $data['credit_limit'] = $data['credit_limit'] ?? 0;
         $data['credit_days'] = $data['credit_days'] ?? 0;
         $data['interest_rate'] = $data['interest_rate'] ?? 18;
@@ -857,7 +998,7 @@ class CustomerController extends Controller
             }
         }
 
-        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['pan'], $data['lead_id']);
+        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['gem_authorizations'], $data['pan'], $data['lead_id']);
 
         return $data;
     }
@@ -968,6 +1109,8 @@ class CustomerController extends Controller
                 }
             }
         }
+
+        $this->syncGemAuthorizations($request, $customer);
     }
 
     protected function syncAddresses(Request $request, Customer $customer): void
@@ -1065,6 +1208,94 @@ class CustomerController extends Controller
         }
     }
 
+    protected function syncGemAuthorizations(Request $request, Customer $customer): void
+    {
+        $keptIds = [];
+
+        foreach ($request->input('gem_authorizations', []) as $index => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $registered = ($row['gem_registered'] ?? '0') === '1';
+            $active = filled($row['brand_id'] ?? null)
+                || $registered
+                || filled($row['authorization_number'] ?? null)
+                || $request->hasFile("gem_authorizations.{$index}.documents");
+
+            if (! $active || blank($row['brand_id'] ?? null)) {
+                continue;
+            }
+
+            $payload = [
+                'brand_id' => $row['brand_id'],
+                'gem_registered' => $registered,
+                'gem_authorized' => $registered && ($row['gem_authorized'] ?? '0') === '1',
+                'authorization_number' => $registered && ($row['gem_authorized'] ?? '0') === '1'
+                    ? (trim((string) ($row['authorization_number'] ?? '')) ?: null)
+                    : null,
+            ];
+
+            $record = null;
+            if (filled($row['id'] ?? null)) {
+                $record = $customer->gemAuthorizations()->whereKey($row['id'])->first();
+            }
+
+            if ($record) {
+                $record->update($payload);
+            } else {
+                $record = $customer->gemAuthorizations()->create($payload);
+            }
+
+            $keptIds[] = $record->id;
+            $this->syncGemDocuments($request, $record, $index, $registered);
+        }
+
+        $customer->gemAuthorizations()
+            ->when($keptIds !== [], fn ($query) => $query->whereNotIn('id', $keptIds))
+            ->with('documents')
+            ->get()
+            ->each(function ($authorization) {
+                $this->deleteGemDocuments($authorization->documents);
+                $authorization->delete();
+            });
+    }
+
+    protected function syncGemDocuments(Request $request, \App\Domains\Master\Models\PartyGemAuthorization $authorization, int $index, bool $registered): void
+    {
+        $removeIds = array_map('intval', (array) ($request->input("gem_authorizations.{$index}.remove_document_ids") ?? []));
+        if (! $registered) {
+            $this->deleteGemDocuments($authorization->documents()->get());
+
+            return;
+        }
+
+        if ($removeIds !== []) {
+            $this->deleteGemDocuments($authorization->documents()->whereIn('id', $removeIds)->get());
+        }
+
+        foreach ($request->file("gem_authorizations.{$index}.documents", []) as $file) {
+            if (! $file) {
+                continue;
+            }
+
+            $authorization->documents()->create([
+                'disk' => 'public',
+                'path' => $file->store('party-gem/'.$authorization->customer_id, 'public'),
+                'original_name' => $file->getClientOriginalName(),
+                'mime' => $file->getClientMimeType(),
+            ]);
+        }
+    }
+
+    protected function deleteGemDocuments(iterable $documents): void
+    {
+        foreach ($documents as $document) {
+            Storage::disk($document->disk ?: 'public')->delete($document->path);
+            $document->delete();
+        }
+    }
+
     protected function formData(?Customer $customer = null): array
     {
         $allUsers = User::orderBy('name')->get();
@@ -1091,11 +1322,38 @@ class CustomerController extends Controller
         }
         $businessGroups = $bgQuery->orderBy('name')->get(['id', 'name', 'code', 'logo_emoji']);
 
+        $brandQuery = Brand::query()->where('is_active', true);
+        if ($customer?->exists) {
+            $selectedBrandIds = $customer->gemAuthorizations()->pluck('brand_id')->filter();
+            if ($selectedBrandIds->isNotEmpty()) {
+                $brandQuery->orWhereIn('id', $selectedBrandIds);
+            }
+        }
+
         return [
             'businessGroups' => $businessGroups,
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
-            'areas' => Area::where('is_active', true)->orderBy('name')->get(),
-            'routes' => Route::where('is_active', true)->orderBy('name')->get(),
+            'brands' => $brandQuery->orderBy('name')->get(['id', 'name']),
+            'companies' => \App\Domains\Organization\Models\Company::query()->orderBy('name')->get(['id', 'name']),
+            'defaultCompanyId' => auth()->user()?->company_id,
+            'areas' => Area::query()
+                ->where(function ($query) use ($customer) {
+                    $query->where('is_active', true);
+                    if ($customer?->area_id) {
+                        $query->orWhere('id', $customer->area_id);
+                    }
+                })
+                ->orderBy('name')
+                ->get(),
+            'routes' => Route::query()
+                ->where(function ($query) use ($customer) {
+                    $query->where('is_active', true);
+                    if ($customer?->route_id) {
+                        $query->orWhere('id', $customer->route_id);
+                    }
+                })
+                ->orderBy('name')
+                ->get(),
             'salesManagers' => $salesManagers,
             'salespersons' => $salespersons,
             'states' => IndianStates::allAlphabetical(),

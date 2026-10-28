@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Master;
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
+use App\Domains\Inventory\Models\ProductSerial;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\ProductPriceHistory;
 use App\Domains\Master\Models\ProductType;
@@ -13,6 +14,7 @@ use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
 use App\Support\CodeGenerator;
+use App\Support\WarrantyPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -143,7 +145,9 @@ class ProductController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'hsn_code', 'series', 'model', 'product_type']);
+        $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'hsn_code', 'series', 'model', 'product_type'], [
+            'serials' => ['serial_number'],
+        ]);
 
         if ($export = $this->exportIfRequested($request, $query, 'Products', 'Products', ['Name', 'Part Number', 'Model', 'Brand', 'Category', 'Subcategory', 'Product Type', 'Base UOM', 'GST Rate', 'Status'], fn ($item) => [
             $item->name,
@@ -180,8 +184,18 @@ class ProductController extends Controller
 
         $items = $query->paginate(15)->withQueryString();
 
+        $serialSearch = trim((string) $request->input('search'));
+        $serialMatches = $serialSearch === ''
+            ? collect()
+            : ProductSerial::query()
+                ->with(['product', 'customer', 'salesInvoice'])
+                ->where('serial_number', $serialSearch)
+                ->limit(10)
+                ->get();
+
         return view('masters.products.index', [
             'items' => $items,
+            'serialMatches' => $serialMatches,
             'brands' => $brands,
             'categories' => $categories,
             'subCategories' => $subCategories,
@@ -256,9 +270,11 @@ class ProductController extends Controller
         return $this->flashSuccess('Product created successfully.', 'masters.products.index');
     }
 
-    public function show(Product $product): RedirectResponse
+    public function show(Product $product): View
     {
-        return redirect()->route('masters.products.edit', $product);
+        $product->load(['brand', 'category', 'subCategory', 'productType', 'baseUom', 'alternateUom']);
+
+        return view('masters.products.show', compact('product'));
     }
 
     public function edit(Product $product): View
@@ -469,6 +485,16 @@ class ProductController extends Controller
             'selling_price' => 'nullable|numeric|min:0',
             'trade_price' => 'nullable|numeric|min:0',
             'purchase_price' => 'nullable|numeric|min:0',
+            'purchase_price_tax_basis' => 'nullable|in:'.implode(',', array_keys(Product::PURCHASE_TAX_BASES)),
+            'supply_type' => 'nullable|in:'.implode(',', array_keys(Product::SUPPLY_TYPES)),
+            'costing_method' => 'nullable|in:'.implode(',', array_keys(Product::COSTING_METHODS)),
+            'market_valuation_method' => 'nullable|in:'.implode(',', array_keys(Product::MARKET_VALUATION_METHODS)),
+            'provide_behaviour' => 'nullable|boolean',
+            'ignore_physical_count_diff' => 'nullable|boolean',
+            'ignore_negative_balances' => 'nullable|boolean',
+            'treat_sales_as_new_manufacture' => 'nullable|boolean',
+            'treat_purchases_as_consumed' => 'nullable|boolean',
+            'treat_rejections_inward_as_scrap' => 'nullable|boolean',
             'calculation_mrp' => 'nullable|numeric|min:0',
             'alt_selling_price' => 'nullable|numeric|min:0',
             'alt_trade_price' => 'nullable|numeric|min:0',
@@ -574,6 +600,26 @@ class ProductController extends Controller
         $data['trade_price'] = $data['trade_price'] ?? 0;
         $data['purchase_price'] = $data['purchase_price'] ?? 0;
         $data['calculation_mrp'] = $data['calculation_mrp'] ?? 0;
+        $data['supply_type'] = $request->exists('supply_type')
+            ? ($data['supply_type'] ?? 'goods')
+            : ($product?->supply_type ?? 'goods');
+        $data['purchase_price_tax_basis'] = $request->exists('purchase_price_tax_basis')
+            ? ($data['purchase_price_tax_basis'] ?? 'exclusive')
+            : ($product?->purchase_price_tax_basis ?? 'exclusive');
+        $data['costing_method'] = $request->exists('costing_method')
+            ? ($data['costing_method'] ?: null)
+            : $product?->costing_method;
+        $data['market_valuation_method'] = $request->exists('market_valuation_method')
+            ? ($data['market_valuation_method'] ?? 'avg_price')
+            : ($product?->market_valuation_method ?? 'avg_price');
+        $data['provide_behaviour'] = $request->exists('provide_behaviour')
+            ? $request->boolean('provide_behaviour')
+            : (bool) ($product?->provide_behaviour ?? false);
+        foreach (array_keys(Product::BEHAVIOUR_FLAGS) as $behaviourFlag) {
+            $data[$behaviourFlag] = $data['provide_behaviour'] && $request->exists($behaviourFlag)
+                ? $request->boolean($behaviourFlag)
+                : ($data['provide_behaviour'] ? (bool) ($product?->{$behaviourFlag} ?? false) : false);
+        }
 
         if ($altNotApplicable) {
             $data['alternate_uom_id'] = null;
@@ -648,7 +694,9 @@ class ProductController extends Controller
         $data['weight_unit'] = filled($request->input('weight_unit'))
             ? trim((string) $request->input('weight_unit'))
             : ($product?->weight_unit ?? 'KG');
-        $data['warranty_months'] = $data['warranty_months'] ?? ($product?->warranty_months ?? null);
+        $data['warranty_months'] = $request->has('warranty')
+            ? WarrantyPeriod::months(is_string($data['warranty'] ?? null) ? $data['warranty'] : null)
+            : ($data['warranty_months'] ?? ($product?->warranty_months ?? null));
         $data['warranty_terms'] = $data['warranty_terms'] ?? ($product?->warranty_terms ?? null);
         $data['sender_warranty_months'] = $data['sender_warranty_months'] ?? ($product?->sender_warranty_months ?? null);
         $data['sender_warranty_terms'] = $data['sender_warranty_terms'] ?? ($product?->sender_warranty_terms ?? null);

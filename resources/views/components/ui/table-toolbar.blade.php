@@ -26,16 +26,10 @@
                         this.query = '';
                         const input = this.$refs.searchInput;
                         input.value = '';
-                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.dispatchEvent(new Event('dms:search', { bubbles: true }));
                     }
                 }"
             >
-                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-                    </svg>
-                </div>
-
                 <input
                     x-ref="searchInput"
                     type="text"
@@ -44,7 +38,7 @@
                     data-dynamic-search
                     placeholder="{{ \App\Support\TitleCase::format($searchPlaceholder) }}"
                     autocomplete="off"
-                    class="block w-full rounded-lg border-slate-300 pl-10 pr-9 text-sm placeholder:text-slate-400 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm transition"
+                    class="block w-full rounded-lg border-slate-300 pl-3 pr-9 text-sm placeholder:text-slate-400 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm transition"
                 />
 
                 {{-- Clear 'X' button --}}

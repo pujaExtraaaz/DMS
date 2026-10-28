@@ -39,6 +39,52 @@ class StockValuationService
         return in_array($method, ['fifo', 'lifo'], true) ? $method : 'fifo';
     }
 
+    /**
+     * Flat issue rate for product costing methods that do not follow layer order.
+     * Null means the caller should use each layer's own cost (FIFO / LIFO).
+     */
+    public function issueRate(Product $product, $layers = null): ?float
+    {
+        $method = $product->costingMethod();
+        if ($method === null || in_array($method, ['fifo', 'fifo_perpetual', 'lifo_annual', 'lifo_perpetual'], true)) {
+            return null;
+        }
+
+        if ($method === 'at_zero_cost') {
+            return 0.0;
+        }
+
+        if ($method === 'std_cost') {
+            return $product->exclusivePurchasePrice();
+        }
+
+        $layers ??= StockCostLayer::query()
+            ->where('product_id', $product->id)
+            ->where('quantity_remaining', '>', 0)
+            ->get();
+
+        if ($method === 'last_purchase_cost') {
+            $latest = StockCostLayer::query()
+                ->where('product_id', $product->id)
+                ->orderByDesc('received_on')
+                ->orderByDesc('id')
+                ->first();
+
+            return $latest ? (float) $latest->unit_cost : $product->exclusivePurchasePrice();
+        }
+
+        if ($method === 'monthly_avg_cost') {
+            $monthLayers = $layers->filter(function (StockCostLayer $layer) {
+                return $layer->received_on && $layer->received_on->isSameMonth(now());
+            });
+
+            return $this->weightedAverage($monthLayers->isNotEmpty() ? $monthLayers : $layers)
+                ?? $product->exclusivePurchasePrice();
+        }
+
+        return $this->weightedAverage($layers) ?? $product->exclusivePurchasePrice();
+    }
+
     public function addLayer(
         Product $product,
         Uom $uom,
@@ -79,25 +125,16 @@ class StockValuationService
         ?StockMovement $movement = null,
         ?Model $reference = null,
         ?int $companyId = null,
+        ?int $onlyLayerId = null,
     ): array {
         $qtyNeeded = abs($quantity);
         if ($qtyNeeded <= 0) {
             return ['unit_cost' => 0.0, 'consumptions' => []];
         }
 
-        return DB::transaction(function () use ($product, $uom, $qtyNeeded, $warehouseId, $movement, $reference, $companyId) {
-            $method = $this->methodFor($companyId ?? auth()->user()?->company_id ?? $product->company_id);
-
-            $query = StockCostLayer::query()
-                ->where('product_id', $product->id)
-                ->where('uom_id', $uom->id)
-                ->where('quantity_remaining', '>', 0)
-                ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId), fn ($q) => $q->whereNull('warehouse_id'))
-                ->lockForUpdate();
-
-            $layers = $method === 'lifo'
-                ? $query->orderByDesc('received_on')->orderByDesc('id')->get()
-                : $query->orderBy('received_on')->orderBy('id')->get();
+        return DB::transaction(function () use ($product, $uom, $qtyNeeded, $warehouseId, $movement, $reference, $companyId, $onlyLayerId) {
+            $layers = $this->layersForConsumption($product, $uom, $warehouseId, $companyId, $onlyLayerId);
+            $flatRate = $onlyLayerId ? null : $this->issueRate($product, $layers);
 
             $remaining = $qtyNeeded;
             $totalCost = 0.0;
@@ -109,7 +146,7 @@ class StockValuationService
                 }
 
                 $take = min((float) $layer->quantity_remaining, $remaining);
-                $unitCost = $layer->effectiveUnitCost();
+                $unitCost = $flatRate ?? $layer->effectiveUnitCost();
 
                 $layer->update([
                     'quantity_remaining' => (float) $layer->quantity_remaining - $take,
@@ -129,11 +166,9 @@ class StockValuationService
                 $remaining -= $take;
             }
 
-            if ($remaining > 0.0001) {
-                // Fall back to product purchase price for uncovered qty so posting is not blocked.
-                $fallback = (float) ($product->purchase_price ?? 0);
+            if ($remaining > 0.0001 && ! $product->usesBehaviour('ignore_negative_balances')) {
+                $fallback = $flatRate ?? $product->exclusivePurchasePrice();
                 $totalCost += $remaining * $fallback;
-                $remaining = 0;
             }
 
             $avg = $qtyNeeded > 0 ? round($totalCost / $qtyNeeded, 4) : 0.0;
@@ -150,31 +185,129 @@ class StockValuationService
             ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
             ->get();
 
+        $products = Product::query()
+            ->whereIn('id', $layers->pluck('product_id')->unique()->filter())
+            ->get()
+            ->keyBy('id');
+
         $atCost = 0.0;
         $atLanded = 0.0;
-        foreach ($layers as $layer) {
-            $qty = (float) $layer->quantity_remaining;
-            $atCost += $qty * (float) $layer->unit_cost;
-            $atLanded += $qty * $layer->effectiveUnitCost();
+        foreach ($layers->groupBy('product_id') as $productId => $productLayers) {
+            $product = $products->get($productId);
+            $method = $product?->costingMethod();
+            $rateBased = $product && in_array($method, ['at_zero_cost', 'avg_cost', 'last_purchase_cost', 'monthly_avg_cost', 'std_cost'], true);
+
+            if ($rateBased) {
+                $qty = (float) $productLayers->sum(fn (StockCostLayer $layer) => (float) $layer->quantity_remaining);
+                $rate = (float) $this->issueRate($product, $productLayers);
+                $atCost += $qty * $rate;
+                $atLanded += $qty * $rate;
+                continue;
+            }
+
+            foreach ($productLayers as $layer) {
+                $qty = (float) $layer->quantity_remaining;
+                $atCost += $qty * (float) $layer->unit_cost;
+                $atLanded += $qty * $layer->effectiveUnitCost();
+            }
         }
 
-        $selling = Product::query()
-            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
-            ->get()
-            ->sum(function (Product $product) use ($warehouseId) {
-                $qty = (float) \App\Domains\Inventory\Models\StockLevel::query()
-                    ->where('product_id', $product->id)
-                    ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
-                    ->sum('quantity');
+        $stockQty = \App\Domains\Inventory\Models\StockLevel::query()
+            ->selectRaw('product_id, SUM(quantity) as qty')
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
+            ->when($companyId, function ($q) use ($companyId) {
+                $q->whereIn('product_id', Product::query()->where('company_id', $companyId)->select('id'));
+            })
+            ->groupBy('product_id')
+            ->pluck('qty', 'product_id');
 
-                return $qty * (float) $product->selling_price;
-            });
+        $marketProducts = Product::query()->whereIn('id', $stockQty->keys())->get();
+        $saleAverages = \App\Domains\Sales\Models\InvoiceItem::query()
+            ->whereIn('product_id', $stockQty->keys())
+            ->selectRaw('product_id, AVG(unit_price) as avg_price')
+            ->groupBy('product_id')
+            ->pluck('avg_price', 'product_id');
+
+        $selling = 0.0;
+        $atMarket = 0.0;
+        foreach ($marketProducts as $product) {
+            $qty = (float) ($stockQty[$product->id] ?? 0);
+            $selling += $qty * (float) $product->selling_price;
+            if ($qty < 0 && $product->usesBehaviour('ignore_negative_balances')) {
+                $qty = 0;
+            }
+            $average = $saleAverages->has($product->id) ? (float) $saleAverages[$product->id] : null;
+            $atMarket += $qty * $product->marketUnitPrice($average);
+        }
 
         return [
             'method' => $this->methodFor($companyId),
             'at_cost' => round($atCost, 2),
             'at_landed' => round($atLanded, 2),
-            'at_selling' => round((float) $selling, 2),
+            'at_selling' => round($selling, 2),
+            'at_market' => round($atMarket, 2),
         ];
+    }
+
+    private function layersForConsumption(Product $product, Uom $uom, ?int $warehouseId, ?int $companyId, ?int $onlyLayerId)
+    {
+        $query = StockCostLayer::query()
+            ->where('product_id', $product->id)
+            ->where('uom_id', $uom->id)
+            ->where('quantity_remaining', '>', 0)
+            ->when($onlyLayerId, fn ($q) => $q->whereKey($onlyLayerId))
+            ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId), fn ($q) => $q->whereNull('warehouse_id'))
+            ->lockForUpdate();
+
+        if ($onlyLayerId) {
+            return $query->get();
+        }
+
+        $method = $product->costingMethod();
+        $companyMethod = $this->methodFor($companyId ?? auth()->user()?->company_id ?? $product->company_id);
+        $order = match ($method) {
+            'lifo_perpetual' => 'lifo',
+            'lifo_annual' => 'lifo_annual',
+            'fifo', 'fifo_perpetual' => 'fifo',
+            default => $method === null && $companyMethod === 'lifo' ? 'lifo' : 'fifo',
+        };
+
+        if ($order === 'lifo_annual') {
+            $year = FinancialYear::query()
+                ->when($product->company_id, fn ($q) => $q->where('company_id', $product->company_id))
+                ->where('is_current', true)
+                ->orderByDesc('id')
+                ->first();
+
+            if ($year) {
+                return $query
+                    ->orderByRaw('CASE WHEN received_on BETWEEN ? AND ? THEN 0 ELSE 1 END', [
+                        $year->starts_on->toDateString(),
+                        $year->ends_on->toDateString(),
+                    ])
+                    ->orderByDesc('received_on')
+                    ->orderByDesc('id')
+                    ->get();
+            }
+        }
+
+        if ($order === 'lifo' || $order === 'lifo_annual') {
+            return $query->orderByDesc('received_on')->orderByDesc('id')->get();
+        }
+
+        return $query->orderBy('received_on')->orderBy('id')->get();
+    }
+
+    private function weightedAverage($layers): ?float
+    {
+        $qty = 0.0;
+        $cost = 0.0;
+        foreach ($layers as $layer) {
+            $lineQty = (float) $layer->quantity_remaining;
+            $qty += $lineQty;
+            $cost += $lineQty * (float) $layer->unit_cost;
+        }
+
+        return $qty > 0 ? round($cost / $qty, 4) : null;
     }
 }

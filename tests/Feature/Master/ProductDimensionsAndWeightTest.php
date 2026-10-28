@@ -116,6 +116,10 @@ class ProductDimensionsAndWeightTest extends TestCase
         $response->assertSee('name="net_weight"', false);
         $response->assertSee('name="weight_unit"', false);
         $response->assertSee('productDimensionsManager', false);
+        $response->assertSee('x-show="!notApplicable"', false);
+        $response->assertSee('Type of Supply', false);
+        $response->assertSee('Inclusive Tax', false);
+        $response->assertSee('Treat all purchases as consumed', false);
     }
 
     public function test_edit_product_form_renders_dimensions_and_weight_prefilled(): void

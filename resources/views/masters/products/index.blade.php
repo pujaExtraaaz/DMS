@@ -10,6 +10,17 @@
     </x-ui.page-header>
 
     <x-ui.card>
+        @if(($serialMatches ?? collect())->isNotEmpty())
+            <div class="mb-6 space-y-4">
+                @foreach($serialMatches as $serial)
+                    <div class="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+                        <p class="mb-3 text-sm font-semibold text-indigo-900">Serial {{ $serial->serial_number }}</p>
+                        @include('inventory.serials.partials.warranty-result', ['serial' => $serial])
+                    </div>
+                @endforeach
+            </div>
+        @endif
+
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
             search-placeholder="Search Name, Part Number, Serial No, Model..."
@@ -108,6 +119,7 @@
                         </x-ui.sortable-th>
                         <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Unit</th>
                         <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-slate-500">Tax</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Warranty</th>
                         <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-slate-500">Actions</th>
                     </tr>
                 </thead>
@@ -116,7 +128,7 @@
                         <tr class="hover:bg-slate-50/75 transition-colors">
                             <td class="px-4 py-3 font-mono text-xs text-slate-600">{{ $item->serial_no ?: '—' }}</td>
                             <td class="px-4 py-3 font-medium text-slate-900">
-                                <div>{{ $item->name }}</div>
+                                <div><a href="{{ route('masters.products.show', $item) }}" class="hover:text-indigo-700 hover:underline">{{ $item->name }}</a></div>
                                 @if($item->brand || $item->category || $item->subCategory)
                                     <div class="text-[11px] text-slate-400 font-normal mt-0.5">
                                         {{ collect([$item->brand?->name, $item->category?->name, $item->subCategory?->name])->filter()->join(' · ') }}
@@ -128,8 +140,10 @@
                             <td class="px-4 py-3 text-slate-600">{{ $item->product_type ?: '—' }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->baseUom?->code ?? '—' }}</td>
                             <td class="px-4 py-3 text-right text-slate-700 font-medium">{{ $item->tax_rate }}%</td>
+                            <td class="px-4 py-3 text-slate-700">{{ $item->warranty ?: 'No warranty' }}</td>
                             <td class="px-4 py-3 text-right whitespace-nowrap">
                                 <div class="flex items-center justify-end gap-1.5">
+                                    <x-ui.button variant="secondary" size="sm" :href="route('masters.products.show', $item)" title="View Product" aria-label="View Product">View</x-ui.button>
                                     <x-ui.button variant="secondary" size="sm" :href="route('masters.products.edit', $item)" title="Edit Product" aria-label="Edit Product">Edit</x-ui.button>
                                     <button type="button"
                                             @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}', '{{ addslashes($item->sku) }}', '{{ addslashes($item->serial_no ?: '—') }}')"
@@ -148,7 +162,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="p-0">
+                            <td colspan="10" class="p-0">
                                 <x-ui.empty-state
                                     title="No matching products found"
                                     description="Try clearing search or filters to see more results."

@@ -7,6 +7,7 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Organization\Models\Company;
+use App\Domains\Sales\Models\InvoiceItem;
 use App\Support\TitleCase;
 use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -20,6 +21,44 @@ use Illuminate\Support\Str;
 class Product extends Model
 {
     use HasUppercaseNames, SoftDeletes;
+
+    public const SUPPLY_TYPES = [
+        'capital_goods' => 'Capital Goods',
+        'goods' => 'Goods',
+        'services' => 'Services',
+    ];
+
+    public const PURCHASE_TAX_BASES = [
+        'exclusive' => 'Exclusive Tax',
+        'inclusive' => 'Inclusive Tax',
+    ];
+
+    public const COSTING_METHODS = [
+        'at_zero_cost' => 'At Zero Cost',
+        'avg_cost' => 'Avg. Cost',
+        'fifo' => 'FIFO',
+        'fifo_perpetual' => 'FIFO Perpetual',
+        'last_purchase_cost' => 'Last Purchase Cost',
+        'lifo_annual' => 'LIFO Annual',
+        'lifo_perpetual' => 'LIFO Perpetual',
+        'monthly_avg_cost' => 'Monthly Avg. Cost',
+        'std_cost' => 'Std. Cost',
+    ];
+
+    public const MARKET_VALUATION_METHODS = [
+        'at_zero_price' => 'At Zero Price',
+        'avg_price' => 'Avg. Price',
+        'last_sale_price' => 'Last Sale Price',
+        'std_price' => 'Std. Price',
+    ];
+
+    public const BEHAVIOUR_FLAGS = [
+        'ignore_physical_count_diff' => 'Ignore difference due to physical counting',
+        'ignore_negative_balances' => 'Ignore negative balances',
+        'treat_sales_as_new_manufacture' => 'Treat all sales as new manufacture',
+        'treat_purchases_as_consumed' => 'Treat all purchases as consumed',
+        'treat_rejections_inward_as_scrap' => 'Treat all rejections inward as scrap',
+    ];
 
     protected $fillable = [
         'company_id',
@@ -53,6 +92,17 @@ class Product extends Model
         'selling_price',
         'trade_price',
         'purchase_price',
+        'purchase_price_tax_basis',
+        'supply_type',
+        'costing_method',
+        'market_valuation_method',
+        'provide_behaviour',
+        'ignore_physical_count_diff',
+        'ignore_negative_balances',
+        'treat_sales_as_new_manufacture',
+        'treat_purchases_as_consumed',
+        'treat_rejections_inward_as_scrap',
+        'last_sale_price',
         'calculation_mrp',
         'alt_purchase_price',
         'alt_trade_price',
@@ -99,7 +149,14 @@ class Product extends Model
             'selling_price' => 'decimal:2',
             'trade_price' => 'decimal:2',
             'purchase_price' => 'decimal:2',
+            'last_sale_price' => 'decimal:2',
             'calculation_mrp' => 'decimal:2',
+            'provide_behaviour' => 'boolean',
+            'ignore_physical_count_diff' => 'boolean',
+            'ignore_negative_balances' => 'boolean',
+            'treat_sales_as_new_manufacture' => 'boolean',
+            'treat_purchases_as_consumed' => 'boolean',
+            'treat_rejections_inward_as_scrap' => 'boolean',
             'alt_purchase_price' => 'decimal:2',
             'alt_trade_price' => 'decimal:2',
             'alt_selling_price' => 'decimal:2',
@@ -112,6 +169,7 @@ class Product extends Model
             'min_stock' => 'decimal:4',
             'reorder_level' => 'decimal:4',
             'is_active' => 'boolean',
+            'warranty_months' => 'integer',
         ];
     }
 
@@ -179,6 +237,57 @@ class Product extends Model
         return '—';
     }
 
+    public function usesBehaviour(string $flag): bool
+    {
+        if (! $this->provide_behaviour || ! array_key_exists($flag, self::BEHAVIOUR_FLAGS)) {
+            return false;
+        }
+
+        return (bool) $this->{$flag};
+    }
+
+    public function costingMethod(): ?string
+    {
+        $method = $this->costing_method;
+
+        return is_string($method) && array_key_exists($method, self::COSTING_METHODS) ? $method : null;
+    }
+
+    /**
+     * Purchase price with tax removed when the stored price is tax-inclusive.
+     */
+    public function exclusivePurchasePrice(): float
+    {
+        $price = (float) ($this->purchase_price ?? 0);
+        if ($this->purchase_price_tax_basis !== 'inclusive') {
+            return $price;
+        }
+
+        $rate = (float) ($this->tax_rate ?? 0);
+        if ($rate <= 0) {
+            return $price;
+        }
+
+        return round($price / (1 + ($rate / 100)), 4);
+    }
+
+    public function marketUnitPrice(?float $averageSalePrice = null): float
+    {
+        return match ($this->market_valuation_method) {
+            'at_zero_price' => 0.0,
+            'last_sale_price' => (float) ($this->last_sale_price ?? $this->selling_price ?? 0),
+            'std_price' => (float) ($this->selling_price ?? 0),
+            default => $averageSalePrice ?? $this->averageSalePrice(),
+        };
+    }
+
+    public function averageSalePrice(): float
+    {
+        $avg = InvoiceItem::query()->where('product_id', $this->id)->avg('unit_price');
+
+        return $avg !== null ? round((float) $avg, 4) : (float) ($this->selling_price ?? 0);
+    }
+
     /**
      * Determine if this product has historical transactions or inventory records.
      */
@@ -233,6 +342,11 @@ class Product extends Model
     public function productUoms(): HasMany
     {
         return $this->hasMany(ProductUom::class);
+    }
+
+    public function serials(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Inventory\Models\ProductSerial::class);
     }
 
     public function uoms(): BelongsToMany

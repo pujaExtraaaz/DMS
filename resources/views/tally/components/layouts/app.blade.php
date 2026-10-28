@@ -209,7 +209,7 @@
     <script type="application/json" id="shell-config">@json(['shortcuts' => $shortcuts, 'search' => $searchIndex, 'searchUrl' => tally_route('books.tally.search.records')])</script>
     <script type="module" src="{{ asset('js/tally-books.js') }}"></script>
     @livewireScripts
-    <script src="{{ asset('js/dynamic-tables.js') }}" defer></script>
+    <script src="{{ asset('js/dynamic-tables.js') }}?v=20261028" defer></script>
     @stack('scripts')
     @include('partials.sync-conflict')
 </body>

@@ -34,16 +34,11 @@
             <div class="flex flex-wrap items-center gap-3">
                 {{-- Search Input --}}
                 <form method="GET" action="{{ route('organization.business-groups.index') }}" class="relative w-full sm:w-80">
-                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                    </div>
                     <input type="text"
                            name="search"
                            value="{{ $search ?? request('search') }}"
                            placeholder="Search Groups by name, code, HQ..."
-                           class="w-full rounded-xl border-slate-200 pl-10 pr-9 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
+                           class="w-full rounded-xl border-slate-200 pl-3 pr-9 text-xs focus:border-purple-500 focus:ring-purple-500 shadow-2xs placeholder:text-slate-400">
                     @if(request('search'))
                         <a href="{{ route('organization.business-groups.index') }}"
                            title="Clear search"

@@ -36,6 +36,15 @@
     } else {
         $skuNotApplicable = (string) $skuNotApplicable === '1';
     }
+    $supplyTypes = \App\Domains\Master\Models\Product::SUPPLY_TYPES;
+    $costingMethods = \App\Domains\Master\Models\Product::COSTING_METHODS;
+    $marketMethods = \App\Domains\Master\Models\Product::MARKET_VALUATION_METHODS;
+    $behaviourLabels = \App\Domains\Master\Models\Product::BEHAVIOUR_FLAGS;
+    $provideBehaviour = (string) old('provide_behaviour', ($item->provide_behaviour ?? false) ? '1' : '0') === '1' ? '1' : '0';
+    $behaviourDefaults = [];
+    foreach (array_keys($behaviourLabels) as $behaviourField) {
+        $behaviourDefaults[$behaviourField] = (string) old($behaviourField, ($item->{$behaviourField} ?? false) ? '1' : '0') === '1' ? '1' : '0';
+    }
 @endphp
 
 <form method="POST"
@@ -57,6 +66,8 @@
           initialTradePrice: '{{ old('trade_price', $item->trade_price ?? '') }}',
           initialSellingPrice: '{{ old('selling_price', $item->selling_price ?? '') }}',
           initialMrp: '{{ old('calculation_mrp', $item->calculation_mrp ?? '') }}',
+          initialTaxRate: '{{ old('tax_rate', $item->exists ? $item->tax_rate : '') }}',
+          initialPurchaseTaxBasis: '{{ old('purchase_price_tax_basis', $item->purchase_price_tax_basis ?? 'exclusive') }}',
           initialAltPurchasePrice: '{{ old('alt_purchase_price', $item->alt_purchase_price ?? ($primaryAlt?->purchase_price ?? '')) }}',
           initialAltTradePrice: '{{ old('alt_trade_price', $item->alt_trade_price ?? ($primaryAlt?->trade_price ?? '')) }}',
           initialAltSellingPrice: '{{ old('alt_selling_price', $item->alt_selling_price ?? ($primaryAlt?->selling_price ?? '')) }}',
@@ -506,6 +517,19 @@
                 @enderror
             </div>
 
+            <div class="space-y-1">
+                <label for="supply_type" class="block text-sm font-medium text-gray-700">Type of Supply <span class="text-red-500">*</span></label>
+                <select name="supply_type" id="supply_type" required class="block w-full rounded-lg border-gray-300 shadow-2xs text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    @foreach($supplyTypes as $value => $label)
+                        <option value="{{ $value }}" @selected(old('supply_type', $item->supply_type ?? 'goods') === $value)>{{ $label }}</option>
+                    @endforeach
+                </select>
+                <p class="text-[11px] text-slate-500">Whether this product is capital goods, goods, or services.</p>
+                @error('supply_type')
+                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+
             <!-- HSN Code -->
             <x-ui.input name="hsn_code" label="HSN Code" :value="old('hsn_code', $item->hsn_code)" placeholder="E.G. 85285200" />
 
@@ -601,8 +625,9 @@
                 <input type="checkbox" name="dimensions_not_applicable" value="1" x-model="notApplicable" @change="onNotApplicableChange()" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
                 Not Applicable
             </label>
-            <p class="text-xs text-slate-500 -mt-3" x-show="notApplicable" x-cloak>Leave dimensions and weight blank for this product.</p>
+            <p class="text-xs text-slate-500 -mt-3" x-show="notApplicable" x-cloak>Height, length, width, and net weight are hidden for this product.</p>
 
+            <div x-show="!notApplicable" x-transition @if($dimensionsNotApplicable) style="display:none" @endif>
             <!-- 3 Dimension Columns: Height, Length, Width -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                 <!-- Height Dimension Panel -->
@@ -874,6 +899,7 @@
                     </div>
                 </div>
             </div>
+            </div>
         </div>
     </x-ui.card>
 
@@ -892,11 +918,11 @@
                         <input type="number"
                                id="tax_rate"
                                name="tax_rate"
+                               x-model="taxRate"
                                step="0.01"
                                min="0"
                                max="100"
                                required
-                               value="{{ old('tax_rate', $item->exists ? $item->tax_rate : '') }}"
                                placeholder="e.g. 18.00"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8 bg-white">
                         <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-slate-400 font-semibold">%</div>
@@ -971,6 +997,26 @@
                             @error('calculation_mrp') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
                         </div>
                     </div>
+
+                    <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+                        <p class="text-xs font-semibold text-slate-800">Purchase price is</p>
+                        <div class="flex flex-wrap gap-4">
+                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input type="radio" name="purchase_price_tax_basis" value="exclusive" x-model="purchaseTaxBasis" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                Exclusive Tax
+                            </label>
+                            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input type="radio" name="purchase_price_tax_basis" value="inclusive" x-model="purchaseTaxBasis" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                Inclusive Tax
+                            </label>
+                        </div>
+                        <p class="text-[11px] text-slate-500" x-show="purchaseTaxBasis === 'exclusive'">This purchase price is before tax and is used as the inventory cost.</p>
+                        <p class="text-[11px] text-slate-600" x-show="purchaseTaxBasis === 'inclusive'" x-cloak>
+                            This purchase price includes tax. Inventory cost excluding tax:
+                            <span class="font-semibold text-indigo-700" x-text="exclusivePurchaseCost()"></span>
+                        </p>
+                        @error('purchase_price_tax_basis') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
+                    </div>
                 </div>
 
                 <!-- Alternative UOM Pricing Card -->
@@ -1006,6 +1052,7 @@
                                    placeholder="0.00"
                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 @error('alt_purchase_price') border-red-300 @enderror bg-white">
                             @error('alt_purchase_price') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                            <p class="text-[11px] text-slate-500 mt-1">Uses the same tax basis as the base purchase price.</p>
                         </div>
 
                         <div>
@@ -1058,6 +1105,77 @@
                     </div>
                     <div class="pt-1">
                         <p class="text-[11px] text-slate-500">Auto-derives from Base Price &times; Conversion Quantity (<span class="font-semibold text-indigo-700" x-text="conversionFactor || 1"></span>) unless edited.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </x-ui.card>
+
+    <x-ui.card title="Costing and Inventory Behaviour" description="Choose how this product is costed and valued, and whether stock movements follow special behaviour.">
+        <div class="space-y-5" x-data="{ provideBehaviour: @js($provideBehaviour), flags: @js($behaviourDefaults) }">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="costing_method" class="block text-xs font-semibold text-slate-700 mb-1">Costing Method <span class="text-red-500">*</span></label>
+                    <select id="costing_method" name="costing_method" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                        @foreach($costingMethods as $value => $label)
+                            <option value="{{ $value }}" @selected(old('costing_method', $item->costing_method ?? 'fifo') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <p class="text-[11px] text-slate-500 mt-1">Issues and stock value follow this method. Standard cost uses the exclusive purchase price.</p>
+                    @error('costing_method') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label for="market_valuation_method" class="block text-xs font-semibold text-slate-700 mb-1">Market Valuation Method <span class="text-red-500">*</span></label>
+                    <select id="market_valuation_method" name="market_valuation_method" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                        @foreach($marketMethods as $value => $label)
+                            <option value="{{ $value }}" @selected(old('market_valuation_method', $item->market_valuation_method ?? 'avg_price') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <p class="text-[11px] text-slate-500 mt-1">Used for the market value of stock on hand. Last sale price updates when this item is sold.</p>
+                    @error('market_valuation_method') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-semibold text-slate-800">Provide behaviour options</p>
+                        <p class="text-xs text-slate-500">Turn this on to apply the stock rules below.</p>
+                    </div>
+                    <div class="flex items-center gap-4 text-sm">
+                        <label class="inline-flex items-center gap-1.5">
+                            <input type="radio" name="provide_behaviour" value="1" x-model="provideBehaviour" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            Yes
+                        </label>
+                        <label class="inline-flex items-center gap-1.5">
+                            <input type="radio" name="provide_behaviour" value="0" x-model="provideBehaviour" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            No
+                        </label>
+                    </div>
+                </div>
+
+                <div x-show="provideBehaviour === '1'" x-cloak class="space-y-2 pt-1">
+                    @foreach($behaviourLabels as $field => $label)
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+                            <span class="text-sm text-slate-800">{{ $label }}</span>
+                            <div class="flex items-center gap-4 text-sm">
+                                <label class="inline-flex items-center gap-1.5">
+                                    <input type="radio" name="{{ $field }}" value="1" x-model="flags.{{ $field }}" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                    Yes
+                                </label>
+                                <label class="inline-flex items-center gap-1.5">
+                                    <input type="radio" name="{{ $field }}" value="0" x-model="flags.{{ $field }}" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                    No
+                                </label>
+                            </div>
+                        </div>
+                    @endforeach
+                    <div class="text-[11px] text-slate-600 space-y-1 pt-1">
+                        <p x-show="flags.treat_purchases_as_consumed === '1'">Purchases of this item are received and immediately consumed, so on-hand stock does not increase.</p>
+                        <p x-show="flags.treat_sales_as_new_manufacture === '1'">Each sale manufactures the sold quantity first, so existing stock stays unchanged.</p>
+                        <p x-show="flags.treat_rejections_inward_as_scrap === '1'">Goods received back are scrapped and do not increase saleable stock.</p>
+                        <p x-show="flags.ignore_physical_count_diff === '1'">A physical recount does not change the book quantity.</p>
+                        <p x-show="flags.ignore_negative_balances === '1'">Stock may go below zero, and that negative quantity is left out of valuation.</p>
                     </div>
                 </div>
             </div>
@@ -1218,12 +1336,14 @@
             </div>
 
             <!-- Warranty -->
-            <div>
+            <div x-data="warrantyPreview()" x-init="$nextTick(() => sync(document.getElementById('warranty')))">
                 <x-ui.input name="warranty"
                             label="Warranty"
                             :value="old('warranty', $item->warranty)"
                             placeholder="Enter warranty period (e.g., 1 Year)"
-                            help="Flexible warranty period or terms (e.g., 6 Months, 1 Year, 2 Years, No Warranty)." />
+                            help="Flexible warranty period or terms (e.g., 6 Months, 1 Year, 2 Years, No Warranty)."
+                            @input="text = $event.target.value" />
+                <p class="text-xs text-indigo-700" x-show="summary()" x-cloak x-text="summary()"></p>
             </div>
         </div>
     </x-ui.card>
@@ -1381,6 +1501,47 @@
 
 @push('scripts')
 <script>
+function warrantyPreview() {
+    return {
+        text: '',
+        sync(el) {
+            this.text = el ? el.value : '';
+        },
+        parsedMonths() {
+            const text = (this.text || '').trim();
+            if (!text || /\bno\s+warranty\b/i.test(text)) return null;
+            let months = 0;
+            let matched = false;
+            let match = text.match(/(\d+(?:\.\d+)?)\s*(?:years?|yrs?)\b/i);
+            if (match) { months += Math.round(parseFloat(match[1]) * 12); matched = true; }
+            match = text.match(/(\d+(?:\.\d+)?)\s*(?:months?|mons?)\b/i);
+            if (match) { months += Math.round(parseFloat(match[1])); matched = true; }
+            match = text.match(/(\d+(?:\.\d+)?)\s*days?\b/i);
+            if (match) { months += Math.max(1, Math.round(parseFloat(match[1]) / 30)); matched = true; }
+            return matched && months > 0 ? months : null;
+        },
+        summary() {
+            const text = (this.text || '').trim();
+            if (!text) return '';
+            if (/\bno\s+warranty\b/i.test(text)) return 'No warranty period.';
+            const months = this.parsedMonths();
+            if (!months) return 'Enter a period such as 1 year, 6 months, or 3 years.';
+            const years = Math.floor(months / 12);
+            const remainder = months % 12;
+            let length = months + (months === 1 ? ' month' : ' months');
+            if (years && remainder) {
+                length = years + (years === 1 ? ' year ' : ' years ') + remainder + (remainder === 1 ? ' month' : ' months') + ' (' + months + ' months)';
+            } else if (years) {
+                length = years + (years === 1 ? ' year' : ' years') + ' (' + months + ' months)';
+            }
+            const expiry = new Date();
+            expiry.setMonth(expiry.getMonth() + months);
+            const dd = String(expiry.getDate()).padStart(2, '0');
+            const mm = String(expiry.getMonth() + 1).padStart(2, '0');
+            return length + '. Sample expiry from today: ' + dd + '-' + mm + '-' + expiry.getFullYear() + '.';
+        },
+    };
+}
 function searchableUnitRow(uoms, initialId, onChange) {
     return {
         uoms: uoms || [],
@@ -1526,6 +1687,8 @@ function productCatalogManager(config) {
         tradePrice: config.initialTradePrice || '',
         sellingPrice: config.initialSellingPrice || '',
         mrp: config.initialMrp || '',
+        taxRate: config.initialTaxRate || '',
+        purchaseTaxBasis: config.initialPurchaseTaxBasis || 'exclusive',
 
         // Prices - Alternative UOM
         altPurchasePrice: config.initialAltPurchasePrice || '',
@@ -1554,6 +1717,21 @@ function productCatalogManager(config) {
         brandIsOpen: false,
         categoryIsOpen: false,
         subCategoryIsOpen: false,
+
+        exclusivePurchaseCost() {
+            const price = parseFloat(this.purchasePrice);
+            if (isNaN(price) || price < 0) {
+                return '0.00';
+            }
+            if (this.purchaseTaxBasis !== 'inclusive') {
+                return price.toFixed(2);
+            }
+            const rate = parseFloat(this.taxRate);
+            if (isNaN(rate) || rate <= 0) {
+                return price.toFixed(2);
+            }
+            return (price / (1 + rate / 100)).toFixed(2);
+        },
 
         init() {
             // Preload labels for initial selections

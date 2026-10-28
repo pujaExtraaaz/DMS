@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Domains\Inventory\Services\StockMovementService;
+use App\Domains\Purchasing\Services\SerialBatchService;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
@@ -23,6 +24,7 @@ use App\Domains\Scheme\Models\Scheme;
 use App\Domains\Scheme\Services\SchemeService;
 use App\Http\Controllers\Controller;
 use App\Support\DueDateService;
+use App\Support\WarrantyPeriod;
 use App\Support\QrCodeRenderer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
@@ -49,6 +51,7 @@ class InvoiceController extends Controller
         protected MastersIndiaGspService $mastersIndiaService,
         protected FinancialYearService $financialYearService,
         protected SchemeService $schemeService,
+        protected SerialBatchService $serialBatchService,
     ) {}
 
     public function index(Request $request): View|Response
@@ -164,6 +167,7 @@ class InvoiceController extends Controller
             'items.*.discount_type' => 'nullable|in:percent,flat',
             'items.*.discount_value' => 'nullable|numeric|min:0',
             'items.*.batch_no' => 'nullable|string|max:60',
+            'items.*.serial_numbers' => 'nullable|string|max:2000',
         ]);
 
         // Enforce FY period lock — refuse to post into a closed/unmapped period.
@@ -298,8 +302,9 @@ class InvoiceController extends Controller
                     $product = $line['product'];
                     $uom = $line['uom'];
                     $inputRow = $validated['items'][$idx] ?? [];
+                    $serials = WarrantyPeriod::split($inputRow['serial_numbers'] ?? null);
 
-                    InvoiceItem::create([
+                    $invoiceItem = InvoiceItem::create([
                         'invoice_id' => $invoice->id,
                         'product_id' => $product->id,
                         'uom_id' => $uom->id,
@@ -310,9 +315,12 @@ class InvoiceController extends Controller
                         'discount_value' => (float) ($inputRow['discount_value'] ?? $line['discount']),
                         'hsn_code' => $product->hsn_code,
                         'batch_no' => $inputRow['batch_no'] ?? null,
+                        'serial_numbers' => $serials !== [] ? $serials : null,
                         'tax_amount' => $line['tax'],
                         'line_total' => $line['lineTotal'],
                     ]);
+
+                    $this->serialBatchService->sellSerials($serials, $invoice, $product, $invoiceItem);
 
                     $this->stockMovementService->recordOut(
                         product: $product,

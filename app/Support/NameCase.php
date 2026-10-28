@@ -121,6 +121,8 @@ class NameCase
         'domain_name',
         'currency_formal_name',
         'email',
+        'website',
+        'location_link',
         'secondary_email',
         'contact_email',
         'password',
@@ -256,10 +258,12 @@ class NameCase
         'margin',
         'mrp',
         'weight',
+        'weight_unit',
         'width_cm',
         'width_in',
         'tenure_months',
         'warranty_months',
+        'warranty',
         'capacity',
         'conversion_factor',
         'annual_turnover',
@@ -416,6 +420,10 @@ class NameCase
 
         // Exclude enum type slugs (e.g. party_type, cheque_type, account_type, discount_type) except descriptive types
         if (!in_array($field, ['company_type', 'product_type', 'expense_type', 'leave_type'], true) && (str_ends_with($field, '_type') || $field === 'type')) {
+            return false;
+        }
+
+        if (str_ends_with($field, '_method')) {
             return false;
         }
 
