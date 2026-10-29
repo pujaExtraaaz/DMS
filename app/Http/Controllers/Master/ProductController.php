@@ -256,8 +256,94 @@ class ProductController extends Controller
         return $this->flashSuccess('Product created successfully.', 'masters.products.index');
     }
 
-    public function show(Product $product): RedirectResponse
+    public function show(Request $request, Product $product): RedirectResponse|JsonResponse
     {
+        if ($request->wantsJson() || $request->ajax()) {
+            $product->loadMissing([
+                'brand:id,name',
+                'category:id,name',
+                'subCategory:id,name',
+                'productType:id,name',
+                'baseUom:id,name,code',
+                'alternateUom:id,name,code',
+                'productUoms.uom:id,name,code',
+            ]);
+
+            $mrp = 0.0;
+            if ((float) $product->calculation_mrp > 0) {
+                $mrp = (float) $product->calculation_mrp;
+            } elseif ($product->relationLoaded('productUoms') && ($baseUomPu = $product->productUoms->firstWhere('is_base', true)) && (float) $baseUomPu->mrp > 0) {
+                $mrp = (float) $baseUomPu->mrp;
+            } elseif ((float) ($product->selling_price ?? 0) > 0) {
+                $mrp = (float) $product->selling_price;
+            }
+
+            $productTypeName = $product->productType?->name ?: ($product->product_type ?: null);
+
+            $validUoms = collect();
+            if ($product->baseUom) {
+                $validUoms->push([
+                    'id' => (string) $product->baseUom->id,
+                    'code' => $product->baseUom->code,
+                    'name' => $product->baseUom->name,
+                    'is_base' => true,
+                    'label' => 'Base UOM',
+                ]);
+            }
+            if ($product->alternateUom && (int) $product->alternate_uom_id !== (int) $product->base_uom_id) {
+                $validUoms->push([
+                    'id' => (string) $product->alternateUom->id,
+                    'code' => $product->alternateUom->code,
+                    'name' => $product->alternateUom->name,
+                    'is_base' => false,
+                    'label' => 'Alternate UOM',
+                ]);
+            }
+            if ($product->relationLoaded('productUoms')) {
+                foreach ($product->productUoms as $pu) {
+                    if ($pu->uom && ! $validUoms->contains('id', (string) $pu->uom->id)) {
+                        $validUoms->push([
+                            'id' => (string) $pu->uom->id,
+                            'code' => $pu->uom->code,
+                            'name' => $pu->uom->name,
+                            'is_base' => (bool) $pu->is_base,
+                            'label' => $pu->label ?: ($pu->is_base ? 'Base UOM' : 'Unit'),
+                        ]);
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku ?: '',
+                    'part_number' => $product->sku ?: '',
+                    'model' => $product->model ?: '',
+                    'series' => $product->series ?: '',
+                    'brand_id' => $product->brand_id ? (string) $product->brand_id : '',
+                    'brand_name' => $product->brand?->name ?: '',
+                    'category_id' => $product->category_id ? (string) $product->category_id : '',
+                    'category_name' => $product->category?->name ?: '',
+                    'sub_category_id' => $product->sub_category_id ? (string) $product->sub_category_id : '',
+                    'sub_category_name' => $product->subCategory?->name ?: '',
+                    'product_type_id' => $product->product_type_id ? (string) $product->product_type_id : '',
+                    'product_type' => $productTypeName ?: '',
+                    'product_type_name' => $productTypeName ?: '',
+                    'hsn_code' => $product->hsn_code ?: '',
+                    'tax_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
+                    'gst_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
+                    'mrp' => $mrp > 0 ? $mrp : null,
+                    'selling_price' => $product->selling_price !== null ? (float) $product->selling_price : null,
+                    'base_uom_id' => $product->base_uom_id ? (string) $product->base_uom_id : '',
+                    'base_uom_code' => $product->baseUom?->code ?: '',
+                    'base_uom_name' => $product->baseUom?->name ?: '',
+                    'uoms' => $validUoms->values()->all(),
+                ],
+            ]);
+        }
+
         return redirect()->route('masters.products.edit', $product);
     }
 

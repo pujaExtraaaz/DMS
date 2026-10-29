@@ -176,25 +176,168 @@ class SalesTarget extends Model
     }
 
     /**
-     * Get target progress status
+     * Get calculated target progress status based on priority rules:
+     * 1. Achieved (if achieved >= target)
+     * 2. Period Expired (if end date has passed and not achieved)
+     * 3. Not Started (if start date is in future)
+     * 4. In Progress (otherwise)
      */
     public function getProgressStatusAttribute(): string
     {
         $achievement = $this->achievement;
-        $isAchieved = $achievement?->is_achieved ?? false;
+        $achievedAmount = (float) ($achievement?->achieved_amount ?? 0);
+        $targetAmount = (float) $this->target_amount;
+        $isAchieved = ($achievement?->is_achieved ?? false) || ($targetAmount > 0 && $achievedAmount >= $targetAmount);
+
+        // Priority 1: Achieved (including when achievement happens before end date)
         if ($isAchieved) {
             return 'Achieved';
         }
 
-        if ($this->starts_on && $this->starts_on->isFuture()) {
+        $today = \Carbon\Carbon::today();
+        $startDate = $this->starts_on ? $this->starts_on->copy()->startOfDay() : null;
+        $endDate = $this->ends_on ? $this->ends_on->copy()->startOfDay() : null;
+
+        // Priority 2: Period Expired
+        if ($endDate && $today->greaterThan($endDate)) {
+            return 'Period Expired';
+        }
+
+        // Priority 3: Not Started
+        if ($startDate && $today->lessThan($startDate)) {
             return 'Not Started';
         }
 
-        if ($this->ends_on && $this->ends_on->isPast()) {
-            return 'Overdue';
+        // Priority 4: In Progress
+        return 'In Progress';
+    }
+
+    /**
+     * Get numeric remaining days to end date (or days to start if Not Started, 0 if achieved, null if expired)
+     */
+    public function getRemainingDaysAttribute(): ?int
+    {
+        $status = $this->progress_status;
+
+        if ($status === 'Achieved') {
+            return 0;
         }
 
-        return 'In Progress';
+        if ($status === 'Period Expired') {
+            return null;
+        }
+
+        $today = \Carbon\Carbon::today();
+
+        if ($status === 'Not Started') {
+            $startDate = $this->starts_on ? $this->starts_on->copy()->startOfDay() : null;
+            return $startDate ? max(0, $today->diffInDays($startDate, false)) : null;
+        }
+
+        // In Progress
+        $endDate = $this->ends_on ? $this->ends_on->copy()->startOfDay() : null;
+        return $endDate ? max(0, $today->diffInDays($endDate, false)) : null;
+    }
+
+    /**
+     * Get human-readable remaining days label
+     */
+    public function getRemainingDaysLabelAttribute(): string
+    {
+        $status = $this->progress_status;
+
+        if ($status === 'Achieved') {
+            return '0 days needed';
+        }
+
+        if ($status === 'Period Expired') {
+            return 'Period Expired';
+        }
+
+        $today = \Carbon\Carbon::today();
+        $startDate = $this->starts_on ? $this->starts_on->copy()->startOfDay() : null;
+        $endDate = $this->ends_on ? $this->ends_on->copy()->startOfDay() : null;
+
+        if ($status === 'Not Started') {
+            if (! $startDate) return 'Not Started';
+            $daysToStart = $today->diffInDays($startDate, false);
+            return $daysToStart === 1 ? 'Starts in 1 day' : "Starts in {$daysToStart} days";
+        }
+
+        // In Progress
+        if ($endDate) {
+            $daysRemaining = $today->diffInDays($endDate, false);
+            if ($daysRemaining <= 0) {
+                return 'Ends today';
+            }
+            return $daysRemaining === 1 ? '1 day remaining' : "{$daysRemaining} days remaining";
+        }
+
+        return '—';
+    }
+
+    /**
+     * Get calculated shortfall amount: MAX(Target Amount - Achieved Target, 0)
+     */
+    public function getShortfallAmountAttribute(): float
+    {
+        $achievement = $this->achievement;
+        $achieved = $achievement ? (float) $achievement->achieved_amount : 0.0;
+        return max(0.0, (float) $this->target_amount - $achieved);
+    }
+
+    /**
+     * Get calculated achievement percentage
+     */
+    public function getCalculatedAchievementPercentAttribute(): float
+    {
+        $targetAmt = (float) $this->target_amount;
+        if ($targetAmt <= 0) {
+            return 0.0;
+        }
+        $achievement = $this->achievement;
+        $achieved = $achievement ? (float) $achievement->achieved_amount : 0.0;
+        return round(($achieved / $targetAmt) * 100, 2);
+    }
+
+    /**
+     * Query scope to filter targets by calculated progress status
+     */
+    public function scopeProgressStatus($query, string $status)
+    {
+        $today = \Carbon\Carbon::today()->toDateString();
+        return match ($status) {
+            'Achieved' => $query->whereHas('achievement', function ($q) {
+                $q->where('is_achieved', true)
+                  ->orWhereRaw('sales_target_achievements.achieved_amount >= sales_targets.target_amount');
+            }),
+            'Period Expired' => $query->where('ends_on', '<', $today)
+                ->where(function ($q) {
+                    $q->whereDoesntHave('achievement')
+                      ->orWhereHas('achievement', function ($sq) {
+                          $sq->where('is_achieved', false)
+                             ->whereRaw('sales_target_achievements.achieved_amount < sales_targets.target_amount');
+                      });
+                }),
+            'Not Started' => $query->where('starts_on', '>', $today)
+                ->where(function ($q) {
+                    $q->whereDoesntHave('achievement')
+                      ->orWhereHas('achievement', function ($sq) {
+                          $sq->where('is_achieved', false)
+                             ->whereRaw('sales_target_achievements.achieved_amount < sales_targets.target_amount');
+                      });
+                }),
+            'In Progress' => $query->where('starts_on', '<=', $today)
+                ->where('ends_on', '>=', $today)
+                ->where(function ($q) {
+                    $q->whereDoesntHave('achievement')
+                      ->orWhereHas('achievement', function ($sq) {
+                          $sq->where('is_achieved', false)
+                             ->whereRaw('sales_target_achievements.achieved_amount < sales_targets.target_amount');
+                      });
+                }),
+            default => $query,
+        };
     }
 }
 

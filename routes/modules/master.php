@@ -32,6 +32,10 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
     Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit')->group(function () {
         Route::patch('products/{product}/assign-type', [ProductController::class, 'assignType'])->name('products.assign-type');
         Route::resource('products', ProductController::class);
+        Route::get('price-masters/copy-options', [PriceMasterController::class, 'copyOptions'])->name('price-masters.copy-options');
+        Route::get('price-masters/copy-source', [PriceMasterController::class, 'copySource'])->name('price-masters.copy-source');
+        Route::get('price-masters/brands/{brand}/products', [PriceMasterController::class, 'brandProducts'])->name('price-masters.brand-products');
+        Route::get('price-masters/products/{product}/details', [PriceMasterController::class, 'productDetails'])->name('price-masters.product-details');
         Route::resource('price-masters', PriceMasterController::class);
         Route::delete('price-lists/{price_master}', [PriceMasterController::class, 'destroy'])->name('price-lists.destroy');
 
