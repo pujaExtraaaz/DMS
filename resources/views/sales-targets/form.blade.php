@@ -36,7 +36,7 @@
           action="{{ $isEdit ? route('sales-targets.update', $target) : route('sales-targets.store') }}"
           class="space-y-6"
           x-data="salesTargetForm({
-              ownerType: '{{ old('owner_type', $target->owner_type ?? 'individual') }}',
+              ownerType: '{{ old('owner_type', $target->owner_type ?? request('owner_type', 'party')) }}',
               targetType: '{{ old('target_type', $target->target_type ?? 'value') }}',
               periodType: '{{ old('period_type', $target->period_type ?? 'monthly') }}',
               startsOn: '{{ old('starts_on', optional($target->starts_on)->format('Y-m-d') ?? now()->startOfMonth()->format('Y-m-d')) }}',
@@ -134,14 +134,35 @@
                             x-model="ownerType"
                             required
                             class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="party">Party / Customer</option>
                         <option value="individual">Individual Salesman</option>
                         <option value="team">Sales Team</option>
                         <option value="branch">Branch</option>
                     </select>
                 </div>
 
+                {{-- Party Dropdown --}}
+                <div x-show="ownerType === 'party'" x-cloak>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">
+                        Select Party / Customer <span class="text-rose-500">*</span>
+                    </label>
+                    <select name="customer_id"
+                            :required="ownerType === 'party'"
+                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 @error('customer_id') border-rose-300 text-rose-900 @enderror">
+                        <option value="">Choose Party...</option>
+                        @foreach($parties as $party)
+                            <option value="{{ $party->id }}" @selected(old('customer_id', $target->customer_id) == $party->id)>
+                                {{ $party->name }} {{ $party->code ? '('.$party->code.')' : '' }} {{ $party->trade_name ? '- '.$party->trade_name : '' }}
+                            </option>
+                        @endforeach
+                    </select>
+                    @error('customer_id')
+                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                    @enderror
+                </div>
+
                 {{-- Individual Salesman Dropdown --}}
-                <div x-show="ownerType === 'individual'">
+                <div x-show="ownerType === 'individual'" x-cloak>
                     <label class="block text-xs font-semibold text-slate-700 mb-1">
                         Select Salesman <span class="text-rose-500">*</span>
                     </label>
@@ -482,7 +503,7 @@
 <script>
 function salesTargetForm(initialData) {
     return {
-        ownerType: initialData.ownerType || 'individual',
+        ownerType: initialData.ownerType || 'party',
         targetType: initialData.targetType || 'value',
         periodType: initialData.periodType || 'monthly',
         startsOn: initialData.startsOn || '',

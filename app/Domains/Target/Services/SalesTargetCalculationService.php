@@ -451,6 +451,7 @@ class SalesTargetCalculationService
     {
         $invoiceDate = $invoice->invoice_date?->toDateString() ?? now()->toDateString();
         $salespersonId = $invoice->salesperson_id;
+        $customerId = $invoice->customer_id;
 
         $targets = SalesTarget::query()
             ->where('status', 'active')
@@ -459,10 +460,76 @@ class SalesTargetCalculationService
             ->get();
 
         foreach ($targets as $target) {
+            if ($target->owner_type === 'party') {
+                if ($customerId && (int) $target->customer_id === (int) $customerId) {
+                    $this->calculateTarget($target);
+                }
+                continue;
+            }
+
             $salespersonIds = $this->resolveSalespersonIds($target);
             if ($salespersonIds->isEmpty() || $salespersonIds->contains($salespersonId)) {
                 $this->calculateTarget($target);
             }
+        }
+    }
+
+    /**
+     * Recalculate all active targets affected by a credit note.
+     */
+    public function recalculateForCreditNote(CreditNote $creditNote): void
+    {
+        $cnDate = $creditNote->credit_note_date?->toDateString() ?? now()->toDateString();
+        $customerId = $creditNote->customer_id;
+        $invoice = $creditNote->invoice;
+
+        if ($invoice) {
+            $this->recalculateForInvoice($invoice);
+            return;
+        }
+
+        $targets = SalesTarget::query()
+            ->where('status', 'active')
+            ->where('starts_on', '<=', $cnDate)
+            ->where('ends_on', '>=', $cnDate)
+            ->get();
+
+        foreach ($targets as $target) {
+            if ($target->owner_type === 'party') {
+                if ($customerId && (int) $target->customer_id === (int) $customerId) {
+                    $this->calculateTarget($target);
+                }
+                continue;
+            }
+
+            $salespersonIds = $this->resolveSalespersonIds($target);
+            if ($salespersonIds->isEmpty()) {
+                $this->calculateTarget($target);
+            }
+        }
+    }
+
+    /**
+     * Recalculate party targets for a specific customer and date.
+     */
+    public function recalculateForCustomerIdAndDate(?int $customerId, $date): void
+    {
+        if (! $customerId || ! $date) {
+            return;
+        }
+
+        $dateStr = $date instanceof \Carbon\CarbonInterface ? $date->toDateString() : (string) $date;
+
+        $targets = SalesTarget::query()
+            ->whereIn('status', ['active', 'completed'])
+            ->where('owner_type', 'party')
+            ->where('customer_id', $customerId)
+            ->where('starts_on', '<=', $dateStr)
+            ->where('ends_on', '>=', $dateStr)
+            ->get();
+
+        foreach ($targets as $target) {
+            $this->calculateTarget($target);
         }
     }
 

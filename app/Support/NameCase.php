@@ -213,6 +213,9 @@ class NameCase
         'order',
         'preferences',
         'preference',
+        'visible_columns',
+        'column_order',
+        'columns',
         'file',
         'logo_path',
         'path',
@@ -339,6 +342,10 @@ class NameCase
         'msme_category',
         'due_date_basis',
         'billing_mode',
+        'gst_mode',
+        'dealer_price_gst_mode',
+        'retail_price_gst_mode',
+        'mode',
         'opening_balance_type',
         'allocation_basis',
         'allocation_method',
@@ -399,7 +406,7 @@ class NameCase
         }
 
         // Exclude JSON / structured dictionary field suffixes
-        if (str_ends_with($field, '_details') || str_ends_with($field, '_data') || str_ends_with($field, '_meta') || str_ends_with($field, '_config') || str_ends_with($field, '_settings') || str_ends_with($field, '_items') || str_ends_with($field, '_list') || str_ends_with($field, '_json')) {
+        if (str_ends_with($field, '_details') || str_ends_with($field, '_data') || str_ends_with($field, '_meta') || str_ends_with($field, '_config') || str_ends_with($field, '_settings') || str_ends_with($field, '_items') || str_ends_with($field, '_list') || str_ends_with($field, '_json') || str_ends_with($field, '_columns') || str_ends_with($field, '_order') || str_ends_with($field, '_fields') || str_ends_with($field, '_filter') || str_ends_with($field, '_pricing') || str_ends_with($field, '_view')) {
             return false;
         }
 
@@ -424,6 +431,11 @@ class NameCase
         }
 
         if (str_ends_with($field, '_method')) {
+            return false;
+        }
+
+        // Exclude technical modes and slugs
+        if (str_ends_with($field, '_mode') || $field === 'mode') {
             return false;
         }
 

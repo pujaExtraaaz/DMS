@@ -30,14 +30,25 @@
 
     {{-- Filter Toolbar --}}
     <div class="rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs">
-        <form method="GET" action="{{ route('sales-targets.reports') }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <form method="GET" action="{{ route('sales-targets.reports') }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
             <div>
                 <label class="block text-[11px] font-semibold text-slate-600 mb-1">Owner Type</label>
                 <select name="owner_type" class="w-full rounded-lg border-gray-300 text-xs">
                     <option value="">All Owners</option>
+                    <option value="party" @selected(request('owner_type') === 'party')>Party / Customer</option>
                     <option value="individual" @selected(request('owner_type') === 'individual')>Individual Salesman</option>
                     <option value="team" @selected(request('owner_type') === 'team')>Sales Team</option>
                     <option value="branch" @selected(request('owner_type') === 'branch')>Branch</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Party / Customer</label>
+                <select name="customer_id" class="w-full rounded-lg border-gray-300 text-xs">
+                    <option value="">All Parties</option>
+                    @foreach($parties as $p)
+                        <option value="{{ $p->id }}" @selected(request('customer_id') == $p->id)>{{ $p->name }}</option>
+                    @endforeach
                 </select>
             </div>
 
