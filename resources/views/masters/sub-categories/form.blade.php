@@ -168,6 +168,17 @@ function catalogQuickCreate(config) {
             this.fillSelect('catalog_category_brand', this.brands, this.categoryCreateBrandId);
         },
         async saveCategory() {
+            if (!this.categoryCreateBrandId) {
+                this.categoryCreateError = 'Please select a brand before creating a category.';
+                const brandSelect = document.getElementById('catalog_category_brand');
+                if (brandSelect) {
+                    brandSelect.focus();
+                    if (typeof brandSelect.scrollIntoView === 'function') {
+                        brandSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+                return;
+            }
             const name = (this.categoryCreateName || '').trim();
             if (!name) {
                 this.categoryCreateError = 'Name is required.';

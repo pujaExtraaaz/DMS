@@ -19,6 +19,7 @@
 <x-ui.card>
     <form method="POST"
           action="{{ $item->exists ? route('masters.categories.update', $item) : route('masters.categories.store') }}"
+          @submit="submitCategoryForm($event)"
           class="space-y-4 max-w-xl">
         @csrf
 
@@ -28,17 +29,18 @@
 
         <div class="space-y-1">
             <div class="flex items-center justify-between">
-                <label for="brand_id" class="block text-sm font-medium text-gray-700">Brand</label>
+                <label for="brand_id" class="block text-sm font-medium text-gray-700">Brand <span class="text-red-500">*</span></label>
                 <button type="button" @click="openBrandCreate('page')" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
             </div>
-            <select id="brand_id" name="brand_id" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+            <select id="brand_id" name="brand_id" required @change="brandError = ''" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                 <option value="">Select</option>
                 @foreach($brands as $b)
                     <option value="{{ $b->id }}" @selected(old('brand_id', $item->brand_id) == $b->id)>{{ $b->name }}</option>
                 @endforeach
             </select>
+            <p x-show="brandError" x-cloak class="text-xs text-red-600 font-medium" x-text="brandError"></p>
             @error('brand_id')
-                <p class="text-xs text-red-600">{{ $message }}</p>
+                <p class="text-xs text-red-600 font-medium">{{ $message }}</p>
             @enderror
         </div>
 
@@ -73,6 +75,7 @@ function catalogQuickCreate(config) {
         categoryQuickUrl: config.categoryQuickUrl,
         brandSelectId: config.brandSelectId || '',
         categorySelectId: config.categorySelectId || '',
+        brandError: '',
         brandCreateOpen: false,
         brandCreateContext: 'page',
         brandCreateName: '',
@@ -91,6 +94,25 @@ function catalogQuickCreate(config) {
         closeTopCreate() {
             if (this.brandCreateOpen) { this.brandCreateOpen = false; return; }
             if (this.categoryCreateOpen) { this.categoryCreateOpen = false; }
+        },
+        submitCategoryForm(event) {
+            const brandSelect = document.getElementById(this.brandSelectId || 'brand_id');
+            const val = brandSelect ? brandSelect.value.trim() : '';
+            if (!val) {
+                if (event) {
+                    event.preventDefault();
+                }
+                this.brandError = 'Please select a brand before creating a category.';
+                if (brandSelect) {
+                    brandSelect.focus();
+                    if (typeof brandSelect.scrollIntoView === 'function') {
+                        brandSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+                return false;
+            }
+            this.brandError = '';
+            return true;
         },
         fillSelect(selectId, items, selected) {
             const select = document.getElementById(selectId);
@@ -121,6 +143,9 @@ function catalogQuickCreate(config) {
                 select.appendChild(option);
             }
             select.value = String(id);
+            if (selectId === this.brandSelectId || selectId === 'brand_id') {
+                this.brandError = '';
+            }
             select.dispatchEvent(new Event('change', { bubbles: true }));
         },
         async postJson(url, payload) {
@@ -187,6 +212,17 @@ function catalogQuickCreate(config) {
             this.fillSelect('catalog_category_brand', this.brands, this.categoryCreateBrandId);
         },
         async saveCategory() {
+            if (!this.categoryCreateBrandId) {
+                this.categoryCreateError = 'Please select a brand before creating a category.';
+                const brandSelect = document.getElementById('catalog_category_brand');
+                if (brandSelect) {
+                    brandSelect.focus();
+                    if (typeof brandSelect.scrollIntoView === 'function') {
+                        brandSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+                return;
+            }
             const name = (this.categoryCreateName || '').trim();
             if (!name) {
                 this.categoryCreateError = 'Name is required.';

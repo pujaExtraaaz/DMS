@@ -74,8 +74,8 @@
                 <a href="{{ route('masters.brands.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.brands.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Brands</span></a>
                 <a href="{{ route('masters.categories.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.categories.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Categories</span></a>
                 <a href="{{ route('masters.sub-categories.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.sub-categories.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Sub Categories</span></a>
-                <a href="{{ route('masters.product-types.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.product-types.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Product Types</span></a>
                 <a href="{{ route('masters.products.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.products.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Products</span></a>
+                <a href="{{ route('masters.product-types.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.product-types.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Product Types</span></a>
             @endif
             @if($can('customers.view', 'masters.view'))
                 <a href="{{ route('masters.customers.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.customers.*', 'masters.parties.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Parties</span></a>

@@ -4,7 +4,7 @@
 <div id="listing-container" data-dynamic-container x-data="brandIndex()">
     <x-ui.page-header title="Brands">
         <x-slot name="actions">
-            <x-ui.export-menu />
+            <x-ui.export-menu align="left" />
             <x-ui.button variant="primary" :href="route('masters.brands.create')">+ Add Brand</x-ui.button>
         </x-slot>
     </x-ui.page-header>
