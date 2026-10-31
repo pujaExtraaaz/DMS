@@ -49,10 +49,10 @@
             <div class="space-y-4 px-6 py-5">
                 <div class="space-y-1">
                     <div class="flex items-center justify-between">
-                        <label for="catalog_category_brand" class="block text-sm font-medium text-gray-700">Brand</label>
+                        <label for="catalog_category_brand" class="block text-sm font-medium text-gray-700">Brand <span class="text-red-500">*</span></label>
                         <button type="button" @click="openBrandCreate('category')" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
                     </div>
-                    <select id="catalog_category_brand" @change="categoryCreateBrandId = $event.target.value" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <select id="catalog_category_brand" :required="categoryCreateOpen" @change="categoryCreateBrandId = $event.target.value; categoryCreateError = ''" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                         <option value="">Select</option>
                     </select>
                 </div>

@@ -105,6 +105,20 @@
             <!-- Model -->
             <x-ui.input name="model" label="Model" :value="old('model', $item->model ?? $item->models)" placeholder="E.G. T14 Gen 4, Sm-S928b" />
 
+            <!-- Serial Number -->
+            <div class="space-y-1">
+                <label for="serial_no" class="block text-sm font-medium text-gray-700">Serial Number</label>
+                <input type="text"
+                       id="serial_no"
+                       name="serial_no"
+                       value="{{ old('serial_no', $item->serial_no) }}"
+                       placeholder="Auto-generated if left blank"
+                       class="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500 @error('serial_no') border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500 @enderror">
+                @error('serial_no')
+                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+
             <!-- Base UOM (Searchable Dropdown) -->
             <div class="space-y-2">
                 <div class="space-y-1 relative" @click.outside="closeUomDropdown()">
@@ -2180,6 +2194,17 @@ function productCatalogManager(config) {
             this.fillSelect('catalog_category_brand', this.brands, this.categoryCreateBrandId);
         },
         async saveCategory() {
+            if (!this.categoryCreateBrandId) {
+                this.categoryCreateError = 'Please select a brand before creating a category.';
+                const brandSelect = document.getElementById('catalog_category_brand');
+                if (brandSelect) {
+                    brandSelect.focus();
+                    if (typeof brandSelect.scrollIntoView === 'function') {
+                        brandSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+                return;
+            }
             const name = (this.categoryCreateName || '').trim();
             if (!name) {
                 this.categoryCreateError = 'Name is required.';

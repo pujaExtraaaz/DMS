@@ -29,7 +29,7 @@ class SalesTargetsExport implements FromCollection, WithHeadings, WithMapping, S
             'Target ID',
             'Target Name',
             'Owner Type',
-            'Salesman / Team / Branch',
+            'Salesman / Team / Branch / Party',
             'Period Type',
             'Start Date',
             'End Date',

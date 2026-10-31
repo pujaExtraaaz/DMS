@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Target;
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
+use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
@@ -44,10 +45,13 @@ class SalesTargetController extends Controller
     public function dashboard(Request $request): View
     {
         $query = SalesTarget::with([
-            'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement'
+            'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement', 'customer'
         ]);
 
         // Filters
+        if ($request->filled('company_id')) {
+            $query->where('company_id', $request->company_id);
+        }
         if ($request->filled('financial_year_id')) {
             $query->where('financial_year_id', $request->financial_year_id);
         }
@@ -56,6 +60,9 @@ class SalesTargetController extends Controller
         }
         if ($request->filled('owner_type')) {
             $query->where('owner_type', $request->owner_type);
+        }
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
         }
         if ($request->filled('salesperson_id')) {
             $query->where('salesperson_id', $request->salesperson_id);
@@ -95,17 +102,28 @@ class SalesTargetController extends Controller
 
         $allTargets = $query->get();
 
-        // Calculate KPI totals
+        // Target progress status breakdown
+        $notStartedCount = $allTargets->filter(fn ($t) => $t->progress_status === 'Not Started')->count();
+        $inProgressCount = $allTargets->filter(fn ($t) => $t->progress_status === 'In Progress')->count();
+        $achievedCount = $allTargets->filter(fn ($t) => $t->progress_status === 'Achieved')->count();
+        $periodExpiredCount = $allTargets->filter(fn ($t) => $t->progress_status === 'Period Expired')->count();
+
+        // Filter by calculated progress status if requested
+        if ($request->filled('progress_status')) {
+            $allTargets = $allTargets->filter(fn ($t) => $t->progress_status === $request->progress_status);
+        }
+
+        // Calculate KPI totals (respecting all active filters)
         $totalAssigned = (float) $allTargets->sum('target_amount');
         $actualAchieved = (float) $allTargets->sum(fn ($t) => $t->achievement?->achieved_amount ?? 0);
         $pendingTarget = max(0, $totalAssigned - $actualAchieved);
+        $totalShortfall = $pendingTarget;
         $achievementPercent = $totalAssigned > 0 ? round(($actualAchieved / $totalAssigned) * 100, 1) : 0;
 
         $totalTargetQty = (float) $allTargets->sum('target_quantity');
         $totalAchievedQty = (float) $allTargets->sum(fn ($t) => $t->achievement?->achieved_quantity ?? 0);
 
         $activeCount = $allTargets->where('status', 'active')->count();
-        $achievedCount = $allTargets->filter(fn ($t) => $t->achievement?->is_achieved || ($t->achievement?->achievement_percent ?? 0) >= 100)->count();
         $atRiskCount = $allTargets->filter(fn ($t) => ($t->achievement?->achievement_percent ?? 0) < 50 && $t->status === 'active')->count();
 
         // MTD & YTD figures
@@ -187,11 +205,16 @@ class SalesTargetController extends Controller
         }
 
         // Master lists for filter dropdowns
+        $companies = Company::orderBy('name')->get();
         $teams = SalesTeam::where('is_active', true)->orderBy('name')->get();
         $branches = Branch::orderBy('name')->get();
         $financialYears = FinancialYear::orderByDesc('starts_on')->get();
         $categories = Category::orderBy('name')->get();
         $products = Product::orderBy('name')->take(100)->get();
+        $parties = Customer::orderBy('name')->get(['id', 'name', 'code', 'trade_name']);
+
+        // Party-wise targets performance list
+        $partyTargets = $allTargets->filter(fn ($t) => $t->owner_type === 'party');
 
         // Recent alerts
         $recentAlerts = SalesTargetAlert::with('target.salesperson')
@@ -200,11 +223,13 @@ class SalesTargetController extends Controller
             ->get();
 
         return view('sales-targets.dashboard', compact(
-            'totalAssigned', 'actualAchieved', 'pendingTarget', 'achievementPercent',
+            'totalAssigned', 'actualAchieved', 'pendingTarget', 'totalShortfall', 'achievementPercent',
             'totalTargetQty', 'totalAchievedQty', 'activeCount', 'achievedCount', 'atRiskCount',
+            'notStartedCount', 'inProgressCount', 'periodExpiredCount',
             'mtdInvoices', 'ytdInvoices', 'brandPerformance', 'salesmanPerformance',
-            'monthlyTrend', 'brands', 'salespeople', 'teams', 'branches',
-            'financialYears', 'categories', 'products', 'recentAlerts', 'allTargets'
+            'monthlyTrend', 'brands', 'salespeople', 'teams', 'branches', 'companies',
+            'financialYears', 'categories', 'products', 'recentAlerts', 'allTargets',
+            'partyTargets', 'parties'
         ));
     }
 
@@ -214,7 +239,7 @@ class SalesTargetController extends Controller
     public function index(Request $request): View
     {
         $query = SalesTarget::with([
-            'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement', 'items'
+            'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement', 'items', 'customer'
         ]);
 
         // Search
@@ -222,14 +247,34 @@ class SalesTargetController extends Controller
             'name', 'target_type', 'owner_type', 'status', 'notes'
         ]);
 
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->orWhereHas('customer', function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('code', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('company_id')) {
+            $query->where('company_id', $request->company_id);
+        }
+        if ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+        if ($request->filled('progress_status')) {
+            $query->progressStatus($request->progress_status);
         }
         if ($request->filled('target_type')) {
             $query->where('target_type', $request->target_type);
         }
         if ($request->filled('owner_type')) {
             $query->where('owner_type', $request->owner_type);
+        }
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
         }
         if ($request->filled('salesperson_id')) {
             $query->where('salesperson_id', $request->salesperson_id);
@@ -258,16 +303,26 @@ class SalesTargetController extends Controller
         $pendingApprovalCount = SalesTarget::where('status', 'pending_approval')->count();
         $completedTargetsCount = SalesTarget::where('status', 'completed')->count();
 
+        // Progress status breakdown counts
+        $allTargetsForCounts = SalesTarget::with('achievement')->get();
+        $notStartedCount = $allTargetsForCounts->filter(fn ($t) => $t->progress_status === 'Not Started')->count();
+        $inProgressCount = $allTargetsForCounts->filter(fn ($t) => $t->progress_status === 'In Progress')->count();
+        $achievedCount = $allTargetsForCounts->filter(fn ($t) => $t->progress_status === 'Achieved')->count();
+        $periodExpiredCount = $allTargetsForCounts->filter(fn ($t) => $t->progress_status === 'Period Expired')->count();
+
+        $companies = Company::orderBy('name')->get();
         $brands = Brand::orderBy('name')->get();
         $salespeople = User::orderBy('name')->get();
         $teams = SalesTeam::where('is_active', true)->orderBy('name')->get();
         $branches = Branch::orderBy('name')->get();
         $financialYears = FinancialYear::orderByDesc('starts_on')->get();
+        $parties = Customer::orderBy('name')->get(['id', 'name', 'code', 'trade_name']);
 
         return view('sales-targets.index', compact(
             'targets', 'sort', 'direction', 'totalTargetsCount', 'activeTargetsCount',
-            'pendingApprovalCount', 'completedTargetsCount', 'brands', 'salespeople',
-            'teams', 'branches', 'financialYears'
+            'pendingApprovalCount', 'completedTargetsCount',
+            'notStartedCount', 'inProgressCount', 'achievedCount', 'periodExpiredCount',
+            'brands', 'salespeople', 'teams', 'branches', 'companies', 'financialYears', 'parties'
         ));
     }
 
@@ -287,6 +342,7 @@ class SalesTargetController extends Controller
         $products = Product::orderBy('name')->get();
         $categories = Category::orderBy('name')->get();
         $subCategories = SubCategory::orderBy('name')->get();
+        $parties = Customer::where('is_active', true)->orderBy('name')->get(['id', 'name', 'code', 'trade_name']);
 
         // Optional copy from existing target
         $copyTarget = null;
@@ -296,7 +352,7 @@ class SalesTargetController extends Controller
 
         return view('sales-targets.form', compact(
             'salespeople', 'teams', 'branches', 'companies', 'financialYears',
-            'currentFy', 'brands', 'products', 'categories', 'subCategories', 'copyTarget'
+            'currentFy', 'brands', 'products', 'categories', 'subCategories', 'copyTarget', 'parties'
         ));
     }
 
@@ -308,7 +364,8 @@ class SalesTargetController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'target_type' => 'required|in:value,product,sku,brand,category,combined',
-            'owner_type' => 'required|in:individual,team,branch',
+            'owner_type' => 'required|in:individual,team,branch,party',
+            'customer_id' => 'required_if:owner_type,party|nullable|exists:customers,id',
             'salesperson_id' => 'required_if:owner_type,individual|nullable|exists:users,id',
             'sales_team_id' => 'required_if:owner_type,team|nullable|exists:sales_teams,id',
             'branch_id' => 'required_if:owner_type,branch|nullable|exists:branches,id',
@@ -317,7 +374,7 @@ class SalesTargetController extends Controller
             'period_type' => 'required|in:monthly,quarterly,half_yearly,annual,custom',
             'starts_on' => 'required|date',
             'ends_on' => 'required|date|after_or_equal:starts_on',
-            'target_amount' => 'required|numeric|min:0',
+            'target_amount' => 'required|numeric|gt:0',
             'target_quantity' => 'nullable|numeric|min:0',
             'brand_id' => 'nullable|exists:brands,id',
             'product_id' => 'nullable|exists:products,id',
@@ -343,9 +400,10 @@ class SalesTargetController extends Controller
             ->when($validated['owner_type'] === 'individual', fn ($q) => $q->where('salesperson_id', $validated['salesperson_id']))
             ->when($validated['owner_type'] === 'team', fn ($q) => $q->where('sales_team_id', $validated['sales_team_id']))
             ->when($validated['owner_type'] === 'branch', fn ($q) => $q->where('branch_id', $validated['branch_id']))
+            ->when($validated['owner_type'] === 'party', fn ($q) => $q->where('customer_id', $validated['customer_id']))
             ->where('target_type', $validated['target_type'])
-            ->where('starts_on', $validated['starts_on'])
-            ->where('ends_on', $validated['ends_on'])
+            ->whereDate('starts_on', $validated['starts_on'])
+            ->whereDate('ends_on', $validated['ends_on'])
             ->whereIn('status', ['active', 'pending_approval'])
             ->exists();
 
@@ -409,17 +467,21 @@ class SalesTargetController extends Controller
             'salesperson', 'salesTeam.members', 'branch', 'company', 'financialYear',
             'brand', 'product', 'category', 'subCategory', 'creator', 'approver',
             'items.brand', 'items.product', 'items.category', 'items.subCategory',
-            'achievement', 'audits.user', 'alerts'
+            'achievement', 'audits.user', 'alerts', 'customer'
         ]);
 
         // Drill-down: Fetch contributing invoices directly from database
-        $salespersonIds = $this->calculationService->resolveSalespersonIds($salesTarget);
         $contributingInvoicesQuery = Invoice::with(['customer', 'salesperson', 'items.product'])
             ->whereNotIn('status', ['cancelled', 'draft', 'void'])
             ->whereBetween('invoice_date', [$salesTarget->starts_on->toDateString(), $salesTarget->ends_on->toDateString()]);
 
-        if ($salespersonIds->isNotEmpty()) {
-            $contributingInvoicesQuery->whereIn('salesperson_id', $salespersonIds);
+        if ($salesTarget->owner_type === 'party' || $salesTarget->customer_id) {
+            $contributingInvoicesQuery->where('customer_id', $salesTarget->customer_id);
+        } else {
+            $salespersonIds = $this->calculationService->resolveSalespersonIds($salesTarget);
+            if ($salespersonIds->isNotEmpty()) {
+                $contributingInvoicesQuery->whereIn('salesperson_id', $salespersonIds);
+            }
         }
 
         $invoices = $contributingInvoicesQuery->orderByDesc('invoice_date')->paginate(10);
@@ -432,7 +494,7 @@ class SalesTargetController extends Controller
      */
     public function edit(SalesTarget $salesTarget): View
     {
-        $salesTarget->load('items');
+        $salesTarget->load(['items', 'customer']);
         $salespeople = User::orderBy('name')->get();
         $teams = SalesTeam::where('is_active', true)->orderBy('name')->get();
         $branches = Branch::orderBy('name')->get();
@@ -444,10 +506,11 @@ class SalesTargetController extends Controller
         $products = Product::orderBy('name')->get();
         $categories = Category::orderBy('name')->get();
         $subCategories = SubCategory::orderBy('name')->get();
+        $parties = Customer::orderBy('name')->get(['id', 'name', 'code', 'trade_name']);
 
         return view('sales-targets.form', compact(
             'salesTarget', 'salespeople', 'teams', 'branches', 'companies',
-            'financialYears', 'currentFy', 'brands', 'products', 'categories', 'subCategories'
+            'financialYears', 'currentFy', 'brands', 'products', 'categories', 'subCategories', 'parties'
         ));
     }
 
@@ -459,7 +522,8 @@ class SalesTargetController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'target_type' => 'required|in:value,product,sku,brand,category,combined',
-            'owner_type' => 'required|in:individual,team,branch',
+            'owner_type' => 'required|in:individual,team,branch,party',
+            'customer_id' => 'required_if:owner_type,party|nullable|exists:customers,id',
             'salesperson_id' => 'required_if:owner_type,individual|nullable|exists:users,id',
             'sales_team_id' => 'required_if:owner_type,team|nullable|exists:sales_teams,id',
             'branch_id' => 'required_if:owner_type,branch|nullable|exists:branches,id',
@@ -468,7 +532,7 @@ class SalesTargetController extends Controller
             'period_type' => 'required|in:monthly,quarterly,half_yearly,annual,custom',
             'starts_on' => 'required|date',
             'ends_on' => 'required|date|after_or_equal:starts_on',
-            'target_amount' => 'required|numeric|min:0',
+            'target_amount' => 'required|numeric|gt:0',
             'target_quantity' => 'nullable|numeric|min:0',
             'brand_id' => 'nullable|exists:brands,id',
             'product_id' => 'nullable|exists:products,id',
@@ -595,6 +659,7 @@ class SalesTargetController extends Controller
                 'name' => $salesTarget->name . ' (Carried Forward)',
                 'target_type' => $salesTarget->target_type,
                 'owner_type' => $salesTarget->owner_type,
+                'customer_id' => $salesTarget->customer_id,
                 'salesperson_id' => $salesTarget->salesperson_id,
                 'sales_team_id' => $salesTarget->sales_team_id,
                 'branch_id' => $salesTarget->branch_id,
@@ -785,11 +850,20 @@ class SalesTargetController extends Controller
     public function reports(Request $request)
     {
         $query = SalesTarget::with([
-            'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement'
+            'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement', 'customer'
         ]);
 
+        if ($request->filled('company_id')) {
+            $query->where('company_id', $request->company_id);
+        }
+        if ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
         if ($request->filled('owner_type')) {
             $query->where('owner_type', $request->owner_type);
+        }
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
         }
         if ($request->filled('salesperson_id')) {
             $query->where('salesperson_id', $request->salesperson_id);
@@ -800,8 +874,14 @@ class SalesTargetController extends Controller
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
+        if ($request->filled('progress_status')) {
+            $query->progressStatus($request->progress_status);
+        }
         if ($request->filled('brand_id')) {
             $query->where('brand_id', $request->brand_id);
+        }
+        if ($request->filled('financial_year_id')) {
+            $query->where('financial_year_id', $request->financial_year_id);
         }
         if ($request->filled('period_type')) {
             $query->where('period_type', $request->period_type);
@@ -826,14 +906,16 @@ class SalesTargetController extends Controller
 
         $targets = $query->paginate(20)->withQueryString();
 
+        $companies = Company::orderBy('name')->get();
         $brands = Brand::orderBy('name')->get();
         $salespeople = User::orderBy('name')->get();
         $teams = SalesTeam::where('is_active', true)->orderBy('name')->get();
         $branches = Branch::orderBy('name')->get();
         $financialYears = FinancialYear::orderByDesc('starts_on')->get();
+        $parties = Customer::orderBy('name')->get(['id', 'name', 'code', 'trade_name']);
 
         return view('sales-targets.reports', compact(
-            'targets', 'brands', 'salespeople', 'teams', 'branches', 'financialYears'
+            'targets', 'brands', 'salespeople', 'teams', 'branches', 'companies', 'financialYears', 'parties'
         ));
     }
 

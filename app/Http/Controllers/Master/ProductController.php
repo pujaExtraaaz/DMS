@@ -258,23 +258,155 @@ class ProductController extends Controller
     {
         $data = $this->validated($request);
 
-        DB::transaction(function () use ($data, $request) {
-            $data['serial_no'] = CodeGenerator::forProductSerial();
+        $isManualSerial = $request->filled('serial_no');
+        $maxAttempts = 5;
 
-            $product = Product::create($data);
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                return DB::transaction(function () use ($data, $request, $isManualSerial) {
+                    $insertData = $data;
+                    if (! $isManualSerial || empty($insertData['serial_no'])) {
+                        $insertData['serial_no'] = CodeGenerator::forProductSerial();
+                    }
 
-            $this->syncBaseUom($product);
-            $this->syncAlternateUoms($request, $product);
-        });
+                    $product = Product::create($insertData);
 
-        return $this->flashSuccess('Product created successfully.', 'masters.products.index');
+                    $this->syncBaseUom($product);
+                    $this->syncAlternateUoms($request, $product);
+
+                    return $this->flashSuccess('Product created successfully.', 'masters.products.index');
+                });
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                if ($isManualSerial) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'serial_no' => 'The product serial number has already been taken.',
+                    ]);
+                }
+
+                if ($attempt >= $maxAttempts) {
+                    return back()->withInput()->withErrors([
+                        'serial_no' => 'Could not generate a unique serial number. Please try again.',
+                    ]);
+                }
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ($this->isDuplicateSerialException($e)) {
+                    if ($isManualSerial) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'serial_no' => 'The product serial number has already been taken.',
+                        ]);
+                    }
+
+                    if ($attempt >= $maxAttempts) {
+                        return back()->withInput()->withErrors([
+                            'serial_no' => 'Could not generate a unique serial number. Please try again.',
+                        ]);
+                    }
+                } else {
+                    throw $e;
+                }
+            }
+        }
+
+        return back()->withInput()->withErrors([
+            'serial_no' => 'Could not generate a unique serial number. Please try again.',
+        ]);
     }
 
-    public function show(Product $product): View
+    public function show(Request $request, Product $product): View|RedirectResponse|JsonResponse
     {
-        $product->load(['brand', 'category', 'subCategory', 'productType', 'baseUom', 'alternateUom']);
+        if ($request->wantsJson() || $request->ajax()) {
+            $product->loadMissing([
+                'brand:id,name',
+                'category:id,name',
+                'subCategory:id,name',
+                'productType:id,name',
+                'baseUom:id,name,code',
+                'alternateUom:id,name,code',
+                'productUoms.uom:id,name,code',
+            ]);
 
-        return view('masters.products.show', compact('product'));
+            $mrp = 0.0;
+            if ((float) $product->calculation_mrp > 0) {
+                $mrp = (float) $product->calculation_mrp;
+            } elseif ($product->relationLoaded('productUoms') && ($baseUomPu = $product->productUoms->firstWhere('is_base', true)) && (float) $baseUomPu->mrp > 0) {
+                $mrp = (float) $baseUomPu->mrp;
+            } elseif ((float) ($product->selling_price ?? 0) > 0) {
+                $mrp = (float) $product->selling_price;
+            }
+
+            $productTypeName = $product->productType?->name ?: ($product->product_type ?: null);
+
+            $validUoms = collect();
+            if ($product->baseUom) {
+                $validUoms->push([
+                    'id' => (string) $product->baseUom->id,
+                    'code' => $product->baseUom->code,
+                    'name' => $product->baseUom->name,
+                    'is_base' => true,
+                    'label' => 'Base UOM',
+                ]);
+            }
+            if ($product->alternateUom && (int) $product->alternate_uom_id !== (int) $product->base_uom_id) {
+                $validUoms->push([
+                    'id' => (string) $product->alternateUom->id,
+                    'code' => $product->alternateUom->code,
+                    'name' => $product->alternateUom->name,
+                    'is_base' => false,
+                    'label' => 'Alternate UOM',
+                ]);
+            }
+            if ($product->relationLoaded('productUoms')) {
+                foreach ($product->productUoms as $pu) {
+                    if ($pu->uom && ! $validUoms->contains('id', (string) $pu->uom->id)) {
+                        $validUoms->push([
+                            'id' => (string) $pu->uom->id,
+                            'code' => $pu->uom->code,
+                            'name' => $pu->uom->name,
+                            'is_base' => (bool) $pu->is_base,
+                            'label' => $pu->label ?: ($pu->is_base ? 'Base UOM' : 'Unit'),
+                        ]);
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku ?: '',
+                    'part_number' => $product->sku ?: '',
+                    'model' => $product->model ?: '',
+                    'series' => $product->series ?: '',
+                    'brand_id' => $product->brand_id ? (string) $product->brand_id : '',
+                    'brand_name' => $product->brand?->name ?: '',
+                    'category_id' => $product->category_id ? (string) $product->category_id : '',
+                    'category_name' => $product->category?->name ?: '',
+                    'sub_category_id' => $product->sub_category_id ? (string) $product->sub_category_id : '',
+                    'sub_category_name' => $product->subCategory?->name ?: '',
+                    'product_type_id' => $product->product_type_id ? (string) $product->product_type_id : '',
+                    'product_type' => $productTypeName ?: '',
+                    'product_type_name' => $productTypeName ?: '',
+                    'hsn_code' => $product->hsn_code ?: '',
+                    'tax_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
+                    'gst_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
+                    'mrp' => $mrp > 0 ? $mrp : null,
+                    'selling_price' => $product->selling_price !== null ? (float) $product->selling_price : null,
+                    'base_uom_id' => $product->base_uom_id ? (string) $product->base_uom_id : '',
+                    'base_uom_code' => $product->baseUom?->code ?: '',
+                    'base_uom_name' => $product->baseUom?->name ?: '',
+                    'uoms' => $validUoms->values()->all(),
+                ],
+            ]);
+        }
+
+        $product->load(['brand', 'category', 'subCategory', 'productType', 'baseUom', 'alternateUom', 'productUoms.uom']);
+
+        if (view()->exists('masters.products.show')) {
+            return view('masters.products.show', compact('product'));
+        }
+
+        return redirect()->route('masters.products.edit', $product);
     }
 
     public function edit(Product $product): View
@@ -300,11 +432,28 @@ class ProductController extends Controller
     {
         $data = $this->validated($request, $product);
 
-        DB::transaction(function () use ($data, $product, $request) {
-            $product->update($data);
-            $this->syncBaseUom($product->fresh());
-            $this->syncAlternateUoms($request, $product->fresh());
-        });
+        if (! $request->filled('serial_no')) {
+            unset($data['serial_no']);
+        }
+
+        try {
+            DB::transaction(function () use ($data, $product, $request) {
+                $product->update($data);
+                $this->syncBaseUom($product->fresh());
+                $this->syncAlternateUoms($request, $product->fresh());
+            });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            return back()->withInput()->withErrors([
+                'serial_no' => 'The product serial number has already been taken.',
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($this->isDuplicateSerialException($e)) {
+                return back()->withInput()->withErrors([
+                    'serial_no' => 'The product serial number has already been taken.',
+                ]);
+            }
+            throw $e;
+        }
 
         return $this->flashSuccess('Product updated successfully.', 'masters.products.index');
     }
@@ -456,6 +605,22 @@ class ProductController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'sku' => 'required_unless:sku_not_applicable,1|nullable|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
+            'serial_no' => [
+                'nullable',
+                'string',
+                'max:50',
+                function ($attribute, $value, $fail) use ($product) {
+                    if ($value !== null && $value !== '') {
+                        $query = DB::table('products')->where('serial_no', $value);
+                        if ($product) {
+                            $query->where('id', '!=', $product->id);
+                        }
+                        if ($query->exists()) {
+                            $fail('The product serial number has already been taken.');
+                        }
+                    }
+                },
+            ],
             'sku_not_applicable' => 'nullable|boolean',
             'alternate_uom_not_applicable' => 'nullable|boolean',
             'dimensions_not_applicable' => 'nullable|boolean',
@@ -823,5 +988,14 @@ class ProductController extends Controller
                 'is_active' => true,
             ]);
         }
+    }
+
+    protected function isDuplicateSerialException(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'products_serial_no_unique')
+            || str_contains($message, 'products.serial_no')
+            || (str_contains($message, 'Duplicate entry') && str_contains($message, 'serial_no'));
     }
 }

@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Company;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -46,9 +47,9 @@ class CodeGenerator
         return self::next(Product::class, 'PROD', $companyId, 'sku');
     }
 
-    public static function forProductSerial(): string
+    public static function forProductSerial(?int $companyId = null): string
     {
-        return self::next(Product::class, 'PRD', null, 'serial_no');
+        return self::next(Product::class, 'PRD', $companyId, 'serial_no');
     }
 
     public static function forCustomer(?int $companyId = null): string
@@ -78,11 +79,13 @@ class CodeGenerator
 
     protected static function next(string $modelClass, string $prefix, ?int $companyId, string $column): string
     {
+        $table = (new $modelClass)->getTable();
         $scope = $companyId ? (string) $companyId : 'GLOBAL';
         $needle = "{$prefix}-{$scope}-";
 
-        $query = $modelClass::query()->where($column, 'like', $needle.'%');
-        if (\Illuminate\Support\Facades\DB::transactionLevel() > 0) {
+        // Query directly against DB table to account for all records including soft-deleted rows
+        $query = DB::table($table)->where($column, 'like', $needle.'%');
+        if (DB::transactionLevel() > 0) {
             $query->lockForUpdate();
         }
 
@@ -99,9 +102,15 @@ class CodeGenerator
         $next = $max + 1;
         $candidate = sprintf('%s-%s-%05d', $prefix, $scope, $next);
 
-        $existsQuery = fn ($val) => \Illuminate\Support\Facades\DB::transactionLevel() > 0
-            ? $modelClass::query()->where($column, $val)->lockForUpdate()->exists()
-            : $modelClass::query()->where($column, $val)->exists();
+        // Verification query against DB table directly to guarantee absolute uniqueness across all records
+        $existsQuery = function ($val) use ($table, $column) {
+            $q = DB::table($table)->where($column, $val);
+            if (DB::transactionLevel() > 0) {
+                $q->lockForUpdate();
+            }
+
+            return $q->exists();
+        };
 
         while ($existsQuery($candidate)) {
             $next++;

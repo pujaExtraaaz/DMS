@@ -10,6 +10,7 @@ use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -84,7 +85,20 @@ class CategoryController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        Category::create($this->validated($request));
+        try {
+            Category::create($this->validated($request));
+        } catch (UniqueConstraintViolationException $e) {
+            return back()->withInput()->withErrors([
+                'name' => 'This category already exists for the selected brand.',
+            ]);
+        } catch (QueryException $e) {
+            if ($this->isDuplicateCategoryException($e)) {
+                return back()->withInput()->withErrors([
+                    'name' => 'This category already exists for the selected brand.',
+                ]);
+            }
+            throw $e;
+        }
 
         return $this->flashSuccess(
             'Category created successfully.',
@@ -105,7 +119,20 @@ class CategoryController extends Controller
         Request $request,
         Category $category
     ): RedirectResponse {
-        $category->update($this->validated($request, $category));
+        try {
+            $category->update($this->validated($request, $category));
+        } catch (UniqueConstraintViolationException $e) {
+            return back()->withInput()->withErrors([
+                'name' => 'This category already exists for the selected brand.',
+            ]);
+        } catch (QueryException $e) {
+            if ($this->isDuplicateCategoryException($e)) {
+                return back()->withInput()->withErrors([
+                    'name' => 'This category already exists for the selected brand.',
+                ]);
+            }
+            throw $e;
+        }
 
         return $this->flashSuccess(
             'Category updated successfully.',
@@ -258,8 +285,8 @@ class CategoryController extends Controller
         }
 
         $brandId = $request->filled('brand_id') ? $request->integer('brand_id') : null;
-        if ($brandId && ! Brand::whereKey($brandId)->exists()) {
-            return response()->json(['success' => false, 'message' => 'Select a valid brand before creating this category.'], 422);
+        if (! $brandId || ! Brand::whereKey($brandId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Please select a brand before creating a category.'], 422);
         }
 
         $name = \App\Support\TitleCase::format($rawName);
@@ -280,11 +307,35 @@ class CategoryController extends Controller
             ]);
         }
 
-        $category = Category::create([
-            'brand_id' => $brandId,
-            'name' => $name,
-            'is_active' => $request->boolean('is_active', true),
-        ]);
+        try {
+            $category = Category::create([
+                'brand_id' => $brandId,
+                'name' => $name,
+                'is_active' => $request->boolean('is_active', true),
+            ]);
+        } catch (UniqueConstraintViolationException|QueryException $e) {
+            $existing = Category::query()
+                ->where('brand_id', $brandId)
+                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($rawName)])
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Category already exists and has been selected.',
+                    'item' => [
+                        'id' => (string) $existing->id,
+                        'name' => $existing->name,
+                        'brand_id' => $existing->brand_id ? (string) $existing->brand_id : null,
+                    ],
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'This category already exists for the selected brand.',
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,
@@ -301,13 +352,57 @@ class CategoryController extends Controller
         Request $request,
         ?Category $category = null
     ): array {
+        if ($request->has('name')) {
+            $rawName = trim((string) $request->input('name'));
+            $request->merge(['name' => \App\Support\TitleCase::format($rawName)]);
+        }
+
+        $brandId = $request->filled('brand_id') ? $request->integer('brand_id') : null;
+
+        $messages = [
+            'brand_id.required' => 'Please select a brand before creating a category.',
+            'brand_id.exists' => 'Please select a brand before creating a category.',
+            'brand_id.integer' => 'Please select a brand before creating a category.',
+            'name.required' => 'Category name is required.',
+        ];
+
         $data = $request->validate([
-            'brand_id' => 'nullable|exists:brands,id',
-            'name' => 'required|string|max:255',
-            'is_active' => 'boolean',
-        ]);
+            'brand_id' => ['required', 'integer', 'exists:brands,id'],
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                function ($attribute, $value, $fail) use ($brandId, $category) {
+                    $cleanName = trim((string) $value);
+                    if ($brandId && $cleanName !== '') {
+                        $query = Category::query()
+                            ->where('brand_id', $brandId)
+                            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($cleanName)]);
+
+                        if ($category) {
+                            $query->where('id', '!=', $category->id);
+                        }
+
+                        if ($query->exists()) {
+                            $fail('This category already exists for the selected brand.');
+                        }
+                    }
+                },
+            ],
+            'is_active' => ['boolean'],
+        ], $messages);
         $data['is_active'] = $request->boolean('is_active');
 
         return $data;
+    }
+
+    protected function isDuplicateCategoryException(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'categories_brand_id_name_unique')
+            || str_contains($message, 'categories.brand_id')
+            || str_contains($message, 'categories.name')
+            || (str_contains($message, 'Duplicate entry') && (str_contains($message, 'name') || str_contains($message, 'brand')));
     }
 }
