@@ -31,13 +31,24 @@ class BulkImportController extends Controller
     public function template(string $type): StreamedResponse
     {
         $columns = match ($type) {
-            'products' => ['name', 'part_number', 'hsn_code', 'uom_code', 'brand', 'category',
-                            'purchase_price', 'selling_price', 'trade_price', 'mrp', 'tax_rate',
-                            'sender_warranty_months', 'customer_warranty_months', 'discount_percent'],
-            'parties' => ['name', 'code', 'party_type', 'classification', 'area', 'route',
-                          'phone', 'email', 'gstin', 'address', 'state', 'pincode',
-                          'credit_limit', 'credit_days', 'interest_rate',
-                          'contact_name', 'contact_phone', 'contact_email', 'contact_role'],
+            'products' => [
+                'name', 'part_number', 'model', 'product_type', 'brand', 'category', 'sub_category',
+                'uom_code', 'alternate_uom_code', 'conversion_factor', 'supply_type', 'hsn_code', 'tax_rate',
+                'track_serial', 'track_batch',
+                'height_cm', 'length_cm', 'width_cm', 'net_weight', 'weight_unit',
+                'purchase_price', 'trade_price', 'selling_price', 'mrp', 'purchase_price_tax_basis',
+                'costing_method', 'market_valuation_method',
+                'min_stock', 'reorder_level', 'specification', 'warranty', 'catalog_link', 'is_active',
+            ],
+            'parties' => [
+                'name', 'code', 'party_type', 'classification', 'trade_name', 'gstin', 'phone', 'email',
+                'opened_on', 'reference_by', 'udyam_number', 'website', 'location_link', 'is_active',
+                'area', 'route',
+                'address_line_1', 'address_line_2', 'city', 'state', 'pincode',
+                'credit_limit', 'credit_days', 'credit_status', 'credit_period_basis', 'interest_rate',
+                'contact_name', 'contact_role', 'contact_phone', 'contact_email',
+                'bank_account_holder', 'bank_name', 'bank_branch', 'bank_account_number', 'bank_account_type', 'bank_ifsc',
+            ],
             'price-master' => ['customer_type', 'part_number', 'uom_code', 'rate', 'min_qty'],
             'leads' => ['contact_name', 'company_name', 'title', 'email', 'secondary_email',
                         'mobile', 'second_mobile_number', 'phone', 'landline',
@@ -47,8 +58,25 @@ class BulkImportController extends Controller
         };
 
         $sample = match ($type) {
-            'products' => ['Widget X', '', '84713010', 'PCS', 'Acme', 'Widgets', 100, 150, 130, 175, 18, 12, 24, 0],
-            'parties' => ['Sample Distributor', '', 'sundry_debtors', 'Retail', 'Zone A', 'Route 1', '9999999999', 'ops@sample.co', '', '#12, MG Road', 'Karnataka', '560001', 50000, 30, 18, 'Ravi', '9999888877', 'ravi@sample.co', 'Owner'],
+            'products' => [
+                'Widget X', 'PN-WIDGET-001', 'WX-100', 'Finished Goods', 'Acme', 'Widgets', 'Standard',
+                'PCS', 'BOX', 10, 'goods', '84713010', 18,
+                1, 0,
+                10, 20, 15, 1.5, 'KG',
+                100, 130, 150, 175, 'exclusive',
+                'avg_cost', 'avg_price',
+                5, 10, 'Steel body', '12 months', 'https://example.com/catalog/widget-x', 1,
+            ],
+            'parties' => [
+                'Sample Distributor', 'PARTY-001', 'sundry_debtors', 'Retail', 'Sample Dist. Pvt Ltd',
+                '29AABCU9603R1ZM', '9999999999', 'ops@sample.co',
+                '2024-04-01', 'Referral - Ravi', 'UDYAM-KR-01-0000001', 'https://sample.co', 'https://maps.example/sample', 1,
+                'Zone A', 'Route 1',
+                '#12, MG Road', 'Near Metro', 'Bengaluru', 'Karnataka', '560001',
+                50000, 30, 'open', 'cumulative', 18,
+                'Ravi Kumar', 'Owner', '9999888877', 'ravi@sample.co',
+                'Sample Distributor', 'HDFC Bank', 'MG Road', '50200012345678', 'Current', 'HDFC0001234',
+            ],
             'price-master' => ['Retail', 'PROD-1-00001', 'PCS', 150, 0],
             'leads' => ['Anand Verma', 'Apex Tech Solutions', 'Director', 'anand@apextech.in', 'billing@apextech.in', '9820011223', '9820099887', '022-26543210', '022-26543211', 'Admin', 'VIP', 'Electronics', 'Plot 42, MIDC, Andheri East', 'Mumbai', 'Maharashtra', '400093'],
         };

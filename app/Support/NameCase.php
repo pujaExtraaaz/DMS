@@ -284,6 +284,7 @@ class NameCase
         'min_stock',
         'max_stock',
         'reorder_level',
+        'level',
         'view_name',
         'id',
         // JSON, configuration, metadata and structured dictionary fields

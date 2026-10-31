@@ -1,4 +1,4 @@
-@if($can('targets.view', 'targets.manage', 'sales_targets.view', 'sales_targets.manage', 'salesperson', 'super-admin'))
+@if($can('targets.view', 'targets.manage', 'sales_targets.view', 'sales_targets.create', 'sales_targets.edit', 'sales_targets.manage'))
     @php
         $sNum = $num();
         $sectionActive = $is('sales-targets.*');
