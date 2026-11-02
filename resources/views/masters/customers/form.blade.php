@@ -148,6 +148,32 @@
         </div>
     @endif
 
+    @php
+        $returnUrl = old('return_url', request('return_url'));
+        $isReturnToPo = is_string($returnUrl) && str_contains($returnUrl, '/purchasing/orders/create');
+    @endphp
+    @if(! $item->exists && filled($returnUrl))
+        <div class="mb-4 bg-indigo-50/90 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-indigo-900 shadow-2xs max-w-5xl">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                </div>
+                <div>
+                    <span class="font-bold">{{ $isReturnToPo ? 'Adding Supplier for Purchase Order' : 'Return After Save' }}</span>
+                    <p class="text-indigo-700 text-[11px]">
+                        {{ $isReturnToPo
+                            ? 'Save this party, then you will be returned to New Purchase Order with the supplier selected.'
+                            : 'After saving, you will be redirected back to the page you came from.' }}
+                    </p>
+                </div>
+            </div>
+            <a href="{{ $returnUrl }}"
+               class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white text-indigo-700 border border-indigo-200 font-semibold rounded-xl hover:bg-indigo-100 hover:text-indigo-900 transition shadow-2xs shrink-0">
+                &larr; Cancel &amp; Go Back
+            </a>
+        </div>
+    @endif
+
     <form method="POST"
           action="{{ $item->exists ? route('masters.customers.update', $item) : route('masters.customers.store') }}"
           enctype="multipart/form-data"
@@ -156,6 +182,9 @@
           @add-city="openCityModal($event.detail.index, $event.detail.name)">
         @csrf
         @if($item->exists) @method('PUT') @endif
+        @if(! $item->exists && filled($returnUrl))
+            <input type="hidden" name="return_url" value="{{ $returnUrl }}">
+        @endif
         @if(isset($lead))
             <input type="hidden" name="lead_id" value="{{ $lead->id }}">
         @elseif(old('lead_id'))
@@ -236,7 +265,7 @@
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Party Type *</label>
                     <select name="party_type" x-model="form.party_type" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         @foreach([\App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_DEBTORS => 'Sundry Debtors', \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS => 'Sundry Creditors', \App\Domains\Master\Models\Customer::PARTY_TYPE_BOTH => 'Both'] as $val => $label)
-                            <option value="{{ $val }}" @selected(old('party_type', $item->party_type_key ?? 'sundry_debtors')===$val)>{{ $label }}</option>
+                            <option value="{{ $val }}" @selected(old('party_type', $item->party_type_key ?? request('party_type', 'sundry_debtors'))===$val)>{{ $label }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -594,12 +623,24 @@
                     <h3 class="text-sm font-semibold text-slate-700">Addresses &amp; Locations</h3>
                     <p class="text-xs text-slate-500">Multiple addresses allowed per party. Set default billing and delivery addresses.</p>
                 </div>
-                <button type="button" @click="addAddress()"
-                        class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                    Add Address
-                </button>
+                <div class="flex items-center gap-2">
+                    <button type="button"
+                            x-show="gstPendingExtraAddresses.length > 0"
+                            x-cloak
+                            @click="applyPendingGstExtraAddresses()"
+                            class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition shadow-sm">
+                        <span x-text="`+ Include ${gstPendingExtraAddresses.length} from GST`"></span>
+                    </button>
+                    <button type="button" @click="addAddress()"
+                            class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        Add Address
+                    </button>
+                </div>
             </div>
+            <p x-show="gstPendingExtraAddresses.length > 0" x-cloak class="text-xs text-emerald-700">
+                GST also reported additional place(s) of business. Principal address was applied — include the extras only if you need them.
+            </p>
 
             <div class="space-y-4">
                 <template x-for="(addr, idx) in addresses" :key="idx">
@@ -1591,6 +1632,7 @@ function partyFormController() {
         },
         gstLookupInfo: null,
         gstLookupAppliedKey: '',
+        gstPendingExtraAddresses: [],
         selectedCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
         previousCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
         customClassifications: [],
@@ -2007,7 +2049,7 @@ function partyFormController() {
             name: {!! json_encode(old('name', $item->name ?? '')) !!},
             trade_name: {!! json_encode(old('trade_name', $item->trade_name ?? '')) !!},
             gstin: {!! json_encode(old('gstin', $item->gstin ?? '')) !!},
-            party_type: {!! json_encode(old('party_type', $item->party_type_key ?? 'sundry_debtors')) !!},
+            party_type: {!! json_encode(old('party_type', $item->party_type_key ?? request('party_type', 'sundry_debtors'))) !!},
             pan: {!! json_encode(old('pan', $item->pan ?? '')) !!},
             phone: {!! json_encode(old('phone', $item->phone ?? '')) !!},
             email: {!! json_encode(old('email', $item->email ?? '')) !!},
@@ -2289,79 +2331,117 @@ function partyFormController() {
                 && !String(addr.pincode || '').trim();
         },
 
-        applyGstAddresses(party) {
-            if (!this.addresses) this.addresses = [];
-            const returned = Array.isArray(party.addresses) && party.addresses.length
-                ? party.addresses
-                : [{
-                    label: party.address_label || 'Principal Place of Business',
-                    address_line_1: party.address_line_1 || party.address || '',
-                    address_line_2: party.address_line_2 || '',
-                    city: party.city || '',
-                    state: party.state || '',
-                    pincode: party.pincode || '',
-                }];
-
+        mapGstAddressRows(party, { includeAdditional = false } = {}) {
             const take = (value) => {
                 const clean = String(value || '').trim();
                 return clean || null;
             };
 
-            // Always refresh the principal / default billing address from the latest GST fetch.
-            const principal = returned[0] || null;
-            if (principal) {
-                let primary = this.addresses.find(a => a.is_default_billing) || this.addresses[0];
-                if (!primary) {
-                    this.addAddress();
-                    primary = this.addresses[0];
-                }
+            // Only accept real address objects — never iterate strings/scalars.
+            const raw = Array.isArray(party.addresses)
+                ? party.addresses.filter((row) => row && typeof row === 'object' && !Array.isArray(row))
+                : [];
 
-                const label = take(principal.label) || 'Principal Place of Business';
-                if (!String(primary.label || '').trim()
-                    || ['Head Office', 'Branch / Warehouse', 'Principal Place of Business'].includes(primary.label)
-                    || String(primary.label || '').startsWith('Additional Place of Business')) {
-                    primary.label = label;
-                }
+            const fallback = [{
+                label: party.address_label || 'Principal Place of Business',
+                address_line_1: party.address_line_1 || party.address || '',
+                address_line_2: party.address_line_2 || '',
+                city: party.city || '',
+                state: party.state || '',
+                pincode: party.pincode || '',
+            }];
 
-                if (take(principal.address_line_1)) primary.address_line_1 = take(principal.address_line_1);
-                if (take(principal.address_line_2) !== null) primary.address_line_2 = take(principal.address_line_2) || '';
-                if (take(principal.city)) primary.city = take(principal.city);
-                if (take(principal.state) || take(party.state)) primary.state = take(principal.state) || take(party.state);
-                if (take(principal.pincode)) primary.pincode = take(principal.pincode);
-            }
+            const sourceRows = raw.length ? raw : fallback;
+            const seen = new Set();
+            const mapped = [];
 
-            // Add only new additional places of business (never duplicate).
-            const existingKeys = new Set(this.addresses.map(a => this.addressFingerprint(a)));
-            returned.slice(1).forEach((src, index) => {
-                const mapped = {
-                    label: take(src.label) || `Additional Place of Business ${index + 1}`,
+            sourceRows.forEach((src, index) => {
+                // Default: principal only. Additional places are opt-in.
+                if (!includeAdditional && mapped.length >= 1) return;
+                if (includeAdditional && mapped.length >= 10) return;
+
+                const row = {
+                    label: take(src.label)
+                        || (index === 0 ? 'Principal Place of Business' : `Additional Place of Business ${index}`),
                     address_line_1: take(src.address_line_1) || '',
                     address_line_2: take(src.address_line_2) || '',
                     city: take(src.city) || '',
                     state: take(src.state) || take(party.state) || '',
                     pincode: take(src.pincode) || '',
                 };
-                const key = this.addressFingerprint(mapped);
-                if (!mapped.address_line_1 && !mapped.city && !mapped.pincode) return;
-                if (existingKeys.has(key)) return;
+                if (!row.address_line_1 && !row.city && !row.pincode) return;
+                const key = this.addressFingerprint(row);
+                if (seen.has(key)) return;
+                seen.add(key);
+                mapped.push(row);
+            });
 
+            return mapped;
+        },
+
+        applyGstAddresses(party, { includeAdditional = false } = {}) {
+            const allMapped = this.mapGstAddressRows(party, { includeAdditional: true });
+            const principal = allMapped.slice(0, 1);
+            const extras = allMapped.slice(1);
+
+            // Always stash extras so user can opt in later if needed.
+            this.gstPendingExtraAddresses = includeAdditional ? [] : extras;
+
+            const mapped = includeAdditional ? allMapped : principal;
+            if (!mapped.length) return;
+
+            const previous = Array.isArray(this.addresses) ? this.addresses : [];
+            this.addresses = mapped.map((row, index) => {
+                const prior = previous.find((a) => this.addressFingerprint(a) === this.addressFingerprint(row))
+                    || (index === 0 ? (previous.find((a) => a.is_default_billing) || previous[0]) : null);
+
+                return {
+                    id: prior?.id ?? null,
+                    label: row.label,
+                    contact_person: prior?.contact_person || '',
+                    contact_phone: prior?.contact_phone || '',
+                    address_line_1: row.address_line_1,
+                    address_line_2: row.address_line_2,
+                    city: row.city,
+                    state: row.state,
+                    pincode: row.pincode,
+                    type: prior?.type || 'both',
+                    is_default_billing: index === 0,
+                    is_default_delivery: index === 0,
+                };
+            });
+
+            this.syncPrimaryAddress();
+        },
+
+        applyPendingGstExtraAddresses() {
+            const extras = Array.isArray(this.gstPendingExtraAddresses) ? this.gstPendingExtraAddresses : [];
+            if (!extras.length) return;
+
+            if (!Array.isArray(this.addresses)) this.addresses = [];
+            const existingKeys = new Set(this.addresses.map((a) => this.addressFingerprint(a)));
+
+            extras.forEach((row) => {
+                const key = this.addressFingerprint(row);
+                if (existingKeys.has(key)) return;
+                existingKeys.add(key);
                 this.addresses.push({
                     id: null,
-                    label: mapped.label,
+                    label: row.label || 'Additional Place of Business',
                     contact_person: '',
                     contact_phone: '',
-                    address_line_1: mapped.address_line_1,
-                    address_line_2: mapped.address_line_2,
-                    city: mapped.city,
-                    state: mapped.state,
-                    pincode: mapped.pincode,
+                    address_line_1: row.address_line_1 || '',
+                    address_line_2: row.address_line_2 || '',
+                    city: row.city || '',
+                    state: row.state || '',
+                    pincode: row.pincode || '',
                     type: 'both',
                     is_default_billing: false,
                     is_default_delivery: false,
                 });
-                existingKeys.add(key);
             });
 
+            this.gstPendingExtraAddresses = [];
             this.syncPrimaryAddress();
         },
 
@@ -2377,6 +2457,7 @@ function partyFormController() {
             const gstin = (this.form.gstin || '').trim().toUpperCase();
             this.form.gstin = gstin;
             this.gstLookupInfo = null;
+            this.gstPendingExtraAddresses = [];
 
             if (gstin.length !== 15) {
                 this.gstFeedback = {
@@ -2422,13 +2503,17 @@ function partyFormController() {
                         this.form.address = String(data.party.address || data.party.address_line_1).trim();
                     }
 
-                    this.applyGstAddresses(data.party);
-                    this.gstLookupAppliedKey = [
+                    const appliedKey = [
                         gstin,
                         data.party.address_line_1 || '',
                         data.party.pincode || '',
-                        (data.party.addresses || []).length
+                        Array.isArray(data.party.addresses) ? data.party.addresses.length : 0
                     ].join('::');
+                    if (this.gstLookupAppliedKey !== appliedKey) {
+                        // Principal address only by default; extras available via "+ Include from GST".
+                        this.applyGstAddresses(data.party, { includeAdditional: false });
+                        this.gstLookupAppliedKey = appliedKey;
+                    }
 
                     this.gstLookupInfo = {
                         legal_name: data.party.legal_name || '',
@@ -2448,14 +2533,18 @@ function partyFormController() {
                     const statusText = data.party.status ? ` (Status: ${data.party.status})` : '';
                     const isInactive = !!data.party.is_inactive
                         || (data.party.status && !['active', 'provisional'].includes(String(data.party.status).toLowerCase()));
+                    const extraCount = this.gstPendingExtraAddresses.length;
                     this.gstFeedback = {
                         type: isInactive ? 'warning' : 'success',
                         message: (data.message || 'GSTIN verified successfully from official records.') + statusText,
                         note: isInactive
                             ? `Warning: GST registration status is reported as ${data.party.status}. Please review carefully before saving.`
-                            : 'Details updated from GST records. Phone, email, party type, credit, and bank details remain manual.'
+                            : (extraCount > 0
+                                ? `Principal address applied. ${extraCount} additional GST place(s) available under Addresses if needed.`
+                                : 'Details updated from GST records. Phone, email, party type, credit, and bank details remain manual.')
                     };
                 } else {
+                    this.gstPendingExtraAddresses = [];
                     this.gstLookupInfo = null;
                     const note = data.is_configured === false
                         ? 'Add GST_API_KEY and GST_API_SECRET to .env, then run php artisan config:clear. PAN and State were filled from the GSTIN where possible.'

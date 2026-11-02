@@ -11,14 +11,17 @@
         <div>
             <div class="flex items-center justify-between mb-1">
                 <label class="block text-sm font-medium text-slate-700">Supplier *</label>
-                <button type="button" @click="$dispatch('open-quick-add-supplier')"
-                        class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                <a href="{{ route('masters.customers.create', [
+                        'party_type' => \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+                        'return_url' => route('purchasing.orders.create'),
+                    ]) }}"
+                   class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
                     + Add Supplier
-                </button>
+                </a>
             </div>
             @include('purchasing.orders.partials.supplier-search', [
                 'suppliers' => $suppliers,
-                'selected' => old('supplier_id'),
+                'selected' => old('supplier_id', request('supplier_id')),
             ])
         </div>
         <div>
@@ -33,8 +36,34 @@
                 @endforeach
             </select>
         </div>
-        <x-ui.input name="po_date" id="po_date" label="PO Date" type="date" :value="old('po_date', now()->toDateString())" required onchange="recalcPoDueDate()" oninput="recalcPoDueDate()" />
-        <x-ui.input name="expected_date" label="Expected Date" type="date" :value="old('expected_date')" />
+        <x-ui.input name="po_date" id="po_date" label="PO Date" type="date" :value="old('po_date', now()->toDateString())" required onchange="recalcPoDueDate(); updateExpectedQuickHighlight()" oninput="recalcPoDueDate(); updateExpectedQuickHighlight()" />
+        <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Expected Date</label>
+            <input type="date" name="expected_date" id="po_expected_date"
+                   value="{{ old('expected_date') }}"
+                   onchange="updateExpectedQuickHighlight()"
+                   oninput="updateExpectedQuickHighlight()"
+                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+            <div class="flex flex-wrap items-center gap-1.5 mt-2">
+                <span class="text-[11px] font-medium text-slate-400">Quick:</span>
+                <button type="button" onclick="setPoExpectedDate(0)" id="expected_quick_0"
+                        class="px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300">
+                    Today
+                </button>
+                <button type="button" onclick="setPoExpectedDate(7)" id="expected_quick_7"
+                        class="px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300">
+                    +7 Days
+                </button>
+                <button type="button" onclick="setPoExpectedDate(15)" id="expected_quick_15"
+                        class="px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300">
+                    +15 Days
+                </button>
+                <button type="button" onclick="setPoExpectedDate(30)" id="expected_quick_30"
+                        class="px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300">
+                    +30 Days
+                </button>
+            </div>
+        </div>
 
         <div>
             <div class="flex items-center justify-between mb-1">
@@ -420,7 +449,6 @@
         <x-ui.button type="submit" variant="primary">Save PO</x-ui.button>
     </div>
     </form></x-ui.card>
-    <x-quick-add-supplier targetSelect="supplier_id" />
 
     <!-- Floating Product Search Dropdown Menu -->
     <div id="po-product-dropdown-menu"
@@ -1137,6 +1165,56 @@ function setPoCreditDays(days) {
     recalcPoDueDate();
 }
 
+function formatLocalDate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function setPoExpectedDate(daysFromPo) {
+    const poDateInput = document.querySelector('input[name="po_date"]');
+    const expectedInput = document.getElementById('po_expected_date');
+    if (!poDateInput?.value || !expectedInput) return;
+
+    const parts = String(poDateInput.value).split('-');
+    if (parts.length !== 3) return;
+    const base = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    if (Number.isNaN(base.getTime())) return;
+
+    base.setDate(base.getDate() + (parseInt(daysFromPo, 10) || 0));
+    expectedInput.value = formatLocalDate(base);
+    updateExpectedQuickHighlight();
+}
+
+function updateExpectedQuickHighlight() {
+    const poDateInput = document.querySelector('input[name="po_date"]');
+    const expectedInput = document.getElementById('po_expected_date');
+    const options = [0, 7, 15, 30];
+    let active = -1;
+
+    if (poDateInput?.value && expectedInput?.value) {
+        const poParts = String(poDateInput.value).split('-');
+        const exParts = String(expectedInput.value).split('-');
+        if (poParts.length === 3 && exParts.length === 3) {
+            const po = new Date(parseInt(poParts[0], 10), parseInt(poParts[1], 10) - 1, parseInt(poParts[2], 10));
+            const ex = new Date(parseInt(exParts[0], 10), parseInt(exParts[1], 10) - 1, parseInt(exParts[2], 10));
+            const diff = Math.round((ex - po) / 86400000);
+            if (options.includes(diff)) active = diff;
+        }
+    }
+
+    options.forEach((days) => {
+        const btn = document.getElementById(`expected_quick_${days}`);
+        if (!btn) return;
+        if (days === active) {
+            btn.className = 'px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-indigo-600 text-white border-indigo-600';
+        } else {
+            btn.className = 'px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300';
+        }
+    });
+}
+
 function recalcPoDueDate() {
     const poDateInput = document.querySelector('input[name="po_date"]');
     const creditDaysInput = document.getElementById('po_credit_days');
@@ -1291,6 +1369,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     isInitialSupplierLoad = false;
     recalcPoDueDate();
+    updateExpectedQuickHighlight();
 
     // Attach event delegation for options click
     const dropdownList = document.getElementById('po-dropdown-list');

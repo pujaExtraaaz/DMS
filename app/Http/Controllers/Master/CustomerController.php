@@ -295,9 +295,19 @@ class CustomerController extends Controller
             }
         }
 
+        $requestedPartyType = (string) $request->query('party_type', Customer::PARTY_TYPE_SUNDRY_DEBTORS);
+        $allowedPartyTypes = [
+            Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+            Customer::PARTY_TYPE_BOTH,
+        ];
+        if (! in_array($requestedPartyType, $allowedPartyTypes, true)) {
+            $requestedPartyType = Customer::PARTY_TYPE_SUNDRY_DEBTORS;
+        }
+
         $customer = new Customer([
             'code' => $code,
-            'party_type' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'party_type' => $requestedPartyType,
             'is_active' => true,
         ]);
 
@@ -415,7 +425,47 @@ class CustomerController extends Controller
             return $this->flashSuccess("Lead '{$lead->name}' converted to Customer '{$customer->name}' ({$customer->code}) successfully.", 'masters.customers.index');
         }
 
+        $returnUrl = $this->safeInternalReturnUrl($request->input('return_url'));
+        if ($returnUrl) {
+            $separator = str_contains($returnUrl, '?') ? '&' : '?';
+            $target = $returnUrl.$separator.'supplier_id='.$customer->id;
+
+            return redirect()
+                ->to($target)
+                ->with('status', \App\Support\TitleCase::format("Party '{$customer->name}' created successfully. Continue with the purchase order."));
+        }
+
         return $this->flashSuccess('Party created successfully.', 'masters.customers.index');
+    }
+
+    /**
+     * Allow redirect only to same-app relative or absolute URLs (open-redirect safe).
+     */
+    protected function safeInternalReturnUrl(mixed $url): ?string
+    {
+        if (! is_string($url)) {
+            return null;
+        }
+
+        $url = trim($url);
+        if ($url === '' || str_starts_with($url, '//')) {
+            return null;
+        }
+
+        if (str_starts_with($url, '/')) {
+            return $url;
+        }
+
+        $appUrl = rtrim((string) config('app.url'), '/');
+        if ($appUrl !== '' && str_starts_with($url, $appUrl.'/')) {
+            return $url;
+        }
+
+        if ($appUrl !== '' && $url === $appUrl) {
+            return $url;
+        }
+
+        return null;
     }
 
     public function edit(Customer $customer): View
