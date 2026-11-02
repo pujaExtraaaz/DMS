@@ -39,7 +39,7 @@
 </x-ui.card>
 
 <x-ui.card class="mb-6" title="What syncs">
-    <p class="text-sm text-slate-700">Each poll checks masters and reports. Masters: groups, ledgers, bank accounts, units, godowns, stock groups, stock items, cost categories, cost centres, voucher types, and vouchers of every type (sales, purchase, receipt, payment, contra, journal, credit note, debit note, stock journal, and the other stock voucher types). Reports: day book, profit and loss, trial balance, balance sheet, cash flow, funds flow, ratio analysis, GST sales, GST purchase, GSTR-1, GSTR-3B, and GSTR-2B. Day book and GST reports use the current month. Profit and loss and the other statements use the open financial year. If both sides changed the same record, it is listed below and neither side is overwritten.</p>
+    <p class="text-sm text-slate-700">Outbound from DMS (Tally Queue): masters (stock items, ledgers, units, godowns), sales and purchase invoices, receipts/payments, credit notes, purchase orders, sales orders, quotations, receipt notes (GRN), Books stock journals, freight/landed-cost journals, and standalone cleared cheques. Inbound poll also refreshes Books masters and reports (day book, P&amp;L, trial balance, balance sheet, GST packs). Receipt Notes from Tally become Books goods receipts — not cash receipts. Sales/purchase orders and quotations stay DMS-owned on import. Conflicts are listed below; neither side is overwritten.</p>
 </x-ui.card>
 
 <x-ui.card class="mb-6" title="Imported reports">
@@ -78,7 +78,7 @@
         @endforeach
     </ol>
     <pre class="mt-4 overflow-x-auto rounded bg-slate-950 p-3 text-xs text-slate-100">{
-  "dms_url": "http://127.0.0.1:8000",
+  "dms_url": "{{ rtrim(config('app.url'), '/') }}",
   "connector_token": "same value as TALLY_CONNECTOR_TOKEN",
   "tally_url": "http://127.0.0.1:9000",
   "company": "Exact Tally company name",

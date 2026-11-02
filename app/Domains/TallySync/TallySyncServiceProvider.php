@@ -8,11 +8,14 @@ use App\Domains\Tally\Observers\TallyAutoEnqueueObserver;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Order\Models\Order;
 use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
+use App\Domains\Purchasing\Models\PurchaseInward;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Sales\Models\Invoice;
+use App\Domains\Sales\Models\Quotation;
 use App\Domains\TallySync\Support\SyncGate;
 use Illuminate\Support\ServiceProvider;
 use Tally\Models\AccountGroup;
@@ -22,6 +25,7 @@ use Tally\Models\Godown;
 use Tally\Models\Ledger;
 use Tally\Models\Product as BooksProduct;
 use Tally\Models\ProductGroup;
+use Tally\Models\StockTransaction;
 use Tally\Models\Unit;
 use Tally\Models\Voucher;
 
@@ -49,6 +53,9 @@ class TallySyncServiceProvider extends ServiceProvider
                 CreditNote::class,
                 PurchaseInvoice::class,
                 PurchaseOrder::class,
+                Order::class,
+                Quotation::class,
+                PurchaseInward::class,
                 Product::class,
                 Customer::class,
                 Uom::class,
@@ -59,6 +66,7 @@ class TallySyncServiceProvider extends ServiceProvider
 
             foreach ([
                 Voucher::class,
+                StockTransaction::class,
                 Ledger::class,
                 AccountGroup::class,
                 BooksProduct::class,

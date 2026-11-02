@@ -5,9 +5,12 @@ namespace App\Domains\Sync\Handlers;
 use App\Domains\Purchasing\Models\FreightBill;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Sync\Support\BooksCompany;
+use App\Domains\Sync\Support\SyncFailureLogger;
 use App\Domains\Sync\Support\SyncLinks;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Tally\Models\LandedCostVoucher;
+use Tally\Purchasing\LandedCostService;
 
 class FreightBillSync
 {
@@ -67,7 +70,13 @@ class FreightBillSync
         $piId = SyncLinks::acctId(PurchaseInvoiceSync::KEY, $invoice);
 
         $books = LandedCostVoucher::query()->find(SyncLinks::acctId(self::KEY, $bill));
-        $status = in_array($bill->status, ['posted', 'allocated', 'completed'], true) ? 'draft' : 'draft';
+        if ($books && $books->status === 'posted') {
+            SyncLinks::store(self::KEY, $bill, $books, 'conflict', 'Books landed cost already posted');
+
+            return;
+        }
+
+        $wantPost = in_array($bill->status, ['posted', 'allocated', 'completed'], true);
         $attributes = [
             'company_id' => $company->id,
             'branch_id' => $branchId,
@@ -80,11 +89,23 @@ class FreightBillSync
             'other_charges' => $bill->tax_amount ?? 0,
             'total_charges' => $bill->total_amount ?? 0,
             'allocation_basis' => $bill->allocation_basis ?: 'value',
-            'status' => $status,
+            'status' => 'draft',
             'narration' => trim(($bill->transporter_name ?? '').' '.($bill->notes ?? '')),
         ];
 
         $books ? $books->update($attributes) : $books = LandedCostVoucher::query()->create($attributes);
         SyncLinks::store(self::KEY, $bill, $books);
+
+        if ($wantPost && (float) ($books->total_charges ?? 0) > 0) {
+            $user = User::query()->orderBy('id')->first();
+            if ($user) {
+                try {
+                    $posted = app(LandedCostService::class)->post($books->fresh(), $user);
+                    SyncLinks::store(self::KEY, $bill, $posted);
+                } catch (\Throwable $e) {
+                    SyncFailureLogger::write(self::KEY, 'dms_to_books', $bill, $e);
+                }
+            }
+        }
     }
 }

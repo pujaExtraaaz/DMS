@@ -13,6 +13,7 @@ use Tally\Banking\ElectronicPaymentService;
 use Tally\Invoicing\InvoiceKind;
 use Tally\Models\ApprovalRequest;
 use Tally\Models\BankAccount;
+use Tally\Models\Bill;
 use Tally\Models\Branch;
 use Tally\Models\Company;
 use Tally\Models\FinancialYear;
@@ -104,13 +105,17 @@ class PaymentBatchService
             ]);
         }
 
-        $lines = $invoices->map(fn (Invoice $invoice) => [
-            'supplier_ledger_id' => $invoice->party_ledger_id,
-            'bill_id' => $invoice->id,
-            'amount' => (string) $invoice->grand_total,
-            'tds_amount' => '0',
-            'reference' => $invoice->invoice_number,
-        ])->all();
+        $lines = $invoices->map(function (Invoice $invoice) {
+            $billId = $this->billIdForPurchaseInvoice($invoice);
+
+            return [
+                'supplier_ledger_id' => $invoice->party_ledger_id,
+                'bill_id' => $billId,
+                'amount' => (string) $invoice->grand_total,
+                'tds_amount' => '0',
+                'reference' => $invoice->invoice_number,
+            ];
+        })->all();
 
         $batchDate = now()->toDateString();
         $year = FinancialYear::query()
@@ -237,13 +242,17 @@ class PaymentBatchService
                     continue;
                 }
 
+                $billId = $this->resolvePaymentLineBillId($company, $line);
                 $allocations = [];
-                if ($line->bill_id) {
+                if ($billId) {
                     $allocations[] = [
-                        'bill_id' => $line->bill_id,
+                        'bill_id' => $billId,
                         'amount' => $amount,
                     ];
                 }
+
+                $channel = Money::cents($amount) >= 20000000 ? 'rtgs' : 'neft';
+                $beneficiary = $line->supplier?->name ?? ('Supplier #'.$line->supplier_ledger_id);
 
                 $voucher = $this->vouchers->save(
                     $company,
@@ -257,7 +266,14 @@ class PaymentBatchService
                         'narration' => trim(($batch->narration ?: 'Payment batch '.$batch->number).' — supplier #'.$line->supplier_ledger_id),
                         'entries' => [
                             ['ledger_id' => $line->supplier_ledger_id, 'debit' => $amount, 'credit' => '0.00'],
-                            ['ledger_id' => $batch->bank_ledger_id, 'debit' => '0.00', 'credit' => $amount],
+                            [
+                                'ledger_id' => $batch->bank_ledger_id,
+                                'debit' => '0.00',
+                                'credit' => $amount,
+                                'bank_transaction_type' => $channel,
+                                'instrument_date' => $batch->batch_date->toDateString(),
+                                'payment_favouring' => $beneficiary,
+                            ],
                         ],
                         'allocations' => $allocations,
                     ],
@@ -273,11 +289,11 @@ class PaymentBatchService
                     'bank_account_id' => $bankAccountId,
                     'voucher_id' => $voucher->id,
                     'payment_batch_id' => $batch->id,
-                    'channel' => Money::cents($amount) >= 20000000 ? 'rtgs' : 'neft',
+                    'channel' => $channel,
                     'reference' => $batch->number.($line->reference ? '/'.$line->reference : ''),
                     'payment_date' => $batch->batch_date->toDateString(),
                     'amount' => $amount,
-                    'beneficiary' => $line->supplier?->name ?? ('Supplier #'.$line->supplier_ledger_id),
+                    'beneficiary' => $beneficiary,
                     'status' => 'initiated',
                 ]);
             }
@@ -286,5 +302,46 @@ class PaymentBatchService
 
             return $batch->fresh(['lines', 'approver']);
         });
+    }
+
+    private function billIdForPurchaseInvoice(Invoice $invoice): ?int
+    {
+        if (! $invoice->voucher_id) {
+            return Bill::query()
+                ->where('company_id', $invoice->company_id)
+                ->where('ledger_id', $invoice->party_ledger_id)
+                ->where('bill_number', $invoice->invoice_number)
+                ->value('id');
+        }
+
+        return Bill::query()
+            ->where('company_id', $invoice->company_id)
+            ->where('ledger_id', $invoice->party_ledger_id)
+            ->whereHas('entry', fn ($query) => $query->where('voucher_id', $invoice->voucher_id))
+            ->value('id')
+            ?: Bill::query()
+                ->where('company_id', $invoice->company_id)
+                ->where('ledger_id', $invoice->party_ledger_id)
+                ->where('bill_number', $invoice->invoice_number)
+                ->value('id');
+    }
+
+    private function resolvePaymentLineBillId(Company $company, mixed $line): ?int
+    {
+        $billId = (int) ($line->bill_id ?? 0);
+        if ($billId > 0 && Bill::query()->where('company_id', $company->id)->whereKey($billId)->exists()) {
+            return $billId;
+        }
+
+        $reference = trim((string) ($line->reference ?? ''));
+        if ($reference === '') {
+            return null;
+        }
+
+        return Bill::query()
+            ->where('company_id', $company->id)
+            ->where('ledger_id', $line->supplier_ledger_id)
+            ->where('bill_number', $reference)
+            ->value('id');
     }
 }

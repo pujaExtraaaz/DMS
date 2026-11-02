@@ -10,7 +10,7 @@ class VerifyTallyConnectorToken
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $expected = (string) config('services.tally.connector_token');
+        $expected = (string) config('tally_sync.connector_token', config('services.tally.connector_token'));
 
         if ($expected === '') {
             return response()->json([

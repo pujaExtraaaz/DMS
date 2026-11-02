@@ -2,6 +2,7 @@
 
 namespace App\Domains\TallySync\Queue;
 
+use App\Domains\Tally\Models\TallySyncMapping;
 use App\Domains\TallySync\Templates\BooksVoucherTemplate;
 use App\Domains\TallySync\Templates\MasterTemplates;
 use Tally\Accounting\AccountNature;
@@ -13,7 +14,8 @@ use Tally\Models\Godown;
 use Tally\Models\Ledger;
 use Tally\Models\Product;
 use Tally\Models\ProductGroup;
-use Tally\Models\TallyLink;
+use App\Domains\TallySync\Templates\StockJournalTemplate;
+use Tally\Models\StockTransaction;
 use Tally\Models\Unit;
 use Tally\Models\Voucher;
 
@@ -25,6 +27,7 @@ class BooksXml
     {
         return match ($model::class) {
             Voucher::class => $this->voucher($model, $action),
+            StockTransaction::class => (new StockJournalTemplate)->render($model, $action),
             Ledger::class => $this->ledger($model, $action),
             AccountGroup::class => $this->group($model, $action),
             Product::class => $this->stockItem($model, $action),
@@ -201,19 +204,29 @@ class BooksXml
         );
     }
 
+    /**
+     * Prior Tally master name for Alter/rename (NAME attribute). Falls back to null so
+     * templates use the current model name on first Create.
+     */
     private function currentName(object $model, string $type): ?string
     {
         if (! method_exists($model, 'getKey')) {
             return null;
         }
 
-        return TallyLink::query()
-            ->where('linkable_type', $model::class)
-            ->where('linkable_id', $model->getKey())
+        $mapped = TallySyncMapping::query()
+            ->where('entity_type', $model::class)
+            ->where('entity_id', $model->getKey())
             ->where('tally_type', $type)
-            ->value('remote_id')
-            ? null
-            : null;
+            ->value('tally_name');
+
+        if (! is_string($mapped)) {
+            return null;
+        }
+
+        $mapped = trim($mapped);
+
+        return $mapped !== '' ? $mapped : null;
     }
 
     private function primaryGroup(string $name): bool

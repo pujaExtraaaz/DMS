@@ -500,9 +500,9 @@
         </p>
 
         <div class="quick" style="margin-bottom:14px">
-          <a href="https://dms.extraaaz.com/downloads/tally-connector.zip"><strong>Download ZIP</strong><span>tally-connector.zip</span></a>
+          <a href="https://dms.extraaaz.com/tally-connector/download"><strong>Download ZIP</strong><span>tally-connector.zip</span></a>
           <a href="https://dms.extraaaz.com/tally/queue"><strong>Open Queue</strong><span>See Pending / Sent status</span></a>
-          <a href="https://nodejs.org/"><strong>Node.js 18+</strong><span>Required on the Tally PC</span></a>
+          <a href="https://dms.extraaaz.com/guide"><strong>In-app Guide</strong><span>Module 11 · Tally Connector</span></a>
         </div>
 
         <article>
@@ -511,7 +511,7 @@
             <div class="box howto">
               <h4>A. Prepare Tally</h4>
               <ol>
-                <li>Open TallyPrime / Tally ERP 9.</li>
+                <li>Open TallyPrime.</li>
                 <li>Load the company you sync with DMS.</li>
                 <li>Enable Tally as HTTP/XML server (port usually <code>9000</code>).</li>
                 <li>Leave Tally open while the connector runs.</li>
@@ -522,31 +522,42 @@
               <ol>
                 <li>Download <code>tally-connector.zip</code> from DMS → Tally Queue → <strong>Download Connector</strong>.</li>
                 <li>Unzip to a folder, e.g. <code>C:\DMS-Tally-Connector</code>.</li>
-                <li>Install <a href="https://nodejs.org/" target="_blank" rel="noopener">Node.js 18+ LTS</a> if not already installed.</li>
-                <li>Double-click <code>start.bat</code>.</li>
+                <li>Edit <code>config.json</code> next to <code>tally_connector.exe</code> (see below).</li>
+                <li>Double-click <code>tally_connector.exe</code>. No Node.js install is required.</li>
               </ol>
             </div>
           </div>
 
           <div class="box howto" style="margin-top:12px">
-            <h4>C. Fill config.json (first run opens Notepad)</h4>
+            <h4>C. Fill config.json</h4>
             <ol>
               <li><code>dms_url</code> → <code>https://dms.extraaaz.com</code></li>
               <li><code>connector_token</code> → token from your DMS admin (<code>TALLY_CONNECTOR_TOKEN</code> in server <code>.env</code>)</li>
               <li><code>tally_url</code> → <code>http://127.0.0.1:9000</code> (change port if your Tally uses another)</li>
               <li><code>company</code> → exact company name as shown in Tally (optional but recommended)</li>
-              <li><code>poll_seconds</code> → how often to check DMS (default <code>15</code>)</li>
+              <li><code>poll_seconds</code> → how often to check DMS (default <code>8</code>)</li>
             </ol>
-            <p class="tip" style="margin-bottom:0">Save the file, then run <code>start.bat</code> again. Keep the black window open.</p>
+            <p class="tip" style="margin-bottom:0">Save the file, then run <code>tally_connector.exe</code> again. Keep the window open (or use the scheduled task below).</p>
+          </div>
+
+          <div class="box" style="margin-top:12px">
+            <h4>What syncs (when <code>TALLY_SYNC_ENABLED=true</code>)</h4>
+            <ul>
+              <li><strong>Masters</strong> — stock items, party ledgers, units, godowns.</li>
+              <li><strong>Sales / purchase</strong> — invoices, credit notes, purchase orders, sales orders, quotations, receipt notes (GRN).</li>
+              <li><strong>Money</strong> — receipts/payments; cleared standalone cheques as Receipt/Payment.</li>
+              <li><strong>Stock / cost</strong> — Books stock journals (transfer/adjustment), freight and landed-cost journals.</li>
+              <li><strong>Inbound</strong> — Tally Receipt Note → Books goods receipt (not a cash Receipt). Sales/Purchase Orders and Quotations stay DMS-owned.</li>
+            </ul>
           </div>
 
           <div class="grid2" style="margin-top:12px">
             <div class="box">
               <h4>D. Verify it works</h4>
               <ol>
-                <li>In DMS, post/issue an invoice (or payment).</li>
+                <li>In DMS, post/issue an invoice, approve a sales order, or post a GRN.</li>
                 <li>Open <strong>Tally Queue</strong> — item should be <strong>Pending</strong>.</li>
-                <li>Connector log should show: <code>#12 invoice ... SENT</code></li>
+                <li>Connector log should show the row as <code>SENT</code>.</li>
                 <li>Queue status becomes <strong>Sent</strong>.</li>
                 <li>Check the voucher inside Tally.</li>
               </ol>
@@ -557,7 +568,7 @@
                 <li>Right-click PowerShell → Run as Administrator.</li>
                 <li><code>cd C:\DMS-Tally-Connector</code></li>
                 <li><code>Set-ExecutionPolicy Bypass -Scope Process -Force</code></li>
-                <li><code>.\install-windows-task.ps1</code></li>
+                <li><code>.\install-task.ps1</code></li>
               </ol>
               <p style="margin:8px 0 0;color:var(--muted);font-size:.88rem">Creates scheduled task <code>DMS-Tally-Connector</code>.</p>
             </div>
@@ -570,7 +581,7 @@
               <li><strong>Cannot reach DMS</strong> — check internet / <code>dms_url</code>.</li>
               <li><strong>Tally FAILED</strong> — Tally not open, wrong port, or ledger/stock names don’t match Tally masters.</li>
               <li><strong>Items stay Skipped</strong> — ask admin to set <code>TALLY_USE_CONNECTOR=true</code>, then Retry on the queue row.</li>
-              <li><strong>Node not found</strong> — install Node.js LTS and reopen <code>start.bat</code>.</li>
+              <li><strong>EXE won’t start</strong> — ensure the published <code>tally_connector.exe</code> is in the unzipped folder and Windows Defender is not blocking it.</li>
             </ul>
           </div>
         </article>

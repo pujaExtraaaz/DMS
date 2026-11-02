@@ -17,6 +17,7 @@ class BranchOptionalNameAndCodeTest extends TestCase
     use RefreshDatabase;
 
     protected User $adminUser;
+
     protected Company $company;
 
     protected function setUp(): void
@@ -49,29 +50,25 @@ class BranchOptionalNameAndCodeTest extends TestCase
         ]);
     }
 
-    public function test_branch_form_ui_has_optional_name_and_code_and_required_company(): void
+    public function test_branch_form_does_not_show_code_and_requires_company(): void
     {
         $response = $this->actingAs($this->adminUser)
             ->get(route('organization.branches.create'));
 
         $response->assertOk();
 
-        // Company label has the required asterisk
         $content = $response->getContent();
         $this->assertMatchesRegularExpression('/Company\s*<span class="text-red-500">\*<\/span>/', $content);
-
-        // Name and Code labels must not have the required asterisk
         $this->assertDoesNotMatchRegularExpression('/Name\s*<span class="text-red-500">\*<\/span>/', $content);
-        $this->assertDoesNotMatchRegularExpression('/Code\s*<span class="text-red-500">\*<\/span>/', $content);
+        $response->assertDontSee('name="code"', false);
     }
 
-    public function test_branch_can_be_created_with_name_and_code_both_blank(): void
+    public function test_branch_can_be_created_with_blank_name_and_auto_code(): void
     {
         $response = $this->actingAs($this->adminUser)
             ->post(route('organization.branches.store'), [
                 'company_id' => $this->company->id,
                 'name' => '',
-                'code' => '',
                 'is_active' => '1',
             ]);
 
@@ -80,40 +77,17 @@ class BranchOptionalNameAndCodeTest extends TestCase
         $branch = Branch::latest('id')->firstOrFail();
         $this->assertSame($this->company->id, $branch->company_id);
         $this->assertNull($branch->getRawOriginal('name'));
-        $this->assertNull($branch->getRawOriginal('code'));
+        $this->assertNotNull($branch->getRawOriginal('code'));
+        $this->assertStringStartsWith('BRN-'.$this->company->id.'-', (string) $branch->getRawOriginal('code'));
         $this->assertSame('Unnamed Branch', $branch->name);
-        $this->assertSame('—', $branch->display_code);
     }
 
-    public function test_multiple_branches_can_be_created_with_blank_codes_under_same_company(): void
-    {
-        $branch1 = Branch::create([
-            'company_id' => $this->company->id,
-            'name' => 'Branch One',
-            'code' => null,
-            'is_active' => true,
-        ]);
-
-        $branch2 = Branch::create([
-            'company_id' => $this->company->id,
-            'name' => 'Branch Two',
-            'code' => null,
-            'is_active' => true,
-        ]);
-
-        $this->assertDatabaseHas('branches', ['id' => $branch1->id, 'name' => 'Branch One']);
-        $this->assertDatabaseHas('branches', ['id' => $branch2->id, 'name' => 'Branch Two']);
-        $this->assertNull($branch1->fresh()->getRawOriginal('code'));
-        $this->assertNull($branch2->fresh()->getRawOriginal('code'));
-    }
-
-    public function test_branch_can_be_created_with_only_name(): void
+    public function test_branch_can_be_created_with_only_name_and_auto_code(): void
     {
         $response = $this->actingAs($this->adminUser)
             ->post(route('organization.branches.store'), [
                 'company_id' => $this->company->id,
                 'name' => 'North Distribution Branch',
-                'code' => '',
                 'is_active' => '1',
             ]);
 
@@ -121,50 +95,11 @@ class BranchOptionalNameAndCodeTest extends TestCase
 
         $branch = Branch::where('company_id', $this->company->id)->latest('id')->firstOrFail();
         $this->assertSame('North Distribution Branch', $branch->getRawOriginal('name'));
-        $this->assertNull($branch->getRawOriginal('code'));
-        $this->assertSame('North Distribution Branch', $branch->name);
-        $this->assertSame('—', $branch->display_code);
+        $this->assertNotNull($branch->getRawOriginal('code'));
+        $this->assertStringStartsWith('BRN-'.$this->company->id.'-', (string) $branch->getRawOriginal('code'));
     }
 
-    public function test_branch_can_be_created_with_only_code(): void
-    {
-        $response = $this->actingAs($this->adminUser)
-            ->post(route('organization.branches.store'), [
-                'company_id' => $this->company->id,
-                'name' => '',
-                'code' => 'BR-ONLY-CODE-01',
-                'is_active' => '1',
-            ]);
-
-        $response->assertRedirect(route('organization.branches.index'));
-
-        $branch = Branch::where('company_id', $this->company->id)->latest('id')->firstOrFail();
-        $this->assertNull($branch->getRawOriginal('name'));
-        $this->assertSame('BR-ONLY-CODE-01', $branch->getRawOriginal('code'));
-        $this->assertSame('Unnamed Branch', $branch->name);
-        $this->assertSame('BR-ONLY-CODE-01', $branch->code);
-    }
-
-    public function test_branch_can_be_created_with_both_fields_populated(): void
-    {
-        $response = $this->actingAs($this->adminUser)
-            ->post(route('organization.branches.store'), [
-                'company_id' => $this->company->id,
-                'name' => 'South Zone Branch',
-                'code' => 'SZ-001',
-                'state' => 'Maharashtra',
-                'is_active' => '1',
-            ]);
-
-        $response->assertRedirect(route('organization.branches.index'));
-
-        $branch = Branch::where('company_id', $this->company->id)->latest('id')->firstOrFail();
-        $this->assertSame('South Zone Branch', $branch->getRawOriginal('name'));
-        $this->assertSame('SZ-001', $branch->getRawOriginal('code'));
-        $this->assertSame('Maharashtra', $branch->state);
-    }
-
-    public function test_existing_branches_can_be_edited_without_losing_saved_values(): void
+    public function test_existing_branch_code_is_preserved_on_edit(): void
     {
         $branch = Branch::create([
             'company_id' => $this->company->id,
@@ -174,12 +109,10 @@ class BranchOptionalNameAndCodeTest extends TestCase
             'is_active' => true,
         ]);
 
-        // Edit with updated name, preserving code
         $response = $this->actingAs($this->adminUser)
             ->put(route('organization.branches.update', $branch), [
                 'company_id' => $this->company->id,
                 'name' => 'Updated Branch Name',
-                'code' => 'ORIG-BR-01',
                 'phone' => '9876543210',
                 'is_active' => '1',
             ]);
@@ -188,21 +121,6 @@ class BranchOptionalNameAndCodeTest extends TestCase
         $branch->refresh();
         $this->assertSame('Updated Branch Name', $branch->getRawOriginal('name'));
         $this->assertSame('ORIG-BR-01', $branch->getRawOriginal('code'));
-
-        // Edit clearing code
-        $response2 = $this->actingAs($this->adminUser)
-            ->put(route('organization.branches.update', $branch), [
-                'company_id' => $this->company->id,
-                'name' => 'Updated Branch Name',
-                'code' => '',
-                'phone' => '9876543210',
-                'is_active' => '1',
-            ]);
-
-        $response2->assertRedirect(route('organization.branches.index'));
-        $branch->refresh();
-        $this->assertSame('Updated Branch Name', $branch->getRawOriginal('name'));
-        $this->assertNull($branch->getRawOriginal('code'));
     }
 
     public function test_company_remains_mandatory(): void
@@ -211,34 +129,14 @@ class BranchOptionalNameAndCodeTest extends TestCase
             ->post(route('organization.branches.store'), [
                 'company_id' => '',
                 'name' => 'Branch With No Company',
-                'code' => 'BNC-01',
             ]);
 
         $response->assertSessionHasErrors(['company_id']);
     }
 
-    public function test_duplicate_non_blank_codes_within_same_company_are_still_rejected(): void
+    public function test_branch_index_displays_unnamed_branch_without_code_column(): void
     {
         Branch::create([
-            'company_id' => $this->company->id,
-            'name' => 'Branch Existing',
-            'code' => 'DUP-CODE-01',
-            'is_active' => true,
-        ]);
-
-        $response = $this->actingAs($this->adminUser)
-            ->post(route('organization.branches.store'), [
-                'company_id' => $this->company->id,
-                'name' => 'Branch Another',
-                'code' => 'DUP-CODE-01',
-            ]);
-
-        $response->assertSessionHasErrors(['code']);
-    }
-
-    public function test_branch_index_displays_unnamed_branch_and_em_dash_for_blank_fields(): void
-    {
-        $branch = Branch::create([
             'company_id' => $this->company->id,
             'name' => null,
             'code' => null,
@@ -250,7 +148,8 @@ class BranchOptionalNameAndCodeTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('Unnamed Branch');
-        $response->assertSee('—');
+        $response->assertDontSee('>Code</', false);
+        $response->assertDontSee('Search Branch Name, Code, City', false);
     }
 
     public function test_blank_values_do_not_break_relationships_and_warehouses(): void

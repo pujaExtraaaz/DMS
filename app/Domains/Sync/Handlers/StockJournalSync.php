@@ -13,7 +13,9 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Tally\Accounting\VoucherStatus;
+use Tally\Inventory\StockTransactionService;
 use Tally\Inventory\StockTransactionType;
+use Tally\Models\Branch;
 use Tally\Models\Godown;
 use Tally\Models\Product as BooksProduct;
 use Tally\Models\StockTransaction;
@@ -26,6 +28,7 @@ class StockJournalSync
     public function __construct(
         private readonly ProductSync $products,
         private readonly WarehouseSync $warehouses,
+        private readonly StockTransactionService $stock,
     ) {}
 
     public function sync(Model $model): void
@@ -66,6 +69,70 @@ class StockJournalSync
 
         $this->warehouses->push($adjustment->warehouse);
         $godownId = SyncLinks::acctId(WarehouseSync::KEY, $adjustment->warehouse) ?: BooksCompany::defaultGodown($company, $organizationId);
+        $wantPost = in_array($adjustment->status, ['posted', 'completed'], true);
+
+        // Posted DMS adjustments must become Posted Books stock journals so BooksTallyObserver can enqueue Tally XML.
+        if ($wantPost) {
+            if ($books) {
+                $books->lines()->delete();
+                $books->delete();
+                SyncLinks::forget(self::KEY, $adjustment);
+                $books = null;
+            }
+
+            $lines = [];
+            foreach ($adjustment->items as $item) {
+                if (! $item->product) {
+                    continue;
+                }
+                $this->products->push($item->product);
+                $productId = SyncLinks::acctId(ProductSync::KEY, $item->product);
+                if (! $productId) {
+                    continue;
+                }
+                $qty = (float) $item->quantity;
+                if (abs($qty) < 0.0001) {
+                    continue;
+                }
+                $lines[] = [
+                    'product_id' => $productId,
+                    'godown_id' => $godownId,
+                    'quantity' => number_format(abs($qty), 4, '.', ''),
+                    'rate' => '0.00',
+                    'direction' => $qty < 0 ? 'decrease' : 'increase',
+                ];
+            }
+            if ($lines === []) {
+                return;
+            }
+
+            $branch = Branch::query()->find($branchId) ?: $company->branches()->orderBy('id')->first();
+            $user = User::query()->find($adjustment->created_by) ?: User::query()->orderBy('id')->first();
+            if (! $branch || ! $user) {
+                throw new \RuntimeException('Stock journal '.$adjustment->adjustment_no.' has no books branch or user.');
+            }
+
+            try {
+                $txn = $this->stock->save(
+                    $company,
+                    $branch,
+                    $year,
+                    $user,
+                    StockTransactionType::Adjustment,
+                    [
+                        'transaction_date' => $date,
+                        'narration' => trim(($adjustment->reason ? $adjustment->reason.'. ' : '').(string) $adjustment->notes),
+                        'lines' => $lines,
+                    ],
+                );
+                SyncLinks::store(self::KEY, $adjustment, $txn);
+            } catch (\Throwable $e) {
+                SyncFailureLogger::write(self::KEY, 'dms_to_books', $adjustment, $e);
+                throw $e;
+            }
+
+            return;
+        }
 
         $attributes = [
             'company_id' => $company->id,

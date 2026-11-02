@@ -81,6 +81,7 @@ class CustomerSync
             'company_id' => $organizationId,
             'customer_type_id' => $typeId,
             'name' => $party->ledger?->name ?: $party->legal_name ?: ('Party '.$party->id),
+            'trade_name' => $party->ledger?->mailing_name ?: $party->legal_name,
             'code' => $code,
             'party_type' => $partyType,
             'phone' => $party->phone,
@@ -88,8 +89,10 @@ class CustomerSync
             'address' => $party->billing_address,
             'gstin' => $party->gstin,
             'state' => $party->state,
+            'pincode' => $party->ledger?->pincode,
             'credit_limit' => $party->credit_limit,
             'credit_days' => $party->credit_days,
+            'interest_rate' => $party->ledger?->calculate_interest ? $party->ledger?->interest_rate : null,
             'is_active' => (bool) $party->is_active,
         ];
 
@@ -140,21 +143,55 @@ class CustomerSync
             }
         }
 
+        $customer->loadMissing(['addresses', 'contacts']);
+        $billing = $customer->defaultBillingAddress();
+        $address = $this->primaryAddressLine($customer, $billing);
+        $state = trim((string) ($billing?->state ?: $customer->state ?: '')) ?: null;
+        $pincode = trim((string) ($billing?->pincode ?: $customer->pincode ?: '')) ?: null;
+        $contact = trim((string) (
+            $customer->contacts->firstWhere('is_primary', true)?->name
+            ?: $customer->contacts->first()?->name
+            ?: ''
+        )) ?: null;
+        $interestRate = (float) ($customer->interest_rate ?? 0);
+
         return [
             'type' => $type,
             'name' => $name,
             'code' => $customer->code ? SyncNames::code($customer->code) : null,
-            'billing_address' => $customer->address,
-            'state' => $customer->state,
+            'mailing_name' => trim((string) ($customer->trade_name ?: $customer->name)) ?: null,
+            'billing_address' => $address !== '' ? $address : null,
+            'state' => $state,
+            'pincode' => $pincode,
             'phone' => $customer->phone,
             'email' => $customer->email,
+            'contact_person' => $contact,
             'gstin' => $gstin,
+            'pan' => $customer->pan,
             'gst_registration_type' => $gstin ? GstRegistrationType::Regular : GstRegistrationType::Unregistered,
             'credit_limit' => $customer->credit_limit,
             'credit_days' => $customer->credit_days,
+            'calculate_interest' => $interestRate > 0,
+            'interest_rate' => $interestRate > 0 ? $interestRate : null,
+            'maintain_bill_wise' => true,
             'is_active' => (bool) $customer->is_active,
             'country' => 'India',
             'branch_id' => BooksCompany::branchId((int) $customer->company_id, $customer->branch_id ? (int) $customer->branch_id : null),
         ];
+    }
+
+    private function primaryAddressLine(Customer $customer, mixed $billing): string
+    {
+        if ($billing) {
+            $line1 = trim((string) ($billing->address_line_1 ?? ''));
+            $line2 = trim((string) ($billing->address_line_2 ?? ''));
+            $city = trim((string) ($billing->city ?? ''));
+            $parts = array_values(array_filter([$line1, $line2, $city], fn ($part) => $part !== ''));
+            if ($parts !== []) {
+                return implode(', ', $parts);
+            }
+        }
+
+        return trim((string) ($customer->address ?: ''));
     }
 }

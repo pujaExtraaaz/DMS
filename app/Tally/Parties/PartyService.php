@@ -46,22 +46,37 @@ class PartyService
                 ]);
             }
 
+            $interestRate = ($data['interest_rate'] ?? null);
+            $interestRate = $interestRate !== '' && $interestRate !== null ? (float) $interestRate : null;
+            $calculateInterest = array_key_exists('calculate_interest', $data)
+                ? (bool) $data['calculate_interest']
+                : ($interestRate !== null && $interestRate > 0);
+
             $ledgerData = [
                 'company_id' => $company->id,
                 'account_group_id' => $group->id,
                 'name' => $data['name'],
+                'mailing_name' => ($data['mailing_name'] ?? null) ?: ($data['name'] ?? null),
                 'code' => ($data['code'] ?? null) ?: null,
                 'opening_balance' => $data['opening_balance'] ?? '0.00',
                 'opening_balance_type' => $data['opening_balance_type'] ?? OpeningBalanceType::Debit,
                 'address' => ($data['billing_address'] ?? null) ?: null,
+                'contact_person' => ($data['contact_person'] ?? null) ?: null,
                 'state' => ($data['state'] ?? null) ?: null,
-            'phone' => ($data['phone'] ?? null) ?: null,
-            'email' => ($data['email'] ?? null) ?: null,
-            'gstin' => ($data['gstin'] ?? null) ?: null,
-            'gst_registration_type' => ($data['gst_registration_type'] ?? null) ?: null,
-            'pan' => ($data['pan'] ?? null) ?: null,
+                'country' => ($data['country'] ?? null) ?: null,
+                'pincode' => ($data['pincode'] ?? null) ?: null,
+                'phone' => ($data['phone'] ?? null) ?: null,
+                'email' => ($data['email'] ?? null) ?: null,
+                'gstin' => ($data['gstin'] ?? null) ?: null,
+                'gst_registration_type' => ($data['gst_registration_type'] ?? null) ?: null,
+                'pan' => ($data['pan'] ?? null) ?: null,
                 'credit_limit' => ($data['credit_limit'] ?? null) !== '' && ($data['credit_limit'] ?? null) !== null ? $data['credit_limit'] : null,
                 'credit_days' => $this->creditDays($company, $data, $party),
+                'maintain_bill_wise' => array_key_exists('maintain_bill_wise', $data)
+                    ? (bool) $data['maintain_bill_wise']
+                    : true,
+                'calculate_interest' => $calculateInterest,
+                'interest_rate' => $calculateInterest ? ($interestRate ?? 0) : null,
                 'payment_term_id' => ($data['payment_term_id'] ?? null) ?: null,
                 'is_active' => (bool) ($data['is_active'] ?? true),
                 'is_system' => false,

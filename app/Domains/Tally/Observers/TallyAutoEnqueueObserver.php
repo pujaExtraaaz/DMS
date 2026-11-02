@@ -5,12 +5,15 @@ namespace App\Domains\Tally\Observers;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Order\Models\Order;
 use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
+use App\Domains\Purchasing\Models\PurchaseInward;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Sales\Models\Invoice;
+use App\Domains\Sales\Models\Quotation;
 use App\Domains\Tally\Services\TallyExportService;
 use App\Domains\TallySync\Support\SyncGate;
 use Illuminate\Database\Eloquent\Model;
@@ -85,6 +88,18 @@ class TallyAutoEnqueueObserver
                 return;
             }
 
+            if ($fresh instanceof Order && $fresh->status !== 'approved') {
+                return;
+            }
+
+            if ($fresh instanceof Quotation && ! in_array($fresh->status, ['sent', 'accepted'], true)) {
+                return;
+            }
+
+            if ($fresh instanceof PurchaseInward && ! in_array($fresh->status, ['posted', 'completed', 'received'], true)) {
+                return;
+            }
+
             if (! $created && ! $statusChanged) {
                 return;
             }
@@ -113,7 +128,10 @@ class TallyAutoEnqueueObserver
             $model instanceof Payment ||
             $model instanceof CreditNote ||
             $model instanceof PurchaseInvoice ||
-            $model instanceof PurchaseOrder
+            $model instanceof PurchaseOrder ||
+            $model instanceof Order ||
+            $model instanceof Quotation ||
+            $model instanceof PurchaseInward
         )) {
             return;
         }

@@ -29,12 +29,12 @@ class BranchController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'code', 'city']);
+        $this->applySearch($query, $request->input('search'), ['name', 'city']);
 
         $sortData = $this->applySorting(
             $query,
             $request,
-            ['name', 'code', 'is_active', 'created_at'],
+            ['name', 'is_active', 'created_at'],
             defaultSort: 'name',
             defaultDirection: 'asc'
         );
@@ -149,14 +149,6 @@ class BranchController extends Controller
         $data = $request->validate([
             'company_id' => 'required|exists:companies,id',
             'name' => 'nullable|string|max:255',
-            'code' => [
-                'nullable',
-                'string',
-                'max:30',
-                \Illuminate\Validation\Rule::unique('branches', 'code')
-                    ->where(fn ($query) => $query->where('company_id', $request->company_id))
-                    ->ignore($branch?->id),
-            ],
             'address' => 'nullable|string',
             'state' => 'nullable|string|max:100',
             'pincode' => 'nullable|string|max:12',
@@ -165,8 +157,14 @@ class BranchController extends Controller
             'is_active' => 'boolean',
         ]);
         $data['name'] = filled($data['name'] ?? null) ? trim((string) $data['name']) : null;
-        $data['code'] = filled($data['code'] ?? null) ? trim((string) $data['code']) : null;
         $data['is_active'] = $request->boolean('is_active');
+
+        // Code is not shown on the form — keep existing on edit, auto-generate on create.
+        if ($branch && filled($branch->getRawOriginal('code'))) {
+            $data['code'] = $branch->getRawOriginal('code');
+        } else {
+            $data['code'] = \App\Support\CodeGenerator::forBranch((int) $data['company_id']);
+        }
 
         return $data;
     }

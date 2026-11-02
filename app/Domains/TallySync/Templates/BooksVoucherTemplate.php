@@ -147,6 +147,8 @@ class BooksVoucherTemplate
             'gst_registration_type' => $payload['gst_registration_type'] ?? null,
             'is_optional' => (bool) ($payload['is_optional'] ?? false),
             'is_post_dated' => (bool) ($payload['is_post_dated'] ?? false),
+            'is_memo' => (bool) ($payload['is_memo'] ?? false),
+            'reverses_on' => $payload['reverses_on'] ?? null,
             'inventory' => (string) ($payload['inventory'] ?? ''),
             'is_invoice' => (bool) ($payload['is_invoice'] ?? in_array($type, ['sales', 'purchase'], true)),
         ]);
@@ -159,6 +161,11 @@ class BooksVoucherTemplate
     private function wrap(string $type, string $number, string $date, string $remoteId, array $lines, string $action, array $extra): string
     {
         $tallyName = self::TALLY_VOUCHER_NAMES[$type] ?? 'Journal';
+        if (! empty($extra['is_memo']) && in_array($type, ['journal', 'adjustment', 'transfer'], true)) {
+            $tallyName = 'Memorandum';
+        } elseif (! empty($extra['reverses_on']) && in_array($type, ['journal', 'adjustment', 'transfer'], true)) {
+            $tallyName = 'Reversing Journal';
+        }
         $body = XmlHelpers::voucherBody(
             $remoteId,
             $tallyName,

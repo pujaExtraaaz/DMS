@@ -160,11 +160,13 @@ class TallyExportBuilder
             'stock_items' => ['StockItem', array_merge($common, [
                 'Parent', 'BaseUnits', 'Description', 'OpeningBalance', 'OpeningRate', 'OpeningValue',
                 'StandardCost', 'StandardPrice', 'GSTTypeOfSupply', 'IsBatchWiseOn',
+                'GSTApplicable', 'GSTDetails', 'HSNCode', 'BatchAllocations',
             ])],
             'vouchers' => ['Voucher', [
                 'Date', 'EffectiveDate', 'VoucherTypeName', 'VoucherNumber', 'Reference', 'ReferenceDate',
                 'PartyLedgerName', 'PartyGSTIN', 'PlaceOfSupply', 'Narration', 'IsInvoice', 'IsOptional',
                 'IsPostDated', 'IsMemo', 'GUID', 'AlterID', 'MasterID', 'AllLedgerEntries', 'AllInventoryEntries',
+                'BillAllocations',
             ]],
             default => ['Ledger', $common],
         };

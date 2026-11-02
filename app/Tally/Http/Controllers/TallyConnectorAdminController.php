@@ -4,6 +4,7 @@ namespace Tally\Http\Controllers;
 
 use App\Domains\Tally\Models\TallySyncQueue;
 use App\Domains\TallySync\Support\ConnectorStatus;
+use App\Domains\TallySync\Support\SyncCoverage;
 use App\Domains\TallySync\Support\SyncGate;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Schema;
@@ -16,12 +17,26 @@ class TallyConnectorAdminController extends Controller
         $status = ConnectorStatus::snapshot();
         $recent = collect();
         $conflicts = collect();
+        $queueCounts = [
+            'pending' => 0,
+            'sent' => 0,
+            'failed' => 0,
+            'skipped' => 0,
+        ];
 
         if (Schema::hasTable('tally_sync_queues')) {
             $recent = TallySyncQueue::query()
                 ->latest('id')
-                ->limit(25)
+                ->limit(40)
                 ->get(['id', 'document_type', 'document_id', 'status', 'attempts', 'last_error', 'created_at', 'sent_at']);
+
+            $rawCounts = TallySyncQueue::query()
+                ->selectRaw('status, COUNT(*) as aggregate')
+                ->groupBy('status')
+                ->pluck('aggregate', 'status');
+            foreach ($queueCounts as $key => $_) {
+                $queueCounts[$key] = (int) ($rawCounts[$key] ?? 0);
+            }
         }
 
         if (Schema::hasTable('tally_sync_conflicts')) {
@@ -37,6 +52,8 @@ class TallyConnectorAdminController extends Controller
             $reports = \Illuminate\Support\Facades\DB::table('tally_report_snapshots')->orderBy('title')->get();
         }
 
+        $coverage = SyncCoverage::rows();
+
         return view('reporting.tally-connector', [
             'status' => $status,
             'recent' => $recent,
@@ -44,6 +61,12 @@ class TallyConnectorAdminController extends Controller
             'reports' => $reports,
             'syncEnabled' => SyncGate::enabled(),
             'exeReady' => is_file(base_path('tools/tally-connector/publish/tally_connector.exe')),
+            'coverage' => $coverage,
+            'coverageOutbound' => collect($coverage)->where('direction', 'outbound')->values(),
+            'coverageInbound' => collect($coverage)->where('direction', 'inbound')->values(),
+            'coverageSkipped' => collect($coverage)->where('direction', 'skip')->values(),
+            'queueCounts' => $queueCounts,
+            'queueLabels' => SyncCoverage::queueTypeLabels(),
         ]);
     }
 

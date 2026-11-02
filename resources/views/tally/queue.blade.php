@@ -3,7 +3,7 @@
 @section('content')
 <x-ui.page-header title="Tally Sync Queue" description="Pending XML vouchers wait for the office Tally Connector bridge">
 <x-slot name="actions">
-<a href="{{ asset('downloads/tally-connector.zip') }}" class="inline-flex items-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-700">Download Connector</a>
+<a href="{{ route('tally-connector.download') }}" class="inline-flex items-center rounded-lg bg-teal-600 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-700">Download Connector</a>
 <form method="GET" class="flex gap-2">
 <select name="status" class="rounded-lg border-gray-300 text-sm">
 <option value="">All</option>
@@ -18,15 +18,13 @@
     <h3 class="text-sm font-semibold text-slate-900 mb-2">How to use the Connector ZIP</h3>
     <ol class="list-decimal list-inside text-sm text-slate-600 space-y-1.5">
         <li>Click <strong>Download Connector</strong> and unzip on the Windows PC where Tally is installed (not on the web server).</li>
-        <li>Install <a class="text-indigo-600 underline" href="https://nodejs.org/" target="_blank" rel="noopener">Node.js 18+ LTS</a> if needed.</li>
-        <li>Open <code class="bg-slate-100 px-1 rounded">SETUP-GUIDE.html</code> inside the ZIP for the full walkthrough (or read <code class="bg-slate-100 px-1 rounded">README.txt</code>).</li>
-        <li>Run <code class="bg-slate-100 px-1 rounded">start.bat</code> → fill <code class="bg-slate-100 px-1 rounded">config.json</code> with DMS URL, connector token, and <code class="bg-slate-100 px-1 rounded">http://127.0.0.1:9000</code>.</li>
-        <li>Keep Tally open (company loaded, HTTP port 9000). Leave the connector window running.</li>
-        <li>Post an invoice in DMS → watch this queue move from <strong>Pending</strong> → <strong>Sent</strong>.</li>
+        <li>Edit <code class="bg-slate-100 px-1 rounded">config.json</code> next to <code class="bg-slate-100 px-1 rounded">tally_connector.exe</code> (<code>dms_url</code>, <code>connector_token</code>, <code>tally_url</code> usually <code class="bg-slate-100 px-1 rounded">http://127.0.0.1:9000</code>, optional <code>company</code>, <code>poll_seconds</code> default 8).</li>
+        <li>Keep TallyPrime open (company loaded, HTTP/XML port enabled). Run <code class="bg-slate-100 px-1 rounded">tally_connector.exe</code> and leave it running — or run <code class="bg-slate-100 px-1 rounded">install-task.ps1</code> once as Administrator for logon auto-start.</li>
+        <li>Post or approve a document in DMS (invoice, payment, PO, sales order, quotation, GRN, stock journal, …) → this queue moves <strong>Pending</strong> → <strong>Sent</strong>.</li>
     </ol>
     <p class="mt-3 text-xs text-slate-500">Also documented in Product Guide → section <a class="text-indigo-600 underline" href="{{ url('/docs/CLIENT_REQUIREMENTS.html#tally-connector') }}" target="_blank">11. Tally Connector ZIP</a>.</p>
-    @if(config('services.tally.use_connector'))
-        <p class="mt-2 text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">Connector mode is <strong>ON</strong>. Queue items stay Pending until the office bridge sends them to Tally.</p>
+    @if(config('tally_sync.use_connector', config('services.tally.use_connector', true)))
+        <p class="mt-2 text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">Connector mode is <strong>ON</strong>. Queue items stay Pending until the office C# bridge (<code>tally_connector.exe</code>) sends them to Tally.</p>
     @else
         <p class="mt-2 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">Connector mode is OFF. Ask admin to set <code>TALLY_USE_CONNECTOR=true</code> in server <code>.env</code>.</p>
     @endif

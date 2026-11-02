@@ -173,7 +173,7 @@
         <label class="tally-co-row">
             <span>Reverses on</span>
             <span>:</span>
-            <input class="input" type="date" name="reverses_on" value="{{ old('reverses_on', optional($voucher->reverses_on)->toDateString()) }}">
+            <input class="input" type="date" name="reverses_on" value="{{ old('reverses_on', optional($voucher->reverses_on)->toDateString() ?: (request()->boolean('reversing') ? now()->toDateString() : '')) }}">
         </label>
         <label class="tally-co-row">
             <span>Memorandum</span>

@@ -6,13 +6,17 @@ use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Warehouse;
+use App\Domains\Order\Models\Order;
 use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
+use App\Domains\Purchasing\Models\PurchaseInward;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Sales\Models\Invoice;
+use App\Domains\Sales\Models\Quotation;
 use App\Domains\Tally\Models\TallySyncQueue;
 use App\Domains\TallySync\Support\SyncGate;
+use App\Domains\TallySync\Templates\MasterTemplates;
 use App\Domains\TallySync\Templates\XmlEnvelope;
 use App\Domains\TallySync\Templates\XmlHelpers;
 use App\Jobs\ProcessTallySyncJob;
@@ -30,13 +34,25 @@ class TallyExportService
         'credit_note'      => CreditNote::class,
         'purchase_invoice' => PurchaseInvoice::class,
         'purchase_order'   => PurchaseOrder::class,
+        'sales_order'      => Order::class,
+        'quotation'        => Quotation::class,
+        'goods_receipt'    => PurchaseInward::class,
         'product'          => Product::class,
         'customer'         => Customer::class,
         'uom'              => Uom::class,
         'godown'           => Warehouse::class,
     ];
 
-    public const VOUCHER_TYPES = ['invoice', 'payment', 'credit_note', 'purchase_invoice', 'purchase_order'];
+    public const VOUCHER_TYPES = [
+        'invoice',
+        'payment',
+        'credit_note',
+        'purchase_invoice',
+        'purchase_order',
+        'sales_order',
+        'quotation',
+        'goods_receipt',
+    ];
 
     /** Queue document_type => tally_sync_mappings.tally_type for masters. */
     public const MASTER_TALLY_TYPES = [
@@ -90,6 +106,9 @@ class TallyExportService
             'credit_note'      => $this->buildCreditNoteXml($document),
             'purchase_invoice' => $this->buildPurchaseInvoiceXml($document),
             'purchase_order'   => $this->buildPurchaseOrderXml($document),
+            'sales_order'      => $this->buildSalesOrderXml($document),
+            'quotation'        => $this->buildQuotationXml($document),
+            'goods_receipt'    => $this->buildGoodsReceiptXml($document),
             'product'          => $this->buildStockItemXml($document),
             'customer'         => $this->buildLedgerXml($document),
             'uom'              => $this->buildUomXml($document),
@@ -153,6 +172,9 @@ class TallyExportService
             CreditNote::class      => 'credit_note',
             PurchaseInvoice::class => 'purchase_invoice',
             PurchaseOrder::class   => 'purchase_order',
+            Order::class           => 'sales_order',
+            Quotation::class       => 'quotation',
+            PurchaseInward::class  => 'goods_receipt',
         ];
 
         $type = $map[$document::class] ?? null;
@@ -161,7 +183,13 @@ class TallyExportService
         }
 
         $status = (string) ($document->status ?? '');
-        $postedStatuses = ['issued', 'posted', 'paid', 'partial', 'completed', 'approved'];
+        $postedStatuses = match ($type) {
+            'sales_order' => ['approved'],
+            'quotation' => ['sent', 'accepted'],
+            'goods_receipt' => ['posted', 'completed', 'received'],
+            'purchase_order' => ['approved'],
+            default => ['issued', 'posted', 'paid', 'partial', 'completed', 'approved'],
+        };
 
         if ($status !== '' && ! in_array($status, $postedStatuses, true)) {
             return null;
@@ -301,19 +329,38 @@ class TallyExportService
         }
 
         $party = match (true) {
-            $document instanceof PurchaseInvoice, $document instanceof PurchaseOrder => $document->supplier,
-            $document instanceof Invoice, $document instanceof Payment, $document instanceof CreditNote => $document->customer,
+            $document instanceof PurchaseInvoice,
+            $document instanceof PurchaseOrder,
+            $document instanceof PurchaseInward => $document->supplier,
+            $document instanceof Invoice,
+            $document instanceof Payment,
+            $document instanceof CreditNote,
+            $document instanceof Order,
+            $document instanceof Quotation => $document->customer,
             default => null,
         };
         if ($party) {
             $masters[] = ['customer', $party];
         }
 
-        if (($document instanceof PurchaseInvoice || $document instanceof PurchaseOrder) && $document->warehouse) {
+        if (
+            ($document instanceof PurchaseInvoice
+                || $document instanceof PurchaseOrder
+                || $document instanceof PurchaseInward
+                || $document instanceof Order)
+            && $document->warehouse
+        ) {
             $masters[] = ['godown', $document->warehouse];
         }
 
-        if ($document instanceof PurchaseInvoice || $document instanceof PurchaseOrder || $document instanceof Invoice) {
+        if (
+            $document instanceof PurchaseInvoice
+            || $document instanceof PurchaseOrder
+            || $document instanceof Invoice
+            || $document instanceof Order
+            || $document instanceof Quotation
+            || $document instanceof PurchaseInward
+        ) {
             $document->loadMissing(['items.product.baseUom', 'items.uom']);
 
             $units = $document->items->pluck('uom')
@@ -368,7 +415,7 @@ class TallyExportService
         $party = $this->partyName($invoice->customer, 'Customer');
         $voucherNo = $invoice->invoice_no;
         $godown = $this->godownName(null);
-        $salesLedger = (string) config('services.tally.sales_ledger');
+        $salesLedger = $this->tallyLedger('sales');
 
         $entries = [];
         $sum = 0.0;
@@ -398,6 +445,8 @@ class TallyExportService
         $partyEntry = $this->ledgerEntry($party, -$grandTotal, true, $this->billAllocation($voucherNo, 'New Ref', -$grandTotal));
         $sum -= $grandTotal;
 
+        $place = trim((string) ($invoice->delivery_state ?: ''));
+
         return $this->wrap('INVOICE', $this->voucherXml(
             'invoice',
             $invoice,
@@ -407,7 +456,13 @@ class TallyExportService
             $party,
             $partyEntry.implode('', $entries).$this->roundOffEntry($sum),
             isInvoice: true,
-            reference: $invoice->reference_no
+            reference: $invoice->reference_no,
+            extra: array_merge($this->partyGstExtras($invoice->customer), array_filter([
+                'narration' => $invoice->notes,
+                'basic_buyer_name' => $invoice->customer?->name,
+                'basic_buyer_address' => trim((string) ($invoice->billing_address ?: $invoice->shipping_address ?: '')),
+                'place_of_supply' => $place !== '' ? $place : null,
+            ], fn ($value) => $value !== null && $value !== ''))
         ));
     }
 
@@ -421,8 +476,8 @@ class TallyExportService
 
         $method = strtolower((string) $payment->method);
         $cashOrBank = $method === 'cash'
-            ? (string) config('services.tally.cash_ledger')
-            : (string) config('services.tally.bank_ledger');
+            ? $this->tallyLedger('cash')
+            : $this->tallyLedger('bank');
 
         $bill = $payment->invoice?->invoice_no
             ? $this->billAllocation($payment->invoice->invoice_no, 'Agst Ref', $amount)
@@ -439,7 +494,10 @@ class TallyExportService
             $voucherNo,
             $party,
             $body,
-            reference: $payment->reference_no
+            reference: $payment->reference_no,
+            extra: array_merge($this->partyGstExtras($payment->customer), array_filter([
+                'narration' => $payment->notes,
+            ], fn ($value) => $value !== null && $value !== ''))
         ));
     }
 
@@ -460,10 +518,15 @@ class TallyExportService
 
         $entries = [
             $this->ledgerEntry($party, $grandTotal, true, $bill, $tag),
-            $this->ledgerEntry((string) config('services.tally.sales_ledger'), -$subtotal, false, '', $tag),
+            $this->ledgerEntry($this->tallyLedger('sales'), -$subtotal, false, '', $tag),
         ];
         $sum = $grandTotal - $subtotal;
         $sum += $this->appendGstEntries($entries, round($tax / 2, 2), round($tax - round($tax / 2, 2), 2), 0.0, true, 'output', $tag);
+
+        $narration = trim(implode(' | ', array_filter([
+            $creditNote->reason,
+            $creditNote->notes,
+        ])));
 
         return $this->wrap('CREDIT_NOTE', $this->voucherXml(
             'credit_note',
@@ -473,7 +536,10 @@ class TallyExportService
             $voucherNo,
             $party,
             implode('', $entries).$this->roundOffEntry($sum, $tag),
-            reference: $creditNote->invoice?->invoice_no
+            reference: $creditNote->invoice?->invoice_no,
+            extra: array_merge($this->partyGstExtras($creditNote->customer), array_filter([
+                'narration' => $narration !== '' ? $narration : null,
+            ], fn ($value) => $value !== null && $value !== ''))
         ));
     }
 
@@ -489,7 +555,7 @@ class TallyExportService
         $sgst = round((float) $invoice->items->sum('sgst_amount'), 2);
         $igst = max(0.0, round((float) $invoice->tax_amount - $cgst - $sgst, 2));
         $purchaseLedger = $this->purchaseLedger($igst > 0);
-        $useBatches = (bool) config('services.tally.use_batches');
+        $useBatches = (bool) config('tally_sync.use_batches', config('services.tally.use_batches', false));
 
         $entries = [];
         $sum = 0.0;
@@ -507,7 +573,7 @@ class TallyExportService
                 -$amount,
                 $godown,
                 $purchaseLedger,
-                $useBatches && $item->batch_no ? $item->batch_no : 'Primary Batch'
+                ($useBatches || filled($item->batch_no)) && $item->batch_no ? $item->batch_no : 'Primary Batch'
             );
             $sum -= $amount;
         }
@@ -527,7 +593,12 @@ class TallyExportService
             $party,
             $partyEntry.implode('', $entries).$this->roundOffEntry($sum),
             isInvoice: true,
-            reference: $invoice->supplier_invoice_no
+            reference: $invoice->supplier_invoice_no,
+            extra: array_merge($this->partyGstExtras($invoice->supplier), array_filter([
+                'narration' => $invoice->notes,
+                'basic_buyer_name' => $invoice->supplier?->name,
+                'basic_buyer_address' => trim((string) ($invoice->billing_address ?: $invoice->shipping_address ?: '')),
+            ], fn ($value) => $value !== null && $value !== ''))
         ));
     }
 
@@ -550,6 +621,7 @@ class TallyExportService
             $qty = (float) $item->quantity;
             $rate = (float) $item->unit_cost;
             $amount = round($qty * $rate, 2);
+            $batch = filled($item->batch_no) ? (string) $item->batch_no : 'Primary Batch';
 
             $entries[] = $this->inventoryEntry(
                 $this->stockItemName($item->product),
@@ -558,16 +630,34 @@ class TallyExportService
                 $rate,
                 -$amount,
                 $godown,
-                $purchaseLedger
+                $purchaseLedger,
+                $batch
             );
             $sum -= $amount;
         }
 
         $sum += $this->appendGstEntries($entries, $cgst, $sgst, $igst, true, 'input');
 
+        // grand_total already includes freight_total — post freight as its own debit so the voucher nets.
+        $freightTotal = $order->is_freight_applicable ? round((float) ($order->freight_total ?? 0), 2) : 0.0;
+        if ($freightTotal > 0.009) {
+            $entries[] = $this->ledgerEntry($purchaseLedger, -$freightTotal, false);
+            $sum -= $freightTotal;
+        }
+
         $grandTotal = round((float) $order->grand_total, 2);
         $partyEntry = $this->ledgerEntry($party, $grandTotal, true);
         $sum += $grandTotal;
+
+        $narrationParts = array_values(array_filter([
+            'DMS Purchase Order '.$voucherNo,
+            $order->expected_date ? 'Expected: '.$order->expected_date->format('d-M-Y') : null,
+            $order->credit_days ? 'Credit: '.(int) $order->credit_days.' days' : null,
+            $order->due_date ? 'Due: '.$order->due_date->format('d-M-Y') : null,
+            $freightTotal > 0 ? 'Freight: '.number_format($freightTotal, 2, '.', '') : null,
+            $order->freight_notes ? 'Freight note: '.$order->freight_notes : null,
+            $order->notes,
+        ]));
 
         return $this->wrap('PURCHASE_ORDER', $this->voucherXml(
             'purchase_order',
@@ -576,7 +666,200 @@ class TallyExportService
             optional($order->po_date)->format('Ymd') ?? now()->format('Ymd'),
             $voucherNo,
             $party,
-            $partyEntry.implode('', $entries).$this->roundOffEntry($sum)
+            $partyEntry.implode('', $entries).$this->roundOffEntry($sum),
+            extra: array_merge($this->partyGstExtras($order->supplier), array_filter([
+                'narration' => implode(' | ', $narrationParts),
+                'reference_date' => $order->expected_date?->format('Y-m-d'),
+                'basic_buyer_address' => trim((string) ($order->shipping_address ?: $order->billing_address ?: '')),
+            ], fn ($value) => $value !== null && $value !== ''))
+        ));
+    }
+
+    public function buildSalesOrderXml(Order $order): string
+    {
+        $order->loadMissing(['customer', 'warehouse', 'items.product.baseUom', 'items.uom']);
+
+        $party = $this->partyName($order->customer, 'Customer');
+        $voucherNo = $order->order_no ?? ('SO-'.$order->id);
+        $godown = $this->godownName($order->warehouse);
+        $salesLedger = $this->tallyLedger('sales');
+        $tax = round((float) $order->tax_amount, 2);
+
+        $entries = [];
+        $sum = 0.0;
+
+        foreach ($order->items as $item) {
+            $qty = (float) $item->quantity;
+            $rate = (float) $item->unit_price;
+            $amount = round((float) ($item->line_total ?: ($qty * $rate)), 2);
+            $effectiveRate = $qty > 0 ? $amount / $qty : $rate;
+
+            $entries[] = $this->inventoryEntry(
+                $this->stockItemName($item->product),
+                $qty,
+                $this->unitName($item->uom, $item->product),
+                $effectiveRate,
+                $amount,
+                $godown,
+                $salesLedger
+            );
+            $sum += $amount;
+        }
+
+        $sum += $this->appendGstEntries($entries, round($tax / 2, 2), round($tax - round($tax / 2, 2), 2), 0.0, false, 'output');
+
+        $grandTotal = round((float) $order->grand_total, 2);
+        if ($grandTotal < 0.01) {
+            $grandTotal = round($sum, 2);
+        }
+        $partyEntry = $this->ledgerEntry($party, -$grandTotal, true);
+        $sum -= $grandTotal;
+
+        $narrationParts = array_values(array_filter([
+            'DMS Sales Order '.$voucherNo,
+            $order->due_date ? 'Due: '.$order->due_date->format('d-M-Y') : null,
+            $order->notes,
+        ]));
+
+        return $this->wrap('SALES_ORDER', $this->voucherXml(
+            'sales_order',
+            $order,
+            'Sales Order',
+            optional($order->order_date)->format('Ymd') ?? now()->format('Ymd'),
+            $voucherNo,
+            $party,
+            $partyEntry.implode('', $entries).$this->roundOffEntry($sum),
+            extra: array_merge($this->partyGstExtras($order->customer), array_filter([
+                'narration' => implode(' | ', $narrationParts),
+                'basic_buyer_name' => $order->customer?->name,
+                'basic_buyer_address' => trim((string) ($order->shipping_address ?: $order->billing_address ?: '')),
+            ], fn ($value) => $value !== null && $value !== ''))
+        ));
+    }
+
+    public function buildQuotationXml(Quotation $quotation): string
+    {
+        $quotation->loadMissing(['customer', 'items.product.baseUom', 'items.uom']);
+
+        $party = $this->partyName($quotation->customer, 'Customer');
+        $voucherNo = $quotation->quotation_no ?? ('QT-'.$quotation->id);
+        $godown = $this->godownName(null);
+        $salesLedger = $this->tallyLedger('sales');
+        $tax = round((float) $quotation->tax_amount, 2);
+
+        $entries = [];
+        $sum = 0.0;
+
+        foreach ($quotation->items as $item) {
+            $qty = (float) $item->quantity;
+            $rate = (float) $item->unit_price;
+            $amount = round((float) ($item->line_total ?: ($qty * $rate - (float) $item->discount_amount)), 2);
+            $effectiveRate = $qty > 0 ? $amount / $qty : $rate;
+
+            $entries[] = $this->inventoryEntry(
+                $this->stockItemName($item->product),
+                $qty,
+                $this->unitName($item->uom, $item->product),
+                $effectiveRate,
+                $amount,
+                $godown,
+                $salesLedger
+            );
+            $sum += $amount;
+        }
+
+        $sum += $this->appendGstEntries($entries, round($tax / 2, 2), round($tax - round($tax / 2, 2), 2), 0.0, false, 'output');
+
+        $grandTotal = round((float) $quotation->grand_total, 2);
+        if ($grandTotal < 0.01) {
+            $grandTotal = round($sum, 2);
+        }
+        $partyEntry = $this->ledgerEntry($party, -$grandTotal, true);
+        $sum -= $grandTotal;
+
+        $narrationParts = array_values(array_filter([
+            'DMS Quotation '.$voucherNo,
+            $quotation->valid_until ? 'Valid until: '.$quotation->valid_until->format('d-M-Y') : null,
+            $quotation->notes,
+        ]));
+
+        return $this->wrap('QUOTATION', $this->voucherXml(
+            'quotation',
+            $quotation,
+            'Quotation',
+            optional($quotation->quotation_date)->format('Ymd') ?? now()->format('Ymd'),
+            $voucherNo,
+            $party,
+            $partyEntry.implode('', $entries).$this->roundOffEntry($sum),
+            extra: array_merge($this->partyGstExtras($quotation->customer), array_filter([
+                'narration' => implode(' | ', $narrationParts),
+                'is_optional' => 'Yes',
+                'reference_date' => $quotation->valid_until?->format('Y-m-d'),
+                'basic_buyer_name' => $quotation->customer?->name,
+            ], fn ($value) => $value !== null && $value !== ''))
+        ));
+    }
+
+    public function buildGoodsReceiptXml(PurchaseInward $inward): string
+    {
+        $inward->loadMissing(['supplier', 'warehouse', 'purchaseOrder', 'items.product.baseUom', 'items.uom']);
+
+        $party = $this->partyName($inward->supplier, 'Supplier');
+        $voucherNo = $inward->inward_no ?? ('GRN-'.$inward->id);
+        $godown = $this->godownName($inward->warehouse);
+        $purchaseLedger = $this->tallyLedger('purchase');
+
+        $entries = [];
+        $sum = 0.0;
+
+        foreach ($inward->items as $item) {
+            $qty = (float) ($item->accepted_qty ?: $item->received_qty ?: 0);
+            if ($qty <= 0) {
+                continue;
+            }
+            $rate = (float) $item->unit_cost;
+            $amount = round($qty * $rate, 2);
+            $batch = filled($item->batch_no) ? (string) $item->batch_no : 'Primary Batch';
+
+            $entries[] = $this->inventoryEntry(
+                $this->stockItemName($item->product),
+                $qty,
+                $this->unitName($item->uom, $item->product),
+                $rate,
+                -$amount,
+                $godown,
+                $purchaseLedger,
+                $batch
+            );
+            $sum -= $amount;
+        }
+
+        $grandTotal = round(abs($sum), 2);
+        $partyEntry = $this->ledgerEntry($party, $grandTotal, true);
+        $sum += $grandTotal;
+
+        $poNo = $inward->purchaseOrder?->po_no;
+        $challan = trim((string) ($inward->supplier_challan_no ?: ''));
+        $narrationParts = array_values(array_filter([
+            'DMS Receipt Note '.$voucherNo,
+            $poNo ? 'PO: '.$poNo : null,
+            $challan !== '' ? 'Challan: '.$challan : null,
+            $inward->notes,
+        ]));
+
+        return $this->wrap('GOODS_RECEIPT', $this->voucherXml(
+            'goods_receipt',
+            $inward,
+            'Receipt Note',
+            optional($inward->inward_date)->format('Ymd') ?? now()->format('Ymd'),
+            $voucherNo,
+            $party,
+            $partyEntry.implode('', $entries).$this->roundOffEntry($sum),
+            reference: $poNo ?: ($challan !== '' ? $challan : null),
+            extra: array_merge($this->partyGstExtras($inward->supplier), array_filter([
+                'narration' => implode(' | ', $narrationParts),
+                'basic_buyer_name' => $inward->supplier?->name,
+            ], fn ($value) => $value !== null && $value !== ''))
         ));
     }
 
@@ -588,153 +871,202 @@ class TallyExportService
     // ─────────────────────────────────────────────────────────────
 
     public function buildStockItemXml(Product $product): string
-{
-    $product->loadMissing('baseUom');
+    {
+        $product->loadMissing(['baseUom', 'brand', 'category']);
 
-    $mapping = $this->mappingService->findForDms(
-        Product::class,
-        $product->id,
-        'stock_item'
-    );
+        $mapping = $this->mappingService->findForDms(Product::class, $product->id, 'stock_item');
+        $action = $mapping ? 'Alter' : 'Create';
+        $unit = $this->unitName($product->baseUom, null) ?: 'Nos';
+        $gst = (float) ($product->tax_rate ?? 0);
+        $supply = $this->tallySupplyType($product->supply_type);
+        $trackBatch = $product->isBatchTracked();
+        $partNo = trim((string) ($product->sku ?: $product->serial_no ?: ''));
+        $parent = trim((string) (
+            $product->category?->name
+            ?: $product->brand?->name
+            ?: 'Primary'
+        ));
+        $reorder = (float) ($product->reorder_level ?? 0);
+        $minStock = (float) ($product->min_stock ?? 0);
+        $purchase = (float) ($product->purchase_price ?? 0);
+        $selling = (float) ($product->selling_price ?? 0);
+        $qtyLabel = static function (float $qty) use ($unit): string {
+            if ($qty <= 0) {
+                return '';
+            }
 
-    $action  = $mapping ? 'Alter' : 'Create';
+            return rtrim(rtrim(number_format($qty, 4, '.', ''), '0'), '.').' '.$unit;
+        };
 
-    $name    = $this->xml($product->name);
-    $current = $this->xml($mapping?->tally_name ?: $product->name);
-    $uom     = $this->xml(
-        $this->unitName($product->baseUom, null) ?: 'Nos'
-    );
+        return app(MasterTemplates::class)->stockItem(
+            (string) $product->name,
+            $unit,
+            $action,
+            $mapping?->tally_name ?: $product->name,
+            $product->hsn_code,
+            $product->description,
+            $gst,
+            array_filter([
+                'PARENT' => $parent !== '' ? $parent : 'Primary',
+                'ADDITIONALNAME' => $partNo,
+                'PARTNO' => $partNo,
+                'GSTTYPEOFSUPPLY' => $supply,
+                'REORDERLEVEL' => $qtyLabel($reorder),
+                'MINORDERQTY' => $qtyLabel($minStock),
+                'ISBATCHWISEON' => $trackBatch ? 'Yes' : 'No',
+                'HASMFGDATE' => $trackBatch ? 'Yes' : 'No',
+                'ISPERISHABLEON' => $trackBatch ? 'Yes' : 'No',
+                'STANDARDCOST' => $purchase > 0 ? number_format($purchase, 2, '.', '') : '',
+                'STANDARDPRICE' => $selling > 0 ? number_format($selling, 2, '.', '') : '',
+            ], fn ($value) => $value !== null && $value !== ''),
+        );
+    }
 
-    $hsn = $this->xml($product->hsn_code ?? '');
-
-    $description = $this->xml($product->description ?? '');
-
-    $gst = (float) ($product->tax_rate ?? 0);
-
-    $cgst = number_format($gst / 2, 2, '.', '');
-    $sgst = number_format($gst / 2, 2, '.', '');
-    $igst = number_format($gst, 2, '.', '');
-
-    return $this->wrapMaster('PRODUCT', <<<XML
-<STOCKITEM NAME="{$current}" ACTION="{$action}">
-    <NAME>{$name}</NAME>
-    <BASEUNITS>{$uom}</BASEUNITS>
-
-    <GSTAPPLICABLE>~[~ Applicable</GSTAPPLICABLE>
-    <GSTTYPEOFSUPPLY>Goods</GSTTYPEOFSUPPLY>
-
-    <DESCRIPTION>{$description}</DESCRIPTION>
-
-    <GSTDETAILS.LIST>
-        <SRCOFGSTDETAILS>Specify Details Here</SRCOFGSTDETAILS>
-        <APPLICABLEFROM>20260401</APPLICABLEFROM>
-        <HSNCODE>{$hsn}</HSNCODE>
-        <TAXABILITY>Taxable</TAXABILITY>
-
-        <STATEWISEDETAILS.LIST>
-            <STATENAME>~[~ Any</STATENAME>
-
-            <RATEDETAILS.LIST>
-                <GSTRATEDUTYHEAD>CGST</GSTRATEDUTYHEAD>
-                <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
-                <GSTRATE>{$cgst}</GSTRATE>
-            </RATEDETAILS.LIST>
-
-            <RATEDETAILS.LIST>
-                <GSTRATEDUTYHEAD>SGST/UTGST</GSTRATEDUTYHEAD>
-                <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
-                <GSTRATE>{$sgst}</GSTRATE>
-            </RATEDETAILS.LIST>
-
-            <RATEDETAILS.LIST>
-                <GSTRATEDUTYHEAD>IGST</GSTRATEDUTYHEAD>
-                <GSTRATEVALUATIONTYPE>Based on Value</GSTRATEVALUATIONTYPE>
-                <GSTRATE>{$igst}</GSTRATE>
-            </RATEDETAILS.LIST>
-
-        </STATEWISEDETAILS.LIST>
-    </GSTDETAILS.LIST>
-
-    <HSNDETAILS.LIST>
-        <APPLICABLEFROM>20260401</APPLICABLEFROM>
-        <HSNCODE>{$hsn}</HSNCODE>
-        <HSN>{$description}</HSN>
-        <SRCOFHSNDETAILS>Specify Details Here</SRCOFHSNDETAILS>
-    </HSNDETAILS.LIST>
-
-</STOCKITEM>
-XML);
-}
+    protected function tallySupplyType(?string $supplyType): string
+    {
+        return match (strtolower(trim((string) $supplyType))) {
+            'services', 'service' => 'Services',
+            default => 'Goods',
+        };
+    }
 
     public function buildLedgerXml(Customer $customer): string
     {
         $mapping = $this->mappingService->findForDms(Customer::class, $customer->id, 'ledger');
-        $action  = $mapping ? 'Alter' : 'Create';
+        $action = $mapping ? 'Alter' : 'Create';
 
-        $name    = $this->xml($customer->name);
-        $current = $this->xml($mapping?->tally_name ?: $customer->name);
-        $gstin   = $this->xml($customer->gstin ?? '');
-        $address = $this->xml($customer->address ?? '');
-        $state   = $this->xml($customer->state ?? '');
+        $customer->loadMissing(['addresses', 'bankAccounts', 'contacts']);
 
-        // Determine the Tally parent group based on the DMS party_type
+        $billing = $customer->defaultBillingAddress();
+        $address = $this->customerPrimaryAddressLine($customer, $billing);
+        $state = trim((string) ($billing?->state ?: $customer->state ?: ''));
+        $pincode = trim((string) ($billing?->pincode ?: $customer->pincode ?: ''));
+        $mailing = trim((string) ($customer->trade_name ?: $customer->name ?: ''));
+        $contact = trim((string) (
+            $customer->contacts->firstWhere('is_primary', true)?->name
+            ?: $customer->contacts->first()?->name
+            ?: ''
+        ));
+        $bank = $customer->bankAccounts->firstWhere('is_primary', true)
+            ?? $customer->bankAccounts->first();
+
         $parent = match (true) {
-            $customer->isSupplier()      => 'Sundry Creditors',
+            $customer->isSupplier() && ! $customer->isCustomerParty() => 'Sundry Creditors',
+            $customer->isSupplier() && $customer->isBoth() => 'Sundry Creditors',
             $customer->isCustomerParty() => 'Sundry Debtors',
-            default                      => 'Sundry Debtors',
+            default => 'Sundry Debtors',
         };
 
-        return $this->wrapMaster('CUSTOMER', <<<XML
-<LEDGER NAME="{$current}" ACTION="{$action}">
- <NAME>{$name}</NAME>
- <PARENT>{$parent}</PARENT>
- <ISBILLWISEON>Yes</ISBILLWISEON>
- <GSTREGISTRATIONTYPE>Regular</GSTREGISTRATIONTYPE>
- <PARTYGSTIN>{$gstin}</PARTYGSTIN>
- <ADDRESS.LIST TYPE="String">
-  <ADDRESS>{$address}</ADDRESS>
- </ADDRESS.LIST>
- <STATENAME>{$state}</STATENAME>
- <ISCOSTCENTRESON>No</ISCOSTCENTRESON>
-</LEDGER>
-XML);
+        $gstin = trim((string) ($customer->gstin ?: ''));
+        $gstType = $gstin !== '' ? 'Regular' : 'Unregistered';
+        $creditDays = (int) ($customer->credit_days ?? 0);
+        $interestRate = (float) ($customer->interest_rate ?? 0);
+        $interestOn = $interestRate > 0;
+
+        return app(MasterTemplates::class)->ledger(
+            (string) $customer->name,
+            $parent,
+            $action,
+            $mapping?->tally_name ?: $customer->name,
+            $gstin !== '' ? $gstin : null,
+            $address !== '' ? $address : null,
+            $state !== '' ? $state : null,
+            array_filter([
+                'MAILINGNAME' => $mailing,
+                'PINCODE' => $pincode,
+                'LEDGERPHONE' => trim((string) ($customer->phone ?: '')),
+                'EMAIL' => trim((string) ($customer->email ?: '')),
+                'LEDGERCONTACT' => $contact,
+                'INCOMETAXNUMBER' => trim((string) ($customer->pan ?: '')),
+                'GSTREGISTRATIONTYPE' => $gstType,
+                'ISBILLWISEON' => 'Yes',
+                'ISCOSTCENTRESON' => 'No',
+                'CREDITLIMIT' => $customer->credit_limit !== null
+                    ? number_format((float) $customer->credit_limit, 2, '.', '')
+                    : '',
+                'BILLCREDITPERIOD' => $creditDays > 0 ? $creditDays.' Days' : '',
+                'ISINTERESTON' => $interestOn ? 'Yes' : 'No',
+                'INTERESTRATE' => $interestOn ? number_format($interestRate, 2, '.', '') : '',
+                'BANKNAME' => trim((string) ($bank?->bank_name ?: '')),
+                'ACCOUNTNUMBER' => trim((string) ($bank?->account_number ?: '')),
+                'IFSCODE' => trim((string) ($bank?->ifsc_code ?: '')),
+            ], fn ($value) => $value !== null && $value !== ''),
+        );
+    }
+
+    protected function customerPrimaryAddressLine(Customer $customer, mixed $billing): string
+    {
+        if ($billing) {
+            $line1 = trim((string) ($billing->address_line_1 ?? ''));
+            $line2 = trim((string) ($billing->address_line_2 ?? ''));
+            $city = trim((string) ($billing->city ?? ''));
+            $parts = array_values(array_filter([$line1, $line2, $city], fn ($part) => $part !== ''));
+            if ($parts !== []) {
+                return implode(', ', $parts);
+            }
+        }
+
+        return trim((string) ($customer->address ?: ''));
     }
 
     public function buildUomXml(Uom $uom): string
     {
         $mapping = $this->mappingService->findForDms(Uom::class, $uom->id, 'uom');
-        $action  = $mapping ? 'Alter' : 'Create';
+        $action = $mapping ? 'Alter' : 'Create';
+        $symbol = trim((string) ($uom->code ?: $uom->name));
+        $tallyName = $symbol !== '' ? $symbol : (string) $uom->name;
+        $uqc = strtoupper(trim((string) ($uom->code ?: '')));
+        if ($uqc !== '' && ! preg_match('/^[A-Z0-9]{2,8}$/', $uqc)) {
+            $uqc = '';
+        }
 
-        $name    = $this->xml($mapping?->tally_name ?: $uom->name);
-        $current = $this->xml($mapping?->tally_name ?: $uom->name);
-
-        return $this->wrapMaster('UOM', <<<XML
-<UNIT NAME="{$current}" ACTION="{$action}">
- <NAME>{$name}</NAME>
- <ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
-</UNIT>
-XML);
+        return app(MasterTemplates::class)->unit(
+            $tallyName,
+            $action,
+            $mapping?->tally_name ?: $tallyName,
+            array_filter([
+                'ORIGINALNAME' => (string) $uom->name,
+                'DECIMALPLACES' => '2',
+                'ISSIMPLEUNIT' => 'Yes',
+                'REPORTINGUQC' => $uqc,
+            ], fn ($value) => $value !== null && $value !== ''),
+        );
     }
 
     public function buildGodownXml(Warehouse $warehouse): string
     {
         $mapping = $this->mappingService->findForDms(Warehouse::class, $warehouse->id, 'godown');
-        $action  = $mapping ? 'Alter' : 'Create';
+        $action = $mapping ? 'Alter' : 'Create';
+        $warehouse->loadMissing('branch');
+        $address = trim((string) ($warehouse->address ?: $warehouse->branch?->address ?: ''));
 
-        $name    = $this->xml($warehouse->name);
-        $current = $this->xml($mapping?->tally_name ?: $warehouse->name);
-
-        return $this->wrapMaster('GODOWN', <<<XML
-<GODOWN NAME="{$current}" ACTION="{$action}">
- <NAME>{$name}</NAME>
-</GODOWN>
-XML);
+        return app(MasterTemplates::class)->godown(
+            (string) $warehouse->getRawOriginal('name') ?: (string) $warehouse->name,
+            $action,
+            $mapping?->tally_name ?: ((string) $warehouse->getRawOriginal('name') ?: (string) $warehouse->name),
+            array_filter([
+                'PARENT' => 'Primary',
+                'ADDRESS' => $address,
+            ], fn ($value) => $value !== null && $value !== ''),
+        );
     }
 
     // ─────────────────────────────────────────────────────────────
     // XML building blocks
     // ─────────────────────────────────────────────────────────────
 
+    /**
+     * @param  array{
+     *     narration?: string|null,
+     *     party_gstin?: string|null,
+     *     place_of_supply?: string|null,
+     *     gst_registration_type?: string|null,
+     *     basic_buyer_name?: string|null,
+     *     basic_buyer_address?: string|null,
+     *     reference_date?: string|null,
+     *     is_optional?: string|null
+     * }  $extra
+     */
     protected function voucherXml(
         string $documentType,
         Model $document,
@@ -744,7 +1076,8 @@ XML);
         string $party,
         string $entries,
         bool $isInvoice = false,
-        ?string $reference = null
+        ?string $reference = null,
+        array $extra = []
     ): string {
         $action = $this->getVoucherAction($document);
         $remoteId = $this->xml($this->remoteId($documentType, $document));
@@ -754,9 +1087,26 @@ XML);
         $view = $isInvoice ? 'Invoice Voucher View' : 'Accounting Voucher View';
         $invoiceFlag = $isInvoice ? 'Yes' : 'No';
         $referenceXml = $reference ? '<REFERENCE>'.$this->xml($reference).'</REFERENCE>' : '';
-        $narration = $this->xml("DMS {$voucherType} {$voucherNo}");
+        $referenceDate = XmlHelpers::ymd($extra['reference_date'] ?? null);
+        $referenceDateXml = $referenceDate !== '' ? '<REFERENCEDATE>'.$referenceDate.'</REFERENCEDATE>' : '';
+        $narration = $this->xml((string) ($extra['narration'] ?? "DMS {$voucherType} {$voucherNo}"));
+        $gstin = trim((string) ($extra['party_gstin'] ?? ''));
+        $gstinXml = $gstin !== '' ? '<PARTYGSTIN>'.$this->xml($gstin).'</PARTYGSTIN>' : '';
+        $gstType = trim((string) ($extra['gst_registration_type'] ?? ''));
+        $gstTypeXml = $gstType !== '' ? '<GSTREGISTRATIONTYPE>'.$this->xml($gstType).'</GSTREGISTRATIONTYPE>' : '';
+        $place = trim((string) ($extra['place_of_supply'] ?? ''));
+        $placeXml = $place !== ''
+            ? '<PLACEOFSUPPLY>'.$this->xml($place).'</PLACEOFSUPPLY><STATENAME>'.$this->xml($place).'</STATENAME>'
+            : '';
+        $buyer = trim((string) ($extra['basic_buyer_name'] ?? ''));
+        $buyerXml = $buyer !== '' ? '<BASICBUYERNAME>'.$this->xml($buyer).'</BASICBUYERNAME>' : '';
+        $buyerAddress = trim((string) ($extra['basic_buyer_address'] ?? ''));
+        $buyerAddressXml = $buyerAddress !== ''
+            ? '<BASICBUYERADDRESS.LIST TYPE="String"><BASICBUYERADDRESS>'.$this->xml($buyerAddress).'</BASICBUYERADDRESS></BASICBUYERADDRESS.LIST>'
+            : '';
+        $optional = strcasecmp((string) ($extra['is_optional'] ?? ''), 'Yes') === 0 ? 'Yes' : 'No';
 
-        if (in_array($voucherType, ['Purchase Order', 'Sales Order'], true)) {
+        if (in_array($voucherType, ['Purchase Order', 'Sales Order', 'Quotation', 'Receipt Note'], true)) {
             $view = 'Invoice Voucher View';
             $invoiceFlag = 'No';
         }
@@ -767,15 +1117,63 @@ XML);
  <EFFECTIVEDATE>{$date}</EFFECTIVEDATE>
  <VOUCHERTYPENAME>{$vchType}</VOUCHERTYPENAME>
  <VOUCHERNUMBER>{$number}</VOUCHERNUMBER>
- {$referenceXml}
+ {$referenceXml}{$referenceDateXml}
  <PARTYLEDGERNAME>{$partyXml}</PARTYLEDGERNAME>
  <PARTYNAME>{$partyXml}</PARTYNAME>
+ {$gstinXml}{$gstTypeXml}{$placeXml}{$buyerXml}{$buyerAddressXml}
  <PERSISTEDVIEW>{$view}</PERSISTEDVIEW>
  <ISINVOICE>{$invoiceFlag}</ISINVOICE>
+ <ISOPTIONAL>{$optional}</ISOPTIONAL>
  <NARRATION>{$narration}</NARRATION>
 {$entries}
 </VOUCHER>
 XML;
+    }
+
+    protected function tallyLedger(string $key, ?string $fallback = null): string
+    {
+        $map = [
+            'sales' => ['tally_sync.ledgers.sales', 'services.tally.sales_ledger', 'Sales'],
+            'purchase' => ['tally_sync.ledgers.purchase', 'services.tally.purchase_ledger', 'Purchase'],
+            'purchase_interstate' => ['tally_sync.ledgers.purchase_interstate', 'services.tally.purchase_ledger_interstate', null],
+            'cash' => ['tally_sync.ledgers.cash', 'services.tally.cash_ledger', 'Cash'],
+            'bank' => ['tally_sync.ledgers.bank', 'services.tally.bank_ledger', 'Bank'],
+            'round_off' => ['tally_sync.ledgers.round_off', 'services.tally.round_off_ledger', 'Round Off'],
+            'output_cgst' => ['tally_sync.ledgers.output_cgst', 'services.tally.output_cgst_ledger', 'Output CGST'],
+            'output_sgst' => ['tally_sync.ledgers.output_sgst', 'services.tally.output_sgst_ledger', 'Output SGST'],
+            'output_igst' => ['tally_sync.ledgers.output_igst', 'services.tally.output_igst_ledger', 'Output IGST'],
+            'input_cgst' => ['tally_sync.ledgers.input_cgst', 'services.tally.input_cgst_ledger', 'Input CGST'],
+            'input_sgst' => ['tally_sync.ledgers.input_sgst', 'services.tally.input_sgst_ledger', 'Input SGST'],
+            'input_igst' => ['tally_sync.ledgers.input_igst', 'services.tally.input_igst_ledger', 'Input IGST'],
+        ];
+
+        $paths = $map[$key] ?? [null, null, $fallback];
+        foreach ([$paths[0], $paths[1]] as $path) {
+            if (! $path) {
+                continue;
+            }
+            $value = config($path);
+            if (is_string($value) && trim($value) !== '') {
+                return trim($value);
+            }
+        }
+
+        return (string) ($fallback ?? $paths[2] ?? $key);
+    }
+
+    protected function partyGstExtras(?Customer $party): array
+    {
+        if (! $party) {
+            return [];
+        }
+
+        $gstin = trim((string) ($party->gstin ?: ''));
+
+        return array_filter([
+            'party_gstin' => $gstin,
+            'place_of_supply' => trim((string) ($party->state ?: '')),
+            'gst_registration_type' => $gstin !== '' ? 'Regular' : 'Unregistered',
+        ], fn ($value) => $value !== null && $value !== '');
     }
 
     protected function ledgerEntry(
@@ -828,7 +1226,7 @@ XML;
                 continue;
             }
             $signed = $isDebit ? -$amount : $amount;
-            $entries[] = $this->ledgerEntry((string) config("services.tally.{$ledgerSet}_{$key}_ledger"), $signed, false, '', $tag);
+            $entries[] = $this->ledgerEntry($this->tallyLedger("{$ledgerSet}_{$key}"), $signed, false, '', $tag);
             $total += $signed;
         }
 
@@ -843,14 +1241,19 @@ XML;
             return '';
         }
 
-        return $this->ledgerEntry((string) config('services.tally.round_off_ledger'), $difference, false, '', $tag);
+        return $this->ledgerEntry($this->tallyLedger('round_off'), $difference, false, '', $tag);
     }
 
     protected function purchaseLedger(bool $interstate): string
     {
-        $ledger = $interstate ? config('services.tally.purchase_ledger_interstate') : null;
+        if ($interstate) {
+            $interstateLedger = $this->tallyLedger('purchase_interstate', '');
+            if ($interstateLedger !== '') {
+                return $interstateLedger;
+            }
+        }
 
-        return (string) ($ledger ?: config('services.tally.purchase_ledger'));
+        return $this->tallyLedger('purchase');
     }
 
     protected function remoteId(string $documentType, Model $document): string
@@ -888,14 +1291,19 @@ XML;
         }
 
         $mapping = $this->mappingService->findForDms(Uom::class, $uom->id, 'uom');
+        if ($mapping?->tally_name) {
+            return (string) $mapping->tally_name;
+        }
 
-        return $mapping?->tally_name ?: (string) $uom->name;
+        $code = trim((string) ($uom->code ?: ''));
+
+        return $code !== '' ? $code : (string) $uom->name;
     }
 
     protected function godownName(?Warehouse $warehouse): string
     {
         if (! $warehouse) {
-            return (string) config('services.tally.default_godown');
+            return (string) config('tally_sync.default_godown', config('services.tally.default_godown', 'Main Location'));
         }
 
         $mapping = $this->mappingService->findForDms(Warehouse::class, $warehouse->id, 'godown');

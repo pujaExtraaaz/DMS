@@ -54,7 +54,8 @@ return [
     'tally' => [
         'endpoint' => env('TALLY_ENDPOINT'),
         'company' => env('TALLY_COMPANY'),
-        'use_connector' => filter_var(env('TALLY_USE_CONNECTOR', false), FILTER_VALIDATE_BOOLEAN),
+        // Prefer config('tally_sync.*') at runtime; keep this in sync as fallback default.
+        'use_connector' => filter_var(env('TALLY_USE_CONNECTOR', true), FILTER_VALIDATE_BOOLEAN),
         'connector_token' => env('TALLY_CONNECTOR_TOKEN'),
 
         // Ledger / godown names must match the Tally company exactly (case-insensitive).
