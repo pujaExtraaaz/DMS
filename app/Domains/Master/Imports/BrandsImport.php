@@ -11,29 +11,37 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 class BrandsImport implements ToCollection, WithHeadingRow
 {
-    use HandlesBulkImportRows, Importable;
+    use BulkImportHelpers, Importable;
+
+    public array $errors = [];
+
+    public int $created = 0;
+
+    public int $updated = 0;
+
+    public int $skipped = 0;
 
     public function __construct(protected ?int $companyId = null) {}
 
     public function collection(Collection $rows): void
     {
-        $companies = Company::query()->get()->keyBy(fn ($c) => strtoupper((string) $c->code));
+        $companies = Company::query()->get()->keyBy(fn ($c) => strtolower((string) $c->code));
         $defaultCompanyId = $this->companyId ?? Company::query()->value('id');
 
         foreach ($rows as $index => $row) {
             $rowNo = $index + 2;
             $data = $this->rowData($row);
 
-            $name = trim((string) ($data['name'] ?? ''));
+            $name = $this->str($data, 'name');
             if ($name === '') {
                 $this->skip($rowNo, 'name', 'Name is required');
                 continue;
             }
 
             $companyId = $defaultCompanyId;
-            $companyCode = strtoupper(trim((string) ($data['company_code'] ?? '')));
+            $companyCode = $this->str($data, 'company_code');
             if ($companyCode !== '') {
-                $company = $companies[$companyCode] ?? null;
+                $company = $companies[strtolower($companyCode)] ?? null;
                 if (! $company) {
                     $this->skip($rowNo, 'company_code', "Company '{$companyCode}' not found");
                     continue;
@@ -41,10 +49,15 @@ class BrandsImport implements ToCollection, WithHeadingRow
                 $companyId = $company->id;
             }
 
+            if (! $companyId) {
+                $this->skip($rowNo, 'company_code', 'Company is required');
+                continue;
+            }
+
             $payload = [
                 'company_id' => $companyId,
                 'name' => $name,
-                'detail' => $this->str($data, 'detail'),
+                'detail' => $this->nullableStr($data, 'detail'),
                 'is_active' => $this->boolOrDefault($data, 'is_active', true),
             ];
 

@@ -12,37 +12,44 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 class SubCategoriesImport implements ToCollection, WithHeadingRow
 {
-    use HandlesBulkImportRows, Importable;
+    use BulkImportHelpers, Importable;
+
+    public array $errors = [];
+
+    public int $created = 0;
+
+    public int $updated = 0;
+
+    public int $skipped = 0;
 
     public function __construct(protected ?int $companyId = null) {}
 
     public function collection(Collection $rows): void
     {
-        $brands = Brand::query()
-            ->when($this->companyId, fn ($q) => $q->where('company_id', $this->companyId))
-            ->get()
-            ->keyBy(fn ($b) => strtolower((string) $b->name));
-
         foreach ($rows as $index => $row) {
             $rowNo = $index + 2;
             $data = $this->rowData($row);
 
-            $name = trim((string) ($data['name'] ?? ''));
+            $name = $this->str($data, 'name');
             if ($name === '') {
                 $this->skip($rowNo, 'name', 'Name is required');
                 continue;
             }
 
-            $brandName = trim((string) ($data['brand_name'] ?? $data['brand'] ?? ''));
-            $categoryName = trim((string) ($data['category_name'] ?? $data['category'] ?? ''));
+            $brandName = $this->str($data, 'brand_name');
+            $categoryName = $this->str($data, 'category_name');
             if ($brandName === '' || $categoryName === '') {
                 $this->skip($rowNo, 'category_name', 'brand_name and category_name are required');
                 continue;
             }
 
-            $brand = $brands[strtolower($brandName)] ?? null;
+            $brand = Brand::query()
+                ->when($this->companyId, fn ($q) => $q->where('company_id', $this->companyId))
+                ->whereRaw('LOWER(name) = ?', [strtolower($brandName)])
+                ->first();
+
             if (! $brand) {
-                $this->skip($rowNo, 'brand_name', "Brand '{$brandName}' not found");
+                $this->skip($rowNo, 'brand_name', "Brand '{$brandName}' not found — import Brands first");
                 continue;
             }
 

@@ -61,6 +61,8 @@ class PriceMasterImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
+            $includesGst = in_array(strtolower(trim((string) ($data['rate_includes_gst'] ?? '0'))), ['1', 'true', 'yes', 'y', 'on'], true);
+
             $exists = PriceMaster::query()
                 ->where('customer_type_id', $type->id)
                 ->where('product_id', $product->id)
@@ -72,7 +74,7 @@ class PriceMasterImport implements ToCollection, WithHeadingRow
                 $exists->update([
                     'rate' => $rate,
                     'entered_rate' => $rate,
-                    'rate_includes_gst' => false,
+                    'rate_includes_gst' => $includesGst,
                 ]);
                 $this->updated++;
             } else {
@@ -82,7 +84,7 @@ class PriceMasterImport implements ToCollection, WithHeadingRow
                     'uom_id' => $uom->id,
                     'rate' => $rate,
                     'entered_rate' => $rate,
-                    'rate_includes_gst' => false,
+                    'rate_includes_gst' => $includesGst,
                     'min_qty' => (float) ($data['min_qty'] ?? 0),
                 ]);
                 $this->created++;

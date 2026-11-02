@@ -77,6 +77,8 @@
           subCategoryQuickUrl: @js(route('masters.sub-categories.quick-store')),
           productTypeQuickUrl: @js(route('masters.product-types.quick-store')),
           brandQuickUrl: @js(route('masters.brands.quick-store')),
+          uomQuickUrl: @js(route('masters.uoms.quick-store')),
+          uomDestroyUrlTemplate: @js(url('masters/uoms/__ID__/quick-destroy')),
           companies: @js($companies->map(fn ($c) => ['id' => (string) $c->id, 'name' => $c->name])->values()),
       })"
       @keydown.escape.window="closeTopCreate()">
@@ -105,26 +107,18 @@
             <!-- Model -->
             <x-ui.input name="model" label="Model" :value="old('model', $item->model ?? $item->models)" placeholder="E.G. T14 Gen 4, Sm-S928b" />
 
-            <!-- Serial Number -->
-            <div class="space-y-1">
-                <label for="serial_no" class="block text-sm font-medium text-gray-700">Serial Number</label>
-                <input type="text"
-                       id="serial_no"
-                       name="serial_no"
-                       value="{{ old('serial_no', $item->serial_no) }}"
-                       placeholder="Auto-generated if left blank"
-                       class="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500 @error('serial_no') border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500 @enderror">
-                @error('serial_no')
-                    <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
-
             <!-- Base UOM (Searchable Dropdown) -->
             <div class="space-y-2">
                 <div class="space-y-1 relative" @click.outside="closeUomDropdown()">
-                    <label for="base_uom_id_search_input" class="block text-sm font-medium text-gray-700">
-                        Base UOM <span class="text-red-500">*</span>
-                    </label>
+                    <div class="flex items-center justify-between">
+                        <label for="base_uom_id_search_input" class="block text-sm font-medium text-gray-700">
+                            Base UOM <span class="text-red-500">*</span>
+                        </label>
+                        <div class="flex items-center gap-3">
+                            <button type="button" @click="openUomCreate()" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
+                            <button type="button" @click="openUomDelete()" :disabled="!selectedBaseUomId" class="text-[11px] font-semibold text-rose-600 hover:text-rose-800 disabled:text-slate-300 disabled:cursor-not-allowed">Delete</button>
+                        </div>
+                    </div>
                     <input type="hidden" name="base_uom_id" :value="selectedBaseUomId" required>
                     <div class="relative">
                         <input type="text"
@@ -176,6 +170,7 @@
                         <div x-show="filteredUoms.length === 0" class="p-3 text-center text-xs text-slate-500 italic">
                             No units of measurement found
                         </div>
+                        <button type="button" @click.stop="openUomCreate()" class="w-full px-3 py-2 text-left text-xs font-semibold text-indigo-700 hover:bg-indigo-50">+ Create UOM</button>
                     </div>
                     @error('base_uom_id')
                         <p class="text-xs text-red-600 mt-1">{{ $message }}</p>
@@ -1475,6 +1470,65 @@
             </div>
         </div>
     </div>
+
+    <div x-show="uomCreateOpen" x-cloak class="fixed inset-0 z-[70] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="uom-create-title">
+        <div class="fixed inset-0 bg-slate-900/60" @click="uomCreateOpen = false"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <div class="relative w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-2xl" @click.stop>
+                <div class="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                    <h3 id="uom-create-title" class="text-base font-semibold text-slate-900">Create UOM</h3>
+                    <button type="button" @click="uomCreateOpen = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="Close">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="space-y-4 px-6 py-5">
+                    <div class="space-y-1">
+                        <label for="uom_quick_name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
+                        <input id="uom_quick_name" type="text" x-model="uomCreateName" @keydown.enter.prevent="saveUom()" maxlength="255" placeholder="e.g. Pieces, Box, Meter" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                    <div class="space-y-1">
+                        <label for="uom_quick_code" class="block text-sm font-medium text-gray-700">Code</label>
+                        <input id="uom_quick_code" type="text" x-model="uomCreateCode" @keydown.enter.prevent="saveUom()" maxlength="20" placeholder="Auto from name if blank (PCS, BOX)" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500 uppercase">
+                        <p class="text-[11px] text-slate-500">Leave blank to generate from the name.</p>
+                    </div>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" x-model="uomCreateActive" class="rounded border-gray-300 text-indigo-600">
+                        Active
+                    </label>
+                    <p class="text-xs text-red-600" x-show="uomCreateError" x-text="uomCreateError"></p>
+                </div>
+                <div class="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+                    <button type="button" @click="uomCreateOpen = false" :disabled="uomCreateSaving" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="button" @click="saveUom()" :disabled="uomCreateSaving" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50" x-text="uomCreateSaving ? 'Saving...' : 'Save UOM'"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="uomDeleteOpen" x-cloak class="fixed inset-0 z-[70] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="uom-delete-title">
+        <div class="fixed inset-0 bg-slate-900/60" @click="uomDeleteOpen = false"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <div class="relative w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-2xl" @click.stop>
+                <div class="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                    <h3 id="uom-delete-title" class="text-base font-semibold text-slate-900">Delete UOM</h3>
+                    <button type="button" @click="uomDeleteOpen = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="Close">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="space-y-3 px-6 py-5">
+                    <p class="text-sm text-slate-700">
+                        Delete <span class="font-semibold" x-text="selectedBaseUomLabel()"></span>?
+                        It will also disappear from Alternative UOM. UOMs already used on products or price lists cannot be deleted.
+                    </p>
+                    <p class="text-xs text-red-600" x-show="uomDeleteError" x-text="uomDeleteError"></p>
+                </div>
+                <div class="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+                    <button type="button" @click="uomDeleteOpen = false" :disabled="uomDeleteSaving" class="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="button" @click="deleteUom()" :disabled="uomDeleteSaving" class="rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-500 disabled:opacity-50" x-text="uomDeleteSaving ? 'Deleting...' : 'Delete'"></button>
+                </div>
+            </div>
+        </div>
+    </div>
 </form>
 
 @if(isset($priceHistory) && $priceHistory->count())
@@ -1563,6 +1617,11 @@ function searchableUnitRow(uoms, initialId, onChange) {
         isOpen: false,
         search: '',
         init() {
+            window.addEventListener('dms-uoms-updated', (event) => {
+                if (event.detail?.uoms) {
+                    this.uoms = event.detail.uoms;
+                }
+            });
             if (this.selectedId) {
                 const found = this.uoms.find(u => String(u.id) === String(this.selectedId));
                 if (found) this.search = found.name;
@@ -1662,7 +1721,18 @@ function productCatalogManager(config) {
         subCategoryQuickUrl: config.subCategoryQuickUrl,
         productTypeQuickUrl: config.productTypeQuickUrl,
         brandQuickUrl: config.brandQuickUrl,
+        uomQuickUrl: config.uomQuickUrl,
+        uomDestroyUrlTemplate: config.uomDestroyUrlTemplate,
         companies: config.companies || [],
+        uomCreateOpen: false,
+        uomCreateName: '',
+        uomCreateCode: '',
+        uomCreateActive: true,
+        uomCreateError: '',
+        uomCreateSaving: false,
+        uomDeleteOpen: false,
+        uomDeleteError: '',
+        uomDeleteSaving: false,
         brandCreateOpen: false,
         brandCreateContext: 'product',
         brandCreateName: '',
@@ -2116,10 +2186,93 @@ function productCatalogManager(config) {
             return { ok: response.ok, data };
         },
         closeTopCreate() {
+            if (this.uomCreateOpen) { this.uomCreateOpen = false; return; }
+            if (this.uomDeleteOpen) { this.uomDeleteOpen = false; return; }
             if (this.brandCreateOpen) { this.brandCreateOpen = false; return; }
             if (this.categoryCreateOpen) { this.categoryCreateOpen = false; return; }
             if (this.productTypeCreateOpen) { this.productTypeCreateOpen = false; return; }
             if (this.subCategoryCreateOpen) { this.subCategoryCreateOpen = false; }
+        },
+        selectedBaseUomLabel() {
+            const found = this.uoms.find(u => String(u.id) === String(this.selectedBaseUomId));
+            return found ? found.name : 'this UOM';
+        },
+        openUomCreate() {
+            this.uomIsOpen = false;
+            this.uomCreateOpen = true;
+            this.uomCreateError = '';
+            this.uomCreateName = '';
+            this.uomCreateCode = '';
+            this.uomCreateActive = true;
+        },
+        openUomDelete() {
+            if (!this.selectedBaseUomId) return;
+            this.uomIsOpen = false;
+            this.uomDeleteOpen = true;
+            this.uomDeleteError = '';
+        },
+        async saveUom() {
+            const name = (this.uomCreateName || '').trim();
+            if (!name) {
+                this.uomCreateError = 'UOM name is required.';
+                return;
+            }
+            this.uomCreateSaving = true;
+            this.uomCreateError = '';
+            const result = await this.postJson(this.uomQuickUrl, {
+                name,
+                code: (this.uomCreateCode || '').trim(),
+                is_active: !!this.uomCreateActive,
+            });
+            this.uomCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.uomCreateError = result.data.message || 'Could not create the UOM.';
+                return;
+            }
+            const item = result.data.item;
+            const exists = this.uoms.some(u => String(u.id) === String(item.id));
+            if (!exists) {
+                this.uoms.push({
+                    id: String(item.id),
+                    name: item.name,
+                    code: item.code || '',
+                });
+            }
+            // Selecting as Base also keeps it available in Alternative (shared list).
+            this.selectUom({ id: String(item.id), name: item.name, code: item.code || '' });
+            this.uomCreateName = '';
+            this.uomCreateCode = '';
+            this.uomCreateOpen = false;
+            window.dispatchEvent(new CustomEvent('dms-uoms-updated', { detail: { uoms: this.uoms } }));
+        },
+        async deleteUom() {
+            if (!this.selectedBaseUomId || !this.uomDestroyUrlTemplate) return;
+            this.uomDeleteSaving = true;
+            this.uomDeleteError = '';
+            const url = this.uomDestroyUrlTemplate.replace('__ID__', this.selectedBaseUomId);
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+            const response = await fetch(url, {
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+            const data = await response.json().catch(() => ({}));
+            this.uomDeleteSaving = false;
+            if (!response.ok || !data.success) {
+                this.uomDeleteError = data.message || 'Could not delete the UOM.';
+                return;
+            }
+            const deletedId = String(this.selectedBaseUomId);
+            this.uoms = this.uoms.filter(u => String(u.id) !== deletedId);
+            if (String(this.selectedAltUomId) === deletedId) {
+                this.clearAltUom();
+            }
+            this.clearUom();
+            this.uomDeleteOpen = false;
+            window.dispatchEvent(new CustomEvent('dms-uoms-updated', { detail: { uoms: this.uoms } }));
         },
         fillSelect(selectId, items, selected) {
             const select = document.getElementById(selectId);
@@ -2194,17 +2347,6 @@ function productCatalogManager(config) {
             this.fillSelect('catalog_category_brand', this.brands, this.categoryCreateBrandId);
         },
         async saveCategory() {
-            if (!this.categoryCreateBrandId) {
-                this.categoryCreateError = 'Please select a brand before creating a category.';
-                const brandSelect = document.getElementById('catalog_category_brand');
-                if (brandSelect) {
-                    brandSelect.focus();
-                    if (typeof brandSelect.scrollIntoView === 'function') {
-                        brandSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                }
-                return;
-            }
             const name = (this.categoryCreateName || '').trim();
             if (!name) {
                 this.categoryCreateError = 'Name is required.';

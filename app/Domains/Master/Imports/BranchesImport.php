@@ -4,57 +4,65 @@ namespace App\Domains\Master\Imports;
 
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
+use App\Support\CodeGenerator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\Importable;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 class BranchesImport implements ToCollection, WithHeadingRow
 {
-    use HandlesBulkImportRows, Importable;
+    use BulkImportHelpers, Importable;
+
+    public array $errors = [];
+
+    public int $created = 0;
+
+    public int $updated = 0;
+
+    public int $skipped = 0;
 
     public function collection(Collection $rows): void
     {
-        $companies = Company::query()->get()->keyBy(fn ($c) => strtoupper((string) $c->code));
+        $companies = Company::query()->get()->keyBy(fn ($c) => strtolower((string) $c->code));
 
         foreach ($rows as $index => $row) {
             $rowNo = $index + 2;
             $data = $this->rowData($row);
 
-            $name = \App\Support\NameCase::format((string) ($data['name'] ?? ''));
+            $name = $this->str($data, 'name');
             if ($name === '') {
                 $this->skip($rowNo, 'name', 'Name is required');
                 continue;
             }
 
-            $companyCode = strtoupper(trim((string) ($data['company_code'] ?? '')));
-            $company = $companies[$companyCode] ?? null;
+            $companyCode = $this->str($data, 'company_code');
+            $company = $companies[strtolower($companyCode)] ?? null;
             if (! $company) {
                 $this->skip($rowNo, 'company_code', "Company '{$companyCode}' not found");
                 continue;
             }
 
-            $code = strtoupper(trim((string) ($data['code'] ?? '')));
+            $code = $this->str($data, 'code');
             if ($code === '') {
-                $code = strtoupper(Str::slug($name, '_'));
+                $code = CodeGenerator::forBranch($company->id);
             }
 
             $payload = [
                 'company_id' => $company->id,
                 'name' => $name,
                 'code' => $code,
-                'gstin' => $this->str($data, 'gstin'),
-                'phone' => $this->str($data, 'phone'),
-                'address' => $this->str($data, 'address'),
-                'state' => $this->str($data, 'state'),
-                'pincode' => $this->str($data, 'pincode'),
+                'gstin' => $this->nullableStr($data, 'gstin'),
+                'phone' => $this->nullableStr($data, 'phone'),
+                'state' => $this->nullableStr($data, 'state'),
+                'pincode' => $this->nullableStr($data, 'pincode'),
+                'address' => $this->nullableStr($data, 'address'),
                 'is_active' => $this->boolOrDefault($data, 'is_active', true),
             ];
 
             $existing = Branch::query()
                 ->where('company_id', $company->id)
-                ->whereRaw('UPPER(code) = ?', [$code])
+                ->whereRaw('LOWER(code) = ?', [strtolower($code)])
                 ->first();
 
             if ($existing) {

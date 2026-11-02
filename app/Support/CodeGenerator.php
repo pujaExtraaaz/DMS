@@ -72,6 +72,11 @@ class CodeGenerator
         return self::next(\App\Domains\Organization\Models\InterCompanyTransaction::class, 'ICT', null, 'transaction_no');
     }
 
+    public static function forBranch(?int $companyId = null): string
+    {
+        return self::next(\App\Domains\Organization\Models\Branch::class, 'BRN', $companyId, 'code');
+    }
+
     public static function forWarehouse(?int $companyId = null): string
     {
         return self::next(\App\Domains\Organization\Models\Warehouse::class, 'WH', $companyId, 'code');

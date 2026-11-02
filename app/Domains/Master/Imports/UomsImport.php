@@ -10,7 +10,15 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 class UomsImport implements ToCollection, WithHeadingRow
 {
-    use HandlesBulkImportRows, Importable;
+    use BulkImportHelpers, Importable;
+
+    public array $errors = [];
+
+    public int $created = 0;
+
+    public int $updated = 0;
+
+    public int $skipped = 0;
 
     public function collection(Collection $rows): void
     {
@@ -18,16 +26,20 @@ class UomsImport implements ToCollection, WithHeadingRow
             $rowNo = $index + 2;
             $data = $this->rowData($row);
 
-            $code = strtoupper(trim((string) ($data['code'] ?? '')));
+            $code = strtoupper($this->str($data, 'code'));
             if ($code === '') {
                 $this->skip($rowNo, 'code', 'UOM code is required');
                 continue;
             }
 
-            $name = \App\Support\NameCase::format((string) ($data['name'] ?? $code));
+            $name = $this->str($data, 'name');
+            if ($name === '') {
+                $name = $code;
+            }
+
             $payload = [
-                'code' => $code,
                 'name' => $name,
+                'code' => $code,
                 'is_active' => $this->boolOrDefault($data, 'is_active', true),
             ];
 

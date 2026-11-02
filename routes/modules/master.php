@@ -32,6 +32,8 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
     Route::put('routes/{route}/quick-update', [RouteController::class, 'quickUpdate'])->name('routes.quick-update');
     Route::delete('routes/{route}/quick-destroy', [RouteController::class, 'quickDestroy'])->name('routes.quick-destroy');
     Route::resource('routes', RouteController::class);
+    Route::post('uoms/quick-store', [UomController::class, 'quickStore'])->name('uoms.quick-store');
+    Route::delete('uoms/{uom}/quick-destroy', [UomController::class, 'quickDestroy'])->name('uoms.quick-destroy');
     Route::resource('uoms', UomController::class);
     Route::resource('vehicles', VehicleController::class);
     Route::resource('drivers', DriverController::class);
@@ -42,8 +44,8 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::resource('products', ProductController::class);
         Route::get('price-masters/copy-options', [PriceMasterController::class, 'copyOptions'])->name('price-masters.copy-options');
         Route::get('price-masters/copy-source', [PriceMasterController::class, 'copySource'])->name('price-masters.copy-source');
-        Route::get('price-masters/brands/{brand}/products', [PriceMasterController::class, 'brandProducts'])->name('price-masters.brand-products');
         Route::get('price-masters/products/{product}/details', [PriceMasterController::class, 'productDetails'])->name('price-masters.product-details');
+        Route::get('price-masters/brands/{brand}/products', [PriceMasterController::class, 'brandProducts'])->name('price-masters.brand-products');
         Route::resource('price-masters', PriceMasterController::class);
         Route::delete('price-lists/{price_master}', [PriceMasterController::class, 'destroy'])->name('price-lists.destroy');
 

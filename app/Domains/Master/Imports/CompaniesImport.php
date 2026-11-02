@@ -12,56 +12,66 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 class CompaniesImport implements ToCollection, WithHeadingRow
 {
-    use HandlesBulkImportRows, Importable;
+    use BulkImportHelpers, Importable;
+
+    public array $errors = [];
+
+    public int $created = 0;
+
+    public int $updated = 0;
+
+    public int $skipped = 0;
 
     public function collection(Collection $rows): void
     {
+        $groups = BusinessGroup::query()->get()->keyBy(fn ($g) => strtolower((string) $g->code));
+
         foreach ($rows as $index => $row) {
             $rowNo = $index + 2;
             $data = $this->rowData($row);
 
-            $name = \App\Support\NameCase::format((string) ($data['name'] ?? ''));
+            $name = $this->str($data, 'name');
             if ($name === '') {
                 $this->skip($rowNo, 'name', 'Name is required');
                 continue;
             }
 
-            $code = strtoupper(trim((string) ($data['code'] ?? '')));
+            $code = $this->str($data, 'code');
             if ($code === '') {
                 $code = CodeGenerator::forCompany();
             }
 
-            $businessGroupId = null;
+            $groupId = null;
             $groupCode = $this->str($data, 'business_group_code');
-            if ($groupCode) {
-                $group = BusinessGroup::query()->whereRaw('UPPER(code) = ?', [strtoupper($groupCode)])->first();
+            if ($groupCode !== '') {
+                $group = $groups[strtolower($groupCode)] ?? null;
                 if (! $group) {
                     $this->skip($rowNo, 'business_group_code', "Business group '{$groupCode}' not found");
                     continue;
                 }
-                $businessGroupId = $group->id;
+                $groupId = $group->id;
             }
 
             $payload = [
+                'business_group_id' => $groupId,
                 'name' => $name,
                 'code' => $code,
-                'legal_name' => $this->str($data, 'legal_name'),
-                'company_type' => $this->str($data, 'company_type'),
-                'business_group_id' => $businessGroupId,
-                'gstin' => $this->str($data, 'gstin'),
-                'pan' => $this->str($data, 'pan'),
-                'address' => $this->str($data, 'address'),
-                'city' => $this->str($data, 'city'),
-                'state' => $this->str($data, 'state'),
-                'pincode' => $this->str($data, 'pincode'),
-                'phone' => $this->str($data, 'phone'),
-                'email' => $this->str($data, 'email'),
-                'website' => $this->str($data, 'website'),
+                'legal_name' => $this->nullableStr($data, 'legal_name'),
+                'company_type' => $this->nullableStr($data, 'company_type'),
+                'gstin' => $this->nullableStr($data, 'gstin'),
+                'pan' => $this->nullableStr($data, 'pan'),
+                'address' => $this->nullableStr($data, 'address'),
+                'city' => $this->nullableStr($data, 'city'),
+                'state' => $this->nullableStr($data, 'state'),
+                'pincode' => $this->nullableStr($data, 'pincode'),
+                'phone' => $this->nullableStr($data, 'phone'),
+                'email' => $this->nullableStr($data, 'email'),
+                'website' => $this->nullableStr($data, 'website'),
                 'is_active' => $this->boolOrDefault($data, 'is_active', true),
                 'is_default' => $this->boolOrDefault($data, 'is_default', false),
             ];
 
-            $existing = Company::query()->whereRaw('UPPER(code) = ?', [$code])->first();
+            $existing = Company::query()->whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
             if ($existing) {
                 $existing->update($payload);
                 $this->updated++;
