@@ -361,6 +361,8 @@ class NameCase
         'terms_and_conditions',
         'purchase_terms',
         'sales_terms',
+        'payment_terms',
+        'terms_of_delivery',
         'selling_terms_and_conditions',
         'purchase_terms_and_conditions',
         'settlement_notes',

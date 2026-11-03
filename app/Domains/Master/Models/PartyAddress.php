@@ -78,18 +78,24 @@ class PartyAddress extends Model
         if ($this->label) {
             $parts[] = "Label: {$this->label}";
         }
-        $contact = $this->contact_person ?: $this->name;
+        $contact = $this->contact_person ?: ($this->name ?: $this->customer?->name);
+        $phone = $this->contact_phone ?: $this->customer?->phone;
         if ($contact) {
-            if ($this->contact_phone) {
-                $contact .= " (Ph: {$this->contact_phone})";
+            if ($phone) {
+                $contact .= " (Ph: {$phone})";
             }
             $parts[] = "Contact: {$contact}";
+        } elseif ($phone) {
+            $parts[] = "Contact: Ph: {$phone}";
         }
         if ($this->full_address) {
             $parts[] = $this->full_address;
+        } elseif ($this->customer?->address) {
+            $parts[] = $this->customer->address;
         }
-        if ($this->gstin) {
-            $parts[] = "GSTIN: {$this->gstin}";
+        $gstin = $this->gstin ?: $this->customer?->gstin;
+        if ($gstin) {
+            $parts[] = "GSTIN: {$gstin}";
         }
 
         return implode("\n", $parts);

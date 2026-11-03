@@ -119,6 +119,8 @@
     <x-slot name="actions">
         @if(isset($lead))
             <x-ui.button variant="secondary" :href="route('crm.leads.index')">Back to Leads</x-ui.button>
+        @elseif(($returnTo ?? request('return_to', old('return_to'))) === 'orders.create')
+            <x-ui.button variant="secondary" :href="route('orders.create')">Back to Book Order</x-ui.button>
         @else
             <x-ui.button variant="secondary" :href="route('masters.customers.index')">Back</x-ui.button>
         @endif
@@ -189,6 +191,9 @@
             <input type="hidden" name="lead_id" value="{{ $lead->id }}">
         @elseif(old('lead_id'))
             <input type="hidden" name="lead_id" value="{{ old('lead_id') }}">
+        @endif
+        @if(($returnTo ?? request('return_to', old('return_to'))) === 'orders.create')
+            <input type="hidden" name="return_to" value="orders.create">
         @endif
 
         <div>
@@ -1175,7 +1180,7 @@
             <x-ui.button type="submit" variant="primary">
                 {{ isset($lead) ? 'Save Customer & Complete Conversion' : 'Save Party' }}
             </x-ui.button>
-            <x-ui.button variant="secondary" :href="isset($lead) ? route('crm.leads.index') : route('masters.customers.index')">
+            <x-ui.button variant="secondary" :href="isset($lead) ? route('crm.leads.index') : ((($returnTo ?? request('return_to', old('return_to'))) === 'orders.create') ? route('orders.create') : route('masters.customers.index'))">
                 Cancel
             </x-ui.button>
         </div>
