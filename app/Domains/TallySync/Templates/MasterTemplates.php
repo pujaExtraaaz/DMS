@@ -26,6 +26,16 @@ class MasterTemplates
         $supply = XmlHelpers::xml((string) ($fields['GSTTYPEOFSUPPLY'] ?? 'Goods'));
         unset($fields['GSTTYPEOFSUPPLY']);
 
+        // Reserved Tally root group is "\x04 Primary", not the literal word Primary.
+        if (array_key_exists('PARENT', $fields)) {
+            $parent = trim((string) $fields['PARENT']);
+            $fields['PARENT'] = ($parent === '' || strcasecmp($parent, 'Primary') === 0)
+                ? "\x04 Primary"
+                : $parent;
+        } else {
+            $fields['PARENT'] = "\x04 Primary";
+        }
+
         $gst = <<<XML
 <GSTAPPLICABLE>Applicable</GSTAPPLICABLE>
 <GSTTYPEOFSUPPLY>{$supply}</GSTTYPEOFSUPPLY>
@@ -105,9 +115,15 @@ XML;
 
     public function godown(string $name, string $action = 'Create', ?string $currentName = null, array $fields = []): string
     {
+        $parent = trim((string) ($fields['PARENT'] ?? 'Primary'));
+        unset($fields['PARENT']);
+        if ($parent === '' || strcasecmp($parent, 'Primary') === 0) {
+            $parent = "\x04 Primary";
+        }
+
         return XmlEnvelope::masters('GODOWN', $this->object('GODOWN', $currentName ?: $name, $action, array_merge([
             'NAME' => $name,
-            'PARENT' => 'Primary',
+            'PARENT' => $parent,
         ], $fields)));
     }
 

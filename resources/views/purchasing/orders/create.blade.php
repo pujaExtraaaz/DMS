@@ -105,43 +105,12 @@
         </div>
     </div>
 
-    <!-- Billing & Delivery Addresses -->
-    <div id="supplier-addresses-card" class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
-        <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-            <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Billing &amp; Delivery Addresses</span>
-            <span id="address-status-text" class="text-xs text-slate-500"></span>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Billing Address Card (Supplier) -->
-            <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
-                <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Billing Address (Supplier / Vendor)</label>
-                    <span class="text-[11px] text-indigo-600 font-medium">Billed from</span>
-                </div>
-                <select name="billing_address_id" id="billing_address_id" onchange="handleBillingChange()"
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">Default Address</option>
-                </select>
-                <textarea name="billing_address" id="billing_address" rows="3"
-                          placeholder="Supplier Billing Address Snapshot"
-                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ old('billing_address') }}</textarea>
-            </div>
-
-            <!-- Delivery Address Card (Consignee) -->
-            <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
-                <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery / Dispatch Address (Consignee)</label>
-                    <span class="text-[11px] text-emerald-600 font-medium">Deliver to</span>
-                </div>
-                <textarea name="shipping_address" id="shipping_address" rows="3"
-                          oninput="this.dataset.autoFilled='0'"
-                          placeholder="Consignee Delivery Address (Defaults To Warehouse/Branch Address)"
-                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ old('shipping_address') }}</textarea>
-                <p class="text-[11px] text-slate-400">Auto-fills from selected warehouse/branch. You may customize if needed.</p>
-            </div>
-        </div>
-    </div>
+    @include('purchasing.orders.partials.party-details', [
+        'initialBillingId' => old('billing_address_id'),
+        'initialBillingText' => old('billing_address'),
+        'initialDeliveryId' => old('company_delivery_address_id'),
+        'initialShippingText' => old('shipping_address'),
+    ])
     <div class="overflow-x-auto border rounded-lg">
     <table class="min-w-full text-sm">
     <thead class="bg-gray-50"><tr>
@@ -165,211 +134,45 @@
             @php
                 $selectedProduct = $products->firstWhere('id', $oldItem['product_id'] ?? null);
                 $selectedBrandId = $oldItem['brand_id'] ?? ($selectedProduct ? $selectedProduct->brand_id : null);
-                $selectedProductName = $selectedProduct ? $selectedProduct->name : '';
-                $isBrandSelected = !empty($selectedBrandId);
             @endphp
-            <tr>
-            <td class="px-3 py-2">
-                <select name="items[{{ $idx }}][brand_id]" class="po-brand block w-44 rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required onchange="handlePoBrandChange(this)">
-                    <option value="">Select brand</option>
-                    @foreach($brands as $b)
-                        <option value="{{ $b->id }}" @selected($selectedBrandId == $b->id)>{{ $b->name }}</option>
-                    @endforeach
-                </select>
-            </td>
-            <td class="px-3 py-2">
-                <div class="relative po-product-picker-container w-64">
-                    <select name="items[{{ $idx }}][product_id]" class="po-product hidden" onchange="handlePoProductChange(this)">
-                        <option value="">Select product</option>
-                        @foreach($products as $p)
-                            <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected(($oldItem['product_id'] ?? null) == $p->id)>{{ $p->name }}</option>
-                        @endforeach
-                    </select>
-                    <div class="relative">
-                        <input type="text"
-                               class="po-product-search block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-14 {{ $isBrandSelected ? 'bg-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed' }}"
-                               placeholder="{{ $isBrandSelected ? 'Select product...' : 'Select brand first' }}"
-                               autocomplete="off"
-                               value="{{ $selectedProductName }}"
-                               {{ $isBrandSelected ? '' : 'disabled' }}
-                               onfocus="openPoProductDropdown(this)"
-                               onclick="openPoProductDropdown(this)"
-                               oninput="handlePoProductSearchInput(this)"
-                               onkeydown="handlePoProductSearchKeydown(event, this)">
-                        <div class="absolute inset-y-0 right-0 flex items-center pr-1.5 gap-0.5">
-                            <button type="button"
-                                    class="po-clear-product p-1 text-gray-400 hover:text-gray-600 transition"
-                                    title="Clear product"
-                                    style="{{ !empty($selectedProductName) ? '' : 'display: none;' }}"
-                                    onclick="clearPoProductSelection(this)">
-                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                            <button type="button"
-                                    class="po-dropdown-toggle p-1 text-gray-400 hover:text-gray-600 transition {{ $isBrandSelected ? '' : 'opacity-40 pointer-events-none' }}"
-                                    tabindex="-1"
-                                    {{ $isBrandSelected ? '' : 'disabled' }}
-                                    onclick="togglePoProductDropdown(this)">
-                                <svg class="h-4 w-4 transform transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </td>
-            <td class="px-3 py-2">
-                <input type="text" name="items[{{ $idx }}][batch_no]" list="po-batch-list-{{ $idx }}" class="po-batch-input block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional" value="{{ $oldItem['batch_no'] ?? $oldItem['batch_name'] ?? '' }}">
-                <datalist id="po-batch-list-{{ $idx }}"></datalist>
-            </td>
-            <td class="px-3 py-2">
-                <select name="items[{{ $idx }}][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
-                    @foreach($uoms as $u)<option value="{{ $u->id }}" @selected(($oldItem['uom_id'] ?? null) == $u->id)>{{ $u->code }}</option>@endforeach
-                </select>
-            </td>
-            <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][quantity]" class="block w-20 rounded-lg border-gray-300 text-sm" value="{{ $oldItem['quantity'] ?? 1 }}" required></td>
-            <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][unit_cost]" class="po-cost block w-28 rounded-lg border-gray-300 text-sm" value="{{ $oldItem['unit_cost'] ?? 0 }}" required></td>
-            <td class="px-3 py-2">
-                <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    name="items[{{ $idx }}][tax_percent]"
-                    class="po-tax block w-20 rounded-lg border-gray-300 text-sm"
-                    value="{{ $oldItem['tax_percent'] ?? 0 }}"
-                >
-            </td>
-            <td class="px-3 py-2">
-                <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    name="items[{{ $idx }}][cgst_percent]"
-                    class="po-cgst block w-20 rounded-lg border-gray-300 text-sm"
-                    value="{{ $oldItem['cgst_percent'] ?? 0 }}"
-                >
-            </td>
-            <td class="px-3 py-2">
-                <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    name="items[{{ $idx }}][sgst_percent]"
-                    class="po-sgst block w-20 rounded-lg border-gray-300 text-sm"
-                    value="{{ $oldItem['sgst_percent'] ?? 0 }}"
-                >
-            </td>
-            <td class="px-3 py-2 text-right">
-                <button type="button" onclick="removePoRow(this)" class="text-xs text-red-600 hover:text-red-800 po-remove-btn" @if(count($oldItems) === 1) style="display:none;" @endif>Remove</button>
-            </td>
-            </tr>
+            @include('purchasing.orders.partials.line-row', [
+                'idx' => $idx,
+                'brands' => $brands,
+                'products' => $products,
+                'uoms' => $uoms,
+                'selectedBrandId' => $selectedBrandId,
+                'selectedProductId' => $oldItem['product_id'] ?? null,
+                'selectedProductName' => $selectedProduct ? $selectedProduct->name : '',
+                'batchNo' => $oldItem['batch_no'] ?? $oldItem['batch_name'] ?? '',
+                'uomId' => $oldItem['uom_id'] ?? null,
+                'quantity' => $oldItem['quantity'] ?? 1,
+                'unitCost' => $oldItem['unit_cost'] ?? 0,
+                'taxPercent' => $oldItem['tax_percent'] ?? 0,
+                'cgstPercent' => $oldItem['cgst_percent'] ?? 0,
+                'sgstPercent' => $oldItem['sgst_percent'] ?? 0,
+                'showRemove' => count($oldItems) > 1,
+            ])
         @endforeach
     @else
-        <tr>
-        <td class="px-3 py-2">
-            <select name="items[0][brand_id]" class="po-brand block w-44 rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required onchange="handlePoBrandChange(this)">
-                <option value="">Select brand</option>
-                @foreach($brands as $b)
-                    <option value="{{ $b->id }}">{{ $b->name }}</option>
-                @endforeach
-            </select>
-        </td>
-        <td class="px-3 py-2">
-            <div class="relative po-product-picker-container w-64">
-                <select name="items[0][product_id]" class="po-product hidden" onchange="handlePoProductChange(this)">
-                    <option value="">Select product</option>
-                    @foreach($products as $p)
-                        <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-uom="{{ $p->base_uom_id }}">{{ $p->name }}</option>
-                    @endforeach
-                </select>
-                <div class="relative">
-                    <input type="text"
-                           class="po-product-search block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-14 bg-slate-100 text-slate-400 cursor-not-allowed"
-                           placeholder="Select brand first"
-                           autocomplete="off"
-                           value=""
-                           disabled
-                           onfocus="openPoProductDropdown(this)"
-                           onclick="openPoProductDropdown(this)"
-                           oninput="handlePoProductSearchInput(this)"
-                           onkeydown="handlePoProductSearchKeydown(event, this)">
-                    <div class="absolute inset-y-0 right-0 flex items-center pr-1.5 gap-0.5">
-                        <button type="button"
-                                class="po-clear-product p-1 text-gray-400 hover:text-gray-600 transition"
-                                title="Clear product"
-                                style="display: none;"
-                                onclick="clearPoProductSelection(this)">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                        <button type="button"
-                                class="po-dropdown-toggle p-1 text-gray-400 hover:text-gray-600 transition opacity-40 pointer-events-none"
-                                tabindex="-1"
-                                disabled
-                                onclick="togglePoProductDropdown(this)">
-                            <svg class="h-4 w-4 transform transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </td>
-        <td class="px-3 py-2">
-            <input type="text" name="items[0][batch_no]" list="po-batch-list-0" class="po-batch-input block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional">
-            <datalist id="po-batch-list-0"></datalist>
-        </td>
-        <td class="px-3 py-2">
-            <select name="items[0][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
-                @foreach($uoms as $u)<option value="{{ $u->id }}">{{ $u->code }}</option>@endforeach
-            </select>
-        </td>
-        <td class="px-3 py-2"><input type="number" step="0.0001" name="items[0][quantity]" class="block w-20 rounded-lg border-gray-300 text-sm" value="1" required></td>
-        <td class="px-3 py-2"><input type="number" step="0.0001" name="items[0][unit_cost]" class="po-cost block w-28 rounded-lg border-gray-300 text-sm" value="0" required></td>
-        <td class="px-3 py-2">
-            <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                name="items[0][tax_percent]"
-                class="po-tax block w-20 rounded-lg border-gray-300 text-sm"
-                value="0"
-            >
-        </td>
-        <td class="px-3 py-2">
-            <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                name="items[0][cgst_percent]"
-                class="po-cgst block w-20 rounded-lg border-gray-300 text-sm"
-                value="0"
-            >
-        </td>
-        <td class="px-3 py-2">
-            <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                name="items[0][sgst_percent]"
-                class="po-sgst block w-20 rounded-lg border-gray-300 text-sm"
-                value="0"
-            >
-        </td>
-        <td class="px-3 py-2 text-right">
-            <button type="button" onclick="removePoRow(this)" class="text-xs text-red-600 hover:text-red-800 po-remove-btn" style="display:none;">Remove</button>
-        </td>
-        </tr>
+        @include('purchasing.orders.partials.line-row', [
+            'idx' => 0,
+            'brands' => $brands,
+            'products' => $products,
+            'uoms' => $uoms,
+            'showRemove' => false,
+        ])
     @endif
     </tbody></table></div>
+
+    <template id="po-line-template">
+        @include('purchasing.orders.partials.line-row', [
+            'idx' => '__INDEX__',
+            'brands' => $brands,
+            'products' => $products,
+            'uoms' => $uoms,
+            'showRemove' => true,
+        ])
+    </template>
 
     <!-- Section 3: Add Line Button directly below line items table -->
     <div class="mt-3 flex items-center justify-between">
@@ -504,40 +307,54 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function setPoProductPickerEnabled(row, enabled) {
+    const searchInput = row.querySelector('.po-product-search');
+    const toggleBtn = row.querySelector('.po-dropdown-toggle');
+
+    if (searchInput) {
+        searchInput.disabled = !enabled;
+        if (enabled) {
+            searchInput.removeAttribute('disabled');
+            searchInput.placeholder = 'Select product...';
+            searchInput.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+            searchInput.classList.add('bg-white');
+        } else {
+            searchInput.setAttribute('disabled', 'disabled');
+            searchInput.placeholder = 'Select brand first';
+            searchInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+            searchInput.classList.remove('bg-white');
+        }
+    }
+
+    if (toggleBtn) {
+        toggleBtn.disabled = !enabled;
+        if (enabled) {
+            toggleBtn.removeAttribute('disabled');
+            toggleBtn.classList.remove('opacity-40', 'pointer-events-none');
+        } else {
+            toggleBtn.setAttribute('disabled', 'disabled');
+            toggleBtn.classList.add('opacity-40', 'pointer-events-none');
+        }
+    }
+}
+
 function handlePoBrandChange(brandSelect) {
     const row = brandSelect.closest('tr');
     if (!row) return;
 
     const brandId = brandSelect.value;
-    const searchInput = row.querySelector('.po-product-search');
-    const toggleBtn = row.querySelector('.po-dropdown-toggle');
 
-    // Always clear the existing product when brand changes
-    clearPoProductSelection(brandSelect);
+    try {
+        clearPoProductSelection(brandSelect);
+    } catch (e) {
+        console.error('clearPoProductSelection failed', e);
+    }
 
     if (brandId) {
-        if (searchInput) {
-            searchInput.disabled = false;
-            searchInput.placeholder = 'Select product...';
-            searchInput.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
-            searchInput.classList.add('bg-white');
-        }
-        if (toggleBtn) {
-            toggleBtn.disabled = false;
-            toggleBtn.classList.remove('opacity-40', 'pointer-events-none');
-        }
+        setPoProductPickerEnabled(row, true);
         brandSelect.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
     } else {
-        if (searchInput) {
-            searchInput.disabled = true;
-            searchInput.placeholder = 'Select brand first';
-            searchInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
-            searchInput.classList.remove('bg-white');
-        }
-        if (toggleBtn) {
-            toggleBtn.disabled = true;
-            toggleBtn.classList.add('opacity-40', 'pointer-events-none');
-        }
+        setPoProductPickerEnabled(row, false);
     }
 }
 
@@ -1018,80 +835,50 @@ function recalculatePoTotals() {
     if (summaryGrandTotal) summaryGrandTotal.textContent = '₹' + grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function addPoRow() {
-    const table = document.getElementById('po-lines');
-    const firstRow = table.rows[0];
-    const newRow = firstRow.cloneNode(true);
-
-    newRow.innerHTML = newRow.innerHTML.replace(/items\[\d+\]/g, 'items[' + poi + ']');
-
-    newRow.querySelectorAll('input').forEach(input => {
-        if (input.classList.contains('po-product-search')) {
-            input.value = '';
-            input.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
-        } else if (input.name.includes('[quantity]')) {
-            input.value = '1';
-        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]') || input.name.includes('[serial_no]')) {
-            input.value = '';
+function resetPoSelect(sel) {
+    if (!sel) return;
+    Array.from(sel.options).forEach((opt, index) => {
+        opt.selected = index === 0;
+        if (index === 0) {
+            opt.setAttribute('selected', 'selected');
         } else {
-            input.value = '0';
+            opt.removeAttribute('selected');
         }
     });
+    sel.selectedIndex = 0;
+    sel.value = sel.options[0] ? sel.options[0].value : '';
+}
 
-    const batchInput = newRow.querySelector('.po-batch-input');
-    if (batchInput) {
-        batchInput.setAttribute('list', 'po-batch-list-' + poi);
-        batchInput.value = '';
-    }
-    const datalist = newRow.querySelector('datalist');
-    if (datalist) {
-        datalist.id = 'po-batch-list-' + poi;
-        datalist.innerHTML = '';
-    }
+function addPoRow() {
+    closePoProductDropdown();
 
-    newRow.querySelectorAll('select').forEach(sel => {
-        if (sel.classList.contains('po-product')) {
-            sel.value = '';
-            sel.selectedIndex = 0;
-        } else if (sel.classList.contains('po-brand')) {
-            sel.value = '';
-            sel.selectedIndex = 0;
-            sel.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
-        }
-    });
-
-    const searchInput = newRow.querySelector('.po-product-search');
-    if (searchInput) {
-        searchInput.value = '';
-        searchInput.disabled = true;
-        searchInput.placeholder = 'Select brand first';
-        searchInput.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500', 'bg-white');
-        searchInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+    const table = document.getElementById('po-lines');
+    const tpl = document.getElementById('po-line-template');
+    if (!table || !tpl) {
+        alert('Could not add line. Please refresh the page and try again.');
+        return;
     }
 
-    const clearBtn = newRow.querySelector('.po-clear-product');
-    if (clearBtn) {
-        clearBtn.style.display = 'none';
-    }
+    const index = poi;
+    const html = tpl.innerHTML.replaceAll('__INDEX__', String(index));
+    const wrap = document.createElement('tbody');
+    wrap.innerHTML = html.trim();
+    const newRow = wrap.querySelector('tr');
+    if (!newRow) return;
 
-    const toggleBtn = newRow.querySelector('.po-dropdown-toggle');
-    if (toggleBtn) {
-        toggleBtn.disabled = true;
-        toggleBtn.classList.add('opacity-40', 'pointer-events-none');
-    }
-
-    const toggleSvg = newRow.querySelector('.po-dropdown-toggle svg');
-    if (toggleSvg) {
-        toggleSvg.classList.remove('rotate-180');
-    }
-
-    const removeBtn = newRow.querySelector('.po-remove-btn');
-    if (removeBtn) removeBtn.style.display = 'inline';
+    setPoProductPickerEnabled(newRow, false);
 
     table.appendChild(newRow);
     poi++;
     updateRemoveButtons();
     recalculatePoTotals();
+
+    const brandSelect = newRow.querySelector('.po-brand');
+    if (brandSelect) {
+        brandSelect.disabled = false;
+        brandSelect.removeAttribute('disabled');
+        brandSelect.focus();
+    }
 }
 
 function removePoRow(btn) {
@@ -1155,7 +942,13 @@ document.addEventListener('change', function (event) {
 });
 
 let supplierAddresses = [];
+let companyDeliveryAddresses = [];
+let companyDeliveryMeta = { name: '', legal_name: '' };
 let isInitialSupplierLoad = true;
+const initialCompanyDeliveryId = @json(old('company_delivery_address_id'));
+const deliveryAddressesUrl = @json(route('purchasing.delivery-addresses.index'));
+const deliveryAddressesStoreUrl = @json(route('purchasing.delivery-addresses.store'));
+const csrfToken = @json(csrf_token());
 
 function setPoCreditDays(days) {
     const input = document.getElementById('po_credit_days');
@@ -1282,15 +1075,119 @@ function updateQuickButtonsHighlight(currentDays) {
     });
 }
 
-async function handleSupplierChange(supplierId) {
-    const card = document.getElementById('supplier-addresses-card');
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value || '—';
+}
+
+function renderBillingDetails(customer, addr) {
+    const empty = document.getElementById('billing-empty-hint');
+    const list = document.getElementById('billing-details-list');
+    const snapshot = document.getElementById('billing_address');
+    const hiddenId = document.getElementById('billing_address_id');
+
+    if (!customer && !addr) {
+        if (empty) empty.classList.remove('hidden');
+        if (list) list.classList.add('hidden');
+        if (snapshot) snapshot.value = '';
+        if (hiddenId) hiddenId.value = '';
+        return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+    if (list) list.classList.remove('hidden');
+
+    const partyName = customer?.name || '';
+    const mailing = addr?.contact_person || partyName;
+    const lines = [addr?.address_line_1, addr?.address_line_2].filter(Boolean).join('\n') || (addr?.full_address || '');
+    setText('billing_party_name', partyName);
+    setText('billing_address_type', addr?.label || (addr?.type ? String(addr.type) : 'Primary'));
+    setText('billing_mailing_name', mailing);
+    setText('billing_address_lines', lines);
+    setText('billing_state', addr?.state || customer?.state || '');
+    setText('billing_pincode', addr?.pincode || '');
+    setText('billing_gstin', addr?.gstin || customer?.gstin || '');
+
+    if (hiddenId) hiddenId.value = addr?.id || '';
+    if (snapshot) snapshot.value = addr ? (addr.snapshot || addr.full_address || '') : '';
+}
+
+function renderDeliveryDetails(addr) {
+    const empty = document.getElementById('delivery-empty-hint');
+    const list = document.getElementById('delivery-details-list');
+    const snapshot = document.getElementById('shipping_address');
+
+    if (!addr) {
+        if (empty) empty.classList.remove('hidden');
+        if (list) list.classList.add('hidden');
+        if (snapshot) snapshot.value = '';
+        return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+    if (list) list.classList.remove('hidden');
+
+    setText('delivery_party_name', companyDeliveryMeta.legal_name || companyDeliveryMeta.name || addr.mailing_name || '');
+    setText('delivery_address_type', addr.address_type || '');
+    setText('delivery_mailing_name', addr.mailing_name || companyDeliveryMeta.legal_name || companyDeliveryMeta.name || '');
+    setText('delivery_address_lines', addr.address || '');
+    setText('delivery_state', addr.state || '');
+    setText('delivery_country', addr.country || 'India');
+    setText('delivery_pincode', addr.pincode || '');
+    setText('delivery_gstin', addr.gstin || '');
+
+    if (snapshot) snapshot.value = addr.snapshot || '';
+}
+
+function populateDeliverySelect(selectedId) {
+    const select = document.getElementById('company_delivery_address_id');
+    if (!select) return;
+    select.innerHTML = '<option value="">Select Delivery Address</option>';
+    companyDeliveryAddresses.forEach((addr) => {
+        select.add(new Option(addr.display_text || addr.address_type, addr.id));
+    });
+    const prefer = selectedId || initialCompanyDeliveryId;
+    if (prefer && companyDeliveryAddresses.some((a) => String(a.id) === String(prefer))) {
+        select.value = prefer;
+    } else {
+        const def = companyDeliveryAddresses.find((a) => a.is_default) || companyDeliveryAddresses[0];
+        if (def) select.value = def.id;
+    }
+    handleDeliveryChange();
+}
+
+async function loadCompanyDeliveryAddresses(preferId) {
     const statusText = document.getElementById('address-status-text');
-    const billingSelect = document.getElementById('billing_address_id');
+    try {
+        const res = await fetch(deliveryAddressesUrl, { headers: { 'Accept': 'application/json' } });
+        const data = await res.json();
+        if (!data.success) throw new Error('Failed');
+        companyDeliveryMeta = data.company || companyDeliveryMeta;
+        companyDeliveryAddresses = data.addresses || [];
+        populateDeliverySelect(preferId || data.default_id);
+        if (statusText && !statusText.innerText.includes('supplier')) {
+            statusText.innerText = `${companyDeliveryAddresses.length} delivery address(es) available`;
+        }
+        const mailing = document.getElementById('new_delivery_mailing_name');
+        if (mailing && !mailing.value) {
+            mailing.value = companyDeliveryMeta.legal_name || companyDeliveryMeta.name || '';
+        }
+        const gstin = document.getElementById('new_delivery_gstin');
+        if (gstin && !gstin.value && data.company?.gstin) gstin.value = data.company.gstin;
+    } catch (e) {
+        console.error('Failed to load delivery addresses:', e);
+        if (statusText) statusText.innerText = 'Could not load delivery addresses';
+    }
+}
+
+async function handleSupplierChange(supplierId) {
+    const statusText = document.getElementById('address-status-text');
     const billingSnapshot = document.getElementById('billing_address');
 
     if (!supplierId) {
         supplierAddresses = [];
-        billingSnapshot.value = '';
+        if (billingSnapshot) billingSnapshot.value = '';
+        renderBillingDetails(null, null);
         if (!isInitialSupplierLoad) {
             setPoCreditDays(0);
         }
@@ -1306,7 +1203,7 @@ async function handleSupplierChange(supplierId) {
         }
     }
 
-    statusText.innerText = 'Loading supplier addresses...';
+    if (statusText) statusText.innerText = 'Loading vendor billing details...';
     try {
         const res = await fetch(`{{ url('/masters/customers') }}/${supplierId}/addresses`, {
             headers: { 'Accept': 'application/json' }
@@ -1314,58 +1211,109 @@ async function handleSupplierChange(supplierId) {
         const data = await res.json();
         if (data.success) {
             supplierAddresses = data.addresses || [];
-            statusText.innerText = `${supplierAddresses.length} supplier billing address(es) available`;
-
-            billingSelect.innerHTML = '<option value="">Default Address</option>';
-
-            supplierAddresses.forEach(addr => {
-                const opt1 = new Option(`${addr.label} — ${addr.full_address}`, addr.id);
-                billingSelect.add(opt1);
-            });
-
-            if (data.default_billing_id) billingSelect.value = data.default_billing_id;
-
-            handleBillingChange();
+            const billingId = data.default_billing_id;
+            const addr = supplierAddresses.find((a) => String(a.id) === String(billingId)) || supplierAddresses[0] || null;
+            renderBillingDetails(data.customer || null, addr);
+            if (statusText) statusText.innerText = 'Vendor billing loaded automatically';
         }
     } catch (e) {
         console.error('Failed to load supplier addresses:', e);
-        statusText.innerText = 'Could not load addresses';
+        if (statusText) statusText.innerText = 'Could not load vendor billing';
     }
 }
 
-function handleBillingChange() {
-    const billingSelect = document.getElementById('billing_address_id');
-    const billingSnapshot = document.getElementById('billing_address');
-    const addr = supplierAddresses.find(a => String(a.id) === String(billingSelect.value));
-    billingSnapshot.value = addr ? (addr.snapshot || addr.full_address) : '';
+function handleDeliveryChange() {
+    const select = document.getElementById('company_delivery_address_id');
+    const addr = companyDeliveryAddresses.find((a) => String(a.id) === String(select?.value));
+    renderDeliveryDetails(addr || null);
 }
 
 function handleWarehouseChange(selectEl) {
-    const selectedOption = selectEl.options[selectEl.selectedIndex];
-    const warehouseAddress = selectedOption ? (selectedOption.dataset.address || '') : '';
-    const shippingSnapshot = document.getElementById('shipping_address');
-    if (shippingSnapshot && warehouseAddress) {
-        if (!shippingSnapshot.value || shippingSnapshot.dataset.autoFilled === '1' || shippingSnapshot.value.trim() === '') {
-            shippingSnapshot.value = warehouseAddress;
-            shippingSnapshot.dataset.autoFilled = '1';
+    // Delivery address is chosen from company delivery addresses (Tally-style consignee).
+}
+
+function openDeliveryAddressModal() {
+    const modal = document.getElementById('delivery-address-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    modal.setAttribute('aria-hidden', 'false');
+    const err = document.getElementById('new-delivery-error');
+    if (err) { err.classList.add('hidden'); err.textContent = ''; }
+}
+
+function closeDeliveryAddressModal() {
+    const modal = document.getElementById('delivery-address-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+async function saveDeliveryAddress() {
+    const err = document.getElementById('new-delivery-error');
+    const addressType = document.getElementById('new_delivery_address_type')?.value?.trim() || '';
+    const address = document.getElementById('new_delivery_address')?.value?.trim() || '';
+    if (!addressType || !address) {
+        if (err) { err.textContent = 'Address type and address are required.'; err.classList.remove('hidden'); }
+        return;
+    }
+
+    const payload = {
+        address_type: addressType,
+        mailing_name: document.getElementById('new_delivery_mailing_name')?.value?.trim() || '',
+        address,
+        state: document.getElementById('new_delivery_state')?.value?.trim() || '',
+        country: document.getElementById('new_delivery_country')?.value?.trim() || 'India',
+        pincode: document.getElementById('new_delivery_pincode')?.value?.trim() || '',
+        gstin: document.getElementById('new_delivery_gstin')?.value?.trim() || '',
+        is_default: !!document.getElementById('new_delivery_is_default')?.checked,
+    };
+
+    try {
+        const res = await fetch(deliveryAddressesStoreUrl, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || Object.values(data.errors || {}).flat().join(' ') || 'Could not save address');
         }
+        closeDeliveryAddressModal();
+        document.getElementById('new_delivery_address_type').value = '';
+        document.getElementById('new_delivery_address').value = '';
+        await loadCompanyDeliveryAddresses(data.address?.id);
+    } catch (e) {
+        if (err) { err.textContent = e.message || 'Could not save address'; err.classList.remove('hidden'); }
     }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    const poLines = document.getElementById('po-lines');
+    if (poLines) {
+        poLines.addEventListener('change', function (event) {
+            if (!event.target) return;
+            if (event.target.classList.contains('po-brand')) {
+                handlePoBrandChange(event.target);
+            } else if (event.target.classList.contains('po-product')) {
+                handlePoProductChange(event.target);
+            }
+        });
+    }
+
+    const btnNew = document.getElementById('btn-new-delivery-address');
+    if (btnNew) btnNew.addEventListener('click', openDeliveryAddressModal);
+
+    loadCompanyDeliveryAddresses(initialCompanyDeliveryId);
+
     const supSelect = document.getElementById('supplier_id');
     if (supSelect && supSelect.value) {
         handleSupplierChange(supSelect.value);
-    }
-    const whSelect = document.getElementById('warehouse_id');
-    if (whSelect && whSelect.value) {
-        const opt = whSelect.options[whSelect.selectedIndex];
-        const addr = opt ? (opt.dataset.address || '') : '';
-        const shippingSnapshot = document.getElementById('shipping_address');
-        if (shippingSnapshot && !shippingSnapshot.value.trim() && addr) {
-            shippingSnapshot.value = addr;
-            shippingSnapshot.dataset.autoFilled = '1';
-        }
     }
     isInitialSupplierLoad = false;
     recalcPoDueDate();

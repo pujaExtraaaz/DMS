@@ -114,43 +114,12 @@
         $currentShippingValue = old('shipping_address', $resolvedConsignee['delivery_address'] !== 'Address not provided' ? $resolvedConsignee['delivery_address'] : ($order->shipping_address ?: ''));
     @endphp
 
-    <!-- Billing & Delivery Addresses -->
-    <div id="supplier-addresses-card" class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
-        <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-            <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Billing &amp; Delivery Addresses</span>
-            <span id="address-status-text" class="text-xs text-slate-500"></span>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Billing Address Card (Supplier) -->
-            <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
-                <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Billing Address (Supplier / Vendor)</label>
-                    <span class="text-[11px] text-indigo-600 font-medium">Billed from</span>
-                </div>
-                <select name="billing_address_id" id="billing_address_id" onchange="handleBillingChange()"
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">Default Address</option>
-                </select>
-                <textarea name="billing_address" id="billing_address" rows="3"
-                          placeholder="Supplier Billing Address Snapshot"
-                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ old('billing_address', $order->billing_address) }}</textarea>
-            </div>
-
-            <!-- Delivery Address Card (Consignee) -->
-            <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
-                <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery / Dispatch Address (Consignee)</label>
-                    <span class="text-[11px] text-emerald-600 font-medium">Deliver to</span>
-                </div>
-                <textarea name="shipping_address" id="shipping_address" rows="3"
-                          oninput="this.dataset.autoFilled='0'"
-                          placeholder="Consignee Delivery Address (Defaults To Warehouse/Branch Address)"
-                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ $currentShippingValue }}</textarea>
-                <p class="text-[11px] text-slate-400">Auto-fills from selected warehouse/branch. You may customize if needed.</p>
-            </div>
-        </div>
-    </div>
+    @include('purchasing.orders.partials.party-details', [
+        'initialBillingId' => old('billing_address_id', $order->billing_address_id),
+        'initialBillingText' => old('billing_address', $order->billing_address),
+        'initialDeliveryId' => old('company_delivery_address_id', $order->company_delivery_address_id),
+        'initialShippingText' => $currentShippingValue,
+    ])
 
     <!-- Items Table -->
     <div class="overflow-x-auto border rounded-lg">
@@ -314,6 +283,16 @@
     @endforeach
     </tbody></table></div>
 
+    <template id="po-line-template">
+        @include('purchasing.orders.partials.line-row', [
+            'idx' => '__INDEX__',
+            'brands' => $brands,
+            'products' => $products,
+            'uoms' => $uoms,
+            'showRemove' => true,
+        ])
+    </template>
+
     <!-- Section 3: Add Line Button directly below line items table -->
     <div class="mt-3 flex items-center justify-between">
         <x-ui.button type="button" variant="secondary" onclick="addPoRow()" class="inline-flex items-center gap-1.5 shadow-xs">
@@ -449,39 +428,54 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function setPoProductPickerEnabled(row, enabled) {
+    const searchInput = row.querySelector('.po-product-search');
+    const toggleBtn = row.querySelector('.po-dropdown-toggle');
+
+    if (searchInput) {
+        searchInput.disabled = !enabled;
+        if (enabled) {
+            searchInput.removeAttribute('disabled');
+            searchInput.placeholder = 'Select product...';
+            searchInput.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+            searchInput.classList.add('bg-white');
+        } else {
+            searchInput.setAttribute('disabled', 'disabled');
+            searchInput.placeholder = 'Select brand first';
+            searchInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+            searchInput.classList.remove('bg-white');
+        }
+    }
+
+    if (toggleBtn) {
+        toggleBtn.disabled = !enabled;
+        if (enabled) {
+            toggleBtn.removeAttribute('disabled');
+            toggleBtn.classList.remove('opacity-40', 'pointer-events-none');
+        } else {
+            toggleBtn.setAttribute('disabled', 'disabled');
+            toggleBtn.classList.add('opacity-40', 'pointer-events-none');
+        }
+    }
+}
+
 function handlePoBrandChange(brandSelect) {
     const row = brandSelect.closest('tr');
     if (!row) return;
 
     const brandId = brandSelect.value;
-    const searchInput = row.querySelector('.po-product-search');
-    const toggleBtn = row.querySelector('.po-dropdown-toggle');
 
-    clearPoProductSelection(brandSelect);
+    try {
+        clearPoProductSelection(brandSelect);
+    } catch (e) {
+        console.error('clearPoProductSelection failed', e);
+    }
 
     if (brandId) {
-        if (searchInput) {
-            searchInput.disabled = false;
-            searchInput.placeholder = 'Select product...';
-            searchInput.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
-            searchInput.classList.add('bg-white');
-        }
-        if (toggleBtn) {
-            toggleBtn.disabled = false;
-            toggleBtn.classList.remove('opacity-40', 'pointer-events-none');
-        }
+        setPoProductPickerEnabled(row, true);
         brandSelect.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
     } else {
-        if (searchInput) {
-            searchInput.disabled = true;
-            searchInput.placeholder = 'Select brand first';
-            searchInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
-            searchInput.classList.remove('bg-white');
-        }
-        if (toggleBtn) {
-            toggleBtn.disabled = true;
-            toggleBtn.classList.add('opacity-40', 'pointer-events-none');
-        }
+        setPoProductPickerEnabled(row, false);
     }
 }
 
@@ -962,80 +956,50 @@ function recalculatePoTotals() {
     if (summaryGrandTotal) summaryGrandTotal.textContent = '₹' + grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function addPoRow() {
-    const table = document.getElementById('po-lines');
-    const firstRow = table.rows[0];
-    const newRow = firstRow.cloneNode(true);
-
-    newRow.innerHTML = newRow.innerHTML.replace(/items\[\d+\]/g, 'items[' + poi + ']');
-
-    newRow.querySelectorAll('input').forEach(input => {
-        if (input.classList.contains('po-product-search')) {
-            input.value = '';
-            input.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
-        } else if (input.name.includes('[quantity]')) {
-            input.value = '1';
-        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]') || input.name.includes('[serial_no]')) {
-            input.value = '';
+function resetPoSelect(sel) {
+    if (!sel) return;
+    Array.from(sel.options).forEach((opt, index) => {
+        opt.selected = index === 0;
+        if (index === 0) {
+            opt.setAttribute('selected', 'selected');
         } else {
-            input.value = '0';
+            opt.removeAttribute('selected');
         }
     });
+    sel.selectedIndex = 0;
+    sel.value = sel.options[0] ? sel.options[0].value : '';
+}
 
-    const batchInput = newRow.querySelector('.po-batch-input');
-    if (batchInput) {
-        batchInput.setAttribute('list', 'po-batch-list-' + poi);
-        batchInput.value = '';
-    }
-    const datalist = newRow.querySelector('datalist');
-    if (datalist) {
-        datalist.id = 'po-batch-list-' + poi;
-        datalist.innerHTML = '';
-    }
+function addPoRow() {
+    closePoProductDropdown();
 
-    newRow.querySelectorAll('select').forEach(sel => {
-        if (sel.classList.contains('po-product')) {
-            sel.value = '';
-            sel.selectedIndex = 0;
-        } else if (sel.classList.contains('po-brand')) {
-            sel.value = '';
-            sel.selectedIndex = 0;
-            sel.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
-        }
-    });
-
-    const searchInput = newRow.querySelector('.po-product-search');
-    if (searchInput) {
-        searchInput.value = '';
-        searchInput.disabled = true;
-        searchInput.placeholder = 'Select brand first';
-        searchInput.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500', 'bg-white');
-        searchInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+    const table = document.getElementById('po-lines');
+    const tpl = document.getElementById('po-line-template');
+    if (!table || !tpl) {
+        alert('Could not add line. Please refresh the page and try again.');
+        return;
     }
 
-    const clearBtn = newRow.querySelector('.po-clear-product');
-    if (clearBtn) {
-        clearBtn.style.display = 'none';
-    }
+    const index = poi;
+    const html = tpl.innerHTML.replaceAll('__INDEX__', String(index));
+    const wrap = document.createElement('tbody');
+    wrap.innerHTML = html.trim();
+    const newRow = wrap.querySelector('tr');
+    if (!newRow) return;
 
-    const toggleBtn = newRow.querySelector('.po-dropdown-toggle');
-    if (toggleBtn) {
-        toggleBtn.disabled = true;
-        toggleBtn.classList.add('opacity-40', 'pointer-events-none');
-    }
-
-    const toggleSvg = newRow.querySelector('.po-dropdown-toggle svg');
-    if (toggleSvg) {
-        toggleSvg.classList.remove('rotate-180');
-    }
-
-    const removeBtn = newRow.querySelector('.po-remove-btn');
-    if (removeBtn) removeBtn.style.display = 'inline';
+    setPoProductPickerEnabled(newRow, false);
 
     table.appendChild(newRow);
     poi++;
     updateRemoveButtons();
     recalculatePoTotals();
+
+    const brandSelect = newRow.querySelector('.po-brand');
+    if (brandSelect) {
+        brandSelect.disabled = false;
+        brandSelect.removeAttribute('disabled');
+        brandSelect.focus();
+    }
 }
 
 function removePoRow(btn) {
@@ -1099,9 +1063,15 @@ document.addEventListener('change', function (event) {
 });
 
 let supplierAddresses = [];
+let companyDeliveryAddresses = [];
+let companyDeliveryMeta = { name: '', legal_name: '' };
 let initialLoad = true;
 
-const initialBillingId = "{{ old('billing_address_id', $order->billing_address_id) }}";
+const initialBillingId = @json(old('billing_address_id', $order->billing_address_id));
+const initialCompanyDeliveryId = @json(old('company_delivery_address_id', $order->company_delivery_address_id));
+const deliveryAddressesUrl = @json(route('purchasing.delivery-addresses.index'));
+const deliveryAddressesStoreUrl = @json(route('purchasing.delivery-addresses.store'));
+const csrfToken = @json(csrf_token());
 
 function setPoCreditDays(days) {
     const input = document.getElementById('po_credit_days');
@@ -1228,15 +1198,113 @@ function updateQuickButtonsHighlight(currentDays) {
     });
 }
 
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value || '—';
+}
+
+function renderBillingDetails(customer, addr) {
+    const empty = document.getElementById('billing-empty-hint');
+    const list = document.getElementById('billing-details-list');
+    const snapshot = document.getElementById('billing_address');
+    const hiddenId = document.getElementById('billing_address_id');
+
+    if (!customer && !addr) {
+        if (empty) empty.classList.remove('hidden');
+        if (list) list.classList.add('hidden');
+        if (snapshot) snapshot.value = '';
+        if (hiddenId) hiddenId.value = '';
+        return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+    if (list) list.classList.remove('hidden');
+
+    const partyName = customer?.name || '';
+    const mailing = addr?.contact_person || partyName;
+    const lines = [addr?.address_line_1, addr?.address_line_2].filter(Boolean).join('\n') || (addr?.full_address || '');
+    setText('billing_party_name', partyName);
+    setText('billing_address_type', addr?.label || (addr?.type ? String(addr.type) : 'Primary'));
+    setText('billing_mailing_name', mailing);
+    setText('billing_address_lines', lines);
+    setText('billing_state', addr?.state || customer?.state || '');
+    setText('billing_pincode', addr?.pincode || '');
+    setText('billing_gstin', addr?.gstin || customer?.gstin || '');
+
+    if (hiddenId) hiddenId.value = addr?.id || initialBillingId || '';
+    if (snapshot) snapshot.value = addr ? (addr.snapshot || addr.full_address || '') : (snapshot.value || '');
+}
+
+function renderDeliveryDetails(addr) {
+    const empty = document.getElementById('delivery-empty-hint');
+    const list = document.getElementById('delivery-details-list');
+    const snapshot = document.getElementById('shipping_address');
+
+    if (!addr) {
+        if (empty) empty.classList.remove('hidden');
+        if (list) list.classList.add('hidden');
+        return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+    if (list) list.classList.remove('hidden');
+
+    setText('delivery_party_name', companyDeliveryMeta.legal_name || companyDeliveryMeta.name || addr.mailing_name || '');
+    setText('delivery_address_type', addr.address_type || '');
+    setText('delivery_mailing_name', addr.mailing_name || companyDeliveryMeta.legal_name || companyDeliveryMeta.name || '');
+    setText('delivery_address_lines', addr.address || '');
+    setText('delivery_state', addr.state || '');
+    setText('delivery_country', addr.country || 'India');
+    setText('delivery_pincode', addr.pincode || '');
+    setText('delivery_gstin', addr.gstin || '');
+
+    if (snapshot) snapshot.value = addr.snapshot || '';
+}
+
+function populateDeliverySelect(selectedId) {
+    const select = document.getElementById('company_delivery_address_id');
+    if (!select) return;
+    select.innerHTML = '<option value="">Select Delivery Address</option>';
+    companyDeliveryAddresses.forEach((addr) => {
+        select.add(new Option(addr.display_text || addr.address_type, addr.id));
+    });
+    const prefer = selectedId || initialCompanyDeliveryId;
+    if (prefer && companyDeliveryAddresses.some((a) => String(a.id) === String(prefer))) {
+        select.value = prefer;
+    } else {
+        const def = companyDeliveryAddresses.find((a) => a.is_default) || companyDeliveryAddresses[0];
+        if (def) select.value = def.id;
+    }
+    handleDeliveryChange();
+}
+
+async function loadCompanyDeliveryAddresses(preferId) {
+    try {
+        const res = await fetch(deliveryAddressesUrl, { headers: { 'Accept': 'application/json' } });
+        const data = await res.json();
+        if (!data.success) throw new Error('Failed');
+        companyDeliveryMeta = data.company || companyDeliveryMeta;
+        companyDeliveryAddresses = data.addresses || [];
+        populateDeliverySelect(preferId || data.default_id);
+        const mailing = document.getElementById('new_delivery_mailing_name');
+        if (mailing && !mailing.value) {
+            mailing.value = companyDeliveryMeta.legal_name || companyDeliveryMeta.name || '';
+        }
+        const gstin = document.getElementById('new_delivery_gstin');
+        if (gstin && !gstin.value && data.company?.gstin) gstin.value = data.company.gstin;
+    } catch (e) {
+        console.error('Failed to load delivery addresses:', e);
+    }
+}
+
 async function handleSupplierChange(supplierId) {
-    const card = document.getElementById('supplier-addresses-card');
     const statusText = document.getElementById('address-status-text');
-    const billingSelect = document.getElementById('billing_address_id');
     const billingSnapshot = document.getElementById('billing_address');
 
     if (!supplierId) {
         supplierAddresses = [];
-        billingSnapshot.value = '';
+        if (billingSnapshot) billingSnapshot.value = '';
+        renderBillingDetails(null, null);
         if (!initialLoad) {
             setPoCreditDays(0);
         }
@@ -1252,7 +1320,7 @@ async function handleSupplierChange(supplierId) {
         }
     }
 
-    statusText.innerText = 'Loading supplier addresses...';
+    if (statusText) statusText.innerText = 'Loading vendor billing details...';
     try {
         const res = await fetch(`{{ url('/masters/customers') }}/${supplierId}/addresses`, {
             headers: { 'Accept': 'application/json' }
@@ -1260,66 +1328,120 @@ async function handleSupplierChange(supplierId) {
         const data = await res.json();
         if (data.success) {
             supplierAddresses = data.addresses || [];
-            statusText.innerText = `${supplierAddresses.length} supplier billing address(es) available`;
-
-            billingSelect.innerHTML = '<option value="">Default Address</option>';
-
-            supplierAddresses.forEach(addr => {
-                const opt1 = new Option(`${addr.label} — ${addr.full_address}`, addr.id);
-                billingSelect.add(opt1);
-            });
-
-            if (initialLoad) {
-                if (initialBillingId) billingSelect.value = initialBillingId;
-                initialLoad = false;
-            } else {
-                if (data.default_billing_id) billingSelect.value = data.default_billing_id;
-                handleBillingChange();
+            let addr = null;
+            if (initialLoad && initialBillingId) {
+                addr = supplierAddresses.find((a) => String(a.id) === String(initialBillingId)) || null;
             }
+            if (!addr) {
+                const billingId = data.default_billing_id;
+                addr = supplierAddresses.find((a) => String(a.id) === String(billingId)) || supplierAddresses[0] || null;
+            }
+            renderBillingDetails(data.customer || null, addr);
+            if (statusText) statusText.innerText = 'Vendor billing loaded automatically';
+            initialLoad = false;
         }
     } catch (e) {
         console.error('Failed to load supplier addresses:', e);
-        statusText.innerText = 'Could not load addresses';
+        if (statusText) statusText.innerText = 'Could not load vendor billing';
+        initialLoad = false;
     }
 }
 
-function handleBillingChange() {
-    const billingSelect = document.getElementById('billing_address_id');
-    const billingSnapshot = document.getElementById('billing_address');
-    const addr = supplierAddresses.find(a => String(a.id) === String(billingSelect.value));
-    if (addr) {
-        billingSnapshot.value = (addr.snapshot || addr.full_address);
-    }
+function handleDeliveryChange() {
+    const select = document.getElementById('company_delivery_address_id');
+    const addr = companyDeliveryAddresses.find((a) => String(a.id) === String(select?.value));
+    renderDeliveryDetails(addr || null);
 }
 
 function handleWarehouseChange(selectEl) {
-    const selectedOption = selectEl.options[selectEl.selectedIndex];
-    const warehouseAddress = selectedOption ? (selectedOption.dataset.address || '') : '';
-    const shippingSnapshot = document.getElementById('shipping_address');
-    if (shippingSnapshot && warehouseAddress) {
-        if (!shippingSnapshot.value || shippingSnapshot.dataset.autoFilled === '1' || shippingSnapshot.value.trim() === '') {
-            shippingSnapshot.value = warehouseAddress;
-            shippingSnapshot.dataset.autoFilled = '1';
+    // Delivery address is chosen from company delivery addresses (Tally-style consignee).
+}
+
+function openDeliveryAddressModal() {
+    const modal = document.getElementById('delivery-address-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    modal.setAttribute('aria-hidden', 'false');
+    const err = document.getElementById('new-delivery-error');
+    if (err) { err.classList.add('hidden'); err.textContent = ''; }
+}
+
+function closeDeliveryAddressModal() {
+    const modal = document.getElementById('delivery-address-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+async function saveDeliveryAddress() {
+    const err = document.getElementById('new-delivery-error');
+    const addressType = document.getElementById('new_delivery_address_type')?.value?.trim() || '';
+    const address = document.getElementById('new_delivery_address')?.value?.trim() || '';
+    if (!addressType || !address) {
+        if (err) { err.textContent = 'Address type and address are required.'; err.classList.remove('hidden'); }
+        return;
+    }
+
+    const payload = {
+        address_type: addressType,
+        mailing_name: document.getElementById('new_delivery_mailing_name')?.value?.trim() || '',
+        address,
+        state: document.getElementById('new_delivery_state')?.value?.trim() || '',
+        country: document.getElementById('new_delivery_country')?.value?.trim() || 'India',
+        pincode: document.getElementById('new_delivery_pincode')?.value?.trim() || '',
+        gstin: document.getElementById('new_delivery_gstin')?.value?.trim() || '',
+        is_default: !!document.getElementById('new_delivery_is_default')?.checked,
+    };
+
+    try {
+        const res = await fetch(deliveryAddressesStoreUrl, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || Object.values(data.errors || {}).flat().join(' ') || 'Could not save address');
         }
+        closeDeliveryAddressModal();
+        document.getElementById('new_delivery_address_type').value = '';
+        document.getElementById('new_delivery_address').value = '';
+        await loadCompanyDeliveryAddresses(data.address?.id);
+    } catch (e) {
+        if (err) { err.textContent = e.message || 'Could not save address'; err.classList.remove('hidden'); }
     }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    const poLines = document.getElementById('po-lines');
+    if (poLines) {
+        poLines.addEventListener('change', function (event) {
+            if (!event.target) return;
+            if (event.target.classList.contains('po-brand')) {
+                handlePoBrandChange(event.target);
+            } else if (event.target.classList.contains('po-product')) {
+                handlePoProductChange(event.target);
+            }
+        });
+    }
+
+    const btnNew = document.getElementById('btn-new-delivery-address');
+    if (btnNew) btnNew.addEventListener('click', openDeliveryAddressModal);
+
+    loadCompanyDeliveryAddresses(initialCompanyDeliveryId);
+
     const supSelect = document.getElementById('supplier_id');
     if (supSelect && supSelect.value) {
         handleSupplierChange(supSelect.value);
+    } else {
+        initialLoad = false;
     }
-    const whSelect = document.getElementById('warehouse_id');
-    if (whSelect && whSelect.value) {
-        const opt = whSelect.options[whSelect.selectedIndex];
-        const addr = opt ? (opt.dataset.address || '') : '';
-        const shippingSnapshot = document.getElementById('shipping_address');
-        if (shippingSnapshot && !shippingSnapshot.value.trim() && addr) {
-            shippingSnapshot.value = addr;
-            shippingSnapshot.dataset.autoFilled = '1';
-        }
-    }
-    initialLoad = false;
     recalcPoDueDate();
     updateExpectedQuickHighlight();
 

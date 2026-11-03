@@ -13,13 +13,28 @@
 
 <x-ui.page-header title="Tally Connector" description="Windows bridge between this DMS and TallyPrime on port 9000. The bridge polls every 5 to 10 seconds." />
 
+@if (session('success'))
+    <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{{ session('success') }}</div>
+@endif
+@if (session('error'))
+    <div class="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">{{ session('error') }}</div>
+@endif
+
 <x-ui.card class="mb-6">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="min-w-0">
             <p class="text-sm font-semibold text-gray-900">Download for the Tally PC</p>
             <p class="mt-1 text-sm text-gray-500">ZIP includes tally_connector.exe, config.json, config.example.json, and install-task.ps1. Keep Tally open on port 9000.</p>
         </div>
-        <div class="shrink-0">
+        <div class="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+            @if ($syncEnabled)
+                <form method="POST" action="{{ route('tally-connector.pull') }}" onsubmit="return confirm('Re-import all masters and vouchers from Tally into DMS?');">
+                    @csrf
+                    <x-ui.button variant="secondary" size="lg" type="submit">
+                        Pull everything from Tally
+                    </x-ui.button>
+                </form>
+            @endif
             @if ($exeReady)
                 <x-ui.button variant="primary" size="lg" :href="route('tally-connector.download')">
                     Download Tally Connector
@@ -129,7 +144,7 @@
 </div>
 
 <x-ui.card class="mb-6" title="What syncs">
-    <p class="text-sm text-slate-700">Outbound from DMS (Tally Queue): masters (stock items, ledgers, units, godowns), sales and purchase invoices, receipts/payments, credit notes, purchase orders, sales orders, quotations, receipt notes (GRN), Books stock journals, freight/landed-cost journals, and standalone cleared cheques. Inbound poll also refreshes Books masters and reports (day book, P&amp;L, trial balance, balance sheet, GST packs). Receipt Notes from Tally become Books goods receipts — not cash receipts. Sales/purchase orders and quotations stay DMS-owned on import. Conflicts are listed below; neither side is overwritten.</p>
+    <p class="text-sm text-slate-700">Two bridges stay separate: DMS &lt;-&gt; Accounting Books, and DMS &lt;-&gt; TallyPrime. Accounting Books never talks to Tally. Outbound Tally sync sends DMS products, customers, UOMs, warehouses, invoices, payments, credit notes, purchase invoices, purchase orders, sales orders, quotations, and goods receipts. Inbound Tally changes update DMS units, warehouses, party ledgers, and stock items; Books then follows through DMS-to-Books sync. Day book, P&amp;L, GST, and the other report pulls are snapshots only. Conflicts are listed below; neither side is overwritten.</p>
 </x-ui.card>
 
 <x-ui.card class="mb-6" title="Imported reports">
@@ -188,59 +203,96 @@
     </div>
 </x-ui.card>
 
-{{-- Sync queue on this page (no separate Open queue button) --}}
-<x-ui.card title="Sync queue">
-    <p class="mb-3 text-sm text-slate-600">Documents waiting for, or already delivered to, Tally. Retry failed or pending rows after fixing ledger/stock names.</p>
-    <div class="overflow-x-auto rounded-lg border border-slate-200">
-        <table class="min-w-full border-collapse text-sm">
-            <thead>
-                <tr class="border-b border-slate-200 bg-teal-50 text-left text-xs font-semibold uppercase tracking-wide text-teal-900">
-                    <th class="border-r border-slate-200 px-4 py-2.5">ID</th>
-                    <th class="border-r border-slate-200 px-4 py-2.5">Document</th>
-                    <th class="border-r border-slate-200 px-4 py-2.5">Type</th>
-                    <th class="border-r border-slate-200 px-4 py-2.5">Doc ID</th>
-                    <th class="border-r border-slate-200 px-4 py-2.5">Status</th>
-                    <th class="border-r border-slate-200 px-4 py-2.5">Attempts</th>
-                    <th class="border-r border-slate-200 px-4 py-2.5">Error</th>
-                    <th class="border-r border-slate-200 px-4 py-2.5">Created</th>
-                    @if ($canQueueActions)
-                        <th class="px-4 py-2.5"></th>
-                    @endif
-                </tr>
-            </thead>
-            <tbody>
-                @forelse ($recent as $row)
-                    @php $label = ($queueLabels[$row->document_type] ?? null) ?: str_replace('_', ' ', (string) $row->document_type); @endphp
-                    <tr class="border-b border-slate-200 last:border-b-0">
-                        <td class="border-r border-slate-200 px-4 py-2.5 tabular-nums text-slate-600">#{{ $row->id }}</td>
-                        <td class="border-r border-slate-200 px-4 py-2.5 font-medium text-slate-900">{{ $label }}</td>
-                        <td class="border-r border-slate-200 px-4 py-2.5"><code class="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{{ $row->document_type }}</code></td>
-                        <td class="border-r border-slate-200 px-4 py-2.5 tabular-nums">{{ $row->document_id }}</td>
-                        <td class="border-r border-slate-200 px-4 py-2.5">
-                            <x-ui.badge :variant="$statusVariant[$row->status] ?? 'neutral'" size="sm">{{ $row->status }}</x-ui.badge>
-                        </td>
-                        <td class="border-r border-slate-200 px-4 py-2.5 tabular-nums">{{ $row->attempts }}</td>
-                        <td class="border-r border-slate-200 max-w-xs truncate px-4 py-2.5 text-xs text-rose-600" title="{{ $row->last_error }}">{{ $row->last_error ? \Illuminate\Support\Str::limit($row->last_error, 60) : '—' }}</td>
-                        <td class="{{ $canQueueActions ? 'border-r border-slate-200 ' : '' }}px-4 py-2.5 whitespace-nowrap text-slate-600">{{ $row->created_at }}</td>
+<div class="mb-6 space-y-6">
+    <x-ui.card title="DMS → Tally">
+        <p class="mb-3 text-sm text-slate-600">Outbound queue — what this DMS sent (or will send) into TallyPrime.</p>
+        <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="min-w-full border-collapse text-sm">
+                <thead>
+                    <tr class="border-b border-slate-200 bg-teal-50 text-left text-xs font-semibold uppercase tracking-wide text-teal-900">
+                        <th class="border-r border-slate-200 px-3 py-2">Synced item</th>
+                        <th class="border-r border-slate-200 px-3 py-2">Status</th>
+                        <th class="border-r border-slate-200 px-3 py-2">Error</th>
+                        <th class="border-r border-slate-200 px-3 py-2">When</th>
                         @if ($canQueueActions)
-                            <td class="px-4 py-2.5 text-right whitespace-nowrap">
-                                <a href="{{ route('tally.queue.show', $row) }}" class="text-sm font-medium text-slate-600 hover:text-slate-900">View</a>
-                                @if (in_array($row->status, ['failed', 'pending', 'skipped'], true))
-                                    <form class="ml-2 inline" method="POST" action="{{ route('tally.queue.retry', $row) }}">
-                                        @csrf
-                                        <button type="submit" class="text-sm font-medium text-teal-700 hover:text-teal-900">Retry</button>
-                                    </form>
-                                @endif
-                            </td>
+                            <th class="px-3 py-2"></th>
                         @endif
                     </tr>
-                @empty
-                    <tr>
-                        <td class="px-4 py-6 text-center text-slate-500" colspan="{{ $canQueueActions ? 9 : 8 }}">Queue empty. Post or approve a document while sync is enabled.</td>
+                </thead>
+                <tbody>
+                    @forelse ($outbound as $row)
+                        <tr class="border-b border-slate-200 last:border-b-0">
+                            <td class="border-r border-slate-200 px-3 py-2 font-medium text-slate-900">
+                                <span title="#{{ $row->id }} · {{ $row->document_type }} #{{ $row->document_id }}">{{ $row->synced_item }}</span>
+                            </td>
+                            <td class="border-r border-slate-200 px-3 py-2">
+                                <x-ui.badge :variant="$statusVariant[$row->status] ?? 'neutral'" size="sm">{{ $row->status }}</x-ui.badge>
+                                @if ((int) $row->attempts > 1)
+                                    <span class="ml-1 text-xs text-slate-500">×{{ $row->attempts }}</span>
+                                @endif
+                            </td>
+                            <td class="border-r border-slate-200 max-w-[10rem] truncate px-3 py-2 text-xs text-rose-600" title="{{ $row->last_error }}">{{ $row->last_error ? \Illuminate\Support\Str::limit($row->last_error, 40) : '—' }}</td>
+                            <td class="{{ $canQueueActions ? 'border-r border-slate-200 ' : '' }}px-3 py-2 whitespace-nowrap text-xs text-slate-600">{{ $row->sent_at ?: $row->created_at }}</td>
+                            @if ($canQueueActions)
+                                <td class="px-3 py-2 text-right whitespace-nowrap">
+                                    <a href="{{ route('tally.queue.show', $row->id) }}" class="text-xs font-medium text-slate-600 hover:text-slate-900">View</a>
+                                    @if (in_array($row->status, ['failed', 'pending', 'skipped'], true))
+                                        <form class="ml-2 inline" method="POST" action="{{ route('tally.queue.retry', $row->id) }}">
+                                            @csrf
+                                            <button type="submit" class="text-xs font-medium text-teal-700 hover:text-teal-900">Retry</button>
+                                        </form>
+                                    @endif
+                                </td>
+                            @endif
+                        </tr>
+                    @empty
+                        <tr>
+                            <td class="px-3 py-5 text-center text-slate-500" colspan="{{ $canQueueActions ? 5 : 4 }}">Nothing queued yet. Save or post a DMS document while sync is on.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </x-ui.card>
+
+    <x-ui.card title="Tally → DMS">
+        <p class="mb-3 text-sm text-slate-600">Inbound pull — masters and vouchers brought in from Tally by the connector.</p>
+        @if ($inboundCursors->isNotEmpty())
+            <div class="mb-3 flex flex-wrap gap-1.5">
+                @foreach ($inboundCursors as $cursor)
+                    <span class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600" title="Updated {{ $cursor->updated_at }}">
+                        <span class="font-medium text-slate-800">{{ \App\Domains\TallySync\Support\SyncCoverage::labelForInboundCollection($cursor->collection) }}</span>
+                        <span class="tabular-nums text-slate-500">{{ $cursor->alter_id }}</span>
+                    </span>
+                @endforeach
+            </div>
+        @endif
+        <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="min-w-full border-collapse text-sm">
+                <thead>
+                    <tr class="border-b border-slate-200 bg-indigo-50 text-left text-xs font-semibold uppercase tracking-wide text-indigo-900">
+                        <th class="border-r border-slate-200 px-3 py-2">Synced item</th>
+                        <th class="border-r border-slate-200 px-3 py-2">Action</th>
+                        <th class="px-3 py-2">When</th>
                     </tr>
-                @endforelse
-            </tbody>
-        </table>
-    </div>
-</x-ui.card>
+                </thead>
+                <tbody>
+                    @forelse ($inbound as $row)
+                        <tr class="border-b border-slate-200 last:border-b-0">
+                            <td class="border-r border-slate-200 px-3 py-2 font-medium text-slate-900">{{ $row->item ?: \App\Domains\TallySync\Support\SyncCoverage::labelForInboundCollection($row->collection ?? null) }}</td>
+                            <td class="border-r border-slate-200 px-3 py-2">
+                                <x-ui.badge :variant="match($row->action ?? '') { 'created' => 'success', 'updated' => 'info', 'conflict' => 'danger', 'batch' => 'neutral', default => 'neutral' }" size="sm">{{ $row->action ?? 'synced' }}</x-ui.badge>
+                            </td>
+                            <td class="px-3 py-2 whitespace-nowrap text-xs text-slate-600">{{ $row->created_at }}</td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td class="px-3 py-5 text-center text-slate-500" colspan="3">No inbound activity yet. Keep the connector running, or use Pull everything from Tally.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </x-ui.card>
+</div>
 @endsection

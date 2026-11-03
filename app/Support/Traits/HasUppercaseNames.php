@@ -41,6 +41,13 @@ trait HasUppercaseNames
         }
 
         if (method_exists($this, 'getCasts')) {
+            $cast = (string) ($this->getCasts()[$key] ?? '');
+            if ($cast !== '' && (enum_exists($cast) || is_a($cast, \UnitEnum::class, true))) {
+                return false;
+            }
+        }
+
+        if (method_exists($this, 'getCasts')) {
             $casts = $this->getCasts();
             if (isset($casts[$key])) {
                 $cast = strtolower((string) $casts[$key]);

@@ -154,41 +154,68 @@ class SyncCoverage
             ],
             [
                 'direction' => 'outbound',
+                'category' => 'Master',
+                'document' => 'Brand / Category / SubCategory / Product type',
+                'queue_type' => 'brand / category / sub_category / product_type',
+                'tally_type' => 'Stock Group',
+                'trigger' => 'Save catalog master',
+                'note' => 'Nested PARENT chain; product uses deepest group',
+            ],
+            [
+                'direction' => 'outbound',
+                'category' => 'Master',
+                'document' => 'Branch',
+                'queue_type' => 'branch',
+                'tally_type' => 'Cost Centre',
+                'trigger' => 'Save branch',
+                'note' => 'Under Primary Cost Category',
+            ],
+            [
+                'direction' => 'outbound',
+                'category' => 'Master',
+                'document' => 'Tax rate',
+                'queue_type' => 'tax_rate',
+                'tally_type' => 'Ledger (Duties & Taxes)',
+                'trigger' => 'Save tax rate',
+                'note' => 'GST duty ledger; item GST still on stock item',
+            ],
+            [
+                'direction' => 'outbound',
                 'category' => 'Inventory',
                 'document' => 'Stock transfer',
-                'queue_type' => 'books_stock_journal',
+                'queue_type' => 'stock_transfer',
                 'tally_type' => 'Stock Journal',
-                'trigger' => 'Posted transfer',
-                'note' => 'Books StockTransaction (Transfer)',
+                'trigger' => 'Completed / received / posted',
+                'note' => 'DMS StockTransfer → Stock Journal with destination godown',
             ],
             [
                 'direction' => 'outbound',
                 'category' => 'Inventory',
                 'document' => 'Stock adjustment',
-                'queue_type' => 'books_stock_journal',
+                'queue_type' => 'stock_adjustment',
                 'tally_type' => 'Stock Journal',
-                'trigger' => 'Posted adjustment',
-                'note' => 'Books twin must be Posted to enqueue',
+                'trigger' => 'Posted / approved / completed',
+                'note' => 'DMS StockAdjustment → Stock Journal',
             ],
 
             // Inbound
             [
                 'direction' => 'inbound',
                 'category' => 'Master',
-                'document' => 'Groups, ledgers, units, godowns, stock items',
+                'document' => 'Stock groups, units, godowns, ledgers, stock items, cost centres',
                 'queue_type' => '— (pull)',
                 'tally_type' => 'Masters export',
                 'trigger' => 'Connector poll',
-                'note' => 'Creates / updates Books masters',
+                'note' => 'Creates / updates DMS Brand/Category/SubCategory, UOM, Warehouse, Customer(+address/bank), Product, Branch',
             ],
             [
                 'direction' => 'inbound',
                 'category' => 'Voucher',
-                'document' => 'Sales, Purchase, Receipt, Payment, Contra, Journal, Credit/Debit Note',
+                'document' => 'Sales, Purchase, Receipt, Payment, Credit Note, Orders, Quotation',
                 'queue_type' => '— (pull)',
                 'tally_type' => 'Matching VCHTYPE',
                 'trigger' => 'Connector poll',
-                'note' => 'Posted into Books day book',
+                'note' => 'Creates DMS docs; skips REMOTEID dms-* (already sent from DMS). Duplicates update by number.',
             ],
             [
                 'direction' => 'inbound',
@@ -197,7 +224,7 @@ class SyncCoverage
                 'queue_type' => '— (pull)',
                 'tally_type' => 'Stock Journal',
                 'trigger' => 'Connector poll',
-                'note' => 'Books StockTransaction (not a ledger voucher)',
+                'note' => 'Transfer → StockTransfer; else StockAdjustment',
             ],
             [
                 'direction' => 'inbound',
@@ -206,7 +233,16 @@ class SyncCoverage
                 'queue_type' => '— (pull)',
                 'tally_type' => 'Receipt Note',
                 'trigger' => 'Connector poll',
-                'note' => 'Books Goods Receipt + stock-in — never a cash Receipt',
+                'note' => 'DMS PurchaseInward',
+            ],
+            [
+                'direction' => 'skip',
+                'category' => 'Master',
+                'document' => 'Financial year',
+                'queue_type' => '—',
+                'tally_type' => 'Company period (Tally UI)',
+                'trigger' => 'Voucher import date',
+                'note' => 'Tally has no AlterID FY master; DMS FY is auto-created from voucher dates (Apr–Mar)',
             ],
             [
                 'direction' => 'inbound',
@@ -267,6 +303,14 @@ class SyncCoverage
             'customer' => 'Party ledger',
             'uom' => 'Unit',
             'godown' => 'Godown',
+            'brand' => 'Brand',
+            'category' => 'Category',
+            'sub_category' => 'Sub category',
+            'product_type' => 'Product type',
+            'branch' => 'Branch',
+            'tax_rate' => 'Tax rate',
+            'stock_transfer' => 'Stock transfer',
+            'stock_adjustment' => 'Stock adjustment',
             'books_voucher' => 'Books voucher',
             'books_stock_journal' => 'Books stock journal',
             'books_ledger' => 'Books ledger',
@@ -280,6 +324,32 @@ class SyncCoverage
         ];
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public static function inboundCollectionLabels(): array
+    {
+        return [
+            'stock_items' => 'Stock item',
+            'stock_item' => 'Stock item',
+            'ledgers' => 'Party ledger',
+            'ledger' => 'Party ledger',
+            'units' => 'Unit',
+            'uom' => 'Unit',
+            'godowns' => 'Godown',
+            'godown' => 'Godown',
+            'stock_groups' => 'Stock group',
+            'stock_group' => 'Stock group',
+            'cost_centres' => 'Branch',
+            'cost_centre' => 'Branch',
+            'vouchers' => 'Voucher',
+            'voucher' => 'Voucher',
+            'groups' => 'Group',
+            'bank_accounts' => 'Bank account',
+            'voucher_types' => 'Voucher type',
+        ];
+    }
+
     public static function labelForQueueType(?string $type): string
     {
         if ($type === null || $type === '') {
@@ -287,5 +357,26 @@ class SyncCoverage
         }
 
         return self::queueTypeLabels()[$type] ?? str_replace('_', ' ', $type);
+    }
+
+    public static function labelForInboundCollection(?string $collection): string
+    {
+        if ($collection === null || $collection === '') {
+            return '—';
+        }
+
+        $key = strtolower($collection);
+
+        return self::inboundCollectionLabels()[$key] ?? str_replace('_', ' ', $key);
+    }
+
+    public static function formatSyncItem(string $typeLabel, ?string $name): string
+    {
+        $name = trim((string) $name);
+        if ($name === '') {
+            return $typeLabel;
+        }
+
+        return $typeLabel.' — '.$name;
     }
 }

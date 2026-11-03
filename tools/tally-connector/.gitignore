@@ -4,3 +4,5 @@ logs/
 config.json
 publish/*.pdb
 publish/logs/
+.dotnet/
+dotnet-install.ps1

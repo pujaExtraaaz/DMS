@@ -120,6 +120,12 @@ class NameCase
         'hostname',
         'domain_name',
         'currency_formal_name',
+        'nature',
+        // Tally connector API payloads — never title-case technical keys or raw XML.
+        'key',
+        'xml',
+        'payload',
+        'response',
         'email',
         'website',
         'location_link',

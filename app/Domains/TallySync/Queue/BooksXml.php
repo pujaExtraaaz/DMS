@@ -173,7 +173,7 @@ class BooksXml
         $name = $unit->symbol ?: $unit->name;
 
         return $this->masters->unit($name, $action, $this->currentName($unit, 'books_unit') ?: $name, array_filter([
-            'ORIGINALNAME' => $unit->name,
+            'ORIGINALNAME' => $name,
             'DECIMALPLACES' => (string) max(0, (int) $unit->decimal_places),
             'ISSIMPLEUNIT' => 'Yes',
             'REPORTINGUQC' => $unit->gst_uqc,

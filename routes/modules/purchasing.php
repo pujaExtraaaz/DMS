@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Purchasing\CompanyDeliveryAddressController;
 use App\Http\Controllers\Purchasing\FreightBillController;
 use App\Http\Controllers\Purchasing\PurchaseComparisonController;
 use App\Http\Controllers\Purchasing\LandedCostController;
@@ -24,6 +25,9 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
     Route::get('comparisons/{comparison}/excel', [PurchaseComparisonController::class, 'excel'])->name('comparisons.excel');
     Route::get('comparisons/{comparison}/files/{file}', [PurchaseComparisonController::class, 'file'])->name('comparisons.files');
     Route::get('comparisons/{comparison}', [PurchaseComparisonController::class, 'show'])->name('comparisons.show');
+
+    Route::get('delivery-addresses', [CompanyDeliveryAddressController::class, 'index'])->name('delivery-addresses.index');
+    Route::post('delivery-addresses', [CompanyDeliveryAddressController::class, 'store'])->name('delivery-addresses.store');
 
     Route::get('orders', [PurchaseOrderController::class, 'index'])->name('orders.index');
     Route::get('orders/create', [PurchaseOrderController::class, 'create'])->name('orders.create');

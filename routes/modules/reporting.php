@@ -33,6 +33,7 @@ Route::prefix('reports')->name('reports.')->middleware('role_or_permission:super
 
 Route::middleware('role_or_permission:super-admin|reports.view|reports.create|reports.edit|reports.manage')->group(function () {
     Route::get('/tally-connector/download', [TallyConnectorAdminController::class, 'download'])->name('tally-connector.download');
+    Route::post('/tally-connector/pull', [TallyConnectorAdminController::class, 'pullFromTally'])->name('tally-connector.pull');
     Route::get('/tally-connector', [TallyConnectorAdminController::class, 'show'])->name('tally-connector.show');
 });
 

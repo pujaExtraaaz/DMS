@@ -3,9 +3,10 @@
 namespace App\Domains\Sync\Handlers;
 
 use App\Domains\Organization\Models\Company;
+use App\Domains\Sync\Support\BooksCompany;
 use Illuminate\Database\Eloquent\Model;
 
-/** Auto-pushes DMS company bank profile into Books on every company save. */
+/** Creates/updates the Books company from DMS and then pushes the company bank profile. */
 class CompanySync
 {
     public const KEY = 'company';
@@ -14,8 +15,11 @@ class CompanySync
 
     public function sync(Model $model): void
     {
-        if ($model instanceof Company) {
-            $this->banks->push($model);
+        if (! $model instanceof Company) {
+            return;
         }
+
+        BooksCompany::ensureForOrganization($model);
+        $this->banks->push($model);
     }
 }
