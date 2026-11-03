@@ -249,9 +249,14 @@ class ProductController extends Controller
         return back()->with('success', $msg);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
-        return view('masters.products.form', $this->formData(new Product));
+        return view('masters.products.form', [
+            'returnTo' => $request->query('return_to', old('return_to')),
+            'targetRow' => $request->query('target_row', old('target_row')),
+            'orderId' => $request->query('order_id', old('order_id')),
+            ...$this->formData(new Product),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -273,6 +278,32 @@ class ProductController extends Controller
 
                     $this->syncBaseUom($product);
                     $this->syncAlternateUoms($request, $product);
+
+                    $returnTo = $request->input('return_to');
+                    $targetRow = $request->input('target_row');
+                    $orderId = $request->input('order_id');
+
+                    if ($returnTo === 'orders.create') {
+                        $params = ['new_product_id' => $product->id];
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $params['target_row'] = $targetRow;
+                        }
+
+                        return redirect()->route('orders.create', $params)
+                            ->with('status', "Product '{$product->name}' created successfully.")
+                            ->with('success', "Product '{$product->name}' created successfully.");
+                    }
+
+                    if ($returnTo === 'orders.edit' && $orderId) {
+                        $params = ['order' => $orderId, 'new_product_id' => $product->id];
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $params['target_row'] = $targetRow;
+                        }
+
+                        return redirect()->route('orders.edit', $params)
+                            ->with('status', "Product '{$product->name}' created successfully.")
+                            ->with('success', "Product '{$product->name}' created successfully.");
+                    }
 
                     return $this->flashSuccess('Product created successfully.', 'masters.products.index');
                 });
@@ -603,6 +634,9 @@ class ProductController extends Controller
         );
 
         $data = $request->validate([
+            'return_to' => 'nullable|string|max:100',
+            'order_id' => 'nullable|integer',
+            'target_row' => 'nullable|integer',
             'name' => 'required|string|max:255',
             'sku' => 'required_unless:sku_not_applicable,1|nullable|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
             'serial_no' => [
@@ -904,6 +938,8 @@ class ProductController extends Controller
             }
             $data['image_path'] = $request->file('image')->store('products', 'public');
         }
+
+        unset($data['return_to'], $data['order_id'], $data['target_row']);
 
         return $data;
     }

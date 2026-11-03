@@ -96,6 +96,36 @@ class OrderService
                 ? $data['shipping_address']
                 : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $customer->address));
 
+            $grandTotal = (float) $pricing['total'];
+            $advanceAmount = isset($data['advance_amount']) && $data['advance_amount'] !== null && $data['advance_amount'] !== ''
+                ? (float) $data['advance_amount']
+                : 0.0;
+
+            if ($advanceAmount < 0) {
+                throw ValidationException::withMessages([
+                    'advance_amount' => 'Advance amount cannot be negative.',
+                ]);
+            }
+
+            if ($advanceAmount > $grandTotal) {
+                throw ValidationException::withMessages([
+                    'advance_amount' => 'Advance amount received cannot exceed the grand total.',
+                ]);
+            }
+
+            $balanceAmount = round(max(0, $grandTotal - $advanceAmount), 2);
+            $advancePercentage = isset($data['advance_percentage']) && $data['advance_percentage'] !== null && $data['advance_percentage'] !== ''
+                ? (float) $data['advance_percentage']
+                : ($grandTotal > 0 ? round(($advanceAmount / $grandTotal) * 100, 2) : 0.0);
+
+            $salespersonId = !empty($data['salesperson_id']) ? (int) $data['salesperson_id'] : null;
+            $salespersonUser = !empty($salespersonId) ? User::find($salespersonId) : null;
+            $salespersonName = $salespersonUser?->name ?? ($data['salesperson_name'] ?? null);
+            $createdByName = array_key_exists('created_by_name', $data)
+                ? (!empty(trim((string)$data['created_by_name'])) ? trim((string)$data['created_by_name']) : null)
+                : ($actor->name ?? null);
+            $fulfilmentMode = !empty($data['fulfilment_mode']) ? $data['fulfilment_mode'] : null;
+
             $order = Order::create([
                 'order_no' => $this->documentNumberService->next(
                     'ORD',
@@ -109,18 +139,28 @@ class OrderService
                 'shipping_address' => $shippingSnapshot,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'quotation_id' => $data['quotation_id'] ?? null,
-                'salesperson_id' => $actor->id,
-                'created_by_name' => $actorName,
+                'salesperson_id' => $salespersonId,
+                'salesperson_name' => $salespersonName,
+                'reference_no' => $data['reference_no'] ?? null,
+                'created_by_name' => $createdByName,
                 'order_date' => $data['order_date'],
                 'due_date' => $data['due_date'] ?? null,
-                'fulfilment_mode' => $data['fulfilment_mode'] ?? 'van',
+                'fulfilment_mode' => $fulfilmentMode,
+                'terms_of_delivery' => $data['terms_of_delivery'] ?? null,
+                'caretaker_phone' => $data['caretaker_phone'] ?? null,
+                'architect_name' => $data['architect_name'] ?? null,
+                'architect_phone' => $data['architect_phone'] ?? null,
+                'payment_terms' => $data['payment_terms'] ?? null,
+                'advance_amount' => $advanceAmount,
+                'balance_amount' => $balanceAmount,
+                'advance_percentage' => $advancePercentage,
                 'back_order' => false,
                 'credit_check_status' => 'pending',
                 'status' => 'pending',
                 'subtotal' => $pricing['subtotal'],
                 'discount_amount' => $pricing['discount'],
                 'tax_amount' => $pricing['tax'],
-                'grand_total' => $pricing['total'],
+                'grand_total' => $grandTotal,
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -217,12 +257,29 @@ class OrderService
                 $data['region_override_reason'] ?? null
             );
 
-            $billingAddress = !empty($data['billing_address_id'])
-                ? \App\Domains\Master\Models\PartyAddress::find($data['billing_address_id'])
-                : null;
-            $shippingAddress = !empty($data['shipping_address_id'])
-                ? \App\Domains\Master\Models\PartyAddress::find($data['shipping_address_id'])
-                : null;
+            $billingAddress = null;
+            if (!empty($data['billing_address_id'])) {
+                $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['billing_address_id'])
+                    ->where('customer_id', $customer->id)
+                    ->first();
+                if (!$billingAddress) {
+                    throw ValidationException::withMessages([
+                        'billing_address_id' => 'The selected billing address does not belong to the selected customer.',
+                    ]);
+                }
+            }
+
+            $shippingAddress = null;
+            if (!empty($data['shipping_address_id'])) {
+                $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['shipping_address_id'])
+                    ->where('customer_id', $customer->id)
+                    ->first();
+                if (!$shippingAddress) {
+                    throw ValidationException::withMessages([
+                        'shipping_address_id' => 'The selected delivery address does not belong to the selected customer.',
+                    ]);
+                }
+            }
 
             $billingSnapshot = !empty($data['billing_address'])
                 ? $data['billing_address']
@@ -232,21 +289,69 @@ class OrderService
                 ? $data['shipping_address']
                 : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $lockedOrder->shipping_address));
 
+            $grandTotal = (float) $pricing['total'];
+            $advanceAmount = isset($data['advance_amount']) && $data['advance_amount'] !== null && $data['advance_amount'] !== ''
+                ? (float) $data['advance_amount']
+                : (float) ($lockedOrder->advance_amount ?? 0);
+
+            if ($advanceAmount < 0) {
+                throw ValidationException::withMessages([
+                    'advance_amount' => 'Advance amount cannot be negative.',
+                ]);
+            }
+
+            if ($advanceAmount > $grandTotal) {
+                throw ValidationException::withMessages([
+                    'advance_amount' => 'Advance amount received cannot exceed the grand total.',
+                ]);
+            }
+
+            $balanceAmount = round(max(0, $grandTotal - $advanceAmount), 2);
+            $advancePercentage = isset($data['advance_percentage']) && $data['advance_percentage'] !== null && $data['advance_percentage'] !== ''
+                ? (float) $data['advance_percentage']
+                : ($grandTotal > 0 ? round(($advanceAmount / $grandTotal) * 100, 2) : 0.0);
+
+            $salespersonId = array_key_exists('salesperson_id', $data)
+                ? (!empty($data['salesperson_id']) ? (int) $data['salesperson_id'] : null)
+                : $lockedOrder->salesperson_id;
+            $salespersonUser = !empty($salespersonId) ? User::find($salespersonId) : null;
+            $salespersonName = $salespersonUser?->name ?? (array_key_exists('salesperson_id', $data) && empty($data['salesperson_id']) ? null : ($data['salesperson_name'] ?? $lockedOrder->salesperson_name));
+
+            $fulfilmentMode = array_key_exists('fulfilment_mode', $data)
+                ? (!empty($data['fulfilment_mode']) ? $data['fulfilment_mode'] : null)
+                : $lockedOrder->fulfilment_mode;
+
+            $createdByName = array_key_exists('created_by_name', $data)
+                ? (!empty($data['created_by_name']) ? trim((string)$data['created_by_name']) : null)
+                : $lockedOrder->created_by_name;
+
             $lockedOrder->update([
                 'customer_id' => $customer->id,
                 'warehouse_id' => $data['warehouse_id'] ?? $lockedOrder->warehouse_id,
+                'salesperson_id' => $salespersonId,
+                'salesperson_name' => $salespersonName,
+                'reference_no' => array_key_exists('reference_no', $data) ? $data['reference_no'] : $lockedOrder->reference_no,
+                'terms_of_delivery' => array_key_exists('terms_of_delivery', $data) ? $data['terms_of_delivery'] : $lockedOrder->terms_of_delivery,
+                'caretaker_phone' => array_key_exists('caretaker_phone', $data) ? $data['caretaker_phone'] : $lockedOrder->caretaker_phone,
+                'architect_name' => array_key_exists('architect_name', $data) ? $data['architect_name'] : $lockedOrder->architect_name,
+                'architect_phone' => array_key_exists('architect_phone', $data) ? $data['architect_phone'] : $lockedOrder->architect_phone,
+                'payment_terms' => array_key_exists('payment_terms', $data) ? $data['payment_terms'] : $lockedOrder->payment_terms,
+                'advance_amount' => $advanceAmount,
+                'balance_amount' => $balanceAmount,
+                'advance_percentage' => $advancePercentage,
                 'billing_address_id' => $billingAddress?->id ?? (isset($data['billing_address_id']) ? null : $lockedOrder->billing_address_id),
                 'shipping_address_id' => $shippingAddress?->id ?? (isset($data['shipping_address_id']) ? null : $lockedOrder->shipping_address_id),
                 'billing_address' => $billingSnapshot,
                 'shipping_address' => $shippingSnapshot,
+                'created_by_name' => $createdByName,
                 'updated_by_name' => $actorName,
                 'order_date' => $data['order_date'],
                 'due_date' => $data['due_date'] ?? null,
-                'fulfilment_mode' => $data['fulfilment_mode'] ?? $lockedOrder->fulfilment_mode ?? 'van',
+                'fulfilment_mode' => $fulfilmentMode,
                 'subtotal' => $pricing['subtotal'],
                 'discount_amount' => $pricing['discount'],
                 'tax_amount' => $pricing['tax'],
-                'grand_total' => $pricing['total'],
+                'grand_total' => $grandTotal,
                 'notes' => $data['notes'] ?? null,
             ]);
 
@@ -712,6 +817,14 @@ class OrderService
                         "Quantity for {$product->name} can have a maximum of 4 decimal places.",
                 ]);
             }
+
+            if (isset($item['unit_price']) && $item['unit_price'] !== '' && $item['unit_price'] !== null) {
+                if (!is_numeric($item['unit_price']) || (float) $item['unit_price'] < 0) {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.unit_price" => "Price for {$product->name} must be a non-negative number.",
+                    ]);
+                }
+            }
         }
 
         return array_map(
@@ -722,8 +835,8 @@ class OrderService
                     'product_id' => (int) $item['product_id'],
                     'uom_id' => (int) $item['uom_id'],
                     'quantity' => $quantity,
-                    'unit_price' => isset($item['unit_price'])
-                        ? (float) $item['unit_price']
+                    'unit_price' => (isset($item['unit_price']) && $item['unit_price'] !== '' && $item['unit_price'] !== null && is_numeric($item['unit_price']))
+                        ? round((float) $item['unit_price'], 2)
                         : null,
                 ];
             },

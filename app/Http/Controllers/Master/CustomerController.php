@@ -21,6 +21,7 @@ use App\Support\CodeGenerator;
 use App\Support\IndianCities;
 use App\Support\IndianStates;
 use App\Support\NameCase;
+use App\Support\TitleCase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -49,19 +50,41 @@ class CustomerController extends Controller
      */
     public function addresses(Customer $customer): JsonResponse
     {
-        $addresses = $customer->activeAddresses()->get()->map(function ($addr) {
+        // Auto-create default party_address if customer has address on customer table but 0 in party_addresses
+        if ($customer->activeAddresses()->count() === 0 && filled($customer->address)) {
+            $customer->addresses()->create([
+                'type' => 'both',
+                'label' => 'Main Office',
+                'name' => $customer->name,
+                'contact_person' => $customer->name,
+                'contact_phone' => $customer->phone,
+                'address_line_1' => $customer->address,
+                'address' => $customer->address,
+                'city' => $customer->city,
+                'state' => $customer->state,
+                'pincode' => $customer->pincode,
+                'gstin' => $customer->gstin,
+                'is_default' => true,
+                'is_default_billing' => true,
+                'is_default_delivery' => true,
+                'is_active' => true,
+            ]);
+        }
+
+        $addresses = $customer->activeAddresses()->get()->map(function ($addr) use ($customer) {
             return [
                 'id' => $addr->id,
                 'label' => $addr->label ?? 'Address #' . $addr->id,
+                'name' => $addr->name ?? $customer->name,
                 'type' => $addr->type ?? 'both',
-                'contact_person' => $addr->contact_person,
-                'contact_phone' => $addr->contact_phone,
+                'contact_person' => $addr->contact_person ?: ($addr->name ?: $customer->name),
+                'contact_phone' => $addr->contact_phone ?: $customer->phone,
                 'address_line_1' => $addr->address_line_1 ?? $addr->address,
                 'address_line_2' => $addr->address_line_2,
-                'city' => $addr->city,
-                'state' => $addr->state,
-                'pincode' => $addr->pincode,
-                'gstin' => $addr->gstin,
+                'city' => $addr->city ?: $customer->city,
+                'state' => $addr->state ?: $customer->state,
+                'pincode' => $addr->pincode ?: $customer->pincode,
+                'gstin' => $addr->gstin ?: $customer->gstin,
                 'is_default_billing' => (bool) ($addr->is_default_billing || $addr->is_default),
                 'is_default_delivery' => (bool) ($addr->is_default_delivery),
                 'display_text' => $addr->display_text,
@@ -88,6 +111,7 @@ class CustomerController extends Controller
                 'code' => $customer->code,
                 'gstin' => $customer->gstin,
                 'state' => $customer->state,
+                'credit_days' => $customer->credit_days,
             ],
             'addresses' => $addresses,
             'default_billing_id' => $defaultBilling ? $defaultBilling['id'] : null,
@@ -332,6 +356,7 @@ class CustomerController extends Controller
             'item' => $customer,
             'initialAddresses' => $initialAddresses,
             'lead' => $lead,
+            'returnTo' => $request->query('return_to', old('return_to')),
             ...$this->formData($customer),
         ]);
     }
@@ -413,6 +438,13 @@ class CustomerController extends Controller
 
         if ($lead) {
             return $this->flashSuccess("Lead '{$lead->name}' converted to Customer '{$customer->name}' ({$customer->code}) successfully.", 'masters.customers.index');
+        }
+
+        $returnTo = $request->input('return_to');
+        if ($returnTo === 'orders.create') {
+            return redirect()->route('orders.create', ['customer_id' => $customer->id])
+                ->with('status', TitleCase::format("Party '{$customer->name}' created successfully."))
+                ->with('success', "Customer '{$customer->name}' created successfully.");
         }
 
         return $this->flashSuccess('Party created successfully.', 'masters.customers.index');
@@ -791,6 +823,7 @@ class CustomerController extends Controller
     protected function validated(Request $request, ?Customer $customer = null): array
     {
         $rules = [
+            'return_to' => 'nullable|string|max:100',
             'lead_id' => 'nullable|integer|exists:leads,id',
             'name' => 'required|string|max:255',
             'trade_name' => 'nullable|string|max:255',
@@ -998,7 +1031,7 @@ class CustomerController extends Controller
             }
         }
 
-        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['gem_authorizations'], $data['pan'], $data['lead_id']);
+        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['gem_authorizations'], $data['pan'], $data['lead_id'], $data['return_to']);
 
         return $data;
     }

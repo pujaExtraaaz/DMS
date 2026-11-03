@@ -1,8 +1,25 @@
 @extends('layouts.dms')
 @section('title', $item->exists ? 'Edit Product' : 'Create Product')
 @section('content')
+
+@php
+    $effectiveReturnTo = $returnTo ?? request('return_to', old('return_to'));
+    $effectiveOrderId = $orderId ?? request('order_id', old('order_id'));
+    $effectiveTargetRow = $targetRow ?? request('target_row', old('target_row'));
+    $returnRoute = null;
+    if ($effectiveReturnTo === 'orders.create') {
+        $returnRoute = route('orders.create', ['returned_from' => 'product_create']);
+    } elseif ($effectiveReturnTo === 'orders.edit' && $effectiveOrderId) {
+        $returnRoute = route('orders.edit', ['order' => $effectiveOrderId, 'returned_from' => 'product_create']);
+    }
+@endphp
+
 <x-ui.page-header :title="$item->exists ? 'Edit Product' : 'Create Product'">
-    <x-slot name="actions"><x-ui.button variant="secondary" :href="route('masters.products.index')">Back</x-ui.button></x-slot>
+    <x-slot name="actions">
+        <x-ui.button variant="secondary" :href="$returnRoute ?: route('masters.products.index')">
+            {{ $effectiveReturnTo === 'orders.edit' ? 'Back to Edit Order' : ($returnRoute ? 'Back to Book Order' : 'Back') }}
+        </x-ui.button>
+    </x-slot>
 </x-ui.page-header>
 
 @php
@@ -79,8 +96,18 @@
           brandQuickUrl: @js(route('masters.brands.quick-store')),
           companies: @js($companies->map(fn ($c) => ['id' => (string) $c->id, 'name' => $c->name])->values()),
       })"
-      @keydown.escape.window="closeTopCreate()">
+      @keydown.escape.window="closeTopCreate()"
+      @submit="if(window._productFormSubmitted){ $event.preventDefault(); return; } window._productFormSubmitted = true;">
     @csrf @if($item->exists) @method('PUT') @endif
+    @if($effectiveReturnTo)
+        <input type="hidden" name="return_to" value="{{ $effectiveReturnTo }}">
+        @if($effectiveOrderId)
+            <input type="hidden" name="order_id" value="{{ $effectiveOrderId }}">
+        @endif
+        @if($effectiveTargetRow !== null && $effectiveTargetRow !== '')
+            <input type="hidden" name="target_row" value="{{ $effectiveTargetRow }}">
+        @endif
+    @endif
     <input type="hidden" name="has_dimensions" value="1">
 
     <!-- SECTION A: PRODUCT IDENTITY -->
@@ -1384,7 +1411,7 @@
             <span class="text-xs font-normal text-slate-500">(Item is available for sales and purchase transactions)</span>
         </label>
         <div class="flex items-center gap-3">
-            <x-ui.button variant="secondary" :href="route('masters.products.index')">Cancel</x-ui.button>
+            <x-ui.button variant="secondary" :href="$returnRoute ?: route('masters.products.index')">Cancel</x-ui.button>
             <x-ui.button type="submit" variant="primary">{{ $item->exists ? 'Update Product' : 'Save Product' }}</x-ui.button>
         </div>
     </div>

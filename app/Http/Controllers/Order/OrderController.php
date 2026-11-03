@@ -197,20 +197,38 @@ class OrderController extends Controller
                     'uom_id' => $item['uom_id'] ?? null,
                     'quantity' => $item['quantity'] ?? 1,
                     'unit_price' => $item['unit_price'] ?? null,
+                    'tax_rate' => $item['tax_rate'] ?? 0,
                 ];
             })
             ->values()
             ->all();
 
+        $newProduct = null;
+        if ($request->filled('new_product_id')) {
+            $newProduct = Product::query()
+                ->with(['baseUom', 'productUoms.uom', 'alternateUom'])
+                ->where('is_active', true)
+                ->find($request->input('new_product_id'));
+        }
+
         return view('orders.create', [
             'selectedCustomer' => $selectedCustomer,
             'initialItems' => $initialItems,
+            'newProduct' => $newProduct ? [
+                'id' => $newProduct->id,
+                'name' => $newProduct->name,
+                'sku' => $newProduct->sku,
+                'base_uom_name' => $newProduct->baseUom?->name,
+            ] : null,
+            'targetRow' => $request->input('target_row'),
 
             'customers' => Customer::query()
                 ->with('customerType')
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get(),
+
+            'salespersons' => $this->getSalespersons(),
 
             'products' => Product::query()
                 ->with('baseUom')
@@ -233,40 +251,42 @@ class OrderController extends Controller
 
         $term = trim($validated['q'] ?? '');
 
-        if ($term === '') {
-            return response()->json([]);
-        }
-
-        $customers = Customer::query()
+        $query = Customer::query()
             ->with('customerType')
-            ->where('is_active', true)
-            ->where(function ($query) use ($term) {
-                $query
-                    ->where('name', 'like', "%{$term}%")
+            ->where('is_active', true);
+
+        if ($term !== '') {
+            $query->where(function ($q) use ($term) {
+                $q->where('name', 'like', "%{$term}%")
                     ->orWhere('code', 'like', "%{$term}%")
                     ->orWhere('phone', 'like', "%{$term}%");
-            })
+            });
+        }
+
+        $customers = $query
             ->orderBy('name')
-            ->limit(15)
+            ->limit(100)
             ->get([
                 'id',
                 'code',
                 'name',
                 'phone',
+                'credit_days',
                 'customer_type_id',
             ]);
 
         return response()->json(
             $customers->map(fn (Customer $customer) => [
-                'id' => $customer->id,
+                'id' => (string) $customer->id,
                 'code' => $customer->code,
                 'name' => $customer->name,
-                'phone' => $customer->phone,
+                'phone' => filled($customer->phone) ? trim((string) $customer->phone) : '',
+                'credit_days' => (int) ($customer->credit_days ?? 0),
                 'customer_type_id' => $customer->customer_type_id,
                 'customer_type_name' => $customer->customerType?->name,
                 'label' => trim(
                     $customer->name .
-                    ($customer->code ? " ({$customer->code})" : '')
+                    (filled($customer->phone) ? ' - ' . trim((string) $customer->phone) : '')
                 ),
             ])->values()
         );
@@ -280,21 +300,22 @@ class OrderController extends Controller
 
         $term = trim($validated['q'] ?? '');
 
-        if ($term === '') {
-            return response()->json([]);
-        }
-
-        $products = Product::query()
+        $query = Product::query()
             ->with('baseUom')
-            ->where('is_active', true)
-            ->where(function ($query) use ($term) {
+            ->where('is_active', true);
+
+        if ($term !== '') {
+            $query->where(function ($query) use ($term) {
                 $query
                     ->where('name', 'like', "%{$term}%")
                     ->orWhere('sku', 'like', "%{$term}%")
                     ->orWhere('hsn_code', 'like', "%{$term}%");
-            })
+            });
+        }
+
+        $products = $query
             ->orderBy('name')
-            ->limit(20)
+            ->limit(100)
             ->get([
                 'id',
                 'name',
@@ -307,15 +328,15 @@ class OrderController extends Controller
 
         return response()->json(
             $products->map(fn (Product $product) => [
-                'id' => $product->id,
+                'id' => (string) $product->id,
                 'name' => $product->name,
                 'sku' => $product->sku,
                 'hsn_code' => $product->hsn_code,
-                'base_uom_id' => $product->base_uom_id,
+                'base_uom_id' => (string) $product->base_uom_id,
                 'base_uom_name' => $product->baseUom?->name,
                 'base_uom_code' => $product->baseUom?->code,
                 'selling_price' => $product->selling_price,
-                'tax_rate' => $product->tax_rate,
+                'tax_rate' => (float) ($product->tax_rate ?? 0),
                 'label' => trim(
                     $product->name .
                     ($product->sku ? " ({$product->sku})" : '')
@@ -323,8 +344,6 @@ class OrderController extends Controller
             ])->values()
         );
     }
-
-
 
     public function searchUoms(Request $request): JsonResponse
     {
@@ -339,6 +358,7 @@ class OrderController extends Controller
         $product = Product::query()
             ->where('is_active', true)
             ->with([
+                'baseUom',
                 'productUoms.uom' => function ($query) {
                     $query
                         ->where('is_active', true)
@@ -353,7 +373,7 @@ class OrderController extends Controller
                 $uom = $productUom->uom;
 
                 return [
-                    'id' => $uom->id,
+                    'id' => (string) $uom->id,
                     'name' => $uom->name,
                     'code' => $uom->code,
                     'conversion_factor' => (float) $productUom->conversion_factor,
@@ -365,11 +385,31 @@ class OrderController extends Controller
             })
             ->values();
 
+        if ($uoms->isEmpty() && $product->baseUom) {
+            $uoms = collect([[
+                'id' => (string) $product->baseUom->id,
+                'name' => $product->baseUom->name,
+                'code' => $product->baseUom->code,
+                'conversion_factor' => 1.0,
+                'is_base' => true,
+                'selling_price' => $product->selling_price,
+                'purchase_price' => $product->purchase_price,
+                'label' => $product->baseUom->name . ' (' . $product->baseUom->code . ')',
+            ]]);
+        }
+
         return response()->json($uoms);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        if ($request->has('terms_of_delivery') && is_string($request->input('terms_of_delivery'))) {
+            $normalizedTerms = strtolower(str_replace(' ', '_', trim($request->input('terms_of_delivery'))));
+            if (in_array($normalizedTerms, ['freight_inclusive', 'freight_exclusive'], true)) {
+                $request->merge(['terms_of_delivery' => $normalizedTerms]);
+            }
+        }
+
         $validated = $request->validate([
             'customer_id' => [
                 'required',
@@ -396,6 +436,61 @@ class OrderController extends Controller
                 'string',
             ],
 
+            'salesperson_id' => [
+                'nullable',
+                'exists:users,id',
+            ],
+
+            'reference_no' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
+
+            'terms_of_delivery' => [
+                'nullable',
+                'string',
+                'in:freight_inclusive,freight_exclusive',
+            ],
+
+            'caretaker_phone' => [
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^[0-9+\-\s()]{7,20}$/',
+            ],
+
+            'architect_name' => [
+                'nullable',
+                'string',
+                'max:255',
+            ],
+
+            'architect_phone' => [
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^[0-9+\-\s()]{7,20}$/',
+            ],
+
+            'payment_terms' => [
+                'nullable',
+                'string',
+            ],
+
+            'advance_amount' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+
+            'advance_percentage' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'max:100',
+            ],
+
             'order_date' => [
                 'required',
                 'date',
@@ -404,6 +499,7 @@ class OrderController extends Controller
             'due_date' => [
                 'nullable',
                 'date',
+                'after_or_equal:order_date',
             ],
 
             'fulfilment_mode' => [
@@ -510,17 +606,35 @@ class OrderController extends Controller
                 'quantity' => (float) $item->quantity,
                 'unit_price' => (float) $item->unit_price,
                 'line_total' => (float) $item->line_total,
+                'tax_rate' => (float) ($item->product?->tax_rate ?? 0),
             ];
         })->all()))->values()->all();
+
+        $newProduct = null;
+        if (request()->filled('new_product_id')) {
+            $newProduct = Product::query()
+                ->with(['baseUom', 'productUoms.uom', 'alternateUom'])
+                ->where('is_active', true)
+                ->find(request()->input('new_product_id'));
+        }
 
         return view('orders.edit', [
             'order' => $order,
             'initialItems' => $initialItems,
+            'newProduct' => $newProduct ? [
+                'id' => $newProduct->id,
+                'name' => $newProduct->name,
+                'sku' => $newProduct->sku,
+                'base_uom_name' => $newProduct->baseUom?->name,
+            ] : null,
+            'targetRow' => request()->input('target_row'),
 
             'customers' => Customer::with('customerType')
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get(),
+
+            'salespersons' => $this->getSalespersons(),
 
             'products' => Product::with('baseUom')
                 ->where('is_active', true)
@@ -562,10 +676,72 @@ class OrderController extends Controller
             );
         }
 
+        if ($request->has('terms_of_delivery') && is_string($request->input('terms_of_delivery'))) {
+            $normalizedTerms = strtolower(str_replace(' ', '_', trim($request->input('terms_of_delivery'))));
+            if (in_array($normalizedTerms, ['freight_inclusive', 'freight_exclusive'], true)) {
+                $request->merge(['terms_of_delivery' => $normalizedTerms]);
+            }
+        }
+
         $validated = $request->validate([
             'customer_id' => [
                 'required',
                 'exists:customers,id',
+            ],
+
+            'salesperson_id' => [
+                'nullable',
+                'exists:users,id',
+            ],
+
+            'reference_no' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
+
+            'terms_of_delivery' => [
+                'nullable',
+                'string',
+                'in:freight_inclusive,freight_exclusive',
+            ],
+
+            'caretaker_phone' => [
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^[0-9+\-\s()]{7,20}$/',
+            ],
+
+            'architect_name' => [
+                'nullable',
+                'string',
+                'max:255',
+            ],
+
+            'architect_phone' => [
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^[0-9+\-\s()]{7,20}$/',
+            ],
+
+            'payment_terms' => [
+                'nullable',
+                'string',
+            ],
+
+            'advance_amount' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+
+            'advance_percentage' => [
+                'nullable',
+                'numeric',
+                'min:0',
+                'max:100',
             ],
 
             'order_date' => [
@@ -576,6 +752,7 @@ class OrderController extends Controller
             'due_date' => [
                 'nullable',
                 'date',
+                'after_or_equal:order_date',
             ],
 
             'fulfilment_mode' => [
@@ -1173,5 +1350,33 @@ class OrderController extends Controller
                     $request->input('date_to')
                 )
             );
+    }
+
+    public function getSalespersons()
+    {
+        // Ensure roles exist
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'salesperson', 'guard_name' => 'web']);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'sales-manager', 'guard_name' => 'web']);
+
+        // Ensure default salespersons exist if missing
+        foreach (['Kapil Dhir' => 'kapil.dhir@dms.test', 'Abdul Majid' => 'abdul.majid@dms.test'] as $name => $email) {
+            $user = User::query()->firstOrCreate(
+                ['email' => $email],
+                [
+                    'name' => $name,
+                    'password' => bcrypt('password'),
+                    'company_id' => 1,
+                    'branch_id' => 1,
+                ]
+            );
+            if (! $user->hasRole('salesperson')) {
+                $user->assignRole('salesperson');
+            }
+        }
+
+        return User::role(['salesperson', 'sales-manager'])
+            ->orWhereIn('name', ['Kapil Dhir', 'Abdul Majid'])
+            ->orderBy('name')
+            ->get();
     }
 }
