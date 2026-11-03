@@ -249,25 +249,98 @@ class ProductController extends Controller
         return back()->with('success', $msg);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
-        return view('masters.products.form', $this->formData(new Product));
+        return view('masters.products.form', [
+            'returnTo' => $request->query('return_to', old('return_to')),
+            'targetRow' => $request->query('target_row', old('target_row')),
+            'orderId' => $request->query('order_id', old('order_id')),
+            ...$this->formData(new Product),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
 
-        DB::transaction(function () use ($data, $request) {
-            $data['serial_no'] = CodeGenerator::forProductSerial();
+        $isManualSerial = $request->filled('serial_no');
+        $maxAttempts = 5;
 
-            $product = Product::create($data);
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                return DB::transaction(function () use ($data, $request, $isManualSerial) {
+                    $insertData = $data;
+                    if (! $isManualSerial || empty($insertData['serial_no'])) {
+                        $insertData['serial_no'] = CodeGenerator::forProductSerial();
+                    }
 
-            $this->syncBaseUom($product);
-            $this->syncAlternateUoms($request, $product);
-        });
+                    $product = Product::create($insertData);
 
-        return $this->flashSuccess('Product created successfully.', 'masters.products.index');
+                    $this->syncBaseUom($product);
+                    $this->syncAlternateUoms($request, $product);
+
+                    $returnTo = $request->input('return_to');
+                    $targetRow = $request->input('target_row');
+                    $orderId = $request->input('order_id');
+
+                    if ($returnTo === 'orders.create') {
+                        $params = ['new_product_id' => $product->id];
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $params['target_row'] = $targetRow;
+                        }
+
+                        return redirect()->route('orders.create', $params)
+                            ->with('status', "Product '{$product->name}' created successfully.")
+                            ->with('success', "Product '{$product->name}' created successfully.");
+                    }
+
+                    if ($returnTo === 'orders.edit' && $orderId) {
+                        $params = ['order' => $orderId, 'new_product_id' => $product->id];
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $params['target_row'] = $targetRow;
+                        }
+
+                        return redirect()->route('orders.edit', $params)
+                            ->with('status', "Product '{$product->name}' created successfully.")
+                            ->with('success', "Product '{$product->name}' created successfully.");
+                    }
+
+                    return $this->flashSuccess('Product created successfully.', 'masters.products.index');
+                });
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                if ($isManualSerial) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'serial_no' => 'The product serial number has already been taken.',
+                    ]);
+                }
+
+                if ($attempt >= $maxAttempts) {
+                    return back()->withInput()->withErrors([
+                        'serial_no' => 'Could not generate a unique serial number. Please try again.',
+                    ]);
+                }
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ($this->isDuplicateSerialException($e)) {
+                    if ($isManualSerial) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'serial_no' => 'The product serial number has already been taken.',
+                        ]);
+                    }
+
+                    if ($attempt >= $maxAttempts) {
+                        return back()->withInput()->withErrors([
+                            'serial_no' => 'Could not generate a unique serial number. Please try again.',
+                        ]);
+                    }
+                } else {
+                    throw $e;
+                }
+            }
+        }
+
+        return back()->withInput()->withErrors([
+            'serial_no' => 'Could not generate a unique serial number. Please try again.',
+        ]);
     }
 
     public function show(Product $product): View
@@ -300,11 +373,28 @@ class ProductController extends Controller
     {
         $data = $this->validated($request, $product);
 
-        DB::transaction(function () use ($data, $product, $request) {
-            $product->update($data);
-            $this->syncBaseUom($product->fresh());
-            $this->syncAlternateUoms($request, $product->fresh());
-        });
+        if (! $request->filled('serial_no')) {
+            unset($data['serial_no']);
+        }
+
+        try {
+            DB::transaction(function () use ($data, $product, $request) {
+                $product->update($data);
+                $this->syncBaseUom($product->fresh());
+                $this->syncAlternateUoms($request, $product->fresh());
+            });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            return back()->withInput()->withErrors([
+                'serial_no' => 'The product serial number has already been taken.',
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($this->isDuplicateSerialException($e)) {
+                return back()->withInput()->withErrors([
+                    'serial_no' => 'The product serial number has already been taken.',
+                ]);
+            }
+            throw $e;
+        }
 
         return $this->flashSuccess('Product updated successfully.', 'masters.products.index');
     }
@@ -454,8 +544,27 @@ class ProductController extends Controller
         );
 
         $data = $request->validate([
+            'return_to' => 'nullable|string|max:100',
+            'order_id' => 'nullable|integer',
+            'target_row' => 'nullable|integer',
             'name' => 'required|string|max:255',
             'sku' => 'required_unless:sku_not_applicable,1|nullable|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
+            'serial_no' => [
+                'nullable',
+                'string',
+                'max:50',
+                function ($attribute, $value, $fail) use ($product) {
+                    if ($value !== null && $value !== '') {
+                        $query = DB::table('products')->where('serial_no', $value);
+                        if ($product) {
+                            $query->where('id', '!=', $product->id);
+                        }
+                        if ($query->exists()) {
+                            $fail('The product serial number has already been taken.');
+                        }
+                    }
+                },
+            ],
             'sku_not_applicable' => 'nullable|boolean',
             'alternate_uom_not_applicable' => 'nullable|boolean',
             'dimensions_not_applicable' => 'nullable|boolean',
@@ -740,6 +849,8 @@ class ProductController extends Controller
             $data['image_path'] = $request->file('image')->store('products', 'public');
         }
 
+        unset($data['return_to'], $data['order_id'], $data['target_row']);
+
         return $data;
     }
 
@@ -823,5 +934,14 @@ class ProductController extends Controller
                 'is_active' => true,
             ]);
         }
+    }
+
+    protected function isDuplicateSerialException(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'products_serial_no_unique')
+            || str_contains($message, 'products.serial_no')
+            || (str_contains($message, 'Duplicate entry') && str_contains($message, 'serial_no'));
     }
 }

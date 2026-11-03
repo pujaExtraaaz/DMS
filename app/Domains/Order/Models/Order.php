@@ -51,6 +51,16 @@ class Order extends Model
         'shipping_address_id',
         'billing_address',
         'shipping_address',
+        'payment_terms',
+        'advance_amount',
+        'balance_amount',
+        'advance_percentage',
+        'reference_no',
+        'salesperson_name',
+        'terms_of_delivery',
+        'caretaker_phone',
+        'architect_name',
+        'architect_phone',
     ];
 
     protected function casts(): array
@@ -64,6 +74,9 @@ class Order extends Model
             'discount_amount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'grand_total' => 'decimal:2',
+            'advance_amount' => 'decimal:2',
+            'balance_amount' => 'decimal:2',
+            'advance_percentage' => 'decimal:2',
 
             'approved_at' => 'datetime',
         ];

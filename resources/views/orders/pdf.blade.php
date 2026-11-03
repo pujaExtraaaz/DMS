@@ -65,6 +65,8 @@
                 <th class="right">Discount</th>
                 <th class="right">Tax</th>
                 <th class="right">Total</th>
+                <th class="right">Advance</th>
+                <th class="right">Balance</th>
             </tr>
         </thead>
 
@@ -77,7 +79,7 @@
                         {{ $order->customer?->name }}
                         ({{ $order->customer?->code }})
                     </td>
-                    <td>{{ $order->salesperson?->name ?? '—' }}</td>
+                    <td>{{ $order->salesperson?->name ?? ($order->salesperson_name ?? '—') }}</td>
                     <td>{{ ucfirst($order->status) }}</td>
                     <td class="right">
                         ₹{{ number_format($order->subtotal, 2) }}
@@ -90,6 +92,12 @@
                     </td>
                     <td class="right">
                         ₹{{ number_format($order->grand_total, 2) }}
+                    </td>
+                    <td class="right">
+                        ₹{{ number_format($order->advance_amount ?? 0, 2) }}
+                    </td>
+                    <td class="right">
+                        ₹{{ number_format($order->balance_amount ?? max(0, $order->grand_total - ($order->advance_amount ?? 0)), 2) }}
                     </td>
                 </tr>
             @endforeach

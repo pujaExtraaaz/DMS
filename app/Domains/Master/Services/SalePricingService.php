@@ -21,7 +21,13 @@ class SalePricingService
             $product = Product::findOrFail($item['product_id']);
             $uom = Uom::findOrFail($item['uom_id']);
             $quantity = (float) $item['quantity'];
-            $unitPrice = (isset($item['unit_price']) && (float) $item['unit_price'] > 0)
+            $hasManualPrice = isset($item['unit_price'])
+                && $item['unit_price'] !== null
+                && $item['unit_price'] !== ''
+                && is_numeric($item['unit_price'])
+                && (float) $item['unit_price'] >= 0;
+
+            $unitPrice = $hasManualPrice
                 ? (string) number_format((float) $item['unit_price'], 2, '.', '')
                 : $this->priceMasterService->resolvePrice($customer, $product, $uom, $quantity);
 

@@ -30,7 +30,9 @@ class AuditLogService
         };
 
         if ($field && array_key_exists($field, $model->getAttributes())) {
-            $model->forceFill([$field => $actorName])->saveQuietly();
+            if (!($model instanceof \App\Domains\Order\Models\Order && $field === 'created_by_name')) {
+                $model->forceFill([$field => $actorName])->saveQuietly();
+            }
         }
 
         ActivityLog::create([
