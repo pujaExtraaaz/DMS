@@ -253,6 +253,7 @@ class ProductController extends Controller
     {
         return view('masters.products.form', [
             'returnTo' => $request->query('return_to', old('return_to')),
+            'returnUrl' => $this->safeInternalReturnUrl($request->query('return_url', old('return_url'))),
             'targetRow' => $request->query('target_row', old('target_row')),
             'orderId' => $request->query('order_id', old('order_id')),
             ...$this->formData(new Product),
@@ -280,6 +281,7 @@ class ProductController extends Controller
                     $this->syncAlternateUoms($request, $product);
 
                     $returnTo = $request->input('return_to');
+                    $returnUrl = $this->safeInternalReturnUrl($request->input('return_url'));
                     $targetRow = $request->input('target_row');
                     $orderId = $request->input('order_id');
 
@@ -305,15 +307,27 @@ class ProductController extends Controller
                             ->with('success', "Product '{$product->name}' created successfully.");
                     }
 
-                    if ($returnTo === 'purchasing.invoices.create') {
+                    if ($returnTo === 'invoices.create') {
                         $params = ['new_product_id' => $product->id];
                         if ($targetRow !== null && $targetRow !== '') {
                             $params['target_row'] = $targetRow;
                         }
 
-                        return redirect()->route('purchasing.invoices.create', $params)
-                            ->with('status', "Product '{$product->name}' created successfully. Continue with the purchase invoice.")
-                            ->with('success', "Product '{$product->name}' created successfully.");
+                        return redirect()->route('invoices.create', $params)
+                            ->with('status', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.")
+                            ->with('success', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.");
+                    }
+
+                    if ($returnUrl) {
+                        $separator = str_contains($returnUrl, '?') ? '&' : '?';
+                        $redirectUrl = $returnUrl . $separator . 'new_product_id=' . $product->id;
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $redirectUrl .= '&target_row=' . urlencode((string) $targetRow);
+                        }
+
+                        return redirect($redirectUrl)
+                            ->with('status', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.")
+                            ->with('success', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.");
                     }
 
                     return $this->flashSuccess('Product created successfully.', 'masters.products.index');
@@ -556,6 +570,7 @@ class ProductController extends Controller
 
         $data = $request->validate([
             'return_to' => 'nullable|string|max:100',
+            'return_url' => 'nullable|string|max:500',
             'order_id' => 'nullable|integer',
             'target_row' => 'nullable|integer',
             'name' => 'required|string|max:255',
@@ -860,9 +875,39 @@ class ProductController extends Controller
             $data['image_path'] = $request->file('image')->store('products', 'public');
         }
 
-        unset($data['return_to'], $data['order_id'], $data['target_row']);
+        unset($data['return_to'], $data['return_url'], $data['order_id'], $data['target_row']);
 
         return $data;
+    }
+
+    /**
+     * Allow redirect only to same-app relative or absolute URLs (open-redirect safe).
+     */
+    protected function safeInternalReturnUrl(mixed $url): ?string
+    {
+        if (! is_string($url)) {
+            return null;
+        }
+
+        $url = trim($url);
+        if ($url === '' || str_starts_with($url, '//')) {
+            return null;
+        }
+
+        if (str_starts_with($url, '/')) {
+            return $url;
+        }
+
+        $appUrl = rtrim((string) config('app.url'), '/');
+        if ($appUrl !== '' && str_starts_with($url, $appUrl.'/')) {
+            return $url;
+        }
+
+        if ($appUrl !== '' && $url === $appUrl) {
+            return $url;
+        }
+
+        return null;
     }
 
     protected function syncBaseUom(Product $product): void

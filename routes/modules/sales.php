@@ -9,14 +9,25 @@ Route::prefix('invoices')->name('invoices.')->middleware('role_or_permission:sup
     Route::get('/', [InvoiceController::class, 'index'])->name('index');
     Route::get('/create', [InvoiceController::class, 'create'])->name('create');
     Route::post('/', [InvoiceController::class, 'store'])->name('store');
+    Route::post('/draft', [InvoiceController::class, 'saveDraft'])->name('draft.save');
+    Route::get('/customers/{customer}/sales-orders', [InvoiceController::class, 'customerSalesOrders'])->name('customer-sales-orders');
+    Route::get('/sales-orders/{order}/data', [InvoiceController::class, 'salesOrderData'])->name('sales-order-data');
     Route::get('/{invoice}/pdf', [InvoiceController::class, 'pdf'])->name('pdf');
     Route::get('/{invoice}/preview', [InvoiceController::class, 'preview'])->name('preview');
     Route::get('/{invoice}/export/{format}', [InvoiceController::class, 'export'])->name('export');
     Route::get('/{invoice}/e-invoice-preview', [InvoiceController::class, 'eInvoicePreview'])->name('e-invoice.preview');
     Route::get('/{invoice}/e-invoice', [InvoiceController::class, 'eInvoiceDocument'])->name('e-invoice.document');
     Route::get('/{invoice}/eway', [InvoiceController::class, 'eWayBillDocument'])->name('eway.document');
+    Route::get('/{invoice}/e-way-bill', [InvoiceController::class, 'eWayBillDocument'])->name('e-way-bill');
     Route::post('/{invoice}/e-invoice', [InvoiceController::class, 'generateEInvoice'])->name('e-invoice');
+    Route::post('/{invoice}/e-invoice/generate', [InvoiceController::class, 'generateEInvoice'])->name('e-invoice.generate');
+    Route::post('/{invoice}/e-invoice/cancel', [InvoiceController::class, 'cancelEInvoice'])->name('e-invoice.cancel');
     Route::post('/{invoice}/eway', [InvoiceController::class, 'generateEway'])->name('eway');
+    Route::post('/{invoice}/eway/generate', [InvoiceController::class, 'generateEway'])->name('eway.generate');
+    Route::post('/{invoice}/eway/cancel', [InvoiceController::class, 'cancelEway'])->name('eway.cancel');
+    Route::post('/{invoice}/eway/update-vehicle', [InvoiceController::class, 'updateEwayVehicle'])->name('eway.update-vehicle');
+    Route::get('/{invoice}/edit', [InvoiceController::class, 'edit'])->name('edit');
+    Route::put('/{invoice}', [InvoiceController::class, 'update'])->name('update');
     Route::get('/{invoice}', [InvoiceController::class, 'show'])->name('show');
 });
 

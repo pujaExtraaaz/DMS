@@ -18,17 +18,23 @@ class PurchaseInvoiceItem extends Model
         'unit_cost',
         'purchase_price_inclusive',
         'purchase_discount_percent',
+        'price_type',
+        'entered_unit_cost',
+        'unit_cost',
+        'taxable_amount',
         'tax_percent',
+        'cgst_percent',
+        'sgst_percent',
+        'igst_percent',
+        'cgst_amount',
+        'sgst_amount',
+        'igst_amount',
         'line_total',
         'other_vendor_rate',
         'batch_no',
         'batch_selling_price',
         'batch_mrp',
         'expiry_date',
-        'cgst_percent',
-        'sgst_percent',
-        'cgst_amount',
-        'sgst_amount',
     ];
 
     protected function casts(): array
@@ -47,8 +53,10 @@ class PurchaseInvoiceItem extends Model
             'expiry_date' => 'date',
             'cgst_percent' => 'decimal:2',
             'sgst_percent' => 'decimal:2',
+            'igst_percent' => 'decimal:2',
             'cgst_amount' => 'decimal:2',
             'sgst_amount' => 'decimal:2',
+            'igst_amount' => 'decimal:2',
         ];
     }
 

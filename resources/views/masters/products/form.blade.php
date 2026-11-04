@@ -4,6 +4,7 @@
 
 @php
     $effectiveReturnTo = $returnTo ?? request('return_to', old('return_to'));
+    $effectiveReturnUrl = $returnUrl ?? request('return_url', old('return_url'));
     $effectiveOrderId = $orderId ?? request('order_id', old('order_id'));
     $effectiveTargetRow = $targetRow ?? request('target_row', old('target_row'));
     $returnRoute = null;
@@ -13,17 +14,17 @@
         $returnLabel = 'Back to Book Order';
     } elseif ($effectiveReturnTo === 'orders.edit' && $effectiveOrderId) {
         $returnRoute = route('orders.edit', ['order' => $effectiveOrderId, 'returned_from' => 'product_create']);
-        $returnLabel = 'Back to Edit Order';
-    } elseif ($effectiveReturnTo === 'purchasing.invoices.create') {
-        $returnRoute = route('purchasing.invoices.create', ['returned_from' => 'product_create']);
-        $returnLabel = 'Back to Purchase Invoice';
+    } elseif ($effectiveReturnTo === 'invoices.create') {
+        $returnRoute = route('invoices.create', ['returned_from' => 'product_create']);
+    } elseif ($effectiveReturnUrl) {
+        $returnRoute = $effectiveReturnUrl;
     }
 @endphp
 
 <x-ui.page-header :title="$item->exists ? 'Edit Product' : 'Create Product'">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="$returnRoute ?: route('masters.products.index')">
-            {{ $returnLabel }}
+            {{ $effectiveReturnTo === 'orders.edit' ? 'Back to Edit Order' : ($effectiveReturnTo === 'invoices.create' ? 'Back to Tax Invoice' : ($effectiveReturnTo === 'orders.create' ? 'Back to Book Order' : 'Back')) }}
         </x-ui.button>
     </x-slot>
 </x-ui.page-header>
@@ -115,6 +116,9 @@
         @if($effectiveTargetRow !== null && $effectiveTargetRow !== '')
             <input type="hidden" name="target_row" value="{{ $effectiveTargetRow }}">
         @endif
+    @endif
+    @if($effectiveReturnUrl)
+        <input type="hidden" name="return_url" value="{{ $effectiveReturnUrl }}">
     @endif
     <input type="hidden" name="has_dimensions" value="1">
 

@@ -100,6 +100,26 @@ class OrderConversionService
             $invoiceDate = now()->toDateString();
             $due = $this->dueDateService->forSalesInvoice($customer, $invoiceDate);
 
+            $deliveryState = $lockedOrder->shippingAddress?->state ?? ($lockedOrder->billingAddress?->state ?? ($customer->shipping_state ?? ($customer->state ?? '')));
+            $company = $lockedOrder->warehouse?->company ?? $customer->company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::first();
+            $sellerState = \App\Domains\Master\Services\GstTaxCalculationService::resolveSellerState($company);
+            $isIntraState = \App\Domains\Master\Services\GstTaxCalculationService::isIntraState($sellerState, $deliveryState);
+
+            $orderTax = (float) $lockedOrder->tax_amount;
+            $cgstTotal = $isIntraState ? round($orderTax / 2, 2) : 0.0;
+            $sgstTotal = $isIntraState ? round($orderTax - $cgstTotal, 2) : 0.0;
+            $igstTotal = $isIntraState ? 0.0 : $orderTax;
+
+            $roundOff = (float) ($lockedOrder->round_off ?? 0);
+            $grandTotal = (float) $lockedOrder->grand_total;
+
+            $buyerGstin = trim((string) ($lockedOrder->billingAddress?->gstin ?: ($customer->gstin ?: '')));
+            $isB2B = $buyerGstin !== '' && strtoupper($buyerGstin) !== 'URP' && strlen($buyerGstin) === 15;
+            $einvoiceStatus = $isB2B ? 'pending' : 'not_applicable';
+
+            $isOverThreshold = $grandTotal >= 50000.00;
+            $ewayStatus = $isOverThreshold ? 'pending' : 'not_applicable';
+
             $invoice = Invoice::create([
                 'company_id' => $lockedOrder->warehouse?->company_id ?? $customer->company_id ?? \App\Domains\Organization\Models\Company::resolveCurrent()?->id,
                 'invoice_no' => $this->invoiceNumberGenerator->generate(),
@@ -112,11 +132,27 @@ class OrderConversionService
                 'due_date_source_date' => $due['due_date_source_date'],
                 'payment_terms' => $customer->payment_terms,
                 'credit_days' => $due['credit_days'],
+                'price_type' => $lockedOrder->price_type ?? 'exclusive',
+                'tax_type' => $isIntraState ? 'intra' : 'inter',
                 'status' => 'issued',
+                'einvoice_status' => $einvoiceStatus,
+                'eway_bill_status' => $ewayStatus,
+                'eway_bill_required' => 'auto',
                 'subtotal' => $lockedOrder->subtotal,
+                'taxable_amount' => $lockedOrder->subtotal,
                 'discount_amount' => $lockedOrder->discount_amount,
                 'tax_amount' => $lockedOrder->tax_amount,
-                'grand_total' => $lockedOrder->grand_total,
+                'cgst_amount' => $cgstTotal,
+                'sgst_amount' => $sgstTotal,
+                'igst_amount' => $igstTotal,
+                'round_off' => $roundOff,
+                'grand_total' => $grandTotal,
+                'delivery_state' => $deliveryState,
+                'place_of_supply_state' => $deliveryState,
+                'billing_address_id' => $lockedOrder->billing_address_id,
+                'shipping_address_id' => $lockedOrder->shipping_address_id,
+                'billing_address' => $lockedOrder->billing_address,
+                'shipping_address' => $lockedOrder->shipping_address,
                 'paid_amount' => 0,
                 'notes' => $lockedOrder->notes,
             ]);
@@ -174,14 +210,29 @@ class OrderConversionService
                  */
                 $serials = WarrantyPeriod::split($item->serial_numbers);
 
+                $lineTaxRate = (float) ($item->product?->tax_rate ?? 0);
+                $lineCgst = $isIntraState ? round($lineTax / 2, 2) : 0.0;
+                $lineSgst = $isIntraState ? round($lineTax - $lineCgst, 2) : 0.0;
+                $lineIgst = $isIntraState ? 0.0 : $lineTax;
+
                 $invoiceItem = InvoiceItem::create([
                     'invoice_id' => $invoice->id,
                     'product_id' => $item->product_id,
                     'uom_id' => $item->uom_id,
                     'quantity' => $item->quantity,
+                    'price_type' => $lockedOrder->price_type ?? 'exclusive',
+                    'entered_unit_price' => $item->unit_price,
                     'unit_price' => $item->unit_price,
                     'discount_amount' => $lineDiscount,
+                    'taxable_amount' => max(0, $lineSubtotal - $lineDiscount),
+                    'tax_rate' => $lineTaxRate,
+                    'cgst_rate' => $isIntraState ? round($lineTaxRate / 2, 2) : 0,
+                    'sgst_rate' => $isIntraState ? round($lineTaxRate / 2, 2) : 0,
+                    'igst_rate' => $isIntraState ? 0 : $lineTaxRate,
                     'tax_amount' => $lineTax,
+                    'cgst_amount' => $lineCgst,
+                    'sgst_amount' => $lineSgst,
+                    'igst_amount' => $lineIgst,
                     'line_total' => $item->line_total,
                     'serial_numbers' => $serials !== [] ? $serials : null,
                 ]);

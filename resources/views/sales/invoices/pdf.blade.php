@@ -103,11 +103,21 @@
                     <div class="header-title">e-Invoice</div>
                     <div style="font-size: 10px; font-weight: bold;">TAX INVOICE</div>
                 </td>
-                <td style="width: 20%; text-align: right; vertical-align: bottom; font-size: 9px;">
+                <td style="width: 25%; text-align: right; vertical-align: bottom; font-size: 8.5px;">
                     <div>Date: {{ $invoice->invoice_date->format('d/m/Y') }}</div>
-                    @if($invoice->reference_no)<div>Ref: {{ $invoice->reference_no }}</div>@endif
+                    @if($invoice->salesperson)<div>Salesperson: {{ $invoice->salesperson->name }}</div>@endif
+                    @if($invoice->order_no || $invoice->order?->order_no)<div>Order No: {{ $invoice->order_no ?: $invoice->order?->order_no }}</div>@endif
+                    @if($invoice->reference_no || $invoice->other_references)<div>Ref: {{ $invoice->other_references ?: $invoice->reference_no }}</div>@endif
+                    @if($invoice->delivery_note_na)<div>Delivery Note: N/A</div>
+                    @elseif($invoice->delivery_note_no)<div>Delivery Note: {{ $invoice->delivery_note_no }}</div>@endif
+                    @if($invoice->dispatch_doc_no)<div>Dispatch Doc: {{ $invoice->dispatch_doc_no }}</div>@endif
+                    @if($invoice->dispatched_through || $invoice->transport_mode)<div>Transport: {{ $invoice->dispatched_through ?: $invoice->transport_mode }}</div>@endif
+                    @if($invoice->destination)<div>Destination: {{ $invoice->destination }}</div>@endif
+                    @if($invoice->carrier_name)<div>Carrier: {{ $invoice->carrier_name }}</div>@endif
+                    @if($invoice->lr_rr_no)<div>LR/RR No: {{ $invoice->lr_rr_no }} @if($invoice->lr_rr_date)({{ $invoice->lr_rr_date->format('d/m/Y') }})@endif</div>@endif
                     @if($invoice->vehicle_no)<div>Vehicle: {{ $invoice->vehicle_no }}</div>@endif
-                    @if($invoice->transport_mode)<div>Transport: {{ $invoice->transport_mode }}</div>@endif
+                    @if($invoice->payment_terms)<div>Payment Terms: {{ $invoice->payment_terms }}</div>@endif
+                    @if($invoice->terms_of_delivery)<div style="margin-top: 2px; line-height: 1.25;"><span class="bold">Terms of Delivery:</span><br>{!! nl2br(e($invoice->terms_of_delivery)) !!}</div>@endif
                 </td>
             </tr>
         </table>
@@ -120,7 +130,17 @@
                     <div><span class="bold">3. Address:</span> {{ $companyAddress }}</div>
                     <div><span class="bold">4. Serial No. of Invoice:</span> {{ $invoice->invoice_no }}</div>
                     <div><span class="bold">5. Date of Invoice:</span> {{ $invoice->invoice_date->format('d/m/Y') }}</div>
-                    <div><span class="bold">6. IRN No.:</span> {{ $invoice->eInvoice->irn ?? 'IRN-'.strtoupper(substr(md5($invoice->invoice_no), 0, 16)) }}</div>
+                    @if($invoice->eInvoice?->irn)
+                        <div><span class="bold">6. IRN No.:</span> <span style="font-size: 7.5px; font-family: monospace; word-break: break-all;">{{ $invoice->eInvoice->irn }}</span></div>
+                        @if($invoice->eInvoice->ack_no)
+                            <div><span class="bold">Ack No. & Date:</span> {{ $invoice->eInvoice->ack_no }} @if($invoice->eInvoice->ack_date)({{ $invoice->eInvoice->ack_date->format('d/m/Y') }})@endif</div>
+                        @endif
+                    @else
+                        <div><span class="bold">6. IRN No.:</span> {{ $invoice->einvoice_status === 'not_applicable' ? 'N/A (B2C Supply)' : 'Not Generated' }}</div>
+                    @endif
+                    @if($invoice->eWayBill?->eway_bill_no)
+                        <div><span class="bold">E-Way Bill No.:</span> <span style="font-family: monospace;">{{ $invoice->eWayBill->eway_bill_no }}</span></div>
+                    @endif
                 </td>
                 <td style="width: 50%;">
                     <div><span class="bold">Dispatch from:</span> {{ $companyName }} ({{ $companyGstin }})</div>
@@ -193,11 +213,11 @@
                 <th class="text-right">Invoice Total</th>
             </tr>
             <tr>
-                <td class="text-right">{{ number_format($invoice->taxable_amount, 2) }}</td>
-                <td class="text-right">{{ number_format($invoice->cgst_amount, 2) }}</td>
-                <td class="text-right">{{ number_format($invoice->sgst_amount, 2) }}</td>
-                <td class="text-right">{{ number_format($invoice->igst_amount, 2) }}</td>
-                <td class="text-right">{{ number_format($invoice->round_off, 2) }}</td>
+                <td class="text-right">{{ number_format($invoice->taxable_amount ?? $invoice->subtotal ?? 0, 2) }}</td>
+                <td class="text-right">{{ number_format($invoice->cgst_amount ?? 0, 2) }}</td>
+                <td class="text-right">{{ number_format($invoice->sgst_amount ?? 0, 2) }}</td>
+                <td class="text-right">{{ number_format($invoice->igst_amount ?? 0, 2) }}</td>
+                <td class="text-right">{{ number_format($invoice->round_off ?? 0, 2) }}</td>
                 <td class="text-right bold" style="font-size: 11px;">INR {{ number_format($invoice->grand_total ?? $invoice->total_amount ?? 0, 2) }}</td>
             </tr>
         </table>
@@ -225,6 +245,12 @@
                     @if($company?->upi_id)<div>UPI: {{ $company->upi_id }}</div>@endif
                     <div style="margin-top: 6px;" class="bold">Terms &amp; Conditions:</div>
                     <div style="color: #4b5563;">{{ $company?->selling_terms_and_conditions ?: '1. Subject to local jurisdiction. 2. Goods once sold will not be taken back.' }}</div>
+                    @if($invoice->terms_of_delivery)
+                        <div style="margin-top: 4px; font-size: 8px; line-height: 1.35; color: #374151;">
+                            <span class="bold">Terms of Delivery:</span><br>
+                            {!! nl2br(e($invoice->terms_of_delivery)) !!}
+                        </div>
+                    @endif
                 </td>
                 <td style="width: 50%; text-align: right; vertical-align: bottom;">
                     <div style="margin-bottom: 40px;">For <span class="bold">{{ $companyName }}</span></div>
