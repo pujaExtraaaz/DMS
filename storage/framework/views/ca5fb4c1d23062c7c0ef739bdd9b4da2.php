@@ -72,6 +72,7 @@
             <a href="<?php echo e(route('organization.branches.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['organization.branches.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Branches</span></a>
             <a href="<?php echo e(route('organization.warehouses.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['organization.warehouses.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Warehouses</span></a>
             <a href="<?php echo e(route('organization.financial-years.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['organization.financial-years.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Financial Years</span></a>
+            <a href="<?php echo e(route('organization.document-number-series.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['organization.document-number-series.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Voucher Numbering</span></a>
             <a href="<?php echo e(route('organization.sister-concerns.dashboard')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['organization.sister-concerns.*', 'organization.business-groups.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Sister Concerns</span></a>
         </div>
     </div>

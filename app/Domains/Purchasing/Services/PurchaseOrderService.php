@@ -4,6 +4,7 @@ namespace App\Domains\Purchasing\Services;
 
 use App\Domains\Banking\Models\BankAccountTransaction;
 use App\Domains\Banking\Models\OdAccount;
+use App\Domains\Inventory\Models\ProductSerial;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Master\Models\Customer;
@@ -108,7 +109,7 @@ class PurchaseOrderService
                 'company_delivery_address_id' => $addresses['company_delivery_address_id'],
                 'billing_address' => $addresses['billing_address'],
                 'shipping_address' => $addresses['shipping_address'],
-                'po_no' => $this->documentNumberService->next('PO'),
+                'po_no' => $this->resolvePurchaseOrderNumber($data, $companyId),
                 'po_date' => $data['po_date'],
                 'expected_date' => $data['expected_date'] ?? null,
                 'credit_days' => $due['credit_days'],
@@ -140,6 +141,9 @@ class PurchaseOrderService
                     'quantity' => $item['quantity'],
                     'received_qty' => 0,
                     'unit_cost' => $item['unit_cost'],
+                    'mrp' => $item['mrp'] ?? null,
+                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
+                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
@@ -323,6 +327,9 @@ class PurchaseOrderService
                     'quantity' => $item['quantity'],
                     'received_qty' => 0,
                     'unit_cost' => $item['unit_cost'],
+                    'mrp' => $item['mrp'] ?? null,
+                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
+                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
@@ -634,12 +641,17 @@ class PurchaseOrderService
                 'supplier_invoice_no' => $data['supplier_invoice_no'] ?? $data['supplier_invoice_number'] ?? null,
                 'invoice_date' => $data['invoice_date'],
                 'purchase_receive_date' => $data['purchase_receive_date'] ?? null,
+                'material_dispatch_date' => $data['material_dispatch_date'] ?? null,
+                'expected_delivery_date' => $data['expected_delivery_date'] ?? null,
+                'actual_material_receipt_date' => null,
                 'payment_order_date' => $data['payment_order_date'] ?? null,
                 'due_date' => $data['due_date'] ?? $due['due_date'],
                 'credit_days' => $data['credit_days'] ?? null,
                 'due_date_basis' => $due['due_date_basis'],
                 'due_date_source_date' => $due['due_date_source_date'],
+                // Financial invoice is recorded; physical stock stays In Transit until receipt confirmation.
                 'status' => 'posted',
+                'material_receipt_status' => PurchaseInvoice::MATERIAL_IN_TRANSIT,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
                 'freight_charge' => $freightCharge,
@@ -658,7 +670,10 @@ class PurchaseOrderService
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
+                    'received_qty' => 0,
                     'unit_cost' => $item['unit_cost'],
+                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
+                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
@@ -681,6 +696,7 @@ class PurchaseOrderService
                             $invoice->warehouse_id,
                             $piItem,
                             $actor,
+                            'in_transit',
                         );
                     }
                 }
@@ -741,6 +757,19 @@ class PurchaseOrderService
     public function updateInvoice(PurchaseInvoice $invoice, array $data, User $actor): PurchaseInvoice
     {
         return DB::transaction(function () use ($invoice, $data, $actor) {
+            if (
+                $invoice->inventoryMovements()->exists()
+                || (float) $invoice->items()->sum('received_qty') > 0
+                || in_array($invoice->material_receipt_status, [
+                    PurchaseInvoice::MATERIAL_PARTIALLY_RECEIVED,
+                    PurchaseInvoice::MATERIAL_RECEIVED,
+                ], true)
+            ) {
+                throw ValidationException::withMessages([
+                    'items' => 'This invoice has material receipt activity. Edit is blocked so stock stays accurate. Use Receive Material for further receipts.',
+                ]);
+            }
+
             $supplierId = (int) $data['supplier_id'];
             $items = $this->normalizeItems($data['items'] ?? []);
             $overrideReason = $data['rate_override_reason'] ?? $invoice->rate_override_reason;
@@ -915,11 +944,14 @@ class PurchaseOrderService
                 'supplier_invoice_no' => $data['supplier_invoice_number'] ?? $data['supplier_invoice_no'] ?? $invoice->supplier_invoice_no,
                 'invoice_date' => $data['invoice_date'],
                 'purchase_receive_date' => $data['purchase_receive_date'] ?? null,
+                'material_dispatch_date' => $data['material_dispatch_date'] ?? $invoice->material_dispatch_date,
+                'expected_delivery_date' => $data['expected_delivery_date'] ?? $invoice->expected_delivery_date,
                 'payment_order_date' => $data['payment_order_date'] ?? null,
                 'due_date' => $data['due_date'] ?? $due['due_date'],
                 'credit_days' => $data['credit_days'] ?? null,
                 'due_date_basis' => $due['due_date_basis'],
                 'due_date_source_date' => $due['due_date_source_date'],
+                'material_receipt_status' => PurchaseInvoice::MATERIAL_IN_TRANSIT,
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
                 'freight_charge' => $freightCharge,
@@ -933,7 +965,7 @@ class PurchaseOrderService
 
             // Clean up old items and history
             foreach ($invoice->items as $oldItem) {
-                \App\Domains\Inventory\Models\ProductSerial::where('source_type', $oldItem->getMorphClass())
+                ProductSerial::where('source_type', $oldItem->getMorphClass())
                     ->where('source_id', $oldItem->id)
                     ->delete();
             }
@@ -948,7 +980,10 @@ class PurchaseOrderService
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
+                    'received_qty' => 0,
                     'unit_cost' => $item['unit_cost'],
+                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
+                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
@@ -971,6 +1006,7 @@ class PurchaseOrderService
                             $invoice->warehouse_id,
                             $piItem,
                             $actor,
+                            'in_transit',
                         );
                     }
                 }
@@ -1097,30 +1133,146 @@ class PurchaseOrderService
                 return $invoice;
             }
 
+            // Financial posting only — physical stock is added via receiveMaterial().
             $invoice->update([
                 'status' => 'posted',
                 'posted_at' => now(),
             ]);
 
-            if ($invoice->inventoryMovements()->doesntExist() && $invoice->warehouse_id) {
-                foreach ($invoice->items as $item) {
-                    $this->stockMovementService->recordIn(
-                        $item->product,
-                        $item->uom ?? $item->product->baseUom,
-                        (float) $item->quantity,
-                        'purchase_invoice',
-                        $invoice,
-                        "Stock inward from PI {$invoice->invoice_no}",
-                        auth()->user(),
-                        $invoice->warehouse_id,
-                        (float) $item->unit_cost,
-                        null,
-                        $item->batch_no,
-                    );
-                }
+            return $invoice;
+        });
+    }
+
+    /**
+     * Confirm physical material receipt (full or partial) and post stock for newly received qty only.
+     *
+     * @param  array{actual_material_receipt_date?:string, mark_all_received?:bool, items?:array<int, array{id:int|string, receive_qty?:float|int|string}>}  $data
+     */
+    public function receiveMaterial(PurchaseInvoice $invoice, array $data, User $actor): PurchaseInvoice
+    {
+        return DB::transaction(function () use ($invoice, $data, $actor) {
+            if ($invoice->status === 'cancelled') {
+                throw ValidationException::withMessages([
+                    'invoice' => 'Cancelled purchase invoices cannot receive material.',
+                ]);
             }
 
-            return $invoice;
+            if (! $invoice->warehouse_id) {
+                throw ValidationException::withMessages([
+                    'warehouse_id' => 'A warehouse is required before material can be received into stock.',
+                ]);
+            }
+
+            $invoice->load(['items.product.baseUom', 'items.uom']);
+            $receiptDate = $data['actual_material_receipt_date']
+                ?? $data['purchase_receive_date']
+                ?? now()->toDateString();
+            $markAll = (bool) ($data['mark_all_received'] ?? false);
+            $incoming = collect($data['items'] ?? [])->keyBy(fn ($row) => (string) ($row['id'] ?? ''));
+            $anyReceived = false;
+
+            foreach ($invoice->items as $item) {
+                $already = (float) $item->received_qty;
+                $ordered = (float) $item->quantity;
+                $remaining = max(0, $ordered - $already);
+
+                if ($remaining <= 0) {
+                    continue;
+                }
+
+                if ($markAll) {
+                    $delta = $remaining;
+                } else {
+                    $row = $incoming->get((string) $item->id);
+                    $delta = (float) ($row['receive_qty'] ?? 0);
+                }
+
+                if ($delta <= 0) {
+                    continue;
+                }
+
+                if ($delta > $remaining + 0.0001) {
+                    throw ValidationException::withMessages([
+                        "items.{$item->id}.receive_qty" => "Receive qty for {$item->product?->name} cannot exceed remaining {$remaining}.",
+                    ]);
+                }
+
+                $delta = min($delta, $remaining);
+                $uom = $item->uom ?? $item->product?->baseUom;
+                if (! $item->product || ! $uom) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Product/UOM missing on an invoice line; cannot receive stock.',
+                    ]);
+                }
+
+                $this->stockMovementService->recordIn(
+                    $item->product,
+                    $uom,
+                    $delta,
+                    'purchase_invoice',
+                    $invoice,
+                    "Material receipt for PI {$invoice->invoice_no}",
+                    $actor,
+                    $invoice->warehouse_id,
+                    (float) $item->unit_cost,
+                    null,
+                    $item->batch_no,
+                );
+
+                if (! empty($item->batch_no)) {
+                    $this->serialBatchService->upsertBatch(
+                        $item->product,
+                        $uom,
+                        (string) $item->batch_no,
+                        $delta,
+                        (float) $item->unit_cost,
+                        $invoice->warehouse_id,
+                        $item->expiry_date?->toDateString(),
+                        $item,
+                        $item->batch_selling_price !== null ? (float) $item->batch_selling_price : null,
+                        $item->batch_mrp !== null ? (float) $item->batch_mrp : null,
+                    );
+                }
+
+                $activateCount = (int) max(1, (int) round($delta));
+                ProductSerial::query()
+                    ->where('source_type', $item->getMorphClass())
+                    ->where('source_id', $item->id)
+                    ->where('status', 'in_transit')
+                    ->orderBy('id')
+                    ->limit($activateCount)
+                    ->update(['status' => 'in_stock']);
+
+                $item->update(['received_qty' => $already + $delta]);
+                $anyReceived = true;
+            }
+
+            if (! $anyReceived) {
+                throw ValidationException::withMessages([
+                    'items' => 'Enter at least one receive quantity greater than zero.',
+                ]);
+            }
+
+            $invoice->refresh()->load('items');
+            $totalOrdered = (float) $invoice->items->sum('quantity');
+            $totalReceived = (float) $invoice->items->sum('received_qty');
+
+            $status = PurchaseInvoice::MATERIAL_IN_TRANSIT;
+            if ($totalReceived <= 0) {
+                $status = PurchaseInvoice::MATERIAL_IN_TRANSIT;
+            } elseif ($totalReceived + 0.0001 >= $totalOrdered) {
+                $status = PurchaseInvoice::MATERIAL_RECEIVED;
+            } else {
+                $status = PurchaseInvoice::MATERIAL_PARTIALLY_RECEIVED;
+            }
+
+            $invoice->update([
+                'material_receipt_status' => $status,
+                'actual_material_receipt_date' => $receiptDate,
+                'purchase_receive_date' => $invoice->purchase_receive_date ?: $receiptDate,
+            ]);
+
+            return $invoice->fresh(['items.product', 'items.uom', 'supplier', 'warehouse', 'purchaseOrder']);
         });
     }
 
@@ -1203,25 +1355,56 @@ class PurchaseOrderService
                 $uomId = Product::query()->whereKey($item['product_id'])->value('base_uom_id');
             }
 
+            $taxPercent = isset($item['tax_percent'])
+                ? (float) $item['tax_percent']
+                : ((float) ($item['cgst_percent'] ?? 0) + (float) ($item['sgst_percent'] ?? 0));
+            $cgstPercent = isset($item['cgst_percent'])
+                ? (float) $item['cgst_percent']
+                : ($taxPercent / 2);
+            $sgstPercent = isset($item['sgst_percent'])
+                ? (float) $item['sgst_percent']
+                : ($taxPercent / 2);
+
+            $unitCost = (float) ($item['unit_cost'] ?? 0);
+            $mrp = null;
+            if (isset($item['mrp']) && $item['mrp'] !== '') {
+                $mrp = (float) $item['mrp'];
+            } elseif (isset($item['batch_mrp']) && $item['batch_mrp'] !== '') {
+                $mrp = (float) $item['batch_mrp'];
+            }
+
+            $purchasePriceInclusive = null;
+            if (isset($item['purchase_price_inclusive']) && $item['purchase_price_inclusive'] !== '') {
+                $purchasePriceInclusive = (float) $item['purchase_price_inclusive'];
+            } elseif (isset($item['price_inclusive_tax']) && $item['price_inclusive_tax'] !== '') {
+                $purchasePriceInclusive = (float) $item['price_inclusive_tax'];
+            } elseif ($unitCost > 0) {
+                $purchasePriceInclusive = round($unitCost * (1 + ($taxPercent / 100)), 4);
+            }
+
+            $purchaseDiscountPercent = null;
+            if (isset($item['purchase_discount_percent']) && $item['purchase_discount_percent'] !== '') {
+                $purchaseDiscountPercent = round((float) $item['purchase_discount_percent'], 2);
+            } elseif ($mrp !== null && $mrp > 0 && $purchasePriceInclusive !== null) {
+                $purchaseDiscountPercent = round((($mrp - $purchasePriceInclusive) / $mrp) * 100, 2);
+            }
+
             $normalized[] = [
                 'product_id' => (int) $item['product_id'],
                 'uom_id' => (int) $uomId,
                 'quantity' => $qty,
-                'unit_cost' => (float) ($item['unit_cost'] ?? 0),
-                'tax_percent' => isset($item['tax_percent'])
-                    ? (float) $item['tax_percent']
-                    : ((float) ($item['cgst_percent'] ?? 0) + (float) ($item['sgst_percent'] ?? 0)),
-                'cgst_percent' => isset($item['cgst_percent'])
-                    ? (float) $item['cgst_percent']
-                    : ((float) ($item['tax_percent'] ?? 0) / 2),
-                'sgst_percent' => isset($item['sgst_percent'])
-                    ? (float) $item['sgst_percent']
-                    : ((float) ($item['tax_percent'] ?? 0) / 2),
+                'unit_cost' => $unitCost,
+                'mrp' => $mrp,
+                'purchase_price_inclusive' => $purchasePriceInclusive,
+                'purchase_discount_percent' => $purchaseDiscountPercent,
+                'tax_percent' => $taxPercent,
+                'cgst_percent' => $cgstPercent,
+                'sgst_percent' => $sgstPercent,
                 'weight' => isset($item['weight']) ? (float) $item['weight'] : null,
                 'batch_no' => $item['batch_no'] ?? $item['batch_number'] ?? $item['batch_name'] ?? null,
                 'serial_no' => filled($item['serial_no'] ?? null) ? trim((string) $item['serial_no']) : null,
                 'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
-                'batch_mrp' => isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
+                'batch_mrp' => $mrp,
                 'serials' => ! empty($item['serials'])
                     ? (is_array($item['serials']) ? $item['serials'] : preg_split('/[\s,;]+/', (string) $item['serials'], -1, PREG_SPLIT_NO_EMPTY))
                     : (! empty($item['serial_numbers'])
@@ -1280,6 +1463,40 @@ class PurchaseOrderService
             'freight_total' => round($amount + $taxAmount, 2),
             'freight_notes' => $notes,
         ];
+    }
+
+    protected function resolvePurchaseOrderNumber(array $data, ?int $companyId): string
+    {
+        $series = $this->documentNumberService->resolveSeries('PO', $companyId);
+        $poDate = ! empty($data['po_date']) ? \Illuminate\Support\Carbon::parse($data['po_date']) : now();
+
+        if ($series && $series->isManual()) {
+            $poNo = strtoupper(trim((string) ($data['po_no'] ?? '')));
+            if ($poNo === '') {
+                throw ValidationException::withMessages([
+                    'po_no' => 'Voucher number is required when Purchase Order numbering is set to manual.',
+                ]);
+            }
+
+            $exists = PurchaseOrder::query()
+                ->where('po_no', $poNo)
+                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                ->exists();
+
+            if ($exists) {
+                throw ValidationException::withMessages([
+                    'po_no' => 'This voucher number already exists.',
+                ]);
+            }
+
+            return $poNo;
+        }
+
+        if ($series) {
+            return $this->documentNumberService->nextFromSeries($series, $poDate, $companyId);
+        }
+
+        return $this->documentNumberService->next('PO', $poDate, 4, $companyId);
     }
 
     /**

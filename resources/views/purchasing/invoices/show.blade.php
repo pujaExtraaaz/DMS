@@ -1,6 +1,13 @@
 @extends('layouts.dms')
 @section('title', $invoice->invoice_no)
 @section('content')
+@php
+    $materialBadge = match ($invoice->material_receipt_status) {
+        'received' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        'partially_received' => 'bg-amber-50 text-amber-800 border-amber-200',
+        default => 'bg-sky-50 text-sky-800 border-sky-200',
+    };
+@endphp
 <x-ui.page-header :title="$invoice->invoice_no">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('purchasing.invoices.index')">
@@ -8,6 +15,11 @@
         </x-ui.button>
 
         <div class="flex items-center gap-2">
+            @if($invoice->canReceiveMaterial())
+                <x-ui.button variant="primary" :href="route('purchasing.invoices.receive-material', $invoice)">
+                    Receive Material
+                </x-ui.button>
+            @endif
             <x-ui.button
                 variant="secondary"
                 :href="route('purchasing.invoices.preview', $invoice)"
@@ -21,11 +33,51 @@
     <x-ui.card><p class="text-xs text-slate-500">Supplier</p><p class="font-medium truncate" title="{{ $invoice->supplier?->name }}">{{ $invoice->supplier?->name }}</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Purchase Order</p><p class="font-medium truncate">@if($invoice->purchaseOrder)<a href="{{ route('purchasing.orders.show', $invoice->purchaseOrder) }}" class="text-indigo-600 hover:underline font-mono">{{ $invoice->purchaseOrder->po_no }}</a>@else—@endif</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Supplier Inv</p><p class="font-medium">{{ $invoice->supplier_invoice_no ?? '—' }}</p></x-ui.card>
-    <x-ui.card><p class="text-xs text-slate-500">Purchase Invoice Date</p><p class="font-medium">{{ $invoice->invoice_date?->format('d M Y') ?? '—' }}</p></x-ui.card>
-    <x-ui.card><p class="text-xs text-slate-500">Receive Date</p><p class="font-medium">{{ $invoice->purchase_receive_date?->format('d M Y') ?? '—' }}</p></x-ui.card>
+    <x-ui.card><p class="text-xs text-slate-500">Supplier Invoice Date</p><p class="font-medium">{{ $invoice->invoice_date?->format('d M Y') ?? '—' }}</p></x-ui.card>
+    <x-ui.card><p class="text-xs text-slate-500">Material Status</p><p class="font-medium"><span class="inline-flex px-2 py-0.5 rounded border text-xs font-semibold {{ $materialBadge }}">{{ $invoice->materialReceiptLabel() }}</span></p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Payment Order Date</p><p class="font-medium">{{ $invoice->payment_order_date?->format('d M Y') ?? '—' }}</p></x-ui.card>
-    <x-ui.card><p class="text-xs text-slate-500">Due Date</p><p class="font-medium">{{ $invoice->due_date?->format('d M Y') ?? '—' }} @if($invoice->credit_days) <span class="text-xs text-slate-400">({{ $invoice->credit_days }} days)</span> @endif</p></x-ui.card>
+    <x-ui.card><p class="text-xs text-slate-500">Payment Due Date</p><p class="font-medium">{{ $invoice->due_date?->format('d M Y') ?? '—' }} @if($invoice->credit_days) <span class="text-xs text-slate-400">({{ $invoice->credit_days }} days)</span> @endif</p></x-ui.card>
     <x-ui.card><p class="text-xs text-slate-500">Total</p><p class="font-medium">₹{{ number_format($invoice->grand_total, 2) }}</p></x-ui.card>
+</div>
+
+<div class="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h3 class="text-sm font-semibold text-slate-800">Material Receipt Tracking</h3>
+        <span class="text-xs text-slate-500">Invoice recorded ≠ stock available. Stock posts only on receipt confirmation.</span>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 text-sm">
+        <div>
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Dispatch Date</p>
+            <p class="font-medium">{{ $invoice->material_dispatch_date?->format('d M Y') ?? '—' }}</p>
+        </div>
+        <div>
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Expected Delivery</p>
+            <p class="font-medium {{ $invoice->isDeliveryOverdue() ? 'text-rose-600' : '' }}">
+                {{ $invoice->expected_delivery_date?->format('d M Y') ?? '—' }}
+                @if($invoice->isDeliveryOverdue()) <span class="text-[10px] font-bold">OVERDUE</span> @endif
+            </p>
+        </div>
+        <div>
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Actual Receipt</p>
+            <p class="font-medium">{{ $invoice->actual_material_receipt_date?->format('d M Y') ?? '—' }}</p>
+        </div>
+        <div>
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Days in Transit</p>
+            <p class="font-medium font-mono">{{ $invoice->daysInTransit() ?? '—' }}</p>
+        </div>
+        <div>
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Material Status</p>
+            <p class="font-medium">{{ $invoice->materialReceiptLabel() }}</p>
+        </div>
+        <div>
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Payment Due</p>
+            <p class="font-medium">{{ $invoice->due_date?->format('d M Y') ?? '—' }}</p>
+        </div>
+        <div>
+            <p class="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Payment Status</p>
+            <p class="font-medium">{{ $invoice->paymentStatusLabel() }}</p>
+        </div>
+    </div>
 </div>
 
 @if($invoice->odAccount)
@@ -92,7 +144,7 @@
 @endif
 <x-ui.card>
 <table class="min-w-full text-sm"><thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">Batch</th><th class="px-3 py-2 text-right">Qty</th><th class="px-3 py-2 text-right">Unit Cost</th><th class="px-3 py-2 text-right">Other Vendor</th><th class="px-3 py-2 text-right">Line Total</th>
+<th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">Batch</th><th class="px-3 py-2 text-right">Invoiced</th><th class="px-3 py-2 text-right">Received</th><th class="px-3 py-2 text-right">In Transit</th><th class="px-3 py-2 text-right">MRP</th><th class="px-3 py-2 text-right">Purchase Price Incl. GST</th><th class="px-3 py-2 text-right">Disc. %</th><th class="px-3 py-2 text-right">Unit Cost</th><th class="px-3 py-2 text-right">Other Vendor</th><th class="px-3 py-2 text-right">Line Total</th>
 </tr></thead>
 <tbody class="divide-y">
 @foreach($invoice->items as $item)
@@ -100,6 +152,11 @@
 <td class="px-3 py-2">{{ $item->product?->name }}</td>
 <td class="px-3 py-2">{{ $item->batch_no ?: '—' }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->quantity, 2) }}</td>
+<td class="px-3 py-2 text-right text-emerald-700">{{ number_format((float) $item->received_qty, 2) }}</td>
+<td class="px-3 py-2 text-right text-amber-700">{{ number_format($item->remainingQty(), 2) }}</td>
+<td class="px-3 py-2 text-right">{{ $item->batch_mrp !== null ? '₹'.number_format((float) $item->batch_mrp, 2) : '—' }}</td>
+<td class="px-3 py-2 text-right">{{ $item->purchase_price_inclusive !== null ? '₹'.number_format((float) $item->purchase_price_inclusive, 2) : '—' }}</td>
+<td class="px-3 py-2 text-right">{{ $item->purchase_discount_percent !== null ? number_format((float) $item->purchase_discount_percent, 2).'%' : '—' }}</td>
 <td class="px-3 py-2 text-right">₹{{ number_format($item->unit_cost, 2) }}</td>
 <td class="px-3 py-2 text-right">{{ $item->other_vendor_rate !== null ? '₹'.number_format($item->other_vendor_rate, 2) : '—' }}</td>
 <td class="px-3 py-2 text-right">₹{{ number_format($item->line_total, 2) }}</td>

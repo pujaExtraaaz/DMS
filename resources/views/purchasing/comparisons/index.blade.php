@@ -1,12 +1,13 @@
 @extends('layouts.dms')
-@section('title', 'Comparison Sheets')
+@section('title', 'Purchase Material Comparison')
 @section('content')
 <div>
-    <x-ui.page-header title="Comparison Sheets">
+    <x-ui.page-header title="Purchase Material Comparison Sheets">
         <x-slot name="actions">
             <x-ui.button variant="primary" :href="route('purchasing.comparisons.create')">+ New Comparison</x-ui.button>
         </x-slot>
     </x-ui.page-header>
+    <p class="mb-4 text-sm text-slate-600">Supplier quotation comparison for purchasing decisions by effective landed cost, not just basic rate.</p>
 
     <x-ui.card>
         <form method="GET" class="mb-4 flex flex-wrap items-center gap-2">

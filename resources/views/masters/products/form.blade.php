@@ -7,17 +7,23 @@
     $effectiveOrderId = $orderId ?? request('order_id', old('order_id'));
     $effectiveTargetRow = $targetRow ?? request('target_row', old('target_row'));
     $returnRoute = null;
+    $returnLabel = 'Back';
     if ($effectiveReturnTo === 'orders.create') {
         $returnRoute = route('orders.create', ['returned_from' => 'product_create']);
+        $returnLabel = 'Back to Book Order';
     } elseif ($effectiveReturnTo === 'orders.edit' && $effectiveOrderId) {
         $returnRoute = route('orders.edit', ['order' => $effectiveOrderId, 'returned_from' => 'product_create']);
+        $returnLabel = 'Back to Edit Order';
+    } elseif ($effectiveReturnTo === 'purchasing.invoices.create') {
+        $returnRoute = route('purchasing.invoices.create', ['returned_from' => 'product_create']);
+        $returnLabel = 'Back to Purchase Invoice';
     }
 @endphp
 
 <x-ui.page-header :title="$item->exists ? 'Edit Product' : 'Create Product'">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="$returnRoute ?: route('masters.products.index')">
-            {{ $effectiveReturnTo === 'orders.edit' ? 'Back to Edit Order' : ($returnRoute ? 'Back to Book Order' : 'Back') }}
+            {{ $returnLabel }}
         </x-ui.button>
     </x-slot>
 </x-ui.page-header>

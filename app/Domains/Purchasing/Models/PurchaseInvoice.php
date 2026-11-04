@@ -30,8 +30,12 @@ class PurchaseInvoice extends Model
         'supplier_invoice_no',
         'invoice_date',
         'purchase_receive_date',
+        'material_dispatch_date',
+        'expected_delivery_date',
+        'actual_material_receipt_date',
         'payment_order_date',
         'status',
+        'material_receipt_status',
         'subtotal',
         'tax_amount',
         'freight_charge',
@@ -59,6 +63,9 @@ class PurchaseInvoice extends Model
         return [
             'invoice_date' => 'date',
             'purchase_receive_date' => 'date',
+            'material_dispatch_date' => 'date',
+            'expected_delivery_date' => 'date',
+            'actual_material_receipt_date' => 'date',
             'payment_order_date' => 'date',
             'due_date' => 'date',
             'posted_at' => 'datetime',
@@ -70,6 +77,73 @@ class PurchaseInvoice extends Model
             'total_amount' => 'decimal:2',
             'credit_days' => 'integer',
         ];
+    }
+
+    public const MATERIAL_IN_TRANSIT = 'in_transit';
+
+    public const MATERIAL_PARTIALLY_RECEIVED = 'partially_received';
+
+    public const MATERIAL_RECEIVED = 'received';
+
+    public function materialReceiptLabel(): string
+    {
+        return match ($this->material_receipt_status) {
+            self::MATERIAL_RECEIVED => 'Received',
+            self::MATERIAL_PARTIALLY_RECEIVED => 'Partially Received',
+            default => 'In Transit',
+        };
+    }
+
+    public function daysInTransit(): ?int
+    {
+        $start = $this->material_dispatch_date ?? $this->invoice_date;
+        if (! $start) {
+            return null;
+        }
+
+        $end = $this->actual_material_receipt_date ?? now();
+
+        return (int) $start->diffInDays($end);
+    }
+
+    public function isDeliveryOverdue(): bool
+    {
+        if (in_array($this->material_receipt_status, [self::MATERIAL_RECEIVED], true)) {
+            return false;
+        }
+
+        if (! $this->expected_delivery_date) {
+            return false;
+        }
+
+        return $this->expected_delivery_date->isPast();
+    }
+
+    public function paymentStatusLabel(): string
+    {
+        if ($this->status === 'cancelled') {
+            return 'Cancelled';
+        }
+
+        if (in_array($this->status, ['paid'], true)) {
+            return 'Paid';
+        }
+
+        if ($this->due_date && $this->due_date->isPast()) {
+            return 'Overdue';
+        }
+
+        if ($this->due_date) {
+            return 'Payment Due';
+        }
+
+        return 'Outstanding';
+    }
+
+    public function canReceiveMaterial(): bool
+    {
+        return $this->status !== 'cancelled'
+            && $this->material_receipt_status !== self::MATERIAL_RECEIVED;
     }
 
     protected static function booted(): void

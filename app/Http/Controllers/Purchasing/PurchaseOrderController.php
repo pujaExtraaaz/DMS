@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 use App\Support\AuditLogService;
 use App\Support\DocumentExporter;
+use App\Support\DocumentNumberService;
 use App\Support\Traits\SortableAndSearchable;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -28,17 +29,42 @@ class PurchaseOrderController extends Controller
         protected PurchaseOrderService $purchaseOrderService,
         protected FinancialYearService $financialYearService,
         protected AuditLogService $auditLogService,
+        protected DocumentNumberService $documentNumberService,
     ) {}
 
     public function index(Request $request): View|Response
     {
+        $brandId = $request->filled('brand_id') ? (int) $request->input('brand_id') : null;
+        $pendingDelivery = $request->boolean('pending_delivery');
+
         $query = PurchaseOrder::query()
-            ->with(['supplier', 'warehouse', 'creator'])
+            ->with(['supplier', 'warehouse', 'creator', 'items.product.brand'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_id', $request->supplier_id))
             ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('po_date', '>=', $request->date_from))
-            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('po_date', '<=', $request->date_to));
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('po_date', '<=', $request->date_to))
+            ->when($brandId, function ($q) use ($brandId) {
+                $q->whereHas('items.product', fn ($pq) => $pq->where('brand_id', $brandId));
+            })
+            ->when($pendingDelivery, function ($q) use ($brandId) {
+                $q->whereNotIn('status', ['cancelled', 'closed', 'draft'])
+                    ->whereHas('items', function ($iq) use ($brandId) {
+                        $iq->whereColumn('received_qty', '<', 'quantity');
+                        if ($brandId) {
+                            $iq->whereHas('product', fn ($pq) => $pq->where('brand_id', $brandId));
+                        }
+                    });
+            });
+
+        $itemQtyConstraint = function ($iq) use ($brandId) {
+            if ($brandId) {
+                $iq->whereHas('product', fn ($pq) => $pq->where('brand_id', $brandId));
+            }
+        };
+
+        $query->withSum(['items as filtered_ordered_qty' => $itemQtyConstraint], 'quantity')
+            ->withSum(['items as filtered_received_qty' => $itemQtyConstraint], 'received_qty');
 
         $this->applySearch(
             $query,
@@ -83,10 +109,13 @@ class PurchaseOrderController extends Controller
             'orders' => $orders,
             'suppliers' => Customer::where('is_active', true)->orderBy('name')->get(),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
+            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
             'search' => $request->string('search'),
             'status' => $request->string('status'),
             'supplierId' => $request->input('supplier_id'),
             'warehouseId' => $request->input('warehouse_id'),
+            'brandId' => $brandId,
+            'pendingDelivery' => $pendingDelivery,
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
         ]);
@@ -108,6 +137,7 @@ class PurchaseOrderController extends Controller
             'shipping_address' => 'nullable|string',
             'warehouse_id' => 'nullable|exists:warehouses,id',
             'po_date' => 'required|date',
+            'po_no' => 'nullable|string|max:60',
             'expected_date' => 'nullable|date',
             'credit_days' => 'nullable|integer|min:0',
             'due_date' => 'nullable|date',
@@ -127,6 +157,10 @@ class PurchaseOrderController extends Controller
             'items.*.uom_id' => 'required|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
+            'items.*.mrp' => 'nullable|numeric|min:0',
+            'items.*.price_inclusive_tax' => 'nullable|numeric|min:0',
+            'items.*.purchase_price_inclusive' => 'nullable|numeric|min:0',
+            'items.*.purchase_discount_percent' => 'nullable|numeric',
             'items.*.tax_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
@@ -258,6 +292,10 @@ class PurchaseOrderController extends Controller
             'items.*.uom_id' => 'required|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
+            'items.*.mrp' => 'nullable|numeric|min:0',
+            'items.*.price_inclusive_tax' => 'nullable|numeric|min:0',
+            'items.*.purchase_price_inclusive' => 'nullable|numeric|min:0',
+            'items.*.purchase_discount_percent' => 'nullable|numeric',
             'items.*.tax_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
@@ -514,6 +552,12 @@ class PurchaseOrderController extends Controller
 
     protected function formData(): array
     {
+        $companyId = auth()->user()?->company_id;
+        $poSeries = $this->documentNumberService->resolveSeries('PO', $companyId);
+        $nextPoNumber = $poSeries && $poSeries->isAutomatic()
+            ? $this->documentNumberService->peekFromSeries($poSeries)
+            : null;
+
         return [
             'suppliers' => Customer::query()
                 ->where('is_active', true)
@@ -524,6 +568,8 @@ class PurchaseOrderController extends Controller
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
             'products' => Product::where('is_active', true)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
+            'poNumberSeries' => $poSeries,
+            'nextPoNumber' => $nextPoNumber,
         ];
     }
 }

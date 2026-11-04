@@ -13,39 +13,26 @@
       class="space-y-6">
     @csrf
 
-    <div class="rounded-xl border-2 border-amber-400 bg-amber-50 p-4">
-        <label class="block text-sm font-extrabold uppercase tracking-wide text-amber-950">Remarks & Additional Delivery</label>
-        <p class="mt-1 text-xs font-medium text-amber-800">Put delivery instructions here. This stays at the top so it is not missed.</p>
-        <textarea name="notes" rows="3" placeholder="Delivery instructions and invoice remarks..."
-                  class="mt-2 block w-full rounded-lg border-amber-300 bg-white text-sm font-bold text-slate-900 focus:border-amber-500 focus:ring-amber-500">{{ old('notes') }}</textarea>
-    </div>
-
     <x-ui.card>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
                 <div class="flex items-center justify-between mb-1">
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider">Supplier *</label>
-                    <button type="button" @click="$dispatch('open-quick-add-supplier')"
-                            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1">
-                        + Add New
-                    </button>
+                    <a href="{{ route('masters.customers.create', [
+                            'party_type' => \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+                            'return_url' => route('purchasing.invoices.create'),
+                        ]) }}"
+                       class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                        + Add Supplier
+                    </a>
                 </div>
-                <div class="relative" @click.outside="supplierOpen = false">
-                    <select name="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel()" required class="sr-only">
-                        <option value="">Select supplier</option>
-                        @foreach($suppliers as $s)
-                            <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', $order?->supplier_id)==$s->id)>{{ $s->name }}</option>
-                        @endforeach
-                    </select>
-                    <input type="text" x-model="supplierQuery" @focus="supplierOpen = true" @input="supplierOpen = true" autocomplete="off" placeholder="Type to search supplier..."
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <div x-show="supplierOpen" x-cloak class="absolute z-40 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
-                        <template x-for="supplier in filteredSuppliers()" :key="supplier.id">
-                            <button type="button" @mousedown.prevent="pickSupplier(supplier.id)" class="block w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-indigo-50" x-text="supplier.name"></button>
-                        </template>
-                        <div x-show="filteredSuppliers().length === 0" class="px-3 py-2 text-xs text-slate-500">No matching supplier</div>
-                    </div>
-                </div>
+                <select name="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel()" required
+                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <option value="">Select supplier</option>
+                    @foreach($suppliers as $s)
+                        <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', request('supplier_id', $order?->supplier_id))==$s->id)>{{ $s->name }}</option>
+                    @endforeach
+                </select>
             </div>
 
             <div>
@@ -105,9 +92,37 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Purchase Receive Date</label>
-                <input type="date" name="purchase_receive_date" x-model="purchaseReceiveDate"
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Material Dispatch Date</label>
+                <input type="date" name="material_dispatch_date" value="{{ old('material_dispatch_date') }}"
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <p class="mt-1 text-[10px] text-slate-400">Optional. Material starts as In Transit — stock is not added yet.</p>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Expected Delivery Date</label>
+                <input type="date" name="expected_delivery_date" x-model="expectedDeliveryDate"
+                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <div class="flex items-center gap-1.5 mt-2">
+                    <span class="text-[11px] font-medium text-slate-400">Quick:</span>
+                    <button type="button"
+                            @click="setExpectedDeliveryDays(30)"
+                            :class="expectedDeliveryQuickDays === 30 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'"
+                            class="px-2 py-0.5 text-xs font-medium rounded border transition-colors">
+                        30 Days
+                    </button>
+                    <button type="button"
+                            @click="setExpectedDeliveryDays(45)"
+                            :class="expectedDeliveryQuickDays === 45 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'"
+                            class="px-2 py-0.5 text-xs font-medium rounded border transition-colors">
+                        45 Days
+                    </button>
+                    <button type="button"
+                            @click="setExpectedDeliveryDays(50)"
+                            :class="expectedDeliveryQuickDays === 50 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'"
+                            class="px-2 py-0.5 text-xs font-medium rounded border transition-colors">
+                        50 Days
+                    </button>
+                </div>
             </div>
 
             <div>
@@ -151,30 +166,8 @@
                         50 Days
                     </button>
                 </div>
-                <p class="mt-1 text-[11px] text-slate-500" x-show="dueDatePreview">
-                    Due Date Preview: <strong class="text-slate-700" x-text="dueDatePreview"></strong>
-                </p>
             </div>
 
-            <div>
-                <div class="flex items-center justify-between mb-1">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">OD Bank Account</label>
-                    <span class="text-[11px] text-slate-400 font-normal">Optional</span>
-                </div>
-                <select name="od_account_id" x-model="odAccountId" @change="onOdAccountChange()"
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">No OD Financing (Standard)</option>
-                    @foreach($odAccounts as $acc)
-                        <option value="{{ $acc->id }}" @selected(old('od_account_id') == $acc->id)>
-                            {{ $acc->bank_name }} ({{ $acc->masked_account_number }}) - Avail: ₹{{ number_format($acc->available_limit, 2) }}
-                        </option>
-                    @endforeach
-                </select>
-                <div x-show="odAccountId && selectedOdAccount" class="mt-1 text-[11px]" x-cloak>
-                    <span class="text-slate-500">Available: </span>
-                    <span class="font-semibold text-emerald-600" x-text="formatCurrency(selectedOdAccount ? selectedOdAccount.available_limit : 0)"></span>
-                </div>
-            </div>
         </div>
     </x-ui.card>
 
@@ -243,18 +236,20 @@
         </div>
 
         <div class="overflow-x-auto border-t border-slate-200">
-            <table class="w-full min-w-[1360px] text-left text-xs border-collapse">
+            <table class="w-full min-w-[1580px] text-left text-xs border-collapse">
                 <thead class="bg-slate-50 text-slate-600 tracking-wider border-b border-slate-200 font-semibold text-[11px]">
                     <tr>
                         <th class="p-3 min-w-[340px] lg:min-w-[380px]">Product / Description</th>
                         <th class="p-3 min-w-[70px] w-20 text-center">Unit</th>
                         <th class="p-3 min-w-[110px] w-28 text-right">Qty *</th>
+                        <th class="p-3 min-w-[120px] w-28 text-right">MRP (₹)</th>
+                        <th class="p-3 min-w-[145px] w-36 text-right" title="Actual purchase price paid including GST">Purchase Price Incl. GST (₹)</th>
+                        <th class="p-3 min-w-[110px] w-28 text-right" title="Auto: [(MRP − Purchase Price) ÷ MRP] × 100">Disc. %</th>
                         <th class="p-3 min-w-[130px] w-36 text-right">Unit Cost (₹) *</th>
                         <th class="p-3 min-w-[95px] w-24 text-right">Cgst %</th>
                         <th class="p-3 min-w-[95px] w-24 text-right">Sgst %</th>
                         <th class="p-3 min-w-[100px] w-28 text-center">Tax Rate</th>
                         <th class="p-3 min-w-[130px] w-36">Batch No</th>
-                        <th class="p-3 min-w-[125px] w-32 text-right" title="Optional shelf price printed on the batch. It is not added to this invoice.">Printed MRP (₹)<div class="font-normal normal-case tracking-normal text-[10px] text-slate-400">Optional, not in the bill</div></th>
                         <th class="p-3 min-w-[140px] w-36 text-right">Line Total (₹)</th>
                         <th class="p-3 min-w-[50px] w-14 text-center"></th>
                     </tr>
@@ -263,6 +258,13 @@
                     <template x-for="(row, i) in items" :key="i">
                         <tr class="align-top hover:bg-slate-50/50 transition-colors">
                             <td class="p-3 min-w-[340px] lg:min-w-[380px]">
+                                <div class="flex items-center justify-between gap-2 mb-1">
+                                    <span class="text-[11px] font-semibold text-slate-500">Product</span>
+                                    <a :href="createProductUrl(i)"
+                                       class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap">
+                                        + Create product
+                                    </a>
+                                </div>
                                 <select :name="`items[${i}][product_id]`"
                                         x-model="row.product_id"
                                         @change="onProductChange(i)"
@@ -304,13 +306,45 @@
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
 
+                            <td class="p-3 align-top min-w-[120px] w-28">
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       :name="`items[${i}][batch_mrp]`"
+                                       x-model.number="row.batch_mrp"
+                                       @input="syncPurchaseDiscount(i)"
+                                       placeholder="MRP"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                            </td>
+
+                            <td class="p-3 align-top min-w-[145px] w-36">
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       :name="`items[${i}][purchase_price_inclusive]`"
+                                       x-model.number="row.purchase_price_inclusive"
+                                       @input="onPurchasePriceInclusiveChange(i)"
+                                       placeholder="Incl. GST"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                            </td>
+
+                            <td class="p-3 align-top min-w-[110px] w-28">
+                                <input type="number"
+                                       step="0.01"
+                                       :name="`items[${i}][purchase_discount_percent]`"
+                                       x-model.number="row.purchase_discount_percent"
+                                       readonly
+                                       tabindex="-1"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 bg-slate-50 shadow-sm">
+                            </td>
+
                             <td class="p-3 align-top min-w-[130px] w-36">
                                 <input type="number"
                                        step="0.01"
                                        min="0"
                                        :name="`items[${i}][unit_cost]`"
                                        x-model.number="row.unit_cost"
-                                       @input="recalc()"
+                                       @input="onUnitCostChange(i)"
                                        required
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
@@ -322,7 +356,7 @@
                                        max="100"
                                        :name="`items[${i}][cgst_percent]`"
                                        x-model.number="row.cgst_percent"
-                                       @input="recalc()"
+                                       @input="onTaxChange(i)"
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
 
@@ -333,7 +367,7 @@
                                        max="100"
                                        :name="`items[${i}][sgst_percent]`"
                                        x-model.number="row.sgst_percent"
-                                       @input="recalc()"
+                                       @input="onTaxChange(i)"
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
 
@@ -346,16 +380,6 @@
                                        x-model="row.batch_number"
                                        placeholder="Batch No"
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-                            </td>
-
-                            <td class="p-3 align-top min-w-[125px] w-32">
-                                <input type="number"
-                                       step="0.01"
-                                       min="0"
-                                       :name="`items[${i}][batch_mrp]`"
-                                       x-model.number="row.batch_mrp"
-                                       placeholder="MRP"
-                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
 
                             <td class="p-3 align-top min-w-[140px] w-36 text-right pt-5 font-bold font-mono text-slate-900 text-sm whitespace-nowrap"
@@ -402,54 +426,15 @@
                     <span>Grand Total:</span>
                     <span class="font-mono text-indigo-700 text-lg" x-text="formatCurrency(grandTotal)"></span>
                 </div>
-
-                <!-- OD Financing Summary Card -->
-                <div x-show="odAccountId && selectedOdAccount" class="mt-4 pt-3 border-t border-slate-200 space-y-2 bg-indigo-50/60 p-3 rounded-lg border border-indigo-100" x-cloak>
-                    <div class="flex items-center justify-between text-indigo-900 font-semibold text-xs">
-                        <span class="inline-flex items-center gap-1.5">
-                            <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
-                            </svg>
-                            OD Financing Summary
-                        </span>
-                        <span class="text-[11px] font-mono font-medium text-indigo-700" x-text="selectedOdAccount ? selectedOdAccount.bank_name : ''"></span>
-                    </div>
-
-                    <div class="flex justify-between items-center text-slate-600 text-xs">
-                        <span>Available OD Limit:</span>
-                        <span class="font-mono font-semibold text-slate-800" x-text="formatCurrency(selectedOdAccount ? selectedOdAccount.available_limit : 0)"></span>
-                    </div>
-
-                    <div class="flex justify-between items-center text-slate-600 text-xs">
-                        <span>Invoice OD Utilization:</span>
-                        <span class="font-mono font-bold text-indigo-700" x-text="formatCurrency(grandTotal)"></span>
-                    </div>
-
-                    <div class="flex justify-between items-center text-xs border-t border-indigo-200/60 pt-1.5 font-medium">
-                        <span class="text-slate-700">Projected Remaining Limit:</span>
-                        <span class="font-mono font-bold text-sm"
-                              :class="remainingOdLimit < 0 ? 'text-rose-600' : 'text-emerald-700'"
-                              x-text="formatCurrency(remainingOdLimit)"></span>
-                    </div>
-
-                    <div x-show="remainingOdLimit < 0" class="mt-2 p-2 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-1.5 font-medium">
-                        <svg class="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-                        </svg>
-                        <span>Invoice amount exceeds available OD limit. Submission will fail.</span>
-                    </div>
-                </div>
             </div>
         </div>
     </x-ui.card>
 
     <div class="flex items-center justify-end gap-3">
         <x-ui.button variant="secondary" :href="route('purchasing.invoices.index')">Cancel</x-ui.button>
-        <x-ui.button type="submit" variant="primary">Create Invoice (Draft)</x-ui.button>
+        <x-ui.button type="submit" variant="primary">Record Supplier Invoice</x-ui.button>
     </div>
 </form>
-
-<x-quick-add-supplier target-select="supplier_id" />
 
 @push('scripts')
 <script>
@@ -457,16 +442,9 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
     return {
         products: products || [],
         odAccounts: odAccounts || [],
-        odAccountId: '{{ old('od_account_id', '') }}',
-        get selectedOdAccount() {
-            return this.odAccounts.find(a => String(a.id) === String(this.odAccountId)) || null;
-        },
-        get remainingOdLimit() {
-            if (!this.selectedOdAccount) return 0;
-            return (Number(this.selectedOdAccount.available_limit) || 0) - (Number(this.grandTotal) || 0);
-        },
+        odAccountId: '',
         onOdAccountChange() {},
-        supplierId: initialOrder ? initialOrder.supplier_id : '{{ old('supplier_id', '') }}',
+        supplierId: initialOrder ? initialOrder.supplier_id : '{{ old('supplier_id', request('supplier_id', '')) }}',
         supplierQuery: '',
         supplierOpen: false,
         suppliers: [],
@@ -487,6 +465,8 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
         purchaseReceiveDate: '{{ old('purchase_receive_date', $defaultReceiveDate ?? '') }}',
         paymentOrderDate: '{{ old('payment_order_date', $defaultPaymentOrderDate ?? '') }}',
         creditDays: {{ old('credit_days', $order?->credit_days ?? 0) }},
+        expectedDeliveryDate: '{{ old('expected_delivery_date', '') }}',
+        expectedDeliveryQuickDays: null,
         dueDatePreview: '',
         dueDateFormattedYmd: '',
         freightCharge: {{ old('freight_charge', (float)($order?->freight_total ?? 0)) }},
@@ -525,32 +505,59 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                     this.purchaseReceiveDate = initialOrder.receive_date;
                 }
             }
+            const newProductId = @json(request('new_product_id'));
+            const draft = newProductId ? this.restoreCreateDraft() : null;
+            const targetRow = draft?.targetRow != null
+                ? parseInt(draft.targetRow, 10) || 0
+                : (parseInt(@json(request('target_row', '0')), 10) || 0);
+
             if (this.supplierId) {
-                await this.loadSupplierAddresses(this.supplierId);
+                const forceAddressDefault = !(initialOrder && initialOrder.billing_address_id) && !draft?.selectedBillingId;
+                await this.loadSupplierAddresses(this.supplierId, forceAddressDefault);
                 if (!this.supplierOrders.length) {
                     await this.loadSupplierOrders(this.supplierId, this.purchaseOrderId);
                 }
             }
-            if (initialOrder && initialOrder.items && initialOrder.items.length) {
+
+            if (!draft && initialOrder && initialOrder.items && initialOrder.items.length) {
                 this.items = initialOrder.items.map(it => {
                     const p = this.products.find(prod => prod.id === it.product_id);
+                    const unitCost = Number(it.unit_cost) || 0;
+                    const cgst = Number(it.cgst_percent) || 0;
+                    const sgst = Number(it.sgst_percent) || 0;
+                    const tax = cgst + sgst;
+                    const mrp = Number(it.batch_mrp) || Number(it.mrp) || (p ? (Number(p.mrp) || 0) : 0);
+                    const inclusive = Number(it.purchase_price_inclusive) || Number((unitCost * (1 + tax / 100)).toFixed(2));
                     return {
                         product_id: it.product_id,
                         unit: p ? (p.unit || 'PCS') : 'PCS',
                         tracking_type: p ? (p.tracking_type || 'none') : 'none',
                         quantity: Number(it.quantity) || 1,
-                        unit_cost: Number(it.unit_cost) || 0,
-                        cgst_percent: Number(it.cgst_percent) || 0,
-                        sgst_percent: Number(it.sgst_percent) || 0,
+                        unit_cost: unitCost,
+                        purchase_price_inclusive: inclusive,
+                        purchase_discount_percent: Number(it.purchase_discount_percent) || (mrp > 0 ? Number((((mrp - inclusive) / mrp) * 100).toFixed(2)) : 0),
+                        cgst_percent: cgst,
+                        sgst_percent: sgst,
                         batch_number: it.batch_number || it.batch_no || '',
-                        batch_mrp: p ? (Number(p.mrp) || 0) : 0,
+                        batch_mrp: mrp,
                         serial_numbers: [''],
                         line_total: 0
                     };
                 });
-            } else {
+            } else if (!this.items.length) {
                 this.addItem();
             }
+
+            if (newProductId) {
+                while (this.items.length <= targetRow) {
+                    this.addItem();
+                }
+                this.items[targetRow].product_id = String(newProductId);
+                this.onProductChange(targetRow);
+            }
+
+            this.syncSupplierLabel();
+            this.recalcDueDate();
             this.items.forEach((_, idx) => this.syncSerials(idx));
             this.recalc();
         },
@@ -562,6 +569,8 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 tracking_type: 'none',
                 quantity: 1,
                 unit_cost: 0,
+                purchase_price_inclusive: 0,
+                purchase_discount_percent: 0,
                 cgst_percent: 0,
                 sgst_percent: 0,
                 batch_number: '',
@@ -570,6 +579,45 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 line_total: 0
             });
             this.recalc();
+        },
+
+        rowTaxPercent(row) {
+            return (Number(row.cgst_percent) || 0) + (Number(row.sgst_percent) || 0);
+        },
+
+        syncPurchaseDiscount(index) {
+            const row = this.items[index];
+            if (!row) return;
+            const mrp = Number(row.batch_mrp) || 0;
+            const inclusive = Number(row.purchase_price_inclusive) || 0;
+            row.purchase_discount_percent = mrp > 0
+                ? Number((((mrp - inclusive) / mrp) * 100).toFixed(2))
+                : 0;
+        },
+
+        onPurchasePriceInclusiveChange(index) {
+            const row = this.items[index];
+            if (!row) return;
+            const tax = this.rowTaxPercent(row);
+            const inclusive = Number(row.purchase_price_inclusive) || 0;
+            const factor = 1 + (tax / 100);
+            row.unit_cost = factor > 0 ? Number((inclusive / factor).toFixed(2)) : inclusive;
+            this.syncPurchaseDiscount(index);
+            this.recalc();
+        },
+
+        onUnitCostChange(index) {
+            const row = this.items[index];
+            if (!row) return;
+            const tax = this.rowTaxPercent(row);
+            const cost = Number(row.unit_cost) || 0;
+            row.purchase_price_inclusive = Number((cost * (1 + tax / 100)).toFixed(2));
+            this.syncPurchaseDiscount(index);
+            this.recalc();
+        },
+
+        onTaxChange(index) {
+            this.onUnitCostChange(index);
         },
 
         removeItem(index) {
@@ -599,6 +647,8 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.batch_mrp = Number(p.mrp) || 0;
+                this.onUnitCostChange(index);
+                return;
             }
             this.syncSerials(index);
             this.recalc();
@@ -640,11 +690,84 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             return '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         },
 
+        createProductUrl(rowIndex) {
+            try {
+                sessionStorage.setItem('pi_create_draft', JSON.stringify({
+                    supplierId: this.supplierId,
+                    supplierQuery: this.supplierQuery,
+                    warehouseId: this.warehouseId,
+                    purchaseOrderId: this.purchaseOrderId,
+                    selectedOrderLabel: this.selectedOrderLabel,
+                    linkedPoId: this.linkedPoId,
+                    invoiceDate: this.invoiceDate,
+                    purchaseReceiveDate: this.purchaseReceiveDate,
+                    paymentOrderDate: this.paymentOrderDate,
+                    creditDays: this.creditDays,
+                    freightCharge: this.freightCharge,
+                    otherCharges: this.otherCharges,
+                    selectedBillingId: this.selectedBillingId,
+                    selectedShippingId: this.selectedShippingId,
+                    billingSnapshot: this.billingSnapshot,
+                    shippingSnapshot: this.shippingSnapshot,
+                    sameAsBilling: this.sameAsBilling,
+                    items: this.items,
+                    targetRow: rowIndex ?? 0,
+                }));
+            } catch (e) {}
+
+            const params = new URLSearchParams({
+                return_to: 'purchasing.invoices.create',
+                target_row: String(rowIndex ?? 0),
+            });
+            return @json(route('masters.products.create')) + '?' + params.toString();
+        },
+
+        restoreCreateDraft() {
+            let draft = null;
+            try {
+                const raw = sessionStorage.getItem('pi_create_draft');
+                if (raw) {
+                    draft = JSON.parse(raw);
+                    sessionStorage.removeItem('pi_create_draft');
+                }
+            } catch (e) {
+                draft = null;
+            }
+            if (!draft) return null;
+
+            this.supplierId = draft.supplierId || this.supplierId;
+            this.supplierQuery = draft.supplierQuery || this.supplierQuery;
+            this.warehouseId = draft.warehouseId || this.warehouseId;
+            this.purchaseOrderId = draft.purchaseOrderId || this.purchaseOrderId;
+            this.selectedOrderLabel = draft.selectedOrderLabel || this.selectedOrderLabel;
+            this.linkedPoId = draft.linkedPoId || this.linkedPoId;
+            this.invoiceDate = draft.invoiceDate || this.invoiceDate;
+            this.purchaseReceiveDate = draft.purchaseReceiveDate || this.purchaseReceiveDate;
+            this.paymentOrderDate = draft.paymentOrderDate || this.paymentOrderDate;
+            this.creditDays = draft.creditDays ?? this.creditDays;
+            this.freightCharge = draft.freightCharge ?? this.freightCharge;
+            this.otherCharges = draft.otherCharges ?? this.otherCharges;
+            this.selectedBillingId = draft.selectedBillingId || '';
+            this.selectedShippingId = draft.selectedShippingId || '';
+            this.billingSnapshot = draft.billingSnapshot || '';
+            this.shippingSnapshot = draft.shippingSnapshot || '';
+            this.sameAsBilling = draft.sameAsBilling !== false;
+            if (Array.isArray(draft.items) && draft.items.length) {
+                this.items = draft.items;
+            }
+            return draft;
+        },
+
         async onSupplierChange() {
             const hadLinkedPo = !!this.linkedPoId;
             this.purchaseOrderId = '';
             this.selectedOrderLabel = '';
             this.supplierOrders = [];
+            this.selectedBillingId = '';
+            this.selectedShippingId = '';
+            this.billingSnapshot = '';
+            this.shippingSnapshot = '';
+            this.sameAsBilling = true;
 
             if (hadLinkedPo) {
                 this.items = [];
@@ -656,10 +779,6 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
 
             if (!this.supplierId) {
                 this.partyAddresses = [];
-                this.selectedBillingId = '';
-                this.selectedShippingId = '';
-                this.billingSnapshot = '';
-                this.shippingSnapshot = '';
                 return;
             }
 
@@ -672,7 +791,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             }
 
             await Promise.all([
-                this.loadSupplierAddresses(this.supplierId),
+                this.loadSupplierAddresses(this.supplierId, true),
                 this.loadSupplierOrders(this.supplierId)
             ]);
         },
@@ -763,16 +882,24 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                     if (ord.items && ord.items.length) {
                         this.items = ord.items.map(it => {
                             const p = this.products.find(prod => prod.id === it.product_id);
+                            const unitCost = Number(it.unit_cost) || 0;
+                            const cgst = Number(it.cgst_percent) || 0;
+                            const sgst = Number(it.sgst_percent) || 0;
+                            const tax = cgst + sgst;
+                            const mrp = Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0);
+                            const inclusive = Number(it.purchase_price_inclusive) || Number((unitCost * (1 + tax / 100)).toFixed(2));
                             return {
                                 product_id: it.product_id,
                                 unit: p ? (p.unit || 'PCS') : 'PCS',
                                 tracking_type: p ? (p.tracking_type || 'none') : 'none',
                                 quantity: Number(it.quantity) || 1,
-                                unit_cost: Number(it.unit_cost) || 0,
-                                cgst_percent: Number(it.cgst_percent) || 0,
-                                sgst_percent: Number(it.sgst_percent) || 0,
+                                unit_cost: unitCost,
+                                purchase_price_inclusive: inclusive,
+                                purchase_discount_percent: Number(it.purchase_discount_percent) || (mrp > 0 ? Number((((mrp - inclusive) / mrp) * 100).toFixed(2)) : 0),
+                                cgst_percent: cgst,
+                                sgst_percent: sgst,
                                 batch_number: it.batch_number || '',
-                                batch_mrp: Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0),
+                                batch_mrp: mrp,
                                 serial_numbers: [''],
                                 line_total: Number(it.line_total) || 0
                             };
@@ -788,7 +915,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             }
         },
 
-        async loadSupplierAddresses(supId) {
+        async loadSupplierAddresses(supId, forceDefault = false) {
             this.addressesLoading = true;
             try {
                 const res = await fetch(`{{ url('/masters/customers') }}/${supId}/addresses`, {
@@ -797,10 +924,13 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 const data = await res.json();
                 if (data.success) {
                     this.partyAddresses = data.addresses || [];
-                    if (!this.selectedBillingId) {
+                    const billingValid = this.partyAddresses.some(a => String(a.id) === String(this.selectedBillingId));
+                    const shippingValid = this.partyAddresses.some(a => String(a.id) === String(this.selectedShippingId));
+
+                    if (forceDefault || !this.selectedBillingId || !billingValid) {
                         this.selectedBillingId = data.default_billing_id || (this.partyAddresses[0]?.id ?? '');
                     }
-                    if (!this.selectedShippingId) {
+                    if (forceDefault || !this.selectedShippingId || !shippingValid) {
                         this.selectedShippingId = data.default_delivery_id || this.selectedBillingId;
                     }
 
@@ -808,6 +938,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                     if (!this.sameAsBilling) {
                         this.onShippingAddressChange();
                     } else {
+                        this.selectedShippingId = this.selectedBillingId;
                         this.shippingSnapshot = this.billingSnapshot;
                     }
                 }
@@ -844,6 +975,25 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
         setCreditDays(days) {
             this.creditDays = parseInt(days, 10) || 0;
             this.recalcDueDate();
+        },
+
+        addDaysToYmd(baseYmd, days) {
+            if (!baseYmd) return '';
+            const parts = String(baseYmd).split('-');
+            if (parts.length !== 3) return '';
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            d.setDate(d.getDate() + (parseInt(days, 10) || 0));
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        },
+
+        setExpectedDeliveryDays(days) {
+            const n = parseInt(days, 10) || 0;
+            this.expectedDeliveryQuickDays = n;
+            const base = this.invoiceDate || new Date().toISOString().slice(0, 10);
+            this.expectedDeliveryDate = this.addDaysToYmd(base, n);
         },
 
         recalcDueDate() {

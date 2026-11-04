@@ -11,7 +11,21 @@
     <form method="POST" action="{{ route('purchasing.orders.update', $order) }}" class="space-y-4">
         @csrf
         @method('PUT')
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div>
+            <div class="flex items-center justify-between mb-1">
+                <label class="block text-sm font-medium text-slate-700">Voucher No.</label>
+                <a href="{{ route('organization.document-number-series.index') }}"
+                   class="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                   title="Configure voucher numbering">
+                    Configure
+                </a>
+            </div>
+            <input type="text"
+                   value="{{ $order->po_no }}"
+                   readonly
+                   class="block w-full rounded-lg border-gray-200 bg-slate-50 text-sm font-mono text-slate-700">
+        </div>
         <div>
             <div class="flex items-center justify-between mb-1">
                 <label class="block text-sm font-medium text-slate-700">Supplier *</label>
@@ -130,6 +144,9 @@
     <th class="px-3 py-2 text-left">Batch Name</th>
     <th class="px-3 py-2 text-left">UOM</th>
     <th class="px-3 py-2 text-left">Qty</th>
+    <th class="px-3 py-2 text-left whitespace-nowrap">MRP</th>
+    <th class="px-3 py-2 text-left whitespace-nowrap">Purchase Price Incl. GST</th>
+    <th class="px-3 py-2 text-left whitespace-nowrap">Purchase Disc. %</th>
     <th class="px-3 py-2 text-left">Unit Cost</th>
     <th class="px-3 py-2 text-left">Tax %</th>
     <th class="px-3 py-2 text-left">Cgst %</th>
@@ -150,6 +167,9 @@
                     'uom_id' => $it->uom_id,
                     'quantity' => (float)$it->quantity,
                     'unit_cost' => (float)$it->unit_cost,
+                    'mrp' => (float) ($it->mrp ?? 0),
+                    'purchase_price_inclusive' => $it->purchase_price_inclusive !== null ? (float) $it->purchase_price_inclusive : null,
+                    'purchase_discount_percent' => $it->purchase_discount_percent !== null ? (float) $it->purchase_discount_percent : null,
                     'tax_percent' => (float)$it->tax_percent,
                     'cgst_percent' => (float)$it->cgst_percent,
                     'sgst_percent' => (float)$it->sgst_percent,
@@ -167,6 +187,9 @@
                     'uom_id' => null,
                     'quantity' => 1,
                     'unit_cost' => 0,
+                    'mrp' => 0,
+                    'purchase_price_inclusive' => null,
+                    'purchase_discount_percent' => null,
                     'tax_percent' => 0,
                     'cgst_percent' => 0,
                     'sgst_percent' => 0,
@@ -195,7 +218,7 @@
                 <select name="items[{{ $idx }}][product_id]" class="po-product hidden" onchange="handlePoProductChange(this)">
                     <option value="">Select product</option>
                     @foreach($products as $p)
-                        <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected(($rowItem['product_id'] ?? null) == $p->id)>{{ $p->name }}</option>
+                        <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-mrp="{{ $p->mrp ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected(($rowItem['product_id'] ?? null) == $p->id)>{{ $p->name }}</option>
                     @endforeach
                 </select>
                 <div class="relative">
@@ -242,6 +265,22 @@
             </select>
         </td>
         <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][quantity]" class="block w-20 rounded-lg border-gray-300 text-sm" value="{{ $rowItem['quantity'] ?? 1 }}" required></td>
+        @php
+            $editUnitCost = (float) ($rowItem['unit_cost'] ?? 0);
+            $editTaxPercent = (float) ($rowItem['tax_percent'] ?? 0);
+            $editMrp = (float) ($rowItem['mrp'] ?? 0);
+            $editPriceInclusive = $rowItem['price_inclusive_tax'] ?? $rowItem['purchase_price_inclusive'] ?? ($editTaxPercent > 0 ? round($editUnitCost * (1 + $editTaxPercent / 100), 2) : round($editUnitCost, 2));
+            $editDiscount = $rowItem['purchase_discount_percent'] ?? ($editMrp > 0 ? round((($editMrp - (float) $editPriceInclusive) / $editMrp) * 100, 2) : '');
+        @endphp
+        <td class="px-3 py-2">
+            <input type="number" step="0.01" min="0" name="items[{{ $idx }}][mrp]" class="po-mrp block w-28 rounded-lg border-gray-300 text-sm" value="{{ $editMrp }}" title="MRP">
+        </td>
+        <td class="px-3 py-2">
+            <input type="number" step="0.01" min="0" name="items[{{ $idx }}][price_inclusive_tax]" class="po-price-inclusive block w-28 rounded-lg border-gray-300 text-sm" value="{{ $editPriceInclusive }}" title="Purchase Price Including GST">
+        </td>
+        <td class="px-3 py-2">
+            <input type="number" step="0.01" name="items[{{ $idx }}][purchase_discount_percent]" class="po-purchase-discount block w-24 rounded-lg border-gray-300 text-sm bg-slate-50" value="{{ $editDiscount }}" title="Purchase Discount %" readonly tabindex="-1">
+        </td>
         <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][unit_cost]" class="po-cost block w-28 rounded-lg border-gray-300 text-sm" value="{{ $rowItem['unit_cost'] ?? 0 }}" required></td>
         <td class="px-3 py-2">
             <input
@@ -405,6 +444,7 @@
             'brand_id' => $p->brand_id ? (string)$p->brand_id : '',
             'tax_rate' => (float)($p->tax_rate ?? 0),
             'purchase_price' => (float)($p->purchase_price ?? 0),
+            'mrp' => (float)($p->mrp ?? 0),
             'base_uom_id' => $p->base_uom_id ? (string)$p->base_uom_id : '',
         ];
     })->values();
@@ -776,22 +816,35 @@ function handlePoProductChange(select) {
     const opt = select.options[select.selectedIndex];
     if (!opt || !opt.value) return;
 
-    const taxVal = parseFloat(opt.dataset.tax) || 0;
-    const costVal = parseFloat(opt.dataset.cost) || 0;
-    const uomVal = opt.dataset.uom;
+    const productMeta = (typeof poProductsList !== 'undefined')
+        ? poProductsList.find(p => String(p.id) === String(opt.value))
+        : null;
+    const taxVal = parseFloat(opt.dataset.tax) || Number(productMeta?.tax_rate) || 0;
+    const costVal = parseFloat(opt.dataset.cost) || Number(productMeta?.purchase_price) || 0;
+    const mrpVal = parseFloat(opt.dataset.mrp) || Number(productMeta?.mrp) || 0;
+    const uomVal = opt.dataset.uom || productMeta?.base_uom_id || '';
 
     const costInput = row.querySelector('.po-cost');
+    const mrpInput = row.querySelector('.po-mrp');
     const taxInput = row.querySelector('.po-tax');
     const cgstInput = row.querySelector('.po-cgst');
     const sgstInput = row.querySelector('.po-sgst');
     const uomSelect = row.querySelector('.po-uom');
 
-    if (costInput && (!costInput.value || parseFloat(costInput.value) === 0)) {
-        costInput.value = costVal;
-    }
     if (taxInput) taxInput.value = taxVal;
     if (cgstInput) cgstInput.value = (taxVal / 2).toFixed(2);
     if (sgstInput) sgstInput.value = (taxVal / 2).toFixed(2);
+    if (mrpInput && (!mrpInput.value || parseFloat(mrpInput.value) === 0)) {
+        mrpInput.value = mrpVal;
+    }
+    if (costInput && (!costInput.value || parseFloat(costInput.value) === 0)) {
+        costInput.value = costVal;
+        syncPoPriceTaxPair(row, 'cost');
+    } else if (costInput) {
+        syncPoPriceTaxPair(row, 'cost');
+    } else {
+        syncPoPurchaseDiscount(row);
+    }
     if (uomSelect && uomVal) uomSelect.value = uomVal;
 
     loadBatchesForProduct(opt.value, row);
@@ -833,6 +886,7 @@ function syncPoTax(row, changed) {
         const half = (taxValue / 2).toFixed(2);
         cgst.value = half;
         sgst.value = half;
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
         return;
     }
@@ -841,14 +895,54 @@ function syncPoTax(row, changed) {
 
     if (changed === 'cgst') {
         sgst.value = Math.max(0, taxValue - cgstValue).toFixed(2);
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
         return;
     }
 
     if (changed === 'sgst') {
         cgst.value = Math.max(0, taxValue - (parseFloat(sgst.value) || 0)).toFixed(2);
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
     }
+}
+
+function poRowTaxPercent(row) {
+    const tax = row.querySelector('.po-tax');
+    return Math.max(0, parseFloat(tax?.value) || 0);
+}
+
+function syncPoPurchaseDiscount(row) {
+    if (!row) return;
+    const mrpInput = row.querySelector('.po-mrp');
+    const inclusiveInput = row.querySelector('.po-price-inclusive');
+    const discountInput = row.querySelector('.po-purchase-discount');
+    if (!discountInput) return;
+
+    const mrp = parseFloat(mrpInput?.value) || 0;
+    const inclusive = parseFloat(inclusiveInput?.value) || 0;
+    discountInput.value = mrp > 0 ? (((mrp - inclusive) / mrp) * 100).toFixed(2) : '';
+}
+
+function syncPoPriceTaxPair(row, source) {
+    if (!row) return;
+    const costInput = row.querySelector('.po-cost');
+    const inclusiveInput = row.querySelector('.po-price-inclusive');
+    if (!costInput || !inclusiveInput) return;
+
+    const tax = poRowTaxPercent(row);
+    const factor = 1 + (tax / 100);
+
+    if (source === 'inclusive') {
+        const inclusive = parseFloat(inclusiveInput.value) || 0;
+        costInput.value = factor > 0 ? (inclusive / factor).toFixed(2) : inclusive.toFixed(2);
+        row.dataset.priceEditSource = 'inclusive';
+    } else {
+        const cost = parseFloat(costInput.value) || 0;
+        inclusiveInput.value = (cost * factor).toFixed(2);
+        row.dataset.priceEditSource = 'cost';
+    }
+    syncPoPurchaseDiscount(row);
 }
 
 function toggleFreightFields() {
@@ -1033,6 +1127,28 @@ document.addEventListener('input', function (event) {
         recalcPoDueDate();
     }
 
+    if (input.classList.contains('po-price-inclusive')) {
+        const row = input.closest('tr');
+        if (row) {
+            syncPoPriceTaxPair(row, 'inclusive');
+            recalculatePoTotals();
+        }
+        return;
+    }
+
+    if (input.classList.contains('po-mrp')) {
+        const row = input.closest('tr');
+        if (row) syncPoPurchaseDiscount(row);
+        return;
+    }
+
+    if (input.classList.contains('po-cost') || input.name?.includes('[unit_cost]')) {
+        const row = input.closest('tr');
+        if (row) {
+            syncPoPriceTaxPair(row, 'cost');
+        }
+    }
+
     if (input.classList.contains('po-tax')) {
         const row = input.closest('tr');
         if (row) syncPoTax(row, 'tax');
@@ -1049,6 +1165,7 @@ document.addEventListener('input', function (event) {
         input.name?.includes('[unit_cost]') ||
         input.classList.contains('po-tax') ||
         input.classList.contains('po-cost') ||
+        input.classList.contains('po-price-inclusive') ||
         input.id === 'po_freight_amount' ||
         input.id === 'po_freight_tax_rate'
     ) {

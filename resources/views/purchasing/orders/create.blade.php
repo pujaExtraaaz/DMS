@@ -7,7 +7,42 @@
     </x-ui.page-header>
     <x-ui.card>
     <form method="POST" action="{{ route('purchasing.orders.store') }}" class="space-y-4">@csrf
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+    @php
+        $poSeries = $poNumberSeries ?? null;
+        $poManual = $poSeries && $poSeries->isManual();
+        $poPreview = $nextPoNumber ?? ($poSeries?->preview());
+    @endphp
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div>
+            <div class="flex items-center justify-between mb-1">
+                <label class="block text-sm font-medium text-slate-700">
+                    Voucher No. @if($poManual)*@endif
+                </label>
+                <a href="{{ route('organization.document-number-series.index') }}"
+                   class="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                   title="Configure voucher numbering">
+                    Configure
+                </a>
+            </div>
+            @if($poManual)
+                <input type="text"
+                       name="po_no"
+                       value="{{ old('po_no') }}"
+                       required
+                       maxlength="60"
+                       placeholder="e.g. AVITPO-2627-001"
+                       class="block w-full rounded-lg border-gray-300 text-sm uppercase font-mono focus:border-indigo-500 focus:ring-indigo-500">
+                <p class="mt-1 text-[11px] text-slate-500">Manual numbering is enabled for Purchase Orders.</p>
+            @else
+                <input type="text"
+                       value="{{ $poPreview ?: 'Auto on save' }}"
+                       readonly
+                       class="block w-full rounded-lg border-gray-200 bg-slate-50 text-sm font-mono text-slate-700">
+                <p class="mt-1 text-[11px] text-slate-500">
+                    {{ $poSeries ? 'Next automatic number (assigned on save).' : 'Using default PO numbering until a series is configured.' }}
+                </p>
+            @endif
+        </div>
         <div>
             <div class="flex items-center justify-between mb-1">
                 <label class="block text-sm font-medium text-slate-700">Supplier *</label>
@@ -119,6 +154,9 @@
     <th class="px-3 py-2 text-left">Batch Name</th>
     <th class="px-3 py-2 text-left">UOM</th>
     <th class="px-3 py-2 text-left">Qty</th>
+    <th class="px-3 py-2 text-left whitespace-nowrap">MRP</th>
+    <th class="px-3 py-2 text-left whitespace-nowrap">Purchase Price Incl. GST</th>
+    <th class="px-3 py-2 text-left whitespace-nowrap">Purchase Disc. %</th>
     <th class="px-3 py-2 text-left">Unit Cost</th>
     <th class="px-3 py-2 text-left">Tax %</th>
     <th class="px-3 py-2 text-left">Cgst %</th>
@@ -147,6 +185,9 @@
                 'uomId' => $oldItem['uom_id'] ?? null,
                 'quantity' => $oldItem['quantity'] ?? 1,
                 'unitCost' => $oldItem['unit_cost'] ?? 0,
+                'mrp' => $oldItem['mrp'] ?? 0,
+                'priceInclusiveTax' => $oldItem['price_inclusive_tax'] ?? $oldItem['purchase_price_inclusive'] ?? null,
+                'purchaseDiscountPercent' => $oldItem['purchase_discount_percent'] ?? null,
                 'taxPercent' => $oldItem['tax_percent'] ?? 0,
                 'cgstPercent' => $oldItem['cgst_percent'] ?? 0,
                 'sgstPercent' => $oldItem['sgst_percent'] ?? 0,
@@ -284,6 +325,7 @@
             'brand_id' => $p->brand_id ? (string)$p->brand_id : '',
             'tax_rate' => (float)($p->tax_rate ?? 0),
             'purchase_price' => (float)($p->purchase_price ?? 0),
+            'mrp' => (float)($p->mrp ?? 0),
             'base_uom_id' => $p->base_uom_id ? (string)$p->base_uom_id : '',
         ];
     })->values();
@@ -653,20 +695,33 @@ async function handlePoProductChange(select) {
     const opt = select.options[select.selectedIndex];
     if (!opt || !opt.value) return;
 
-    const taxRate = parseFloat(opt.getAttribute('data-tax')) || 0;
-    const cost = parseFloat(opt.getAttribute('data-cost')) || 0;
-    const uomId = opt.getAttribute('data-uom');
+    const productMeta = (typeof poProductsList !== 'undefined')
+        ? poProductsList.find(p => String(p.id) === String(opt.value))
+        : null;
+    const taxRate = parseFloat(opt.getAttribute('data-tax')) || Number(productMeta?.tax_rate) || 0;
+    const cost = parseFloat(opt.getAttribute('data-cost')) || Number(productMeta?.purchase_price) || 0;
+    const mrp = parseFloat(opt.getAttribute('data-mrp')) || Number(productMeta?.mrp) || 0;
+    const uomId = opt.getAttribute('data-uom') || productMeta?.base_uom_id || '';
 
     const taxInput = row.querySelector('.po-tax');
     const cgstInput = row.querySelector('.po-cgst');
     const sgstInput = row.querySelector('.po-sgst');
     const costInput = row.querySelector('.po-cost');
+    const mrpInput = row.querySelector('.po-mrp');
     const uomSelect = row.querySelector('.po-uom');
 
     if (taxInput) taxInput.value = taxRate;
     if (cgstInput) cgstInput.value = (taxRate / 2).toFixed(2);
     if (sgstInput) sgstInput.value = (taxRate / 2).toFixed(2);
-    if (costInput && (!costInput.value || costInput.value === '0')) costInput.value = cost;
+    if (mrpInput && (!mrpInput.value || mrpInput.value === '0')) {
+        mrpInput.value = mrp;
+    }
+    if (costInput && (!costInput.value || costInput.value === '0')) {
+        costInput.value = cost;
+        syncPoPriceTaxPair(row, 'cost');
+    } else {
+        syncPoPurchaseDiscount(row);
+    }
     if (uomSelect && uomId) uomSelect.value = uomId;
 
     // Load existing batches for this product into datalist if available
@@ -712,6 +767,7 @@ function syncPoTax(row, changed) {
         const half = (taxValue / 2).toFixed(2);
         cgst.value = half;
         sgst.value = half;
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
         return;
     }
@@ -720,14 +776,54 @@ function syncPoTax(row, changed) {
 
     if (changed === 'cgst') {
         sgst.value = Math.max(0, taxValue - cgstValue).toFixed(2);
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
         return;
     }
 
     if (changed === 'sgst') {
         cgst.value = Math.max(0, taxValue - (parseFloat(sgst.value) || 0)).toFixed(2);
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
     }
+}
+
+function poRowTaxPercent(row) {
+    const tax = row.querySelector('.po-tax');
+    return Math.max(0, parseFloat(tax?.value) || 0);
+}
+
+function syncPoPurchaseDiscount(row) {
+    if (!row) return;
+    const mrpInput = row.querySelector('.po-mrp');
+    const inclusiveInput = row.querySelector('.po-price-inclusive');
+    const discountInput = row.querySelector('.po-purchase-discount');
+    if (!discountInput) return;
+
+    const mrp = parseFloat(mrpInput?.value) || 0;
+    const inclusive = parseFloat(inclusiveInput?.value) || 0;
+    discountInput.value = mrp > 0 ? (((mrp - inclusive) / mrp) * 100).toFixed(2) : '';
+}
+
+function syncPoPriceTaxPair(row, source) {
+    if (!row) return;
+    const costInput = row.querySelector('.po-cost');
+    const inclusiveInput = row.querySelector('.po-price-inclusive');
+    if (!costInput || !inclusiveInput) return;
+
+    const tax = poRowTaxPercent(row);
+    const factor = 1 + (tax / 100);
+
+    if (source === 'inclusive') {
+        const inclusive = parseFloat(inclusiveInput.value) || 0;
+        costInput.value = factor > 0 ? (inclusive / factor).toFixed(2) : inclusive.toFixed(2);
+        row.dataset.priceEditSource = 'inclusive';
+    } else {
+        const cost = parseFloat(costInput.value) || 0;
+        inclusiveInput.value = (cost * factor).toFixed(2);
+        row.dataset.priceEditSource = 'cost';
+    }
+    syncPoPurchaseDiscount(row);
 }
 
 function toggleFreightFields() {
@@ -912,6 +1008,28 @@ document.addEventListener('input', function (event) {
         recalcPoDueDate();
     }
 
+    if (input.classList.contains('po-price-inclusive')) {
+        const row = input.closest('tr');
+        if (row) {
+            syncPoPriceTaxPair(row, 'inclusive');
+            recalculatePoTotals();
+        }
+        return;
+    }
+
+    if (input.classList.contains('po-mrp')) {
+        const row = input.closest('tr');
+        if (row) syncPoPurchaseDiscount(row);
+        return;
+    }
+
+    if (input.classList.contains('po-cost') || input.name?.includes('[unit_cost]')) {
+        const row = input.closest('tr');
+        if (row) {
+            syncPoPriceTaxPair(row, 'cost');
+        }
+    }
+
     if (input.classList.contains('po-tax')) {
         const row = input.closest('tr');
         if (row) syncPoTax(row, 'tax');
@@ -928,6 +1046,7 @@ document.addEventListener('input', function (event) {
         input.name?.includes('[unit_cost]') ||
         input.classList.contains('po-tax') ||
         input.classList.contains('po-cost') ||
+        input.classList.contains('po-price-inclusive') ||
         input.id === 'po_freight_amount' ||
         input.id === 'po_freight_tax_rate'
     ) {

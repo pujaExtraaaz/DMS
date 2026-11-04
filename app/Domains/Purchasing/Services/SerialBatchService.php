@@ -29,6 +29,7 @@ class SerialBatchService
         ?int $warehouseId,
         ?Model $source = null,
         ?User $actor = null,
+        string $status = 'in_stock',
     ): array {
         $clean = collect($serials)
             ->map(fn ($s) => trim((string) $s))
@@ -38,6 +39,11 @@ class SerialBatchService
 
         if ($clean->isEmpty()) {
             return [];
+        }
+
+        $allowed = ['in_stock', 'in_transit', 'reserved', 'sold', 'returned', 'scrapped', 'delivered'];
+        if (! in_array($status, $allowed, true)) {
+            $status = 'in_stock';
         }
 
         $existing = ProductSerial::query()
@@ -59,7 +65,7 @@ class SerialBatchService
             ]);
         }
 
-        return DB::transaction(function () use ($clean, $product, $warehouseId, $source) {
+        return DB::transaction(function () use ($clean, $product, $warehouseId, $source, $status) {
             $warranty = $this->purchaseWarrantyAttributes($product, $source);
             $created = [];
             foreach ($clean as $serialNumber) {
@@ -67,7 +73,7 @@ class SerialBatchService
                     'product_id' => $product->id,
                     'warehouse_id' => $warehouseId,
                     'serial_number' => $serialNumber,
-                    'status' => 'in_stock',
+                    'status' => $status,
                     'source_type' => $source?->getMorphClass(),
                     'source_id' => $source?->getKey(),
                     'purchase_inward_item_id' => $source instanceof PurchaseInwardItem

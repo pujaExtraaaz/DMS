@@ -61,7 +61,7 @@
         'sub-categories' => ['Sub Categories', 'Match on Brand + Category + Name. Import Categories first.'],
         'product-types' => ['Product Types', 'Match on Company + Name/Code. Sets track_serial and description.'],
         'products' => ['Products', 'Match on Part Number; UOM codes must exist. Brand/category/sub-category/type auto-created if missing.'],
-        'parties' => ['Parties (Customers &amp; Suppliers)', 'Match on Code; classification, area and route auto-created. Includes address, contact and bank.'],
+        'parties' => ['Parties (Customers &amp; Suppliers)', 'Match on Code, else GSTIN, else Name — re-import updates instead of duplicating. Classification, area and route auto-created.'],
         'price-master' => ['Price List', 'Match on Customer Type + Part Number + UOM + Min Qty. Supports rate_includes_gst.'],
         'leads' => ['CRM Leads', 'Match on Mobile or Email. Maps Contact Name, Company, Title, Mobiles, Address, etc.'],
     ] as $type => [$label, $note])

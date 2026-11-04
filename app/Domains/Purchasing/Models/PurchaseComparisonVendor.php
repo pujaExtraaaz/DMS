@@ -24,6 +24,16 @@ class PurchaseComparisonVendor extends Model
         'valid_until',
         'credit_period',
         'advance_payment',
+        'payment_mode',
+        'credit_days',
+        'payment_due_date',
+        'pdc_details',
+        'cdc_details',
+        'cash_discount_percent',
+        'cash_discount_days',
+        'bank_interest_percent',
+        'bank_interest_days',
+        'financing_notes',
         'credit_limit_note',
         'replacement_policy',
         'return_policy',
@@ -37,7 +47,10 @@ class PurchaseComparisonVendor extends Model
     protected $casts = [
         'quotation_date' => 'date',
         'valid_until' => 'date',
+        'payment_due_date' => 'date',
         'partial_delivery' => 'boolean',
+        'cash_discount_percent' => 'decimal:2',
+        'bank_interest_percent' => 'decimal:2',
     ];
 
     public function comparison(): BelongsTo

@@ -14,7 +14,10 @@ class PurchaseInvoiceItem extends Model
         'product_id',
         'uom_id',
         'quantity',
+        'received_qty',
         'unit_cost',
+        'purchase_price_inclusive',
+        'purchase_discount_percent',
         'tax_percent',
         'line_total',
         'other_vendor_rate',
@@ -32,7 +35,10 @@ class PurchaseInvoiceItem extends Model
     {
         return [
             'quantity' => 'decimal:4',
+            'received_qty' => 'decimal:4',
             'unit_cost' => 'decimal:4',
+            'purchase_price_inclusive' => 'decimal:4',
+            'purchase_discount_percent' => 'decimal:2',
             'tax_percent' => 'decimal:2',
             'line_total' => 'decimal:2',
             'other_vendor_rate' => 'decimal:4',
@@ -44,6 +50,11 @@ class PurchaseInvoiceItem extends Model
             'cgst_amount' => 'decimal:2',
             'sgst_amount' => 'decimal:2',
         ];
+    }
+
+    public function remainingQty(): float
+    {
+        return max(0, (float) $this->quantity - (float) $this->received_qty);
     }
 
     public function invoice(): BelongsTo

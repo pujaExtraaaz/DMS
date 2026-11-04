@@ -68,7 +68,7 @@
         
         <div x-show="open && !$root.sidebarCollapsed" x-cloak class="space-y-0.5">
             <a href="<?php echo e(route('purchasing.orders.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['purchasing.orders.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Orders</span></a>
-            <a href="<?php echo e(route('purchasing.comparisons.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['purchasing.comparisons.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Comparison Sheets</span></a>
+            <a href="<?php echo e(route('purchasing.comparisons.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['purchasing.comparisons.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Material Comparison</span></a>
             <a href="<?php echo e(route('purchasing.invoices.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['purchasing.invoices.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Invoices</span></a>
             <a href="<?php echo e(route('purchasing.freight-bills.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['purchasing.freight-bills.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Freight Bills</span></a>
         </div>

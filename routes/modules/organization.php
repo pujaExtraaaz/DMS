@@ -7,6 +7,7 @@ use App\Http\Controllers\Organization\BranchController;
 use App\Http\Controllers\Organization\BusinessGroupController;
 use App\Http\Controllers\Organization\CompanyController;
 use App\Http\Controllers\Organization\CompanyProfileController;
+use App\Http\Controllers\Organization\DocumentNumberSeriesController;
 use App\Http\Controllers\Organization\FinancialYearController;
 use App\Http\Controllers\Organization\WarehouseController;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,7 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::post('financial-years/{financial_year}/set-current', [FinancialYearController::class, 'setCurrent'])->name('financial-years.set-current');
     Route::post('financial-years/{financial_year}/close', [FinancialYearController::class, 'close'])->name('financial-years.close');
     Route::post('financial-years/{financial_year}/reopen', [FinancialYearController::class, 'reopen'])->name('financial-years.reopen');
+    Route::resource('document-number-series', DocumentNumberSeriesController::class)->except(['show']);
     Route::get('sister-concerns', [\App\Http\Controllers\Organization\SisterConcernController::class, 'dashboard'])->name('sister-concerns.dashboard');
     Route::get('sister-concerns/dashboard', [\App\Http\Controllers\Organization\SisterConcernController::class, 'dashboard'])->name('sister-concerns.dashboard.redirect');
     Route::get('sister-concerns/companies', [\App\Http\Controllers\Organization\SisterConcernController::class, 'companies'])->name('sister-concerns.companies');

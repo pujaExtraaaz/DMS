@@ -30,7 +30,8 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
  *   bank_account_holder, bank_name, bank_branch, bank_account_number, bank_account_type, bank_ifsc
  *
  * Legacy aliases: customer_type → classification; address → address_line_1.
- * Match on code. Classification / area / route auto-created by name.
+ * Match on code; if blank, GSTIN; if blank, name (case-insensitive).
+ * Classification / area / route auto-created by name.
  */
 class PartiesImport implements ToCollection, WithHeadingRow
 {
@@ -78,8 +79,23 @@ class PartiesImport implements ToCollection, WithHeadingRow
                 $types->put(strtolower($type->name), $type);
             }
 
-            $code = trim((string) ($data['code'] ?? '')) ?: CodeGenerator::forCustomer($companyId);
-            $existing = Customer::query()->whereRaw('LOWER(code) = ?', [strtolower($code)])->first();
+            $providedCode = trim((string) ($data['code'] ?? ''));
+            $gstin = trim((string) ($data['gstin'] ?? '')) ?: null;
+            $existing = null;
+
+            if ($providedCode !== '') {
+                $existing = Customer::query()->whereRaw('LOWER(code) = ?', [strtolower($providedCode)])->first();
+            }
+
+            if (! $existing && $gstin) {
+                $existing = Customer::query()->whereRaw('LOWER(gstin) = ?', [strtolower($gstin)])->first();
+            }
+
+            if (! $existing) {
+                $existing = Customer::query()->whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
+            }
+
+            $code = $existing?->code ?: ($providedCode !== '' ? $providedCode : CodeGenerator::forCustomer($companyId));
 
             $area = null;
             if (filled($data['area'] ?? null)) {
@@ -144,6 +160,10 @@ class PartiesImport implements ToCollection, WithHeadingRow
                 }
             }
 
+            $phoneNumbers = $this->extractPhoneNumbers($data['phone'] ?? null);
+            $primaryPhone = $phoneNumbers[0] ?? null;
+            $extraPhones = array_slice($phoneNumbers, 1);
+
             $payload = [
                 'company_id' => $companyId,
                 'branch_id' => $branchId,
@@ -158,7 +178,7 @@ class PartiesImport implements ToCollection, WithHeadingRow
                 'customer_type_id' => $type->id,
                 'area_id' => $area?->id,
                 'route_id' => $route?->id,
-                'phone' => trim((string) ($data['phone'] ?? '')) ?: null,
+                'phone' => $primaryPhone,
                 'email' => trim((string) ($data['email'] ?? '')) ?: null,
                 'opened_on' => $openedOn,
                 'reference_by' => trim((string) ($data['reference_by'] ?? '')) ?: null,
@@ -168,7 +188,7 @@ class PartiesImport implements ToCollection, WithHeadingRow
                 'address' => $flatAddress,
                 'state' => $state,
                 'pincode' => $pincode,
-                'gstin' => trim((string) ($data['gstin'] ?? '')) ?: null,
+                'gstin' => $gstin,
                 'credit_limit' => (float) ($data['credit_limit'] ?? 0),
                 'credit_days' => (int) ($data['credit_days'] ?? 0),
                 'interest_rate' => (float) ($data['interest_rate'] ?? 18),
@@ -186,12 +206,18 @@ class PartiesImport implements ToCollection, WithHeadingRow
                 $this->created++;
             }
 
-            if (filled($data['contact_name'] ?? null) || filled($data['contact_phone'] ?? null)) {
+            $contactPhones = $this->extractPhoneNumbers($data['contact_phone'] ?? null);
+            $contactPhone = $contactPhones[0] ?? '';
+            if (count($contactPhones) > 1) {
+                $extraPhones = array_values(array_unique([...$extraPhones, ...array_slice($contactPhones, 1)]));
+            }
+
+            if (filled($data['contact_name'] ?? null) || $contactPhone !== '') {
                 $contactName = \App\Support\NameCase::format((string) ($data['contact_name'] ?? ''));
                 PartyContact::updateOrCreate(
                     [
                         'customer_id' => $customer->id,
-                        'phone' => (string) ($data['contact_phone'] ?? ''),
+                        'phone' => $contactPhone,
                         'name' => $contactName,
                     ],
                     [
@@ -213,6 +239,27 @@ class PartiesImport implements ToCollection, WithHeadingRow
                 );
             }
 
+            foreach ($extraPhones as $extraPhone) {
+                if ($extraPhone === '' || $extraPhone === $contactPhone) {
+                    continue;
+                }
+
+                PartyContact::updateOrCreate(
+                    [
+                        'customer_id' => $customer->id,
+                        'phone' => $extraPhone,
+                        'name' => 'Alternate',
+                    ],
+                    [
+                        'level' => 'party',
+                        'role' => null,
+                        'email' => null,
+                        'is_primary' => false,
+                        'is_active' => true,
+                    ]
+                );
+            }
+
             if ($addressLine1 || $city || $state || $pincode) {
                 PartyAddress::updateOrCreate(
                     ['customer_id' => $customer->id, 'type' => 'billing', 'label' => 'Head Office'],
@@ -224,7 +271,7 @@ class PartiesImport implements ToCollection, WithHeadingRow
                         'address' => $flatAddress,
                         'state' => $state,
                         'pincode' => $pincode,
-                        'gstin' => trim((string) ($data['gstin'] ?? '')) ?: null,
+                        'gstin' => $gstin,
                         'is_default' => true,
                         'is_default_billing' => true,
                         'is_active' => true,
@@ -265,5 +312,54 @@ class PartiesImport implements ToCollection, WithHeadingRow
         $normalized = strtolower(trim((string) $value));
 
         return in_array($normalized, ['1', 'true', 'yes', 'y', 'on'], true);
+    }
+
+    /**
+     * Split multi-value phone cells (comma / slash / semicolon / whitespace / NBSP)
+     * and keep each number within the customers.phone varchar(20) limit.
+     *
+     * @return list<string>
+     */
+    protected function extractPhoneNumbers(mixed $value): array
+    {
+        $raw = trim((string) ($value ?? ''));
+        if ($raw === '') {
+            return [];
+        }
+
+        // Normalize NBSP / thin spaces and common separators to commas.
+        $raw = str_replace(["\u{00A0}", "\u{202F}", "\u{2009}"], ' ', $raw);
+        $parts = preg_split('/[,;\/|]+|\s{2,}|\s+\/\s+/u', $raw) ?: [];
+
+        $phones = [];
+        foreach ($parts as $part) {
+            $phone = trim(preg_replace('/[^\d+\-\s()]/', '', (string) $part) ?? '');
+            $phone = preg_replace('/\s+/', ' ', $phone) ?? '';
+            $phone = trim($phone);
+            if ($phone === '') {
+                continue;
+            }
+
+            // Keep digits-focused value within column length.
+            $phones[] = mb_substr($phone, 0, 20);
+        }
+
+        // Fallback: if separators did not split (e.g. "8458960000 9826142662"),
+        // pull distinct digit runs of length >= 8.
+        if (count($phones) <= 1) {
+            preg_match_all('/\+?\d[\d\-\s()]{6,}\d/', $raw, $matches);
+            $fromRuns = [];
+            foreach ($matches[0] ?? [] as $match) {
+                $phone = trim(preg_replace('/\s+/', ' ', (string) $match) ?? '');
+                if ($phone !== '') {
+                    $fromRuns[] = mb_substr($phone, 0, 20);
+                }
+            }
+            if (count($fromRuns) > count($phones)) {
+                $phones = $fromRuns;
+            }
+        }
+
+        return array_values(array_unique($phones));
     }
 }

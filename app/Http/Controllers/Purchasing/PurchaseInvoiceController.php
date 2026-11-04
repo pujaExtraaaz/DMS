@@ -37,6 +37,7 @@ class PurchaseInvoiceController extends Controller
         $query = PurchaseInvoice::query()
             ->with(['supplier', 'warehouse', 'purchaseOrder'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('material_receipt_status'), fn ($q) => $q->where('material_receipt_status', $request->material_receipt_status))
             ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_id', $request->supplier_id))
             ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('invoice_date', '>=', $request->date_from))
@@ -180,6 +181,8 @@ class PurchaseInvoiceController extends Controller
             'warehouse_id' => 'required|exists:warehouses,id',
             'invoice_date' => 'required|date',
             'purchase_receive_date' => 'nullable|date',
+            'material_dispatch_date' => 'nullable|date',
+            'expected_delivery_date' => 'nullable|date',
             'payment_order_date' => 'nullable|date',
             'supplier_invoice_number' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
@@ -195,6 +198,8 @@ class PurchaseInvoiceController extends Controller
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.batch_number' => 'nullable|string|max:100',
             'items.*.batch_mrp' => 'nullable|numeric|min:0',
+            'items.*.purchase_price_inclusive' => 'nullable|numeric|min:0',
+            'items.*.purchase_discount_percent' => 'nullable|numeric',
             'items.*.serial_numbers' => 'nullable|array',
             'items.*.serial_numbers.*' => 'nullable|string|max:100',
         ]);
@@ -243,7 +248,11 @@ class PurchaseInvoiceController extends Controller
 
         $invoice = $this->service->createInvoice($validated, $request->user());
 
-        return $this->flashSuccess('Purchase invoice created as draft.', 'purchasing.invoices.show', ['invoice' => $invoice]);
+        return $this->flashSuccess(
+            'Supplier invoice recorded. Material is In Transit — confirm receipt to add stock.',
+            'purchasing.invoices.show',
+            ['invoice' => $invoice]
+        );
     }
 
     public function show(PurchaseInvoice $invoice): View
@@ -258,9 +267,51 @@ class PurchaseInvoiceController extends Controller
         try {
             $this->service->postInvoice($invoice);
 
-            return $this->flashSuccess('Purchase invoice posted. Stock has been incremented.', 'purchasing.invoices.show', ['invoice' => $invoice]);
+            return $this->flashSuccess(
+                'Purchase invoice posted financially. Confirm material receipt separately to add stock.',
+                'purchasing.invoices.show',
+                ['invoice' => $invoice]
+            );
         } catch (\Throwable $e) {
             return back()->with('error', 'Failed to post invoice: '.$e->getMessage());
+        }
+    }
+
+    public function receiveMaterialForm(PurchaseInvoice $invoice): View|RedirectResponse
+    {
+        if (! $invoice->canReceiveMaterial()) {
+            return redirect()
+                ->route('purchasing.invoices.show', $invoice)
+                ->with('error', 'Material is already fully received or the invoice is cancelled.');
+        }
+
+        $invoice->load(['supplier', 'warehouse', 'items.product', 'items.uom']);
+
+        return view('purchasing.invoices.receive-material', compact('invoice'));
+    }
+
+    public function receiveMaterial(Request $request, PurchaseInvoice $invoice): RedirectResponse
+    {
+        $validated = $request->validate([
+            'actual_material_receipt_date' => 'required|date',
+            'mark_all_received' => 'nullable|boolean',
+            'items' => 'nullable|array',
+            'items.*.id' => 'required|exists:purchase_invoice_items,id',
+            'items.*.receive_qty' => 'nullable|numeric|min:0',
+        ]);
+
+        try {
+            $updated = $this->service->receiveMaterial($invoice, $validated, $request->user());
+
+            return $this->flashSuccess(
+                'Material receipt recorded. Stock updated for received quantities only.',
+                'purchasing.invoices.show',
+                ['invoice' => $updated]
+            );
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return back()->withInput()->with('error', 'Failed to receive material: '.$e->getMessage());
         }
     }
 
@@ -388,17 +439,29 @@ class PurchaseInvoiceController extends Controller
         }
 
         $invoiceItems = $invoice->items->map(function ($it) {
+            $unitCost = (float) $it->unit_cost;
+            $taxPercent = (float) $it->tax_percent;
+            $batchMrp = (float) ($it->batch_mrp ?? ($it->product?->mrp ?? 0));
+            $purchasePriceInclusive = $it->purchase_price_inclusive !== null
+                ? (float) $it->purchase_price_inclusive
+                : round($unitCost * (1 + ($taxPercent / 100)), 4);
+            $purchaseDiscountPercent = $it->purchase_discount_percent !== null
+                ? (float) $it->purchase_discount_percent
+                : ($batchMrp > 0 ? round((($batchMrp - $purchasePriceInclusive) / $batchMrp) * 100, 2) : 0);
+
             return [
                 'product_id' => $it->product_id,
                 'unit' => $it->product?->unit ?? ($it->uom?->code ?? 'PCS'),
                 'tracking_type' => $it->product?->tracking_type ?? 'none',
                 'quantity' => (float) $it->quantity,
-                'unit_cost' => (float) $it->unit_cost,
+                'unit_cost' => $unitCost,
+                'purchase_price_inclusive' => $purchasePriceInclusive,
+                'purchase_discount_percent' => $purchaseDiscountPercent,
                 'cgst_percent' => (float) $it->cgst_percent,
                 'sgst_percent' => (float) $it->sgst_percent,
-                'tax_percent' => (float) $it->tax_percent,
+                'tax_percent' => $taxPercent,
                 'batch_number' => $it->batch_no ?? '',
-                'batch_mrp' => (float) ($it->batch_mrp ?? ($it->product?->mrp ?? 0)),
+                'batch_mrp' => $batchMrp,
                 'serial_numbers' => \App\Domains\Inventory\Models\ProductSerial::where('source_type', $it->getMorphClass())
                     ->where('source_id', $it->id)
                     ->pluck('serial_number')
@@ -442,6 +505,8 @@ class PurchaseInvoiceController extends Controller
             'warehouse_id' => 'required|exists:warehouses,id',
             'invoice_date' => 'required|date',
             'purchase_receive_date' => 'nullable|date',
+            'material_dispatch_date' => 'nullable|date',
+            'expected_delivery_date' => 'nullable|date',
             'payment_order_date' => 'nullable|date',
             'supplier_invoice_number' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
@@ -457,6 +522,8 @@ class PurchaseInvoiceController extends Controller
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.batch_number' => 'nullable|string|max:100',
             'items.*.batch_mrp' => 'nullable|numeric|min:0',
+            'items.*.purchase_price_inclusive' => 'nullable|numeric|min:0',
+            'items.*.purchase_discount_percent' => 'nullable|numeric',
             'items.*.serial_numbers' => 'nullable|array',
             'items.*.serial_numbers.*' => 'nullable|string|max:100',
         ]);
@@ -657,6 +724,15 @@ class PurchaseInvoiceController extends Controller
         $items = $order->items->map(function ($item) use ($invoicedByProduct) {
             $alreadyInvoiced = (float) ($invoicedByProduct[$item->product_id] ?? 0);
             $remaining = max(0, (float) $item->quantity - $alreadyInvoiced);
+            $unitCost = (float) ($item->unit_cost ?? $item->unit_price ?? 0);
+            $taxPercent = (float) (($item->cgst_percent ?? 0) + ($item->sgst_percent ?? 0));
+            $batchMrp = (float) ($item->mrp ?? $item->product?->mrp ?? 0);
+            $purchasePriceInclusive = $item->purchase_price_inclusive !== null
+                ? (float) $item->purchase_price_inclusive
+                : round($unitCost * (1 + ($taxPercent / 100)), 4);
+            $purchaseDiscountPercent = $item->purchase_discount_percent !== null
+                ? (float) $item->purchase_discount_percent
+                : ($batchMrp > 0 ? round((($batchMrp - $purchasePriceInclusive) / $batchMrp) * 100, 2) : 0);
 
             return [
                 'product_id' => $item->product_id,
@@ -665,7 +741,9 @@ class PurchaseInvoiceController extends Controller
                 'tracking_type' => $item->product?->tracking_type ?? 'none',
                 'quantity' => $alreadyInvoiced > 0 ? $remaining : (float) $item->quantity,
                 'ordered_quantity' => (float) $item->quantity,
-                'unit_cost' => (float) ($item->unit_cost ?? $item->unit_price ?? 0),
+                'unit_cost' => $unitCost,
+                'purchase_price_inclusive' => $purchasePriceInclusive,
+                'purchase_discount_percent' => $purchaseDiscountPercent,
                 'cgst_percent' => (float) ($item->cgst_percent ?? 0),
                 'sgst_percent' => (float) ($item->sgst_percent ?? 0),
                 'cgst_amount' => (float) ($item->cgst_amount ?? 0),
@@ -674,7 +752,7 @@ class PurchaseInvoiceController extends Controller
                 'line_total' => (float) ($item->line_total ?? 0),
                 'batch_number' => $item->batch_no ?? '',
                 'selling_price' => (float) ($item->product?->selling_price ?? 0),
-                'batch_mrp' => (float) ($item->product?->mrp ?? 0),
+                'batch_mrp' => $batchMrp,
             ];
         })->filter(fn ($it) => $it['quantity'] > 0)->values();
 

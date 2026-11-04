@@ -305,6 +305,17 @@ class ProductController extends Controller
                             ->with('success', "Product '{$product->name}' created successfully.");
                     }
 
+                    if ($returnTo === 'purchasing.invoices.create') {
+                        $params = ['new_product_id' => $product->id];
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $params['target_row'] = $targetRow;
+                        }
+
+                        return redirect()->route('purchasing.invoices.create', $params)
+                            ->with('status', "Product '{$product->name}' created successfully. Continue with the purchase invoice.")
+                            ->with('success', "Product '{$product->name}' created successfully.");
+                    }
+
                     return $this->flashSuccess('Product created successfully.', 'masters.products.index');
                 });
             } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {

@@ -38,6 +38,18 @@
                 </select>
 
                 <select
+                    name="brand_id"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                    title="Filter POs that include products of this brand"
+                >
+                    <option value="">Brand: All</option>
+                    @foreach($brands ?? [] as $b)
+                        <option value="{{ $b->id }}" @selected((string) request('brand_id') === (string) $b->id)>{{ $b->name }}</option>
+                    @endforeach
+                </select>
+
+                <select
                     name="warehouse_id"
                     data-dynamic-filter
                     class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
@@ -46,6 +58,16 @@
                     @foreach($warehouses ?? [] as $w)
                         <option value="{{ $w->id }}" @selected(request('warehouse_id') == $w->id)>{{ $w->name }}</option>
                     @endforeach
+                </select>
+
+                <select
+                    name="pending_delivery"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                    title="Show only POs with qty still pending receipt"
+                >
+                    <option value="">Delivery: All</option>
+                    <option value="1" @selected(!empty($pendingDelivery) || request('pending_delivery') === '1')>Pending delivery</option>
                 </select>
 
                 <div class="flex items-center gap-1">
@@ -114,9 +136,11 @@
                         <x-ui.sortable-th column="supplier" :current-sort="$sort ?? request('sort', 'po_date')" :current-direction="$direction ?? request('direction', 'desc')">
                             Supplier
                         </x-ui.sortable-th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Brand(s)</th>
                         <x-ui.sortable-th column="status" :current-sort="$sort ?? request('sort', 'po_date')" :current-direction="$direction ?? request('direction', 'desc')">
                             Status
                         </x-ui.sortable-th>
+                        <th class="px-4 py-3 text-right text-xs font-semibold tracking-wider text-slate-500" title="Ordered qty still pending receipt">Pending Qty</th>
                         <x-ui.sortable-th column="grand_total" :current-sort="$sort ?? request('sort', 'po_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc" align="right">
                             Total
                         </x-ui.sortable-th>
@@ -125,14 +149,47 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">
                     @forelse($orders as $order)
+                        @php
+                            $brandNames = $order->items
+                                ->map(fn ($it) => $it->product?->brand?->name)
+                                ->filter()
+                                ->unique()
+                                ->values();
+                            if (!empty($brandId)) {
+                                $brandNames = $brandNames->filter(fn ($name) => $order->items->contains(
+                                    fn ($it) => (int) ($it->product?->brand_id) === (int) $brandId && $it->product?->brand?->name === $name
+                                ))->values();
+                            }
+                            $orderedQty = (float) ($order->filtered_ordered_qty ?? $order->items->sum('quantity'));
+                            $receivedQty = (float) ($order->filtered_received_qty ?? $order->items->sum('received_qty'));
+                            $pendingQty = max(0, $orderedQty - $receivedQty);
+                        @endphp
                         <tr class="hover:bg-slate-50/75 transition-colors">
                             <td class="px-4 py-3 font-medium text-slate-900 font-mono text-xs">{{ $order->po_no }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $order->po_date?->format('d M Y') }}</td>
                             <td class="px-4 py-3 text-slate-900 font-medium">{{ $order->supplier?->name }}</td>
+                            <td class="px-4 py-3 text-slate-700">
+                                @if($brandNames->isEmpty())
+                                    <span class="text-slate-400">—</span>
+                                @else
+                                    <div class="flex flex-wrap gap-1">
+                                        @foreach($brandNames->take(3) as $brandName)
+                                            <span class="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">{{ $brandName }}</span>
+                                        @endforeach
+                                        @if($brandNames->count() > 3)
+                                            <span class="text-[11px] text-slate-500">+{{ $brandNames->count() - 3 }}</span>
+                                        @endif
+                                    </div>
+                                @endif
+                            </td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-800">
                                     {{ str_replace('_', ' ', ucfirst($order->status)) }}
                                 </span>
+                            </td>
+                            <td class="px-4 py-3 text-right font-mono text-xs {{ $pendingQty > 0 ? 'text-amber-700 font-semibold' : 'text-slate-500' }}">
+                                {{ rtrim(rtrim(number_format($pendingQty, 4, '.', ''), '0'), '.') ?: '0' }}
+                                <div class="text-[10px] font-normal text-slate-400">of {{ rtrim(rtrim(number_format($orderedQty, 4, '.', ''), '0'), '.') ?: '0' }}</div>
                             </td>
                             <td class="px-4 py-3 text-right text-slate-900 font-medium">₹{{ number_format($order->grand_total, 2) }}</td>
                             <td class="px-4 py-3 text-right whitespace-nowrap space-x-1">
@@ -186,7 +243,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="p-0">
+                            <td colspan="8" class="p-0">
                                 <x-ui.empty-state
                                     title="No purchase orders found"
                                     description="Try clearing search or filters to see more results."

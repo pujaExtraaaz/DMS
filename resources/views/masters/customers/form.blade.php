@@ -680,9 +680,9 @@
 
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Label *</label>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Label</label>
                                 <input type="text" :name="`addresses[${idx}][label]`" x-model="addr.label" placeholder="E.G. Head Office, Warehouse"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Address Type</label>
@@ -707,10 +707,10 @@
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 1 *</label>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 1 (optional)</label>
                                 <input type="text" :name="`addresses[${idx}][address_line_1]`" x-model="addr.address_line_1" @input="syncPrimaryAddress()"
                                        placeholder="Flat / Door / Block No., Premises, Street"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 2 (optional)</label>
@@ -722,7 +722,7 @@
 
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">State *</label>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">State (optional)</label>
                                 <div class="relative" x-data="stateDropdown(addr, statesList, () => syncPrimaryAddress())" @click.outside="close()">
                                     <!-- Hidden input for standard form submission -->
                                     <input type="hidden" :name="`addresses[${idx}][state]`" :value="addr.state">
@@ -802,7 +802,7 @@
                             </div>
                             <div>
                                 <div class="flex items-center justify-between mb-1 gap-2">
-                                    <label class="block text-xs font-medium text-slate-700">City *</label>
+                                    <label class="block text-xs font-medium text-slate-700">City (optional)</label>
                                     <button type="button"
                                             @click="openCityModal(idx)"
                                             :disabled="!addr.state"
@@ -898,10 +898,10 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">PIN Code *</label>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">PIN Code (optional)</label>
                                 <input type="text" :name="`addresses[${idx}][pincode]`" x-model="addr.pincode" maxlength="12" @input="syncPrimaryAddress()"
                                        placeholder="6-Digit Pin Code"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                         </div>
                     </div>

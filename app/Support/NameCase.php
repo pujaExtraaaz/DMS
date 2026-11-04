@@ -355,6 +355,14 @@ class NameCase
         'roles',
         'permission',
         'permissions',
+        // Voucher / document numbering series (technical enums & format tokens)
+        'financial_year_style',
+        'numbering_method',
+        'prefix',
+        'suffix',
+        'separator',
+        'padding',
+        'document_type',
         // Freeform sentences/paragraphs
         'description',
         'notes',
@@ -443,6 +451,11 @@ class NameCase
             if (! in_array($field, ['compliance_status'], true)) {
                 return false;
             }
+        }
+
+        // Format / style enum slugs (e.g. financial_year_style = yy_yy) must not be Title Cased.
+        if (str_ends_with($field, '_style') || str_ends_with($field, '_format')) {
+            return false;
         }
 
         // Exclude email & password

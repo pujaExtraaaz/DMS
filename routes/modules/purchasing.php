@@ -73,6 +73,10 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
         ->name('invoices.destroy');
     Route::post('invoices/{invoice}/post', [PurchaseInvoiceController::class, 'post'])
         ->name('invoices.post');
+    Route::get('invoices/{invoice}/receive-material', [PurchaseInvoiceController::class, 'receiveMaterialForm'])
+        ->name('invoices.receive-material');
+    Route::post('invoices/{invoice}/receive-material', [PurchaseInvoiceController::class, 'receiveMaterial'])
+        ->name('invoices.receive-material.store');
     Route::post('invoices/{invoice}/cancel', [PurchaseInvoiceController::class, 'cancel'])
         ->name('invoices.cancel');
 

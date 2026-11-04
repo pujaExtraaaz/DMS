@@ -465,7 +465,7 @@ class CustomerController extends Controller
 
             if ($isPurchasingOrder) {
                 $target = $returnUrl.$separator.'supplier_id='.$customer->id;
-                $message = "Party '{$customer->name}' created successfully. Continue with the purchase order.";
+                $message = "Party '{$customer->name}' created successfully. Continue with the purchase document.";
             } elseif ($isSalesOrder) {
                 $target = $returnUrl.$separator.'customer_id='.$customer->id;
                 $message = "Party '{$customer->name}' created successfully.";
@@ -1147,7 +1147,9 @@ class CustomerController extends Controller
             ->values();
 
         if ($bankAccounts->isNotEmpty() && !$bankAccounts->contains('is_primary', true)) {
-            $bankAccounts[0]['is_primary'] = true;
+            $row = $bankAccounts->get(0, []);
+            $row['is_primary'] = true;
+            $bankAccounts->put(0, $row);
         }
 
         $existingBankAccounts = $customer->bankAccounts()->get()->keyBy('id');
@@ -1214,10 +1216,13 @@ class CustomerController extends Controller
         $rawAddresses = $request->input('addresses', []);
         $submittedAddresses = collect($rawAddresses)
             ->filter(function ($row) {
+                // Keep only rows that have real address content (label alone is not enough).
                 return filled($row['address_line_1'] ?? null)
                     || filled($row['address'] ?? null)
-                    || filled($row['label'] ?? null)
-                    || filled($row['city'] ?? null);
+                    || filled($row['address_line_2'] ?? null)
+                    || filled($row['city'] ?? null)
+                    || filled($row['state'] ?? null)
+                    || filled($row['pincode'] ?? null);
             })
             ->values();
 
@@ -1236,13 +1241,17 @@ class CustomerController extends Controller
         if (!$hasDefaultBilling && $submittedAddresses->isNotEmpty()) {
             $firstBillingIdx = $submittedAddresses->search(fn ($r) => in_array($r['type'] ?? '', ['billing', 'both'], true));
             $idx = $firstBillingIdx !== false ? $firstBillingIdx : 0;
-            $submittedAddresses[$idx]['is_default_billing'] = true;
+            $row = $submittedAddresses->get($idx, []);
+            $row['is_default_billing'] = true;
+            $submittedAddresses->put($idx, $row);
         }
 
         if (!$hasDefaultDelivery && $submittedAddresses->isNotEmpty()) {
             $firstDeliveryIdx = $submittedAddresses->search(fn ($r) => in_array($r['type'] ?? '', ['delivery', 'both', 'shipping'], true));
             $idx = $firstDeliveryIdx !== false ? $firstDeliveryIdx : 0;
-            $submittedAddresses[$idx]['is_default_delivery'] = true;
+            $row = $submittedAddresses->get($idx, []);
+            $row['is_default_delivery'] = true;
+            $submittedAddresses->put($idx, $row);
         }
 
         foreach ($submittedAddresses as $row) {

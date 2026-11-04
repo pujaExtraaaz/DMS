@@ -294,13 +294,13 @@ class TallyExportService
         ]);
 
         if (! $document) {
-            $queue->update([
-                'status' => 'pending',
-                'last_error' => null,
-            ]);
-            ProcessTallySyncJob::dispatch($queue->id);
+        $queue->update([
+            'status' => 'pending',
+            'last_error' => null,
+        ]);
+        ProcessTallySyncJob::dispatch($queue->id);
 
-            return $queue->fresh();
+        return $queue->fresh();
         }
 
         return $this->enqueue($type, $document, true, true);
@@ -1222,7 +1222,7 @@ class TallyExportService
             'services', 'service' => 'Services',
             default => 'Goods',
         };
-    }
+}
 
     public function buildLedgerXml(Customer $customer): string
     {

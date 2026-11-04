@@ -6,8 +6,20 @@
     $batchNo = $batchNo ?? '';
     $uomId = $uomId ?? null;
     $quantity = $quantity ?? 1;
-    $unitCost = $unitCost ?? 0;
-    $taxPercent = $taxPercent ?? 0;
+    $unitCost = (float) ($unitCost ?? 0);
+    $taxPercent = (float) ($taxPercent ?? 0);
+    $mrp = $mrp ?? 0;
+    $priceInclusiveTax = $priceInclusiveTax ?? $purchasePriceInclusive ?? (
+        $taxPercent > 0
+            ? round($unitCost * (1 + ($taxPercent / 100)), 2)
+            : round($unitCost, 2)
+    );
+    $mrpValue = (float) $mrp;
+    $purchaseDiscountPercent = $purchaseDiscountPercent ?? (
+        $mrpValue > 0
+            ? round((($mrpValue - (float) $priceInclusiveTax) / $mrpValue) * 100, 2)
+            : ''
+    );
     $cgstPercent = $cgstPercent ?? 0;
     $sgstPercent = $sgstPercent ?? 0;
     $showRemove = $showRemove ?? false;
@@ -27,7 +39,7 @@
             <select name="items[{{ $idx }}][product_id]" class="po-product hidden">
                 <option value="">Select product</option>
                 @foreach($products as $p)
-                    <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected((string) $selectedProductId === (string) $p->id)>{{ $p->name }}</option>
+                    <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-mrp="{{ $p->mrp ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected((string) $selectedProductId === (string) $p->id)>{{ $p->name }}</option>
                 @endforeach
             </select>
             <div class="relative">
@@ -76,6 +88,15 @@
         </select>
     </td>
     <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][quantity]" class="block w-20 rounded-lg border-gray-300 text-sm" value="{{ $quantity }}" required></td>
+    <td class="px-3 py-2">
+        <input type="number" step="0.01" min="0" name="items[{{ $idx }}][mrp]" class="po-mrp block w-28 rounded-lg border-gray-300 text-sm" value="{{ $mrpValue }}" title="MRP">
+    </td>
+    <td class="px-3 py-2">
+        <input type="number" step="0.01" min="0" name="items[{{ $idx }}][price_inclusive_tax]" class="po-price-inclusive block w-28 rounded-lg border-gray-300 text-sm" value="{{ $priceInclusiveTax }}" title="Purchase Price Including GST">
+    </td>
+    <td class="px-3 py-2">
+        <input type="number" step="0.01" name="items[{{ $idx }}][purchase_discount_percent]" class="po-purchase-discount block w-24 rounded-lg border-gray-300 text-sm bg-slate-50" value="{{ $purchaseDiscountPercent }}" title="Purchase Discount %" readonly tabindex="-1">
+    </td>
     <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][unit_cost]" class="po-cost block w-28 rounded-lg border-gray-300 text-sm" value="{{ $unitCost }}" required></td>
     <td class="px-3 py-2">
         <input type="number" step="0.01" min="0" max="100" name="items[{{ $idx }}][tax_percent]" class="po-tax block w-20 rounded-lg border-gray-300 text-sm" value="{{ $taxPercent }}">

@@ -108,11 +108,10 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">City</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">City (optional)</label>
                         <input type="text" list="customer-quick-add-cities" x-model="form.city"
-                               :placeholder="form.state ? 'Select or type city' : 'Select state first'"
-                               :disabled="!form.state"
-                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400">
+                               placeholder="City"
+                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         <datalist id="customer-quick-add-cities">
                             <template x-for="c in currentCities" :key="c">
                                 <option :value="c"></option>
@@ -120,7 +119,7 @@
                         </datalist>
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Pincode</label>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Pincode (optional)</label>
                         <input type="text" x-model="form.pincode" maxlength="12" placeholder="Pincode"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     </div>
@@ -128,7 +127,7 @@
 
                 <!-- Address -->
                 <div>
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Address</label>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Address (optional)</label>
                     <textarea x-model="form.address" rows="2" placeholder="Full Address / Delivery Address"
                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                 </div>
