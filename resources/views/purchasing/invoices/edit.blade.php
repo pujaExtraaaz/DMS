@@ -26,28 +26,27 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
                 <div class="flex items-center justify-between mb-1">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Supplier *</label>
+                    <label for="supplier_id" class="block text-xs font-semibold text-slate-700 tracking-wider">Supplier *</label>
                     <button type="button" @click="$dispatch('open-quick-add-supplier')"
                             class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1">
                         + Add New
                     </button>
                 </div>
-                <div class="relative" @click.outside="supplierOpen = false">
-                    <select name="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel()" required class="sr-only">
-                        <option value="">Select supplier</option>
-                        @foreach($suppliers as $s)
-                            <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', $invoice->supplier_id)==$s->id)>{{ $s->name }}</option>
-                        @endforeach
-                    </select>
-                    <input type="text" x-model="supplierQuery" @focus="supplierOpen = true" @input="supplierOpen = true" autocomplete="off" placeholder="Type to search supplier..."
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <div x-show="supplierOpen" x-cloak class="absolute z-40 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
-                        <template x-for="supplier in filteredSuppliers()" :key="supplier.id">
-                            <button type="button" @mousedown.prevent="pickSupplier(supplier.id)" class="block w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-indigo-50" x-text="supplier.name"></button>
-                        </template>
-                        <div x-show="filteredSuppliers().length === 0" class="px-3 py-2 text-xs text-slate-500">No matching supplier</div>
-                    </div>
-                </div>
+                <select name="supplier_id" id="supplier_id" x-model="supplierId" @change="onSupplierChange()" required
+                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <option value="">Select supplier</option>
+                    @foreach($suppliers as $s)
+                        @php
+                            $sPhone = $s->phone ?? ($s->mobile ?? '');
+                        @endphp
+                        <option value="{{ $s->id }}"
+                                data-credit-days="{{ $s->credit_days ?? 0 }}"
+                                @if(!empty($sPhone)) data-code="{{ $sPhone }}" data-subtext="{{ $sPhone }}" @elseif(!empty($s->code)) data-code="{{ $s->code }}" @endif
+                                @selected(old('supplier_id', $invoice->supplier_id)==$s->id)>
+                            {{ $s->name }}
+                        </option>
+                    @endforeach
+                </select>
             </div>
 
             <div>
@@ -241,8 +240,23 @@
 
     <!-- Line Items Table -->
     <x-ui.card padding="false">
-        <div class="p-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
+        <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
+                {{-- Price Type Toggle (Tax Exclusive / Tax Inclusive) --}}
+                <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
+                    <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
+                           :class="priceType === 'exclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
+                        <input type="radio" name="price_type" value="exclusive" x-model="priceType" @change="recalc()" class="sr-only">
+                        Tax Exclusive
+                    </label>
+                    <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
+                           :class="priceType === 'inclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
+                        <input type="radio" name="price_type" value="inclusive" x-model="priceType" @change="recalc()" class="sr-only">
+                        Tax Inclusive
+                    </label>
+                </div>
+            </div>
             <button type="button" @click="addItem()"
                     class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
                 + Add Item
@@ -411,6 +425,15 @@
                     <input type="number" step="0.01" min="0" name="other_charges" x-model.number="otherCharges" @input="recalc()"
                            class="w-32 min-h-[34px] px-2.5 py-1.5 rounded-md border-gray-300 text-xs font-mono text-right shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                 </div>
+                <div class="flex items-center justify-between text-slate-600 pt-1 border-t border-dashed border-slate-200">
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-medium">Round Off (₹):</span>
+                        <button type="button" @click="autoRoundOff()" class="text-[10px] text-indigo-600 hover:text-indigo-800 underline" title="Re-calculate automatic round off">Auto</button>
+                    </div>
+                    <input type="number" step="0.01" min="-500" max="500" name="round_off" x-model.number="roundOff" @input="isManualRoundOff = true; recalc()"
+                           placeholder="0.00"
+                           class="w-32 min-h-[34px] px-2.5 py-1.5 rounded-md border-gray-300 text-xs font-mono text-right shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                </div>
                 <div class="flex justify-between items-center font-bold text-base text-slate-900 border-t border-slate-200 pt-3 mt-1">
                     <span>Grand Total:</span>
                     <span class="font-mono text-indigo-700 text-lg" x-text="formatCurrency(grandTotal)"></span>
@@ -480,9 +503,6 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         },
         onOdAccountChange() {},
         supplierId: '{{ old('supplier_id', $invoice->supplier_id) }}',
-        supplierQuery: '',
-        supplierOpen: false,
-        suppliers: [],
         warehouseId: '{{ old('warehouse_id', $invoice->warehouse_id) }}',
         supplierOrders: initialOrders || [],
         poLoading: false,
@@ -504,31 +524,15 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         dueDateFormattedYmd: '{{ old('due_date', $invoice->due_date?->format('Y-m-d') ?? '') }}',
         freightCharge: {{ old('freight_charge', (float)($invoice->freight_charge ?? 0)) }},
         otherCharges: {{ old('other_charges', (float)($invoice->other_charges ?? 0)) }},
+        priceType: '{{ old('price_type', $invoice->price_type ?? 'exclusive') }}',
+        roundOff: {{ old('round_off', (float)($invoice->round_off ?? 0)) }},
+        isManualRoundOff: {{ old('round_off') !== null || $invoice->round_off !== null ? 'true' : 'false' }},
         subtotal: 0,
         taxTotal: 0,
         grandTotal: 0,
         items: [],
 
-        filteredSuppliers() {
-            const q = (this.supplierQuery || '').trim().toLowerCase();
-            if (!q) return this.suppliers;
-            return this.suppliers.filter(s => s.name.toLowerCase().includes(q));
-        },
-        syncSupplierLabel() {
-            const found = this.suppliers.find(s => String(s.id) === String(this.supplierId));
-            this.supplierQuery = found ? found.name : '';
-        },
-        pickSupplier(id) {
-            this.supplierId = String(id);
-            this.supplierOpen = false;
-            this.syncSupplierLabel();
-            this.onSupplierChange();
-        },
         async init() {
-            this.suppliers = Array.from(document.querySelectorAll('select[name="supplier_id"] option'))
-                .filter(option => option.value)
-                .map(option => ({ id: option.value, name: option.textContent.trim() }));
-            this.syncSupplierLabel();
             this.recalcDueDate();
             if (this.supplierId) {
                 await this.loadSupplierAddresses(this.supplierId);
@@ -627,11 +631,20 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
 
             this.items.forEach(row => {
                 const qty = Number(row.quantity) || 0;
-                const cost = Number(row.unit_cost) || 0;
-                const lineBase = qty * cost;
+                const enteredCost = Number(row.unit_cost) || 0;
                 const taxPercent = (Number(row.cgst_percent) || 0) + (Number(row.sgst_percent) || 0);
-                const lineTax = (lineBase * taxPercent) / 100;
-                row.line_total = lineBase + lineTax;
+
+                let lineBase, lineTax;
+                if (this.priceType === 'inclusive') {
+                    const baseCost = taxPercent > 0 ? (enteredCost * 100 / (100 + taxPercent)) : enteredCost;
+                    lineBase = qty * baseCost;
+                    lineTax = (lineBase * taxPercent) / 100;
+                    row.line_total = qty * enteredCost;
+                } else {
+                    lineBase = qty * enteredCost;
+                    lineTax = (lineBase * taxPercent) / 100;
+                    row.line_total = lineBase + lineTax;
+                }
 
                 sub += lineBase;
                 tax += lineTax;
@@ -639,7 +652,19 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
 
             this.subtotal = sub;
             this.taxTotal = tax;
-            this.grandTotal = sub + tax + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            const beforeRound = sub + tax + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            if (!this.isManualRoundOff) {
+                this.roundOff = Math.round((Math.round(beforeRound) - beforeRound) * 100) / 100;
+            }
+            const r = Number(this.roundOff) || 0;
+            this.grandTotal = Math.max(0, Math.round((beforeRound + r) * 100) / 100);
+        },
+
+        autoRoundOff() {
+            const beforeRound = this.subtotal + this.taxTotal + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            this.roundOff = Math.round((Math.round(beforeRound) - beforeRound) * 100) / 100;
+            this.isManualRoundOff = false;
+            this.recalc();
         },
 
         formatCurrency(val) {
@@ -647,6 +672,10 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         },
 
         async onSupplierChange() {
+            const sel = document.querySelector('select[name="supplier_id"]');
+            if (sel && sel.value !== undefined) {
+                this.supplierId = sel.value;
+            }
             const hadLinkedPo = !!this.linkedPoId;
             this.purchaseOrderId = '';
             this.selectedOrderLabel = '';

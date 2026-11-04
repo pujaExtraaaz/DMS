@@ -453,10 +453,57 @@
                     <td class="text-right">{{ $invoice->due_date?->format('d/m/Y') }} @if($invoice->credit_days)({{ $invoice->credit_days }} days)@endif</td>
                 </tr>
                 @endif
-                @if($invoice->reference_no)
+                @if($invoice->reference_no || $invoice->other_references)
                 <tr>
                     <td class="font-bold text-right">Reference No:</td>
-                    <td class="text-right">{{ $invoice->reference_no }}</td>
+                    <td class="text-right">{{ $invoice->other_references ?: $invoice->reference_no }}</td>
+                </tr>
+                @endif
+                @if($invoice->order_no || $invoice->order?->order_no)
+                <tr>
+                    <td class="font-bold text-right">Order No:</td>
+                    <td class="text-right">{{ $invoice->order_no ?: $invoice->order?->order_no }}</td>
+                </tr>
+                @endif
+                @if($invoice->delivery_note_na)
+                <tr>
+                    <td class="font-bold text-right">Delivery Note:</td>
+                    <td class="text-right">Not Applicable</td>
+                </tr>
+                @elseif($invoice->delivery_note_no)
+                <tr>
+                    <td class="font-bold text-right">Delivery Note:</td>
+                    <td class="text-right">{{ $invoice->delivery_note_no }}</td>
+                </tr>
+                @endif
+                @if($invoice->dispatch_doc_no)
+                <tr>
+                    <td class="font-bold text-right">Dispatch Doc No:</td>
+                    <td class="text-right">{{ $invoice->dispatch_doc_no }}</td>
+                </tr>
+                @endif
+                @if($invoice->dispatched_through || $invoice->transport_mode)
+                <tr>
+                    <td class="font-bold text-right">Dispatched Through:</td>
+                    <td class="text-right">{{ $invoice->dispatched_through ?: $invoice->transport_mode }}</td>
+                </tr>
+                @endif
+                @if($invoice->destination)
+                <tr>
+                    <td class="font-bold text-right">Destination:</td>
+                    <td class="text-right">{{ $invoice->destination }}</td>
+                </tr>
+                @endif
+                @if($invoice->carrier_name)
+                <tr>
+                    <td class="font-bold text-right">Carrier Name:</td>
+                    <td class="text-right">{{ $invoice->carrier_name }}</td>
+                </tr>
+                @endif
+                @if($invoice->lr_rr_no)
+                <tr>
+                    <td class="font-bold text-right">LR / RR No:</td>
+                    <td class="text-right">{{ $invoice->lr_rr_no }} @if($invoice->lr_rr_date)({{ $invoice->lr_rr_date->format('d/m/Y') }})@endif</td>
                 </tr>
                 @endif
                 @if($invoice->vehicle_no)
@@ -465,22 +512,34 @@
                     <td class="text-right">{{ $invoice->vehicle_no }}</td>
                 </tr>
                 @endif
-                @if($invoice->transport_mode)
+                @if($invoice->payment_terms)
                 <tr>
-                    <td class="font-bold text-right">Transport Mode:</td>
-                    <td class="text-right">{{ $invoice->transport_mode }}</td>
+                    <td class="font-bold text-right">Payment Terms:</td>
+                    <td class="text-right">{{ $invoice->payment_terms }}</td>
+                </tr>
+                @endif
+                @if($invoice->terms_of_delivery)
+                <tr>
+                    <td class="font-bold text-right" style="vertical-align: top;">Terms of Delivery:</td>
+                    <td class="text-right" style="white-space: pre-line; word-break: break-word; text-align: right; line-height: 1.35;">{{ $invoice->terms_of_delivery }}</td>
                 </tr>
                 @endif
                 @if($invoice->eInvoice?->irn)
                 <tr>
-                    <td class="font-bold text-right">IRN:</td>
-                    <td class="text-right font-mono" style="font-size: 8.5px; word-break: break-all;">{{ substr($invoice->eInvoice->irn, 0, 20) }}...</td>
+                    <td class="font-bold text-right" style="vertical-align: top;">IRN:</td>
+                    <td class="text-right font-mono" style="font-size: 8px; word-break: break-all; max-width: 200px;" title="{{ $invoice->eInvoice->irn }}">{{ $invoice->eInvoice->irn }}</td>
                 </tr>
+                @if($invoice->eInvoice->ack_no)
+                <tr>
+                    <td class="font-bold text-right">Ack No:</td>
+                    <td class="text-right font-mono">{{ $invoice->eInvoice->ack_no }} @if($invoice->eInvoice->ack_date)<span style="font-size: 9px; color: #64748b;">({{ $invoice->eInvoice->ack_date->format('d/m/Y') }})</span>@endif</td>
+                </tr>
+                @endif
                 @endif
                 @if($invoice->eWayBill?->eway_bill_no)
                 <tr>
                     <td class="font-bold text-right">E-Way Bill:</td>
-                    <td class="text-right font-mono">{{ $invoice->eWayBill->eway_bill_no }}</td>
+                    <td class="text-right font-mono font-bold">{{ $invoice->eWayBill->eway_bill_no }}</td>
                 </tr>
                 @endif
             </table>
@@ -598,6 +657,15 @@
                 </div>
             @endif
 
+            @if($invoice->terms_of_delivery)
+                <div class="info-card">
+                    <div class="box-title">Terms of Delivery</div>
+                    <div style="white-space: pre-line; font-size: 9.5px; color: #475569;">
+                        {{ $invoice->terms_of_delivery }}
+                    </div>
+                </div>
+            @endif
+
             @if($company?->bank_name || $company?->upi_id)
                 <div class="info-card">
                     <div class="box-title">Bank & Settlement Details</div>
@@ -631,7 +699,7 @@
             <table class="summary-table">
                 <tr>
                     <td style="width: 55%; color: #475569;">Subtotal (Taxable Amount):</td>
-                    <td class="text-right font-mono" style="width: 45%;">₹{{ number_format($invoice->subtotal, 2) }}</td>
+                    <td class="text-right font-mono" style="width: 45%;">₹{{ number_format($invoice->taxable_amount ?? $invoice->subtotal, 2) }}</td>
                 </tr>
                 @if((float) $invoice->discount_amount > 0)
                 <tr>
@@ -639,10 +707,36 @@
                     <td class="text-right font-mono text-danger">-₹{{ number_format($invoice->discount_amount, 2) }}</td>
                 </tr>
                 @endif
+                @php
+                    $isIntra = ($invoice->tax_type === 'intra') || (!$invoice->tax_type && ($invoice->cgst_amount > 0 || $invoice->sgst_amount > 0));
+                    $isInter = ($invoice->tax_type === 'inter') || ($invoice->igst_amount > 0);
+                @endphp
+                @if($isIntra)
+                <tr>
+                    <td style="color: #475569;">Central Tax (CGST):</td>
+                    <td class="text-right font-mono">₹{{ number_format($invoice->cgst_amount, 2) }}</td>
+                </tr>
+                <tr>
+                    <td style="color: #475569;">State Tax (SGST):</td>
+                    <td class="text-right font-mono">₹{{ number_format($invoice->sgst_amount, 2) }}</td>
+                </tr>
+                @elseif($isInter)
+                <tr>
+                    <td style="color: #475569;">Integrated Tax (IGST):</td>
+                    <td class="text-right font-mono">₹{{ number_format($invoice->igst_amount, 2) }}</td>
+                </tr>
+                @else
                 <tr>
                     <td style="color: #475569;">Total Tax (GST):</td>
                     <td class="text-right font-mono">₹{{ number_format($invoice->tax_amount, 2) }}</td>
                 </tr>
+                @endif
+                @if($invoice->round_off !== null && (float)$invoice->round_off != 0)
+                <tr>
+                    <td style="color: #475569;">Round Off:</td>
+                    <td class="text-right font-mono">{{ (float)$invoice->round_off > 0 ? '+' : '' }}₹{{ number_format($invoice->round_off, 2) }}</td>
+                </tr>
+                @endif
                 <tr class="grand-total-row">
                     <td>Grand Total:</td>
                     <td class="text-right font-mono">₹{{ number_format($invoice->grand_total, 2) }}</td>

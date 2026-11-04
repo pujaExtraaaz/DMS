@@ -111,12 +111,28 @@
         <div class="w-full max-w-xs space-y-2 text-xs">
             <div class="flex justify-between text-slate-600">
                 <span>Taxable Subtotal:</span>
-                <span class="font-mono font-medium">₹{{ number_format((float) $invoice->subtotal, 2) }}</span>
+                <span class="font-mono font-medium">₹{{ number_format((float) ($invoice->taxable_amount ?? $invoice->subtotal), 2) }}</span>
             </div>
-            <div class="flex justify-between text-slate-600">
-                <span>Tax Amount:</span>
-                <span class="font-mono font-medium">₹{{ number_format((float) $invoice->tax_amount, 2) }}</span>
-            </div>
+            @if(($invoice->tax_type ?? '') === 'intra' || (!$invoice->tax_type && ($invoice->cgst_amount > 0 || $invoice->sgst_amount > 0)))
+                <div class="flex justify-between text-slate-600">
+                    <span>CGST:</span>
+                    <span class="font-mono font-medium">₹{{ number_format((float) $invoice->cgst_amount, 2) }}</span>
+                </div>
+                <div class="flex justify-between text-slate-600">
+                    <span>SGST:</span>
+                    <span class="font-mono font-medium">₹{{ number_format((float) $invoice->sgst_amount, 2) }}</span>
+                </div>
+            @elseif(($invoice->tax_type ?? '') === 'inter' || $invoice->igst_amount > 0)
+                <div class="flex justify-between text-slate-600">
+                    <span>IGST:</span>
+                    <span class="font-mono font-medium">₹{{ number_format((float) $invoice->igst_amount, 2) }}</span>
+                </div>
+            @else
+                <div class="flex justify-between text-slate-600">
+                    <span>Tax Amount:</span>
+                    <span class="font-mono font-medium">₹{{ number_format((float) $invoice->tax_amount, 2) }}</span>
+                </div>
+            @endif
             @if((float) ($invoice->freight_charge ?? 0) > 0)
                 <div class="flex justify-between text-slate-600">
                     <span>Freight / Landed Charge:</span>
@@ -127,6 +143,12 @@
                 <div class="flex justify-between text-slate-600">
                     <span>Other Charges:</span>
                     <span class="font-mono font-medium">₹{{ number_format((float) $invoice->other_charges, 2) }}</span>
+                </div>
+            @endif
+            @if($invoice->round_off !== null && (float) $invoice->round_off != 0)
+                <div class="flex justify-between text-slate-600">
+                    <span>Round Off:</span>
+                    <span class="font-mono font-medium">{{ (float)$invoice->round_off > 0 ? '+' : '' }}₹{{ number_format((float) $invoice->round_off, 2) }}</span>
                 </div>
             @endif
             <div class="flex justify-between text-base font-bold text-slate-900 pt-2 border-t border-slate-200">

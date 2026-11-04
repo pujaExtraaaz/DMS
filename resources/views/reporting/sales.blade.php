@@ -19,10 +19,17 @@
                 <option value="{{ $c->id }}" @selected(request('customer_id')==$c->id)>{{ $c->name }}</option>
             @endforeach
         </x-ui.select>
-        <x-ui.select name="salesperson_id" label="Salesperson" placeholder="All">
-            <option value=""></option>
+        <x-ui.select name="salesperson_id" label="Salesperson" placeholder="All Salespersons">
+            <option value="">All Salespersons</option>
+            <option value="unassigned" @selected(request('salesperson_id') === 'unassigned')>Unassigned</option>
             @foreach($salespeople as $u)
                 <option value="{{ $u->id }}" @selected(request('salesperson_id')==$u->id)>{{ $u->name }}</option>
+            @endforeach
+        </x-ui.select>
+        <x-ui.select name="status" label="Status" placeholder="All Statuses">
+            <option value="">All Statuses</option>
+            @foreach(['draft', 'issued', 'partial', 'paid', 'cancelled'] as $st)
+                <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst($st) }}</option>
             @endforeach
         </x-ui.select>
         <x-ui.select name="branch_id" label="Branch" placeholder="All Branches">
@@ -115,6 +122,7 @@
                 <tr>
                     <th class="px-4 py-3 text-left font-semibold text-slate-600">Invoice</th>
                     <th class="px-4 py-3 text-left font-semibold text-slate-600">Customer</th>
+                    <th class="px-4 py-3 text-left font-semibold text-slate-600">Salesperson</th>
                     <th class="px-4 py-3 text-center font-semibold text-slate-600">Status</th>
                     <th class="px-4 py-3 text-right font-semibold text-slate-600">Date</th>
                     <th class="px-4 py-3 text-right font-semibold text-slate-600">Items</th>
@@ -143,6 +151,7 @@
                             <a href="{{ route('invoices.show', $invoice) }}" class="text-indigo-600 hover:text-indigo-700 font-medium">{{ $invoice->invoice_no }}</a>
                         </td>
                         <td class="px-4 py-3 text-slate-700">{{ $invoice->customer->name }}</td>
+                        <td class="px-4 py-3 text-slate-700">{{ $invoice->salesperson?->name ?: '—' }}</td>
                         <td class="px-4 py-3 text-center">
                             @php
                                 $statusColors = ['draft' => 'gray', 'issued' => 'blue', 'partial' => 'amber', 'paid' => 'emerald', 'cancelled' => 'red'];
@@ -159,14 +168,14 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="10" class="px-4 py-8">
+                        <td colspan="11" class="px-4 py-8">
                             <x-ui.empty-state title="No invoices found" description="Adjust filters and try again" />
                         </td>
                     </tr>
                 @endforelse
                 @if($invoices->isNotEmpty())
                     <tr class="bg-slate-50 font-semibold text-slate-900 border-t-2 border-slate-300">
-                        <td colspan="4" class="px-4 py-4 text-right">TOTALS</td>
+                        <td colspan="5" class="px-4 py-4 text-right">TOTALS</td>
                         <td class="px-4 py-4 text-right">{{ $totalItems }}</td>
                         <td class="px-4 py-4 text-right">₹{{ number_format($totalSubtotalCol, 2) }}</td>
                         <td class="px-4 py-4 text-right">₹{{ number_format($totalTaxCol, 2) }}</td>

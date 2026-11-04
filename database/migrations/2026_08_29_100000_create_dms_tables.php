@@ -230,7 +230,7 @@ return new class extends Migration
         Schema::create('e_invoices', function (Blueprint $table) {
             $table->id();
             $table->foreignId('invoice_id')->constrained()->cascadeOnDelete();
-            $table->enum('status', ['pending', 'generated', 'manual'])->default('pending');
+            $table->string('status', 30)->default('pending');
             $table->string('irn')->nullable();
             $table->json('payload')->nullable();
             $table->timestamps();
@@ -239,7 +239,7 @@ return new class extends Migration
         Schema::create('e_way_bills', function (Blueprint $table) {
             $table->id();
             $table->foreignId('invoice_id')->constrained()->cascadeOnDelete();
-            $table->enum('status', ['pending', 'generated', 'manual'])->default('pending');
+            $table->string('status', 30)->default('pending');
             $table->string('eway_bill_no')->nullable();
             $table->json('payload')->nullable();
             $table->timestamps();

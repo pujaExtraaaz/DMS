@@ -473,8 +473,12 @@ class PurchaseOrderService
             $overrideReason = $data['rate_override_reason'] ?? null;
             $needsOverride = false;
 
+            $priceType = strtolower(trim((string)($data['price_type'] ?? 'exclusive'))) === 'inclusive' ? 'inclusive' : 'exclusive';
             $subtotal = 0;
             $taxAmount = 0;
+            $cgstTotal = 0;
+            $sgstTotal = 0;
+            $igstTotal = 0;
             $prepared = [];
 
             foreach ($items as $item) {
@@ -492,7 +496,7 @@ class PurchaseOrderService
                     $needsOverride = true;
                 }
 
-                $line = $item['quantity'] * $item['unit_cost'];
+                $enteredUnitCost = (float) $item['unit_cost'];
                 $taxPercent = (float) ($item['tax_percent'] ?? 0);
 
                 $cgstPercent = array_key_exists('cgst_percent', $item)
@@ -509,21 +513,39 @@ class PurchaseOrderService
                     ]);
                 }
 
-                $cgstAmount = $line * ($cgstPercent / 100);
-                $sgstAmount = $line * ($sgstPercent / 100);
-                $tax = $cgstAmount + $sgstAmount;
+                $qty = (float) $item['quantity'];
+                if ($priceType === 'inclusive') {
+                    $baseUnitCost = $taxPercent > 0 ? round($enteredUnitCost * 100 / (100 + $taxPercent), 4) : $enteredUnitCost;
+                    $line = round($qty * $baseUnitCost, 2);
+                    $tax = round($line * ($taxPercent / 100), 2);
+                    $lineTotal = round($line + $tax, 2);
+                } else {
+                    $baseUnitCost = $enteredUnitCost;
+                    $line = round($qty * $baseUnitCost, 2);
+                    $tax = round($line * ($taxPercent / 100), 2);
+                    $lineTotal = round($line + $tax, 2);
+                }
+
+                $cgstAmount = round($tax / 2, 2);
+                $sgstAmount = round($tax - $cgstAmount, 2);
 
                 $subtotal += $line;
                 $taxAmount += $tax;
+                $cgstTotal += $cgstAmount;
+                $sgstTotal += $sgstAmount;
 
                 $prepared[] = [
                     ...$item,
+                    'price_type' => $priceType,
+                    'entered_unit_cost' => $enteredUnitCost,
+                    'unit_cost' => $baseUnitCost,
+                    'taxable_amount' => $line,
                     'tax_percent' => $taxPercent,
                     'cgst_percent' => $cgstPercent,
                     'sgst_percent' => $sgstPercent,
                     'cgst_amount' => $cgstAmount,
                     'sgst_amount' => $sgstAmount,
-                    'line_total' => $line + $tax,
+                    'line_total' => $lineTotal,
                     'other_vendor_rate' => $otherRate,
                 ];
             }
@@ -587,7 +609,11 @@ class PurchaseOrderService
 
             $freightCharge = max(0.0, (float) ($data['freight_charge'] ?? 0));
             $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
-            $grandTotal = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+            $totalBeforeRound = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+            $roundOff = isset($data['round_off']) && $data['round_off'] !== null && $data['round_off'] !== ''
+                ? round((float) $data['round_off'], 2)
+                : \App\Domains\Master\Services\GstTaxCalculationService::computeRoundOff($totalBeforeRound);
+            $grandTotal = round(max(0, $totalBeforeRound + $roundOff), 2);
 
             $warehouse = !empty($data['warehouse_id']) ? Warehouse::find($data['warehouse_id']) : null;
             $companyId = $data['company_id'] ?? $warehouse?->company_id ?? $actor->company_id ?? Company::defaultCompanyId() ?? 1;
@@ -640,10 +666,16 @@ class PurchaseOrderService
                 'due_date_basis' => $due['due_date_basis'],
                 'due_date_source_date' => $due['due_date_source_date'],
                 'status' => 'posted',
+                'price_type' => $priceType,
                 'subtotal' => $subtotal,
+                'taxable_amount' => $subtotal,
                 'tax_amount' => $taxAmount,
+                'cgst_amount' => $cgstTotal,
+                'sgst_amount' => $sgstTotal,
+                'igst_amount' => $igstTotal,
                 'freight_charge' => $freightCharge,
                 'other_charges' => $otherCharges,
+                'round_off' => $roundOff,
                 'grand_total' => $grandTotal,
                 'rate_override_reason' => $overrideReason,
                 'notes' => $data['notes'] ?? null,
@@ -658,7 +690,10 @@ class PurchaseOrderService
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
+                    'price_type' => $priceType,
+                    'entered_unit_cost' => $item['entered_unit_cost'] ?? $item['unit_cost'],
                     'unit_cost' => $item['unit_cost'],
+                    'taxable_amount' => $item['taxable_amount'] ?? ($item['quantity'] * $item['unit_cost']),
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
@@ -746,8 +781,12 @@ class PurchaseOrderService
             $overrideReason = $data['rate_override_reason'] ?? $invoice->rate_override_reason;
             $needsOverride = false;
 
+            $priceType = strtolower(trim((string)($data['price_type'] ?? 'exclusive'))) === 'inclusive' ? 'inclusive' : 'exclusive';
             $subtotal = 0;
             $taxAmount = 0;
+            $cgstTotal = 0;
+            $sgstTotal = 0;
+            $igstTotal = 0;
             $prepared = [];
 
             foreach ($items as $item) {
@@ -765,7 +804,7 @@ class PurchaseOrderService
                     $needsOverride = true;
                 }
 
-                $line = $item['quantity'] * $item['unit_cost'];
+                $enteredUnitCost = (float) $item['unit_cost'];
                 $taxPercent = (float) ($item['tax_percent'] ?? 0);
 
                 $cgstPercent = array_key_exists('cgst_percent', $item)
@@ -782,21 +821,39 @@ class PurchaseOrderService
                     ]);
                 }
 
-                $cgstAmount = $line * ($cgstPercent / 100);
-                $sgstAmount = $line * ($sgstPercent / 100);
-                $tax = $cgstAmount + $sgstAmount;
+                $qty = (float) $item['quantity'];
+                if ($priceType === 'inclusive') {
+                    $baseUnitCost = $taxPercent > 0 ? round($enteredUnitCost * 100 / (100 + $taxPercent), 4) : $enteredUnitCost;
+                    $line = round($qty * $baseUnitCost, 2);
+                    $tax = round($line * ($taxPercent / 100), 2);
+                    $lineTotal = round($line + $tax, 2);
+                } else {
+                    $baseUnitCost = $enteredUnitCost;
+                    $line = round($qty * $baseUnitCost, 2);
+                    $tax = round($line * ($taxPercent / 100), 2);
+                    $lineTotal = round($line + $tax, 2);
+                }
+
+                $cgstAmount = round($tax / 2, 2);
+                $sgstAmount = round($tax - $cgstAmount, 2);
 
                 $subtotal += $line;
                 $taxAmount += $tax;
+                $cgstTotal += $cgstAmount;
+                $sgstTotal += $sgstAmount;
 
                 $prepared[] = [
                     ...$item,
+                    'price_type' => $priceType,
+                    'entered_unit_cost' => $enteredUnitCost,
+                    'unit_cost' => $baseUnitCost,
+                    'taxable_amount' => $line,
                     'tax_percent' => $taxPercent,
                     'cgst_percent' => $cgstPercent,
                     'sgst_percent' => $sgstPercent,
                     'cgst_amount' => $cgstAmount,
                     'sgst_amount' => $sgstAmount,
-                    'line_total' => $line + $tax,
+                    'line_total' => $lineTotal,
                     'other_vendor_rate' => $otherRate,
                 ];
             }
@@ -861,7 +918,11 @@ class PurchaseOrderService
 
             $freightCharge = max(0.0, (float) ($data['freight_charge'] ?? 0));
             $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
-            $grandTotal = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+            $totalBeforeRound = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+            $roundOff = isset($data['round_off']) && $data['round_off'] !== null && $data['round_off'] !== ''
+                ? round((float) $data['round_off'], 2)
+                : \App\Domains\Master\Services\GstTaxCalculationService::computeRoundOff($totalBeforeRound);
+            $grandTotal = round(max(0, $totalBeforeRound + $roundOff), 2);
 
             $warehouse = ! empty($data['warehouse_id']) ? Warehouse::find($data['warehouse_id']) : null;
             $companyId = $data['company_id'] ?? $invoice->company_id ?? $warehouse?->company_id ?? $actor->company_id ?? Company::defaultCompanyId() ?? 1;
@@ -920,10 +981,16 @@ class PurchaseOrderService
                 'credit_days' => $data['credit_days'] ?? null,
                 'due_date_basis' => $due['due_date_basis'],
                 'due_date_source_date' => $due['due_date_source_date'],
+                'price_type' => $priceType,
                 'subtotal' => $subtotal,
+                'taxable_amount' => $subtotal,
                 'tax_amount' => $taxAmount,
+                'cgst_amount' => $cgstTotal,
+                'sgst_amount' => $sgstTotal,
+                'igst_amount' => $igstTotal,
                 'freight_charge' => $freightCharge,
                 'other_charges' => $otherCharges,
+                'round_off' => $roundOff,
                 'grand_total' => $grandTotal,
                 'rate_override_reason' => $overrideReason,
                 'notes' => $data['notes'] ?? null,
@@ -948,7 +1015,10 @@ class PurchaseOrderService
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
+                    'price_type' => $priceType,
+                    'entered_unit_cost' => $item['entered_unit_cost'] ?? $item['unit_cost'],
                     'unit_cost' => $item['unit_cost'],
+                    'taxable_amount' => $item['taxable_amount'] ?? ($item['quantity'] * $item['unit_cost']),
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],

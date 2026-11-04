@@ -20,6 +20,10 @@ class EInvoice extends Model
         'last_error',
         'requested_at',
         'payload',
+        'cancel_reason',
+        'cancel_remarks',
+        'cancelled_at',
+        'cancelled_by',
     ];
 
     protected function casts(): array
@@ -28,6 +32,7 @@ class EInvoice extends Model
             'payload' => 'array',
             'ack_date' => 'datetime',
             'requested_at' => 'datetime',
+            'cancelled_at' => 'datetime',
         ];
     }
 
@@ -39,5 +44,10 @@ class EInvoice extends Model
     public function isReal(): bool
     {
         return in_array($this->status, ['generated', 'active'], true) && ! str_starts_with((string) $this->irn, 'STUB');
+    }
+
+    public function getSignedQrCodeAttribute(): ?string
+    {
+        return $this->signed_qr_base64;
     }
 }

@@ -36,9 +36,17 @@ class ReportController extends Controller
 
         $invoices = Invoice::query()
             ->with(['customer', 'items.product', 'items.uom', 'salesperson'])
-            ->whereBetween('invoice_date', [$dateFrom, $dateTo])
+            ->whereDate('invoice_date', '>=', $dateFrom)
+            ->whereDate('invoice_date', '<=', $dateTo)
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
-            ->when($request->filled('salesperson_id'), fn ($q) => $q->where('salesperson_id', $request->salesperson_id))
+            ->when($request->filled('salesperson_id'), function ($q) use ($request) {
+                if ($request->salesperson_id === 'unassigned') {
+                    $q->whereNull('salesperson_id');
+                } else {
+                    $q->where('salesperson_id', $request->salesperson_id);
+                }
+            })
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('branch_id'), fn ($q) => $q->whereHas('customer', fn ($c) => $c->where('branch_id', $request->branch_id)))
             ->when($request->filled('product_id') || $request->filled('brand_id') || $request->filled('category_id'), function ($q) use ($request) {
                 $q->whereHas('items.product', function ($p) use ($request) {
@@ -74,7 +82,7 @@ class ReportController extends Controller
             'collected' => $group->sum('paid_amount'),
         ]);
 
-        $export = $request->input('export');
+        $export = strtolower((string) $request->input('export'));
         if (in_array($export, ['csv', 'pdf'], true)) {
             $headers = ['Date', 'Invoice No', 'Customer', 'Salesperson', 'Subtotal', 'Tax', 'Grand Total', 'Paid', 'Outstanding', 'Status'];
             $rows = $invoices->map(fn (Invoice $i) => [
@@ -155,7 +163,7 @@ class ReportController extends Controller
 
         $stockLevels = $query->get();
 
-        $export = $request->input('export');
+        $export = strtolower((string) $request->input('export'));
         if (in_array($export, ['csv', 'pdf'], true)) {
             $headers = ['Product', 'Brand', 'Category', 'Warehouse', 'UOM', 'Quantity'];
             $rows = $stockLevels->map(fn ($l) => [
@@ -215,7 +223,7 @@ class ReportController extends Controller
             ];
         })->filter(fn ($row) => $row['balance'] != 0)->values();
 
-        $export = $request->input('export');
+        $export = strtolower((string) $request->input('export'));
         if (in_array($export, ['csv', 'pdf'], true)) {
             $headers = ['Customer', 'Balance'];
             $rows = $balances->map(fn ($r) => [$r['customer']->name, number_format((float) $r['balance'], 2, '.', '')])->all();
@@ -294,7 +302,7 @@ class ReportController extends Controller
             ];
         });
 
-        $export = $request->input('export');
+        $export = strtolower((string) $request->input('export'));
         if (in_array($export, ['csv', 'pdf'], true)) {
             $headers = ['Order No', 'Order Date', 'Customer', 'Mode', 'Due', 'Ordered', 'Reserved', 'Delivered', 'Pending', 'Back Order'];
             $exportRows = $rows->map(fn ($r) => [
@@ -607,7 +615,7 @@ class ReportController extends Controller
             })
             ->groupBy('bucket');
 
-        $export = $request->input('export');
+        $export = strtolower((string) $request->input('export'));
         if (in_array($export, ['csv', 'pdf'], true)) {
             $headers = ['Bucket', 'Customer', 'Invoice', 'Due Date', 'Overdue Days', 'Outstanding'];
             $exportRows = [];
@@ -655,6 +663,13 @@ class ReportController extends Controller
      */
     protected function filterOptions(): array
     {
+        $salespeople = \App\Http\Controllers\Sales\InvoiceController::getSalespersons();
+        $existingSalespersonIds = Invoice::whereNotNull('salesperson_id')->distinct()->pluck('salesperson_id');
+        $missing = User::whereIn('id', $existingSalespersonIds)->whereNotIn('id', $salespeople->pluck('id'))->get();
+        if ($missing->isNotEmpty()) {
+            $salespeople = $salespeople->concat($missing)->sortBy('name')->values();
+        }
+
         return [
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
             'suppliers' => Customer::query()
@@ -662,7 +677,7 @@ class ReportController extends Controller
                 ->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])
                 ->orderBy('name')
                 ->get(),
-            'salespeople' => User::orderBy('name')->get(),
+            'salespeople' => $salespeople,
             'branches' => Branch::where('is_active', true)->orderBy('name')->get(),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
