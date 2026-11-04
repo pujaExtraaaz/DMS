@@ -26,28 +26,13 @@
                         + Add Supplier
                     </a>
                 </div>
-                <select name="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel()" required
+                <select name="supplier_id" id="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel()" required
                         class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     <option value="">Select supplier</option>
                     @foreach($suppliers as $s)
-                        <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', request('supplier_id', $order?->supplier_id))==$s->id)>{{ $s->name }}</option>
-                    <label for="supplier_id" class="block text-xs font-semibold text-slate-700 tracking-wider">Supplier *</label>
-                    <button type="button" @click="$dispatch('open-quick-add-supplier')"
-                            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1">
-                        + Add New
-                    </button>
-                </div>
-                <select name="supplier_id" id="supplier_id" x-model="supplierId" @change="onSupplierChange()" required
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">Select supplier</option>
-                    @foreach($suppliers as $s)
-                        @php
-                            $sPhone = $s->phone ?? ($s->mobile ?? '');
-                        @endphp
                         <option value="{{ $s->id }}"
                                 data-credit-days="{{ $s->credit_days ?? 0 }}"
-                                @if(!empty($sPhone)) data-code="{{ $sPhone }}" data-subtext="{{ $sPhone }}" @elseif(!empty($s->code)) data-code="{{ $s->code }}" @endif
-                                @selected(old('supplier_id', $order?->supplier_id)==$s->id)>
+                                @selected(old('supplier_id', request('supplier_id', $order?->supplier_id))==$s->id)>
                             {{ $s->name }}
                         </option>
                     @endforeach
