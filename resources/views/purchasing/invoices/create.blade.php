@@ -458,10 +458,21 @@
         </div>
     </x-ui.card>
 
-    <div class="flex items-center justify-end gap-3">
+    <div class="flex items-center gap-3 pt-2 border-t border-slate-200">
+        <x-ui.button type="submit" name="save_mode" value="draft" variant="secondary"
+                     title="Material already received — invoice is ready for payment; stock will be posted now">
+            Save as Draft
+        </x-ui.button>
+        <x-ui.button type="submit" name="save_mode" value="open" variant="primary"
+                     title="Material still in transit — stock posts only after you confirm receipt">
+            Save as Open
+        </x-ui.button>
         <x-ui.button variant="secondary" :href="route('purchasing.invoices.index')">Cancel</x-ui.button>
-        <x-ui.button type="submit" variant="primary">Record Supplier Invoice</x-ui.button>
     </div>
+    <p class="text-[11px] text-slate-500 -mt-2">
+        <span class="font-semibold text-slate-600">Draft</span> = material received, ready to pay (stock posted).
+        <span class="font-semibold text-slate-600">Open</span> = material still in transit.
+    </p>
 </form>
 
 @push('scripts')

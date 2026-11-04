@@ -457,10 +457,29 @@
         </div>
     </x-ui.card>
 
-    <div class="flex items-center justify-end gap-3">
+    <div class="flex items-center gap-3 pt-2 border-t border-slate-200">
+        @if($invoice->canReceiveMaterial())
+            <x-ui.button type="submit" name="save_mode" value="draft" variant="secondary"
+                         title="Mark remaining material as received and post stock">
+                Save as Draft
+            </x-ui.button>
+            <x-ui.button type="submit" name="save_mode" value="open" variant="primary"
+                         title="Keep material in transit">
+                Save as Open
+            </x-ui.button>
+        @else
+            <x-ui.button type="submit" name="save_mode" value="open" variant="primary">
+                Update Purchase Invoice
+            </x-ui.button>
+        @endif
         <x-ui.button variant="secondary" :href="route('purchasing.invoices.show', $invoice)">Cancel</x-ui.button>
-        <x-ui.button type="submit" variant="primary">Update Purchase Invoice</x-ui.button>
     </div>
+    @if($invoice->canReceiveMaterial())
+        <p class="text-[11px] text-slate-500 -mt-2">
+            <span class="font-semibold text-slate-600">Draft</span> = material received, ready to pay (stock posted).
+            <span class="font-semibold text-slate-600">Open</span> = material still in transit.
+        </p>
+    @endif
 </form>
 
 @push('scripts')

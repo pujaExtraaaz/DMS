@@ -171,6 +171,7 @@ class PurchaseInvoiceController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
+            'save_mode' => 'nullable|in:draft,open',
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
             'supplier_id' => 'required|exists:customers,id',
             'od_account_id' => 'nullable|exists:od_accounts,id',
@@ -248,10 +249,32 @@ class PurchaseInvoiceController extends Controller
 
         $this->assertTrackedSerials($validated['items']);
 
-        $invoice = $this->service->createInvoice($validated, $request->user());
+        $saveMode = $validated['save_mode'] ?? 'open';
+        unset($validated['save_mode']);
+
+        $invoice = DB::transaction(function () use ($validated, $request, $saveMode) {
+            $invoice = $this->service->createInvoice($validated, $request->user());
+
+            // Draft = material already received → post stock now and mark ready to pay.
+            // Open = still in transit (default create behaviour).
+            if ($saveMode === 'draft') {
+                $invoice = $this->service->receiveMaterial($invoice, [
+                    'mark_all_received' => true,
+                    'actual_material_receipt_date' => $validated['purchase_receive_date']
+                        ?? $validated['invoice_date']
+                        ?? now()->toDateString(),
+                ], $request->user());
+            }
+
+            return $invoice;
+        });
+
+        $message = $saveMode === 'draft'
+            ? 'Supplier invoice saved as Draft. Material marked received and stock posted — ready for payment.'
+            : 'Supplier invoice saved as Open. Material is In Transit — confirm receipt later to add stock.';
 
         return $this->flashSuccess(
-            'Supplier invoice recorded. Material is In Transit — confirm receipt to add stock.',
+            $message,
             'purchasing.invoices.show',
             ['invoice' => $invoice]
         );
@@ -497,6 +520,7 @@ class PurchaseInvoiceController extends Controller
         }
 
         $validated = $request->validate([
+            'save_mode' => 'nullable|in:draft,open',
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
             'supplier_id' => 'required|exists:customers,id',
             'od_account_id' => 'nullable|exists:od_accounts,id',
@@ -573,15 +597,35 @@ class PurchaseInvoiceController extends Controller
         $this->financialYearService->assertOpen($validated['invoice_date'], $invoice->company_id);
         $this->assertTrackedSerials($validated['items']);
 
+        $saveMode = $validated['save_mode'] ?? 'open';
+        unset($validated['save_mode']);
+
         try {
-            $updatedInvoice = $this->service->updateInvoice($invoice, $validated, $request->user());
+            $updatedInvoice = DB::transaction(function () use ($invoice, $validated, $request, $saveMode) {
+                $updated = $this->service->updateInvoice($invoice, $validated, $request->user());
+
+                if ($saveMode === 'draft' && $updated->canReceiveMaterial()) {
+                    $updated = $this->service->receiveMaterial($updated, [
+                        'mark_all_received' => true,
+                        'actual_material_receipt_date' => $validated['purchase_receive_date']
+                            ?? $validated['invoice_date']
+                            ?? now()->toDateString(),
+                    ], $request->user());
+                }
+
+                return $updated;
+            });
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Failed to update invoice: ' . $e->getMessage());
         }
 
-        return $this->flashSuccess('Purchase invoice updated successfully.', 'purchasing.invoices.show', ['invoice' => $updatedInvoice]);
+        $message = $saveMode === 'draft' && $updatedInvoice->material_receipt_status === PurchaseInvoice::MATERIAL_RECEIVED
+            ? 'Purchase invoice updated. Material marked received and stock posted — ready for payment.'
+            : 'Purchase invoice updated successfully.';
+
+        return $this->flashSuccess($message, 'purchasing.invoices.show', ['invoice' => $updatedInvoice]);
     }
 
     public function destroy(Request $request, PurchaseInvoice $invoice): Response|RedirectResponse
