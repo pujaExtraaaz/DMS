@@ -42,15 +42,19 @@
 @endphp
 
 <aside
+    :data-collapsed="sidebarCollapsed ? 'true' : 'false'"
     :class="[
-        sidebarCollapsed ? 'lg:w-[72px] books-rail-collapsed' : 'lg:w-64 books-rail-open',
+        sidebarCollapsed ? 'lg:w-20 books-rail-collapsed' : 'lg:w-64 books-rail-open',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
         sidebarAnimate ? 'transition-all duration-300' : ''
     ]"
-    class="dms-sidebar fixed inset-y-0 left-0 z-50 flex -translate-x-full flex-col h-[100dvh] shrink-0 border-r border-slate-800/50 lg:static lg:translate-x-0 {{ $booksWorkspaceAside ? 'lg:w-[72px]' : 'w-64' }}"
+    class="dms-sidebar fixed inset-y-0 left-0 z-50 flex -translate-x-full flex-col h-[100dvh] shrink-0 border-r border-slate-800/50 lg:static lg:translate-x-0 {{ $booksWorkspaceAside ? 'lg:w-20 books-rail-collapsed' : 'w-64' }}"
 >
-    <div class="flex h-16 shrink-0 items-center justify-between border-b border-slate-700/60 px-4">
-        <a href="{{ route('dashboard') }}" class="flex min-w-0 items-center gap-3">
+    <div
+        :class="$root.sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-4'"
+        class="flex h-16 shrink-0 items-center border-b border-slate-700/60 transition-all overflow-hidden"
+    >
+        <a href="{{ route('dashboard') }}" class="flex min-w-0 items-center" :class="$root.sidebarCollapsed ? 'justify-center w-full' : 'gap-3'" title="{{ $activeCompany?->name ?? 'DMS' }}">
             @if($activeCompany?->logo_url)
                 <img src="{{ $activeCompany->logo_url }}"
                      alt="{{ $activeCompany->name }}"
@@ -64,9 +68,9 @@
                     {{ strtoupper(substr($activeCompany?->name ?? 'DMS', 0, 1)) }}
                 </span>
             @endif
-            <span x-show="!$root.sidebarCollapsed" x-cloak class="truncate text-sm font-semibold tracking-tight text-white">{{ $activeCompany?->name ?? 'DMS' }}</span>
+            <span x-show="!$root.sidebarCollapsed" x-cloak class="truncate text-sm font-semibold tracking-tight text-white sidebar-expanded-text">{{ $activeCompany?->name ?? 'DMS' }}</span>
         </a>
-        <button type="button" @click="sidebarOpen = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden">
+        <button type="button" @click="sidebarOpen = false" x-show="!$root.sidebarCollapsed" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden">
             <span class="sr-only">Close sidebar</span>
             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
@@ -79,6 +83,21 @@
             draggedKey: null,
             statusMsg: '',
             statusType: 'success',
+            tooltipText: '',
+            tooltipTop: 0,
+            tooltipLeft: 0,
+            tooltipVisible: false,
+            showTooltip(el, text) {
+                if (!this.$root.sidebarCollapsed || !text) return;
+                const rect = el.getBoundingClientRect();
+                this.tooltipText = text;
+                this.tooltipTop = rect.top + (rect.height / 2);
+                this.tooltipLeft = rect.right + 12;
+                this.tooltipVisible = true;
+            },
+            hideTooltip() {
+                this.tooltipVisible = false;
+            },
             startCustomizing() {
                 this.customizing = true;
                 this.statusMsg = '';
@@ -95,17 +114,7 @@
                     .filter(Boolean);
             },
             updateNumbers() {
-                const container = this.$refs.sectionsContainer;
-                if (!container) return;
-                const items = Array.from(container.children).filter(el => el.hasAttribute('data-sidebar-section'));
-                let count = 1;
-                items.forEach(item => {
-                    const numEls = item.querySelectorAll('.section-num');
-                    numEls.forEach(el => {
-                        el.textContent = count;
-                    });
-                    count++;
-                });
+                // Section numeric prefixes have been removed from the UI
             },
             moveSection(key, direction) {
                 const container = this.$refs.sectionsContainer;
@@ -246,13 +255,33 @@
                 }
             }
         }"
-        class="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-1 scrollbar-thin"
+        :class="$root.sidebarCollapsed ? 'px-2 py-3 space-y-2' : 'px-3 py-3 space-y-1'"
+        class="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin transition-all"
+        @mouseover="
+            const target = $event.target.closest('[title]');
+            if (target && $root.sidebarCollapsed && $el.contains(target)) {
+                showTooltip(target, target.getAttribute('title'));
+            }
+        "
+        @mouseout="
+            if ($event.target.closest('[title]')) {
+                hideTooltip();
+            }
+        "
         @click.capture="if (!customizing && $event.target.closest('a')) sidebarOpen = false"
     >
-        <a href="{{ route('dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['dashboard'], true) }}">
-            <svg class="h-5 w-5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
-            <span x-show="!$root.sidebarCollapsed" x-cloak>Dashboard</span>
-        </a>
+        <div :class="$root.sidebarCollapsed ? 'flex justify-center py-0.5' : ''">
+            <a
+                href="{{ route('dashboard') }}"
+                title="Dashboard"
+                aria-label="Dashboard"
+                :class="$root.sidebarCollapsed ? 'h-10 w-10 justify-center p-0 mx-auto' : 'w-full px-3 py-2 gap-3'"
+                class="group flex items-center rounded-xl text-sm font-medium transition-all duration-150 {{ $linkClass(['dashboard'], true) }}"
+            >
+                <svg class="h-5 w-5 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
+                <span x-show="!$root.sidebarCollapsed" x-cloak class="sidebar-expanded-text">Dashboard</span>
+            </a>
+        </div>
 
         {{-- Customize Mode Controls --}}
         <div x-show="!$root.sidebarCollapsed" class="py-1">
@@ -276,7 +305,7 @@
                     <span>Reorder Sections</span>
                     <span x-show="statusMsg" :class="statusType === 'error' ? 'text-rose-400' : 'text-emerald-400'" class="text-[10px]" x-text="statusMsg"></span>
                 </div>
-                <p class="text-[10px] text-slate-400 leading-tight">Drag handles or use ▲/▼ to arrange sections. Numbers update live.</p>
+                <p class="text-[10px] text-slate-400 leading-tight">Drag handles or use ▲/▼ to arrange sections.</p>
                 <div class="flex items-center gap-1.5 pt-1">
                     <button
                         type="button"
@@ -309,40 +338,73 @@
         </div>
 
         {{-- Dynamic Sections Container --}}
-        <div x-ref="sectionsContainer" id="sidebar-sections-container" class="space-y-1">
+        <div x-ref="sectionsContainer" id="sidebar-sections-container" :class="$root.sidebarCollapsed ? 'space-y-2' : 'space-y-1'">
             @foreach($orderedSections as $sectionKey)
                 @includeIf('partials.sidebar-sections.' . $sectionKey)
             @endforeach
         </div>
 
         {{-- User Section: Profile, Users & Roles, Log Out --}}
-        <div class="border-t border-slate-700/60 pt-3 mt-3 space-y-2">
-            <a href="{{ route('profile.edit') }}" class="{{ $itemClass }} text-slate-300 hover:bg-slate-800/80 hover:text-white">
-                <svg class="h-5 w-5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
-                <div x-show="!$root.sidebarCollapsed" x-cloak class="min-w-0 flex-1 text-left">
-                    <p class="truncate text-xs font-semibold text-white">{{ auth()->user()->name }}</p>
-                    <p class="truncate text-[10px] text-slate-400">{{ auth()->user()->email }}</p>
-                </div>
-            </a>
-
-            @if(auth()->user()->hasAnyRole(['super-admin', 'client-admin']))
-                <a href="{{ route('users.index') }}" class="{{ $itemClass }} {{ $linkClass(['users.*']) }}">
-                    <svg class="h-5 w-5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                    </svg>
-                    <div x-show="!$root.sidebarCollapsed" x-cloak class="min-w-0 flex-1 text-left">
-                        <p class="truncate text-xs font-semibold text-slate-200">Users &amp; Roles</p>
+        <div class="border-t border-slate-700/60 pt-3 mt-3 space-y-1.5">
+            <div :class="$root.sidebarCollapsed ? 'flex justify-center' : ''">
+                <a
+                    href="{{ route('profile.edit') }}"
+                    title="Profile ({{ auth()->user()->name }})"
+                    aria-label="Profile"
+                    :class="$root.sidebarCollapsed ? 'h-10 w-10 justify-center p-0 mx-auto' : 'w-full px-3 py-2 gap-3'"
+                    class="group flex items-center rounded-xl text-sm font-medium transition-all duration-150 text-slate-300 hover:bg-slate-800/80 hover:text-white"
+                >
+                    <svg class="h-5 w-5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+                    <div x-show="!$root.sidebarCollapsed" x-cloak class="min-w-0 flex-1 text-left sidebar-expanded-text">
+                        <p class="truncate text-xs font-semibold text-white">{{ auth()->user()->name }}</p>
+                        <p class="truncate text-[10px] text-slate-400">{{ auth()->user()->email }}</p>
                     </div>
                 </a>
+            </div>
+
+            @if(auth()->user()->hasAnyRole(['super-admin', 'client-admin']))
+                <div :class="$root.sidebarCollapsed ? 'flex justify-center' : ''">
+                    <a
+                        href="{{ route('users.index') }}"
+                        title="Users & Roles"
+                        aria-label="Users & Roles"
+                        :class="$root.sidebarCollapsed ? 'h-10 w-10 justify-center p-0 mx-auto' : 'w-full px-3 py-2 gap-3'"
+                        class="group flex items-center rounded-xl text-sm font-medium transition-all duration-150 {{ $linkClass(['users.*']) }}"
+                    >
+                        <svg class="h-5 w-5 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                        </svg>
+                        <div x-show="!$root.sidebarCollapsed" x-cloak class="min-w-0 flex-1 text-left sidebar-expanded-text">
+                            <p class="truncate text-xs font-semibold text-slate-200">Users &amp; Roles</p>
+                        </div>
+                    </a>
+                </div>
             @endif
 
             <form method="POST" action="{{ route('logout') }}" class="w-full">
                 @csrf
-                <button type="submit" class="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-xs font-medium text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 transition">
-                    <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" /></svg>
-                    <span x-show="!$root.sidebarCollapsed" x-cloak>Log Out</span>
-                </button>
+                <div :class="$root.sidebarCollapsed ? 'flex justify-center' : ''">
+                    <button
+                        type="submit"
+                        title="Log Out"
+                        aria-label="Log Out"
+                        :class="$root.sidebarCollapsed ? 'h-10 w-10 justify-center p-0 mx-auto' : 'w-full px-3 py-2 gap-3'"
+                        class="flex items-center rounded-xl text-xs font-medium text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 transition"
+                    >
+                        <svg class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" /></svg>
+                        <span x-show="!$root.sidebarCollapsed" x-cloak class="sidebar-expanded-text">Log Out</span>
+                    </button>
+                </div>
             </form>
         </div>
     </nav>
+
+    {{-- Collapsed Sidebar Tooltip (floating viewport element, outside nav overflow clipping) --}}
+    <div
+        x-show="tooltipVisible && $root.sidebarCollapsed"
+        x-cloak
+        :style="`top: ${tooltipTop}px; left: ${tooltipLeft}px;`"
+        class="fixed z-[100] -translate-y-1/2 pointer-events-none rounded-lg bg-slate-900/95 px-3 py-1.5 text-xs font-semibold text-white shadow-xl shadow-black/50 border border-slate-700/80 whitespace-nowrap transition-opacity duration-150"
+        x-text="tooltipText"
+    ></div>
 </aside>

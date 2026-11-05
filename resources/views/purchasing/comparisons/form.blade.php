@@ -1,12 +1,13 @@
 @extends('layouts.dms')
-@section('title', $sheet ? 'Edit '.$sheet->number : 'New comparison')
+@section('title', $sheet ? 'Edit '.$sheet->number : 'New Material Comparison')
 @section('content')
 <div class="space-y-4">
-    <x-ui.page-header :title="$sheet ? 'Edit '.$sheet->number : 'New comparison sheet'">
+    <x-ui.page-header :title="$sheet ? 'Edit '.$sheet->number : 'Purchase Material Comparison Sheet'">
         <x-slot name="actions">
             <x-ui.button variant="secondary" :href="$sheet ? route('purchasing.comparisons.show', $sheet) : route('purchasing.comparisons.index')">Back</x-ui.button>
         </x-slot>
     </x-ui.page-header>
+    <p class="text-sm text-slate-600">Compare 2–10 supplier quotations on one screen by landed cost, delivery, warranty and payment terms — then award by line and convert to PO after approval.</p>
 
     @if($errors->any())
         <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
@@ -98,6 +99,43 @@
                             </label>
                             <label class="text-sm">Advance
                                 <input type="text" :name="`vendors[${vIndex}][advance_payment]`" x-model="vendor.advance_payment" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-sm">Payment mode
+                                <select :name="`vendors[${vIndex}][payment_mode]`" x-model="vendor.payment_mode" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                                    <option value="">—</option>
+                                    <option value="advance">Advance</option>
+                                    <option value="credit">Credit</option>
+                                    <option value="pdc">PDC</option>
+                                    <option value="cdc">CDC</option>
+                                    <option value="mixed">Mixed</option>
+                                </select>
+                            </label>
+                            <label class="text-sm">Credit days
+                                <input type="number" min="0" :name="`vendors[${vIndex}][credit_days]`" x-model="vendor.credit_days" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-sm">Payment due date
+                                <input type="date" :name="`vendors[${vIndex}][payment_due_date]`" x-model="vendor.payment_due_date" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-sm">PDC details
+                                <input type="text" :name="`vendors[${vIndex}][pdc_details]`" x-model="vendor.pdc_details" placeholder="Cheque dates / bank" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-sm">CDC details
+                                <input type="text" :name="`vendors[${vIndex}][cdc_details]`" x-model="vendor.cdc_details" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-sm">Cash discount %
+                                <input type="number" step="0.01" min="0" :name="`vendors[${vIndex}][cash_discount_percent]`" x-model="vendor.cash_discount_percent" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-sm">Cash discount days
+                                <input type="number" min="0" :name="`vendors[${vIndex}][cash_discount_days]`" x-model="vendor.cash_discount_days" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-sm">Bank interest %
+                                <input type="number" step="0.01" min="0" :name="`vendors[${vIndex}][bank_interest_percent]`" x-model="vendor.bank_interest_percent" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-sm">Interest days
+                                <input type="number" min="0" :name="`vendors[${vIndex}][bank_interest_days]`" x-model="vendor.bank_interest_days" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-sm md:col-span-2">Financing notes
+                                <input type="text" :name="`vendors[${vIndex}][financing_notes]`" x-model="vendor.financing_notes" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
                             </label>
                             <label class="text-sm">Replacement
                                 <input type="text" :name="`vendors[${vIndex}][replacement_policy]`" x-model="vendor.replacement_policy" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
@@ -221,6 +259,12 @@
                                         <label class="text-xs">Basic rate
                                             <input type="number" step="0.01" :name="`items[${iIndex}][quotes][${qIndex}][basic_rate]`" x-model="quote.basic_rate" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
                                         </label>
+                                        <label class="text-xs">Tax basis
+                                            <select :name="`items[${iIndex}][quotes][${qIndex}][tax_basis]`" x-model="quote.tax_basis" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                                                <option value="exclusive">Exclusive of GST</option>
+                                                <option value="inclusive">Inclusive of GST</option>
+                                            </select>
+                                        </label>
                                         <label class="text-xs">Discount
                                             <span class="mt-1 flex gap-1">
                                                 <select :name="`items[${iIndex}][quotes][${qIndex}][discount_type]`" x-model="quote.discount_type" class="rounded-lg border-slate-300 text-sm">
@@ -229,6 +273,9 @@
                                                 </select>
                                                 <input type="number" step="0.01" :name="`items[${iIndex}][quotes][${qIndex}][discount_value]`" x-model="quote.discount_value" class="w-full rounded-lg border-slate-300 text-sm">
                                             </span>
+                                        </label>
+                                        <label class="text-xs">Cash discount % <span class="text-slate-400">(override)</span>
+                                            <input type="number" step="0.01" :name="`items[${iIndex}][quotes][${qIndex}][cash_discount_percent]`" x-model="quote.cash_discount_percent" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
                                         </label>
                                         <label class="text-xs">GST %
                                             <input type="number" step="0.01" :name="`items[${iIndex}][quotes][${qIndex}][gst_rate]`" x-model="quote.gst_rate" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
@@ -257,6 +304,21 @@
                                         <label class="text-xs">Other charges
                                             <input type="number" step="0.01" :name="`items[${iIndex}][quotes][${qIndex}][other_charges]`" x-model="quote.other_charges" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
                                         </label>
+                                        <label class="text-xs">Financing cost ₹ <span class="text-slate-400">(optional override)</span>
+                                            <input type="number" step="0.01" :name="`items[${iIndex}][quotes][${qIndex}][financing_cost]`" x-model="quote.financing_cost" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                                        </label>
+                                        <div class="md:col-span-4 rounded-lg border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-xs text-emerald-900"
+                                             x-show="quotePreview(item, quote, qIndex)">
+                                            <template x-if="quotePreview(item, quote, qIndex)">
+                                                <div class="flex flex-wrap gap-x-4 gap-y-1">
+                                                    <span>Taxable: ₹<span x-text="money(quotePreview(item, quote, qIndex).taxable_value)"></span></span>
+                                                    <span>GST: ₹<span x-text="money(quotePreview(item, quote, qIndex).gst_amount)"></span></span>
+                                                    <span class="font-semibold">Landed: ₹<span x-text="money(quotePreview(item, quote, qIndex).landed)"></span></span>
+                                                    <span>Per unit: ₹<span x-text="money(quotePreview(item, quote, qIndex).per_unit)"></span></span>
+                                                    <span x-show="quotePreview(item, quote, qIndex).financing_cost > 0">Financing: ₹<span x-text="money(quotePreview(item, quote, qIndex).financing_cost)"></span></span>
+                                                </div>
+                                            </template>
+                                        </div>
                                         <label class="text-xs">Warranty
                                             <input type="text" :name="`items[${iIndex}][quotes][${qIndex}][warranty_period]`" x-model="quote.warranty_period" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
                                         </label>
@@ -338,15 +400,18 @@
 function comparisonForm(state, products) {
     const blankQuote = () => ({
         is_quoted: false, quoted_quantity: '', basic_rate: '', discount_type: 'percent', discount_value: 0,
-        gst_rate: 0, freight_type: 'free', freight_mode: 'amount', freight_value: 0, packing_charges: 0,
-        insurance_charges: 0, other_charges: 0, warranty_period: '', warranty_type: '', stock_availability: '',
-        delivery_time: '', delivery_date: '', payment_terms: '', price_validity: '', country_of_origin: '', remarks: '',
+        cash_discount_percent: 0, gst_rate: 0, tax_basis: 'exclusive', freight_type: 'free', freight_mode: 'amount',
+        freight_value: 0, packing_charges: 0, insurance_charges: 0, other_charges: 0, financing_cost: 0,
+        warranty_period: '', warranty_type: '', stock_availability: '', delivery_time: '', delivery_date: '',
+        payment_terms: '', price_validity: '', country_of_origin: '', remarks: '',
     });
     const blankVendor = () => ({
         id: null, supplier_id: '', billing_address: '', dispatch_address: '', contact_person: '', mobile: '', email: '',
         gstin: '', quotation_number: '', quotation_date: '', valid_until: '', credit_period: '', advance_payment: '',
-        credit_limit_note: '', replacement_policy: '', return_policy: '', installation_support: '', transporter: '',
-        freight_paid_by: 'vendor', delivery_location: '', partial_delivery: false, files: [],
+        payment_mode: '', credit_days: '', payment_due_date: '', pdc_details: '', cdc_details: '',
+        cash_discount_percent: 0, cash_discount_days: '', bank_interest_percent: 0, bank_interest_days: '',
+        financing_notes: '', credit_limit_note: '', replacement_policy: '', return_policy: '', installation_support: '',
+        transporter: '', freight_paid_by: 'vendor', delivery_location: '', partial_delivery: false, files: [],
     });
     state.vendors.forEach((vendor) => {
         vendor.supplier_id = vendor.supplier_id ? String(vendor.supplier_id) : '';
@@ -425,6 +490,56 @@ function comparisonForm(state, products) {
             vendor.mobile = data.mobile || '';
             vendor.email = data.email || '';
             vendor.gstin = data.gstin || '';
+        },
+        money(value) {
+            return Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+        quotePreview(item, quote, vendorIndex) {
+            if (!quote || !quote.is_quoted) return null;
+            const qty = Number(quote.quoted_quantity || item.required_quantity || 0);
+            const basic = Number(quote.basic_rate || 0);
+            if (qty <= 0 || basic < 0) return null;
+            const gstRate = Number(quote.gst_rate || 0);
+            const taxBasis = quote.tax_basis === 'inclusive' ? 'inclusive' : 'exclusive';
+            let exclusiveBasic = basic;
+            if (taxBasis === 'inclusive' && gstRate > 0) {
+                exclusiveBasic = basic / (1 + (gstRate / 100));
+            }
+            const discountValue = Number(quote.discount_value || 0);
+            const discountPerUnit = quote.discount_type === 'amount'
+                ? discountValue
+                : exclusiveBasic * (discountValue / 100);
+            let net = Math.max(0, exclusiveBasic - discountPerUnit);
+            const vendor = this.vendors[vendorIndex] || {};
+            const cashPct = Number(quote.cash_discount_percent || vendor.cash_discount_percent || 0);
+            net = Math.max(0, net - (net * (cashPct / 100)));
+            const goods = net * qty;
+            let freight = 0;
+            if (quote.freight_type === 'extra') {
+                const fv = Number(quote.freight_value || 0);
+                freight = quote.freight_mode === 'percent' ? goods * (fv / 100) : fv;
+            }
+            const packing = Number(quote.packing_charges || 0);
+            const insurance = Number(quote.insurance_charges || 0);
+            const other = Number(quote.other_charges || 0);
+            let financing = Number(quote.financing_cost || 0);
+            if (financing <= 0) {
+                const ip = Number(vendor.bank_interest_percent || 0);
+                const days = Number(vendor.bank_interest_days || 0);
+                if (ip > 0 && days > 0) {
+                    financing = goods * (ip / 100) * (days / 365);
+                }
+            }
+            const taxable = goods + freight + packing + insurance + other + financing;
+            const gstAmount = taxable * (gstRate / 100);
+            const landed = taxable + gstAmount;
+            return {
+                taxable_value: taxable,
+                gst_amount: gstAmount,
+                financing_cost: financing,
+                landed,
+                per_unit: landed / qty,
+            };
         },
     };
 }

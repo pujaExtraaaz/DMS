@@ -15,39 +15,30 @@
     @csrf
     @method('PUT')
 
-    <div class="rounded-xl border-2 border-amber-400 bg-amber-50 p-4">
-        <label class="block text-sm font-extrabold uppercase tracking-wide text-amber-950">Remarks & Additional Delivery</label>
-        <p class="mt-1 text-xs font-medium text-amber-800">Put delivery instructions here. This stays at the top so it is not missed.</p>
-        <textarea name="notes" rows="3" placeholder="Delivery instructions and invoice remarks..."
-                  class="mt-2 block w-full rounded-lg border-amber-300 bg-white text-sm font-bold text-slate-900 focus:border-amber-500 focus:ring-amber-500">{{ old('notes', $invoice->notes) }}</textarea>
-    </div>
-
     <x-ui.card>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
                 <div class="flex items-center justify-between mb-1">
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider">Supplier *</label>
-                    <button type="button" @click="$dispatch('open-quick-add-supplier')"
-                            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1">
-                        + Add New
-                    </button>
+                    <a href="{{ route('masters.customers.create', [
+                            'party_type' => \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+                            'return_url' => route('purchasing.invoices.edit', $invoice),
+                        ]) }}"
+                       class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                        + Add Supplier
+                    </a>
                 </div>
-                <div class="relative" @click.outside="supplierOpen = false">
-                    <select name="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel()" required class="sr-only">
-                        <option value="">Select supplier</option>
-                        @foreach($suppliers as $s)
-                            <option value="{{ $s->id }}" data-credit-days="{{ $s->credit_days ?? 0 }}" @selected(old('supplier_id', $invoice->supplier_id)==$s->id)>{{ $s->name }}</option>
-                        @endforeach
-                    </select>
-                    <input type="text" x-model="supplierQuery" @focus="supplierOpen = true" @input="supplierOpen = true" autocomplete="off" placeholder="Type to search supplier..."
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <div x-show="supplierOpen" x-cloak class="absolute z-40 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
-                        <template x-for="supplier in filteredSuppliers()" :key="supplier.id">
-                            <button type="button" @mousedown.prevent="pickSupplier(supplier.id)" class="block w-full px-3 py-2 text-left text-sm text-slate-800 hover:bg-indigo-50" x-text="supplier.name"></button>
-                        </template>
-                        <div x-show="filteredSuppliers().length === 0" class="px-3 py-2 text-xs text-slate-500">No matching supplier</div>
-                    </div>
-                </div>
+                <select name="supplier_id" id="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel()" required
+                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <option value="">Select supplier</option>
+                    @foreach($suppliers as $s)
+                        <option value="{{ $s->id }}"
+                                data-credit-days="{{ $s->credit_days ?? 0 }}"
+                                @selected(old('supplier_id', request('supplier_id', $invoice->supplier_id))==$s->id)>
+                            {{ $s->name }}
+                        </option>
+                    @endforeach
+                </select>
             </div>
 
             <div>
@@ -109,10 +100,37 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Purchase Receive Date</label>
-                <input type="date" name="purchase_receive_date" x-model="purchaseReceiveDate"
-                       value="{{ old('purchase_receive_date', $invoice->purchase_receive_date?->format('Y-m-d')) }}"
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Material Dispatch Date</label>
+                <input type="date" name="material_dispatch_date"
+                       value="{{ old('material_dispatch_date', $invoice->material_dispatch_date?->format('Y-m-d')) }}"
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Expected Delivery Date</label>
+                <input type="date" name="expected_delivery_date" x-model="expectedDeliveryDate"
+                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <div class="flex items-center gap-1.5 mt-2">
+                    <span class="text-[11px] font-medium text-slate-400">Quick:</span>
+                    <button type="button"
+                            @click="setExpectedDeliveryDays(30)"
+                            :class="expectedDeliveryQuickDays === 30 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'"
+                            class="px-2 py-0.5 text-xs font-medium rounded border transition-colors">
+                        30 Days
+                    </button>
+                    <button type="button"
+                            @click="setExpectedDeliveryDays(45)"
+                            :class="expectedDeliveryQuickDays === 45 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'"
+                            class="px-2 py-0.5 text-xs font-medium rounded border transition-colors">
+                        45 Days
+                    </button>
+                    <button type="button"
+                            @click="setExpectedDeliveryDays(50)"
+                            :class="expectedDeliveryQuickDays === 50 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-300'"
+                            class="px-2 py-0.5 text-xs font-medium rounded border transition-colors">
+                        50 Days
+                    </button>
+                </div>
             </div>
 
             <div>
@@ -157,30 +175,8 @@
                         50 Days
                     </button>
                 </div>
-                <p class="mt-1 text-[11px] text-slate-500" x-show="dueDatePreview">
-                    Due Date Preview: <strong class="text-slate-700" x-text="dueDatePreview"></strong>
-                </p>
             </div>
 
-            <div>
-                <div class="flex items-center justify-between mb-1">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">OD Bank Account</label>
-                    <span class="text-[11px] text-slate-400 font-normal">Optional</span>
-                </div>
-                <select name="od_account_id" x-model="odAccountId" @change="onOdAccountChange()"
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">No OD Financing (Standard)</option>
-                    @foreach($odAccounts as $acc)
-                        <option value="{{ $acc->id }}" @selected(old('od_account_id', $invoice->od_account_id) == $acc->id)>
-                            {{ $acc->bank_name }} ({{ $acc->masked_account_number }}) - Avail: ₹{{ number_format($acc->available_limit, 2) }}
-                        </option>
-                    @endforeach
-                </select>
-                <div x-show="odAccountId && selectedOdAccount" class="mt-1 text-[11px]" x-cloak>
-                    <span class="text-slate-500">Available: </span>
-                    <span class="font-semibold text-emerald-600" x-text="formatCurrency(selectedOdAccount ? selectedOdAccount.available_limit : 0)"></span>
-                </div>
-            </div>
         </div>
     </x-ui.card>
 
@@ -241,8 +237,23 @@
 
     <!-- Line Items Table -->
     <x-ui.card padding="false">
-        <div class="p-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
+        <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
+                {{-- Price Type Toggle (Tax Exclusive / Tax Inclusive) --}}
+                <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
+                    <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
+                           :class="priceType === 'exclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
+                        <input type="radio" name="price_type" value="exclusive" x-model="priceType" @change="recalc()" class="sr-only">
+                        Tax Exclusive
+                    </label>
+                    <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
+                           :class="priceType === 'inclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
+                        <input type="radio" name="price_type" value="inclusive" x-model="priceType" @change="recalc()" class="sr-only">
+                        Tax Inclusive
+                    </label>
+                </div>
+            </div>
             <button type="button" @click="addItem()"
                     class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
                 + Add Item
@@ -250,18 +261,20 @@
         </div>
 
         <div class="overflow-x-auto border-t border-slate-200">
-            <table class="w-full min-w-[1360px] text-left text-xs border-collapse">
+            <table class="w-full min-w-[1580px] text-left text-xs border-collapse">
                 <thead class="bg-slate-50 text-slate-600 tracking-wider border-b border-slate-200 font-semibold text-[11px]">
                     <tr>
                         <th class="p-3 min-w-[340px] lg:min-w-[380px]">Product / Description</th>
                         <th class="p-3 min-w-[70px] w-20 text-center">Unit</th>
                         <th class="p-3 min-w-[110px] w-28 text-right">Qty *</th>
+                        <th class="p-3 min-w-[120px] w-28 text-right">MRP (₹)</th>
+                        <th class="p-3 min-w-[145px] w-36 text-right" title="Actual purchase price paid including GST">Purchase Price Incl. GST (₹)</th>
+                        <th class="p-3 min-w-[110px] w-28 text-right" title="Auto: [(MRP − Purchase Price) ÷ MRP] × 100">Disc. %</th>
                         <th class="p-3 min-w-[130px] w-36 text-right">Unit Cost (₹) *</th>
                         <th class="p-3 min-w-[95px] w-24 text-right">Cgst %</th>
                         <th class="p-3 min-w-[95px] w-24 text-right">Sgst %</th>
                         <th class="p-3 min-w-[100px] w-28 text-center">Tax Rate</th>
                         <th class="p-3 min-w-[130px] w-36">Batch No</th>
-                        <th class="p-3 min-w-[125px] w-32 text-right" title="Optional shelf price printed on the batch. It is not added to this invoice.">Printed MRP (₹)<div class="font-normal normal-case tracking-normal text-[10px] text-slate-400">Optional, not in the bill</div></th>
                         <th class="p-3 min-w-[140px] w-36 text-right">Line Total (₹)</th>
                         <th class="p-3 min-w-[50px] w-14 text-center"></th>
                     </tr>
@@ -311,13 +324,45 @@
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
 
+                            <td class="p-3 align-top min-w-[120px] w-28">
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       :name="`items[${i}][batch_mrp]`"
+                                       x-model.number="row.batch_mrp"
+                                       @input="syncPurchaseDiscount(i)"
+                                       placeholder="MRP"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                            </td>
+
+                            <td class="p-3 align-top min-w-[145px] w-36">
+                                <input type="number"
+                                       step="0.01"
+                                       min="0"
+                                       :name="`items[${i}][purchase_price_inclusive]`"
+                                       x-model.number="row.purchase_price_inclusive"
+                                       @input="onPurchasePriceInclusiveChange(i)"
+                                       placeholder="Incl. GST"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                            </td>
+
+                            <td class="p-3 align-top min-w-[110px] w-28">
+                                <input type="number"
+                                       step="0.01"
+                                       :name="`items[${i}][purchase_discount_percent]`"
+                                       x-model.number="row.purchase_discount_percent"
+                                       readonly
+                                       tabindex="-1"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 bg-slate-50 shadow-sm">
+                            </td>
+
                             <td class="p-3 align-top min-w-[130px] w-36">
                                 <input type="number"
                                        step="0.01"
                                        min="0"
                                        :name="`items[${i}][unit_cost]`"
                                        x-model.number="row.unit_cost"
-                                       @input="recalc()"
+                                       @input="onUnitCostChange(i)"
                                        required
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
@@ -329,7 +374,7 @@
                                        max="100"
                                        :name="`items[${i}][cgst_percent]`"
                                        x-model.number="row.cgst_percent"
-                                       @input="recalc()"
+                                       @input="onTaxChange(i)"
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
 
@@ -340,7 +385,7 @@
                                        max="100"
                                        :name="`items[${i}][sgst_percent]`"
                                        x-model.number="row.sgst_percent"
-                                       @input="recalc()"
+                                       @input="onTaxChange(i)"
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
 
@@ -353,16 +398,6 @@
                                        x-model="row.batch_number"
                                        placeholder="Batch No"
                                        class="block w-full min-h-[38px] px-2.5 py-2 text-xs rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-                            </td>
-
-                            <td class="p-3 align-top min-w-[125px] w-32">
-                                <input type="number"
-                                       step="0.01"
-                                       min="0"
-                                       :name="`items[${i}][batch_mrp]`"
-                                       x-model.number="row.batch_mrp"
-                                       placeholder="MRP"
-                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
 
                             <td class="p-3 align-top min-w-[140px] w-36 text-right pt-5 font-bold font-mono text-slate-900 text-sm whitespace-nowrap"
@@ -386,13 +421,7 @@
         </div>
 
         <div class="p-4 bg-slate-50/50 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-            <div>
-                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Notes / Remarks</label>
-                <textarea name="notes" rows="4" placeholder="Additional Delivery Or Invoice Remarks..."
-                          class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 shadow-sm">{{ old('notes', $invoice->notes) }}</textarea>
-            </div>
-
-            <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2.5 text-xs">
+            <div class="bg-white p-4 rounded-lg border border-slate-200 shadow-2xs space-y-2.5 text-xs md:col-start-2">
                 <div class="flex justify-between items-center text-slate-600">
                     <span class="font-medium">Taxable Subtotal:</span>
                     <span class="font-mono font-semibold text-slate-800 text-sm" x-text="formatCurrency(subtotal)"></span>
@@ -411,58 +440,47 @@
                     <input type="number" step="0.01" min="0" name="other_charges" x-model.number="otherCharges" @input="recalc()"
                            class="w-32 min-h-[34px] px-2.5 py-1.5 rounded-md border-gray-300 text-xs font-mono text-right shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                 </div>
+                <div class="flex items-center justify-between text-slate-600 pt-1 border-t border-dashed border-slate-200">
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-medium">Round Off (₹):</span>
+                        <button type="button" @click="autoRoundOff()" class="text-[10px] text-indigo-600 hover:text-indigo-800 underline" title="Re-calculate automatic round off">Auto</button>
+                    </div>
+                    <input type="number" step="0.01" min="-500" max="500" name="round_off" x-model.number="roundOff" @input="isManualRoundOff = true; recalc()"
+                           placeholder="0.00"
+                           class="w-32 min-h-[34px] px-2.5 py-1.5 rounded-md border-gray-300 text-xs font-mono text-right shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                </div>
                 <div class="flex justify-between items-center font-bold text-base text-slate-900 border-t border-slate-200 pt-3 mt-1">
                     <span>Grand Total:</span>
                     <span class="font-mono text-indigo-700 text-lg" x-text="formatCurrency(grandTotal)"></span>
-                </div>
-
-                <!-- OD Financing Summary Card -->
-                <div x-show="odAccountId && selectedOdAccount" class="mt-4 pt-3 border-t border-slate-200 space-y-2 bg-indigo-50/60 p-3 rounded-lg border border-indigo-100" x-cloak>
-                    <div class="flex items-center justify-between text-indigo-900 font-semibold text-xs">
-                        <span class="inline-flex items-center gap-1.5">
-                            <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
-                            </svg>
-                            OD Financing Summary
-                        </span>
-                        <span class="text-[11px] font-mono font-medium text-indigo-700" x-text="selectedOdAccount ? selectedOdAccount.bank_name : ''"></span>
-                    </div>
-
-                    <div class="flex justify-between items-center text-slate-600 text-xs">
-                        <span>Available OD Limit:</span>
-                        <span class="font-mono font-semibold text-slate-800" x-text="formatCurrency(selectedOdAccount ? selectedOdAccount.available_limit : 0)"></span>
-                    </div>
-
-                    <div class="flex justify-between items-center text-slate-600 text-xs">
-                        <span>Invoice OD Utilization:</span>
-                        <span class="font-mono font-bold text-indigo-700" x-text="formatCurrency(grandTotal)"></span>
-                    </div>
-
-                    <div class="flex justify-between items-center text-xs border-t border-indigo-200/60 pt-1.5 font-medium">
-                        <span class="text-slate-700">Projected Remaining Limit:</span>
-                        <span class="font-mono font-bold text-sm"
-                              :class="remainingOdLimit < 0 ? 'text-rose-600' : 'text-emerald-700'"
-                              x-text="formatCurrency(remainingOdLimit)"></span>
-                    </div>
-
-                    <div x-show="remainingOdLimit < 0" class="mt-2 p-2 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-1.5 font-medium">
-                        <svg class="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-                        </svg>
-                        <span>Invoice amount exceeds available OD limit. Submission will fail.</span>
-                    </div>
                 </div>
             </div>
         </div>
     </x-ui.card>
 
-    <div class="flex items-center justify-end gap-3">
+    <div class="flex items-center gap-3 pt-2 border-t border-slate-200">
+        @if($invoice->canReceiveMaterial())
+            <x-ui.button type="submit" name="save_mode" value="draft" variant="secondary"
+                         title="Mark remaining material as received and post stock">
+                Save as Draft
+            </x-ui.button>
+            <x-ui.button type="submit" name="save_mode" value="open" variant="primary"
+                         title="Keep material in transit">
+                Save as Open
+            </x-ui.button>
+        @else
+            <x-ui.button type="submit" name="save_mode" value="open" variant="primary">
+                Update Purchase Invoice
+            </x-ui.button>
+        @endif
         <x-ui.button variant="secondary" :href="route('purchasing.invoices.show', $invoice)">Cancel</x-ui.button>
-        <x-ui.button type="submit" variant="primary">Update Purchase Invoice</x-ui.button>
     </div>
+    @if($invoice->canReceiveMaterial())
+        <p class="text-[11px] text-slate-500 -mt-2">
+            <span class="font-semibold text-slate-600">Draft</span> = material received, ready to pay (stock posted).
+            <span class="font-semibold text-slate-600">Open</span> = material still in transit.
+        </p>
+    @endif
 </form>
-
-<x-quick-add-supplier target-select="supplier_id" />
 
 @push('scripts')
 <script>
@@ -470,16 +488,9 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
     return {
         products: products || [],
         odAccounts: odAccounts || [],
-        odAccountId: '{{ old('od_account_id', $invoice->od_account_id ?? '') }}',
-        get selectedOdAccount() {
-            return this.odAccounts.find(a => String(a.id) === String(this.odAccountId)) || null;
-        },
-        get remainingOdLimit() {
-            if (!this.selectedOdAccount) return 0;
-            return (Number(this.selectedOdAccount.available_limit) || 0) - (Number(this.grandTotal) || 0);
-        },
+        odAccountId: '',
         onOdAccountChange() {},
-        supplierId: '{{ old('supplier_id', $invoice->supplier_id) }}',
+        supplierId: '{{ old('supplier_id', request('supplier_id', $invoice->supplier_id)) }}',
         supplierQuery: '',
         supplierOpen: false,
         suppliers: [],
@@ -500,35 +511,21 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         purchaseReceiveDate: '{{ old('purchase_receive_date', $invoice->purchase_receive_date?->format('Y-m-d') ?? '') }}',
         paymentOrderDate: '{{ old('payment_order_date', $invoice->payment_order_date?->format('Y-m-d') ?? '') }}',
         creditDays: {{ old('credit_days', $invoice->credit_days ?? 0) }},
+        expectedDeliveryDate: '{{ old('expected_delivery_date', $invoice->expected_delivery_date?->format('Y-m-d') ?? '') }}',
+        expectedDeliveryQuickDays: null,
         dueDatePreview: '',
         dueDateFormattedYmd: '{{ old('due_date', $invoice->due_date?->format('Y-m-d') ?? '') }}',
         freightCharge: {{ old('freight_charge', (float)($invoice->freight_charge ?? 0)) }},
         otherCharges: {{ old('other_charges', (float)($invoice->other_charges ?? 0)) }},
+        priceType: '{{ old('price_type', $invoice->price_type ?? 'exclusive') }}',
+        roundOff: {{ old('round_off', (float)($invoice->round_off ?? 0)) }},
+        isManualRoundOff: {{ old('round_off') !== null || $invoice->round_off !== null ? 'true' : 'false' }},
         subtotal: 0,
         taxTotal: 0,
         grandTotal: 0,
         items: [],
 
-        filteredSuppliers() {
-            const q = (this.supplierQuery || '').trim().toLowerCase();
-            if (!q) return this.suppliers;
-            return this.suppliers.filter(s => s.name.toLowerCase().includes(q));
-        },
-        syncSupplierLabel() {
-            const found = this.suppliers.find(s => String(s.id) === String(this.supplierId));
-            this.supplierQuery = found ? found.name : '';
-        },
-        pickSupplier(id) {
-            this.supplierId = String(id);
-            this.supplierOpen = false;
-            this.syncSupplierLabel();
-            this.onSupplierChange();
-        },
         async init() {
-            this.suppliers = Array.from(document.querySelectorAll('select[name="supplier_id"] option'))
-                .filter(option => option.value)
-                .map(option => ({ id: option.value, name: option.textContent.trim() }));
-            this.syncSupplierLabel();
             this.recalcDueDate();
             if (this.supplierId) {
                 await this.loadSupplierAddresses(this.supplierId);
@@ -540,16 +537,24 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
             if (existingItems && existingItems.length) {
                 this.items = existingItems.map(it => {
                     const p = this.products.find(prod => prod.id === it.product_id);
+                    const unitCost = Number(it.unit_cost) || 0;
+                    const cgst = Number(it.cgst_percent) || 0;
+                    const sgst = Number(it.sgst_percent) || 0;
+                    const tax = cgst + sgst;
+                    const mrp = Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0);
+                    const inclusive = Number(it.purchase_price_inclusive) || Number((unitCost * (1 + tax / 100)).toFixed(2));
                     return {
                         product_id: it.product_id,
                         unit: it.unit || (p ? (p.unit || 'PCS') : 'PCS'),
                         tracking_type: p ? (p.tracking_type || 'none') : 'none',
                         quantity: Number(it.quantity) || 1,
-                        unit_cost: Number(it.unit_cost) || 0,
-                        cgst_percent: Number(it.cgst_percent) || 0,
-                        sgst_percent: Number(it.sgst_percent) || 0,
+                        unit_cost: unitCost,
+                        purchase_price_inclusive: inclusive,
+                        purchase_discount_percent: Number(it.purchase_discount_percent) || (mrp > 0 ? Number((((mrp - inclusive) / mrp) * 100).toFixed(2)) : 0),
+                        cgst_percent: cgst,
+                        sgst_percent: sgst,
                         batch_number: it.batch_number || it.batch_no || '',
-                        batch_mrp: Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0),
+                        batch_mrp: mrp,
                         serial_numbers: (it.serial_numbers && it.serial_numbers.length) ? it.serial_numbers : [''],
                         line_total: Number(it.line_total) || 0
                     };
@@ -568,6 +573,8 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                 tracking_type: 'none',
                 quantity: 1,
                 unit_cost: 0,
+                purchase_price_inclusive: 0,
+                purchase_discount_percent: 0,
                 cgst_percent: 0,
                 sgst_percent: 0,
                 batch_number: '',
@@ -595,6 +602,45 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
             return str === 'serial' || str === 'all' || str.includes('serial');
         },
 
+        rowTaxPercent(row) {
+            return (Number(row.cgst_percent) || 0) + (Number(row.sgst_percent) || 0);
+        },
+
+        syncPurchaseDiscount(index) {
+            const row = this.items[index];
+            if (!row) return;
+            const mrp = Number(row.batch_mrp) || 0;
+            const inclusive = Number(row.purchase_price_inclusive) || 0;
+            row.purchase_discount_percent = mrp > 0
+                ? Number((((mrp - inclusive) / mrp) * 100).toFixed(2))
+                : 0;
+        },
+
+        onPurchasePriceInclusiveChange(index) {
+            const row = this.items[index];
+            if (!row) return;
+            const tax = this.rowTaxPercent(row);
+            const inclusive = Number(row.purchase_price_inclusive) || 0;
+            const factor = 1 + (tax / 100);
+            row.unit_cost = factor > 0 ? Number((inclusive / factor).toFixed(2)) : inclusive;
+            this.syncPurchaseDiscount(index);
+            this.recalc();
+        },
+
+        onUnitCostChange(index) {
+            const row = this.items[index];
+            if (!row) return;
+            const tax = this.rowTaxPercent(row);
+            const cost = Number(row.unit_cost) || 0;
+            row.purchase_price_inclusive = Number((cost * (1 + tax / 100)).toFixed(2));
+            this.syncPurchaseDiscount(index);
+            this.recalc();
+        },
+
+        onTaxChange(index) {
+            this.onUnitCostChange(index);
+        },
+
         onProductChange(index) {
             const row = this.items[index];
             const p = this.products.find(item => item.id == row.product_id);
@@ -605,6 +651,8 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.batch_mrp = Number(p.mrp) || 0;
+                this.onUnitCostChange(index);
+                return;
             }
             this.syncSerials(index);
             this.recalc();
@@ -627,11 +675,20 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
 
             this.items.forEach(row => {
                 const qty = Number(row.quantity) || 0;
-                const cost = Number(row.unit_cost) || 0;
-                const lineBase = qty * cost;
+                const enteredCost = Number(row.unit_cost) || 0;
                 const taxPercent = (Number(row.cgst_percent) || 0) + (Number(row.sgst_percent) || 0);
-                const lineTax = (lineBase * taxPercent) / 100;
-                row.line_total = lineBase + lineTax;
+
+                let lineBase, lineTax;
+                if (this.priceType === 'inclusive') {
+                    const baseCost = taxPercent > 0 ? (enteredCost * 100 / (100 + taxPercent)) : enteredCost;
+                    lineBase = qty * baseCost;
+                    lineTax = (lineBase * taxPercent) / 100;
+                    row.line_total = qty * enteredCost;
+                } else {
+                    lineBase = qty * enteredCost;
+                    lineTax = (lineBase * taxPercent) / 100;
+                    row.line_total = lineBase + lineTax;
+                }
 
                 sub += lineBase;
                 tax += lineTax;
@@ -639,7 +696,19 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
 
             this.subtotal = sub;
             this.taxTotal = tax;
-            this.grandTotal = sub + tax + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            const beforeRound = sub + tax + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            if (!this.isManualRoundOff) {
+                this.roundOff = Math.round((Math.round(beforeRound) - beforeRound) * 100) / 100;
+            }
+            const r = Number(this.roundOff) || 0;
+            this.grandTotal = Math.max(0, Math.round((beforeRound + r) * 100) / 100);
+        },
+
+        autoRoundOff() {
+            const beforeRound = this.subtotal + this.taxTotal + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            this.roundOff = Math.round((Math.round(beforeRound) - beforeRound) * 100) / 100;
+            this.isManualRoundOff = false;
+            this.recalc();
         },
 
         formatCurrency(val) {
@@ -647,10 +716,19 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         },
 
         async onSupplierChange() {
+            const sel = document.querySelector('select[name="supplier_id"]');
+            if (sel && sel.value !== undefined) {
+                this.supplierId = sel.value;
+            }
             const hadLinkedPo = !!this.linkedPoId;
             this.purchaseOrderId = '';
             this.selectedOrderLabel = '';
             this.supplierOrders = [];
+            this.selectedBillingId = '';
+            this.selectedShippingId = '';
+            this.billingSnapshot = '';
+            this.shippingSnapshot = '';
+            this.sameAsBilling = true;
 
             if (hadLinkedPo) {
                 this.items = [];
@@ -662,10 +740,6 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
 
             if (!this.supplierId) {
                 this.partyAddresses = [];
-                this.selectedBillingId = '';
-                this.selectedShippingId = '';
-                this.billingSnapshot = '';
-                this.shippingSnapshot = '';
                 return;
             }
 
@@ -678,7 +752,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
             }
 
             await Promise.all([
-                this.loadSupplierAddresses(this.supplierId),
+                this.loadSupplierAddresses(this.supplierId, true),
                 this.loadSupplierOrders(this.supplierId)
             ]);
         },
@@ -769,16 +843,24 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                     if (ord.items && ord.items.length) {
                         this.items = ord.items.map(it => {
                             const p = this.products.find(prod => prod.id === it.product_id);
+                            const unitCost = Number(it.unit_cost) || 0;
+                            const cgst = Number(it.cgst_percent) || 0;
+                            const sgst = Number(it.sgst_percent) || 0;
+                            const tax = cgst + sgst;
+                            const mrp = Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0);
+                            const inclusive = Number(it.purchase_price_inclusive) || Number((unitCost * (1 + tax / 100)).toFixed(2));
                             return {
                                 product_id: it.product_id,
                                 unit: p ? (p.unit || 'PCS') : 'PCS',
                                 tracking_type: p ? (p.tracking_type || 'none') : 'none',
                                 quantity: Number(it.quantity) || 1,
-                                unit_cost: Number(it.unit_cost) || 0,
-                                cgst_percent: Number(it.cgst_percent) || 0,
-                                sgst_percent: Number(it.sgst_percent) || 0,
+                                unit_cost: unitCost,
+                                purchase_price_inclusive: inclusive,
+                                purchase_discount_percent: Number(it.purchase_discount_percent) || (mrp > 0 ? Number((((mrp - inclusive) / mrp) * 100).toFixed(2)) : 0),
+                                cgst_percent: cgst,
+                                sgst_percent: sgst,
                                 batch_number: it.batch_number || '',
-                                batch_mrp: Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0),
+                                batch_mrp: mrp,
                                 serial_numbers: [''],
                                 line_total: Number(it.line_total) || 0
                             };
@@ -794,7 +876,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
             }
         },
 
-        async loadSupplierAddresses(supId) {
+        async loadSupplierAddresses(supId, forceDefault = false) {
             this.addressesLoading = true;
             try {
                 const res = await fetch(`{{ url('/masters/customers') }}/${supId}/addresses`, {
@@ -803,10 +885,13 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                 const data = await res.json();
                 if (data.success) {
                     this.partyAddresses = data.addresses || [];
-                    if (!this.selectedBillingId) {
+                    const billingValid = this.partyAddresses.some(a => String(a.id) === String(this.selectedBillingId));
+                    const shippingValid = this.partyAddresses.some(a => String(a.id) === String(this.selectedShippingId));
+
+                    if (forceDefault || !this.selectedBillingId || !billingValid) {
                         this.selectedBillingId = data.default_billing_id || (this.partyAddresses[0]?.id ?? '');
                     }
-                    if (!this.selectedShippingId) {
+                    if (forceDefault || !this.selectedShippingId || !shippingValid) {
                         this.selectedShippingId = data.default_delivery_id || this.selectedBillingId;
                     }
 
@@ -814,6 +899,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                     if (!this.sameAsBilling) {
                         this.onShippingAddressChange();
                     } else {
+                        this.selectedShippingId = this.selectedBillingId;
                         this.shippingSnapshot = this.billingSnapshot;
                     }
                 }
@@ -850,6 +936,25 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         setCreditDays(days) {
             this.creditDays = parseInt(days, 10) || 0;
             this.recalcDueDate();
+        },
+
+        addDaysToYmd(baseYmd, days) {
+            if (!baseYmd) return '';
+            const parts = String(baseYmd).split('-');
+            if (parts.length !== 3) return '';
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            d.setDate(d.getDate() + (parseInt(days, 10) || 0));
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        },
+
+        setExpectedDeliveryDays(days) {
+            const n = parseInt(days, 10) || 0;
+            this.expectedDeliveryQuickDays = n;
+            const base = this.invoiceDate || new Date().toISOString().slice(0, 10);
+            this.expectedDeliveryDate = this.addDaysToYmd(base, n);
         },
 
         recalcDueDate() {

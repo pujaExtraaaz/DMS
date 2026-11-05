@@ -161,6 +161,10 @@ class TitleCaseFormattingTest extends TestCase
         $this->assertFalse(NameCase::isApplicableField('qty'));
         $this->assertFalse(NameCase::isApplicableField('order_date'));
         $this->assertFalse(NameCase::isApplicableField('created_at'));
+        $this->assertFalse(NameCase::isApplicableField('credit_status'));
+        $this->assertFalse(NameCase::isApplicableField('credit_period_basis'));
+        $this->assertFalse(NameCase::isApplicableField('dimensions_not_applicable'));
+        $this->assertTrue(NameCase::isApplicableField('compliance_status'));
     }
 
     /**

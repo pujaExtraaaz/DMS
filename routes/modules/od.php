@@ -4,7 +4,7 @@ use App\Http\Controllers\Banking\OdAccountController;
 use App\Http\Controllers\Banking\OdReportController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'role_or_permission:super-admin|od.view|od.create|od.edit|od.manage|reports.view|reports.manage|payments.manage|tally.view'])->group(function () {
     // OD Limit & Interest Calculation module
     Route::get('/od', [OdAccountController::class, 'index'])->name('od.index');
     Route::post('/od', [OdAccountController::class, 'store'])->name('od.store');

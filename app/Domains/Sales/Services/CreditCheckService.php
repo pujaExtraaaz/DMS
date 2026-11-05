@@ -48,9 +48,12 @@ class CreditCheckService
 
         $reasons = [];
         $frozen = $customer->isFrozen();
+        $stopped = $customer->blocksNewCredit();
 
-        if ($frozen) {
-            $reasons[] = 'Party credit status is frozen.';
+        if ($customer->credit_status === 'hold') {
+            $reasons[] = 'Party credit status is On Hold. New billing stays stopped until the status is set back to Open.';
+        } elseif ($stopped) {
+            $reasons[] = 'Party credit status is Blocked. New billing stays stopped until the status is set back to Open.';
         }
 
         if ($creditLimit > 0 && $exposure > $creditLimit) {
@@ -69,7 +72,7 @@ class CreditCheckService
             'credit_limit' => $creditLimit,
             'available_credit' => $available,
             'frozen' => $frozen,
-            'blocked' => $frozen || ($creditLimit > 0 && $exposure > $creditLimit),
+            'blocked' => $stopped || ($creditLimit > 0 && $exposure > $creditLimit),
             'reasons' => $reasons,
         ];
     }

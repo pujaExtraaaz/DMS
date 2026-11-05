@@ -39,4 +39,9 @@ class Brand extends Model
     {
         return $this->hasMany(Product::class);
     }
+
+    public function priceMasters(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Master\Models\PriceMaster::class);
+    }
 }

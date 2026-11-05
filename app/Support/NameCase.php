@@ -25,6 +25,8 @@ class NameCase
         'site_name',
         'bank_name',
         'branch_name',
+        'bank_branch',
+        'branch',
         'account_holder_name',
         'shipping_name',
         'beneficiary_name',
@@ -118,7 +120,18 @@ class NameCase
         'hostname',
         'domain_name',
         'currency_formal_name',
+        'nature',
+        // Tally connector API payloads — never title-case technical keys or raw XML.
+        'key',
+        'xml',
+        'payload',
+        'response',
         'email',
+        'website',
+        'location_link',
+        'eway_bill_required',
+        'einvoice_status',
+        'eway_bill_status',
         'secondary_email',
         'contact_email',
         'password',
@@ -144,6 +157,9 @@ class NameCase
         'barcode',
         'barcode_scan',
         'bsr_code',
+        'swift_code',
+        'client_code',
+        'basis',
         'udyam_registration_no',
         'msme_registration_no',
         'iec_code',
@@ -173,6 +189,11 @@ class NameCase
         'reference',
         'reference_no',
         'reference_number',
+        'other_references',
+        'delivery_note_no',
+        'delivery_note_na',
+        'dispatch_doc_no',
+        'lr_rr_no',
         'loan_number',
         'advice_number',
         'registration_no',
@@ -251,10 +272,12 @@ class NameCase
         'margin',
         'mrp',
         'weight',
+        'weight_unit',
         'width_cm',
         'width_in',
         'tenure_months',
         'warranty_months',
+        'warranty',
         'capacity',
         'conversion_factor',
         'annual_turnover',
@@ -275,8 +298,41 @@ class NameCase
         'min_stock',
         'max_stock',
         'reorder_level',
+        'level',
+        'track_serial',
+        'track_batch',
         'view_name',
         'id',
+        // JSON, configuration, metadata and structured dictionary fields
+        'additional_details',
+        'details',
+        'extra_details',
+        'meta',
+        'metadata',
+        'payload',
+        'config',
+        'configuration',
+        'settings',
+        'options',
+        'params',
+        'parameters',
+        'attributes',
+        'data',
+        'properties',
+        'context',
+        'raw',
+        'logs',
+        'log',
+        'history',
+        'audit',
+        'bank_accounts',
+        'contacts',
+        'addresses',
+        'items',
+        'lines',
+        'custom_fields',
+        'json_data',
+        'raw_data',
         // Enum slugs and technical options
         'type',
         'party_type',
@@ -289,6 +345,12 @@ class NameCase
         'movement_type',
         'tracking_type',
         'status',
+        'credit_status',
+        'risk_status',
+        'credit_period_basis',
+        'alternate_uom_not_applicable',
+        'dimensions_not_applicable',
+        'sku_not_applicable',
         'stage',
         'gender',
         'msme_category',
@@ -301,6 +363,14 @@ class NameCase
         'roles',
         'permission',
         'permissions',
+        // Voucher / document numbering series (technical enums & format tokens)
+        'financial_year_style',
+        'numbering_method',
+        'prefix',
+        'suffix',
+        'separator',
+        'padding',
+        'document_type',
         // Freeform sentences/paragraphs
         'description',
         'notes',
@@ -313,6 +383,8 @@ class NameCase
         'terms_and_conditions',
         'purchase_terms',
         'sales_terms',
+        'payment_terms',
+        'terms_of_delivery',
         'selling_terms_and_conditions',
         'purchase_terms_and_conditions',
         'settlement_notes',
@@ -353,6 +425,11 @@ class NameCase
             $field = end($parts);
         }
 
+        // Exclude JSON / structured dictionary field suffixes
+        if (str_ends_with($field, '_details') || str_ends_with($field, '_data') || str_ends_with($field, '_meta') || str_ends_with($field, '_config') || str_ends_with($field, '_settings') || str_ends_with($field, '_items') || str_ends_with($field, '_list') || str_ends_with($field, '_json')) {
+            return false;
+        }
+
         // 1. Strict Exclusions Check
         if (in_array($field, static::$excludedFields, true)) {
             return false;
@@ -370,6 +447,22 @@ class NameCase
 
         // Exclude enum type slugs (e.g. party_type, cheque_type, account_type, discount_type) except descriptive types
         if (!in_array($field, ['company_type', 'product_type', 'expense_type', 'leave_type'], true) && (str_ends_with($field, '_type') || $field === 'type')) {
+            return false;
+        }
+
+        if (str_ends_with($field, '_method')) {
+            return false;
+        }
+
+        // Credit enums and explicit Not Applicable flags must keep their stored slugs.
+        if (str_ends_with($field, '_basis') || $field === 'basis' || str_ends_with($field, '_not_applicable') || str_ends_with($field, '_status')) {
+            if (! in_array($field, ['compliance_status'], true)) {
+                return false;
+            }
+        }
+
+        // Format / style enum slugs (e.g. financial_year_style = yy_yy) must not be Title Cased.
+        if (str_ends_with($field, '_style') || str_ends_with($field, '_format')) {
             return false;
         }
 
@@ -415,3 +508,4 @@ class NameCase
         return static::isApplicableField($fieldName);
     }
 }
+

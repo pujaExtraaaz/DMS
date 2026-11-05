@@ -16,13 +16,15 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 
 class BrandController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = Brand::query()
             ->when($request->filled('status'), function ($q) use ($request) {
@@ -34,6 +36,14 @@ class BrandController extends Controller
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'detail']);
+
+        if ($export = $this->exportIfRequested($request, $query, 'Brands', 'Brands', ['Name', 'Details', 'Status'], fn ($item) => [
+            $item->name,
+            $item->detail ?: '',
+            $item->is_active ? 'Active' : 'Inactive',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,
@@ -201,10 +211,131 @@ class BrandController extends Controller
         }
     }
 
+
+    public function search(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $query = trim((string) $request->input('q', $request->input('search', $request->input('query', ''))));
+
+        if ($query === '' || mb_strlen($query) < 1) {
+            return response()->json([]);
+        }
+
+        // Multi-tenant company isolation
+        $companyId = $request->filled('company_id')
+            ? $request->integer('company_id')
+            : ($user?->company_id ?? Company::defaultCompanyId());
+
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id) {
+            $companyId = $user->company_id;
+        }
+
+        $brands = Brand::query()
+            ->when($companyId, function ($q) use ($companyId) {
+                $q->where(function ($sub) use ($companyId) {
+                    $sub->where('company_id', $companyId)
+                        ->orWhereNull('company_id');
+                });
+            })
+            ->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($query) . '%'])
+            ->orderBy('name', 'asc')
+            ->limit(10)
+            ->get(['id', 'name', 'company_id', 'is_active', 'detail']);
+
+        return response()->json(
+            $brands->map(fn (Brand $brand) => [
+                'id' => (string) $brand->id,
+                'name' => $brand->name,
+                'company_id' => $brand->company_id,
+                'is_active' => (bool) $brand->is_active,
+                'detail' => $brand->detail,
+                'edit_url' => route('masters.brands.edit', $brand),
+            ])
+        );
+    }
+
+    public function quickStore(Request $request): JsonResponse
+    {
+        $rawName = trim((string) $request->input('name', ''));
+        if ($rawName === '') {
+            return response()->json(['success' => false, 'message' => 'Brand Name is required.'], 422);
+        }
+        if (mb_strlen($rawName) > 255) {
+            return response()->json(['success' => false, 'message' => 'Brand Name cannot exceed 255 characters.'], 422);
+        }
+
+        $detail = trim((string) $request->input('detail', ''));
+        if (mb_strlen($detail) > 2000) {
+            return response()->json(['success' => false, 'message' => 'Detail cannot exceed 2000 characters.'], 422);
+        }
+
+        $companyId = $request->filled('company_id')
+            ? $request->integer('company_id')
+            : (auth()->user()?->company_id ?? Company::defaultCompanyId());
+        if ($companyId && ! Company::whereKey($companyId)->exists()) {
+            return response()->json(['success' => false, 'message' => 'Select a valid company.'], 422);
+        }
+
+        $existing = Brand::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($rawName)])
+            ->first();
+        if ($existing) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Brand already exists and has been selected.',
+                'item' => [
+                    'id' => (string) $existing->id,
+                    'name' => $existing->name,
+                ],
+            ]);
+        }
+
+        $brand = Brand::create([
+            'company_id' => $companyId,
+            'name' => $rawName,
+            'detail' => $detail !== '' ? $detail : null,
+            'is_active' => $request->boolean('is_active', true),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Brand created successfully.',
+            'item' => [
+                'id' => (string) $brand->id,
+                'name' => $brand->name,
+            ],
+        ], 201);
+    }
+
     protected function validated(Request $request, ?Brand $brand = null): array
     {
         if ($request->has('name')) {
             $request->merge(['name' => trim((string) $request->input('name'))]);
+        }
+
+        $rawName = trim((string) $request->input('name', ''));
+        $normalized = mb_strtolower($rawName);
+
+        // Normalize whitespace and perform case-insensitive duplicate check
+        $companyId = $request->filled('company_id')
+            ? $request->integer('company_id')
+            : ($request->user()?->company_id ?? Company::defaultCompanyId());
+
+        $existing = Brand::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [$normalized])
+            ->when($companyId, function ($q) use ($companyId) {
+                $q->where(function ($sub) use ($companyId) {
+                    $sub->where('company_id', $companyId)
+                        ->orWhereNull('company_id');
+                });
+            })
+            ->when($brand, fn ($q) => $q->where('id', '!=', $brand->id))
+            ->first();
+
+        if ($existing) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'name' => 'Brand name already exists.',
+            ]);
         }
 
         $rules = [

@@ -4,10 +4,13 @@ namespace App\Domains\Sync\Handlers;
 
 use App\Domains\Purchasing\Models\LandedCost;
 use App\Domains\Sync\Support\BooksCompany;
+use App\Domains\Sync\Support\SyncFailureLogger;
 use App\Domains\Sync\Support\SyncLinks;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Tally\Models\LandedCostAllocation;
 use Tally\Models\LandedCostVoucher;
+use Tally\Purchasing\LandedCostService;
 
 class LandedCostSync
 {
@@ -69,10 +72,11 @@ class LandedCostSync
             'other_charges' => 0,
             'total_charges' => $cost->total_additional_cost ?? $freight,
             'allocation_basis' => $cost->allocation_method ?: 'value',
-            'status' => in_array($cost->status, ['posted', 'completed'], true) ? 'draft' : 'draft',
+            'status' => 'draft',
             'narration' => $cost->notes,
         ];
 
+        $wantPost = in_array($cost->status, ['posted', 'completed'], true);
         $books ? $books->update($attributes) : $books = LandedCostVoucher::query()->create($attributes);
         $books->allocations()->delete();
         foreach ($cost->items as $item) {
@@ -95,5 +99,17 @@ class LandedCostSync
             ]);
         }
         SyncLinks::store(self::KEY, $cost, $books);
+
+        if ($wantPost && (float) ($books->total_charges ?? 0) > 0) {
+            $user = User::query()->find($cost->created_by) ?: User::query()->orderBy('id')->first();
+            if ($user) {
+                try {
+                    $posted = app(LandedCostService::class)->post($books->fresh(['allocations', 'purchaseInvoice.lines.product', 'goodsReceipt.lines.product']), $user);
+                    SyncLinks::store(self::KEY, $cost, $posted);
+                } catch (\Throwable $e) {
+                    SyncFailureLogger::write(self::KEY, 'dms_to_books', $cost, $e);
+                }
+            }
+        }
     }
 }

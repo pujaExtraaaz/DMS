@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\DmsPermissionCatalog;
 use Illuminate\Http\Request;
+use Spatie\Permission\Models\Permission;
 
 class UserPermissionController extends Controller
 {
@@ -12,27 +14,8 @@ class UserPermissionController extends Controller
         $rawPermissions = $request->input('permissions', []);
         $permissions = array_values(array_filter($rawPermissions, 'is_string'));
 
-        $modules = [
-            'dashboard',
-            'products',
-            'customers',
-            'price-master',
-            'orders',
-            'stock',
-            'purchases',
-            'invoices',
-            'payments',
-            'communications',
-            'logistics',
-            'delivery',
-            'settlement',
-            'reports',
-            'masters',
-            'inventory',
-            'sales',
-        ];
-
-        $actions = ['view', 'create', 'edit', 'manage'];
+        $modules = array_values(DmsPermissionCatalog::uiModules());
+        $actions = array_merge(DmsPermissionCatalog::uiActions(), ['manage', 'delete']);
 
         $allowed = [];
         foreach ($modules as $mod) {
@@ -41,33 +24,59 @@ class UserPermissionController extends Controller
             }
         }
 
+        foreach (DmsPermissionCatalog::extras() as $extra) {
+            $allowed[] = $extra;
+        }
+
+        $allowed = array_values(array_unique($allowed));
         $validPermissions = array_values(array_intersect($permissions, $allowed));
 
         $extraPermissions = [];
         foreach ($validPermissions as $perm) {
             $parts = explode('.', $perm);
-            if (count($parts) === 2) {
-                [$mod, $act] = $parts;
-                if (in_array($mod, ['products', 'customers', 'price-master'], true)) {
-                    $extraPermissions[] = "masters.{$act}";
-                }
-                if (in_array($mod, ['stock', 'purchases'], true)) {
-                    $extraPermissions[] = "inventory.{$act}";
-                }
-                if ($mod === 'invoices') {
-                    $extraPermissions[] = "sales.{$act}";
-                }
+            if (count($parts) !== 2) {
+                continue;
+            }
+
+            [$mod, $act] = $parts;
+            foreach (DmsPermissionCatalog::linkedPermissions($mod, $act) as $linked) {
+                $extraPermissions[] = $linked;
             }
         }
 
         $allToSync = array_values(array_unique(array_merge($validPermissions, $extraPermissions)));
 
         foreach ($allToSync as $permName) {
-            \Spatie\Permission\Models\Permission::firstOrCreate([
+            Permission::firstOrCreate([
                 'name' => $permName,
                 'guard_name' => 'web',
             ]);
         }
+
+        // Keep any direct extras/manage/delete grants that are not part of the
+        // Edit Perms checkboxes so saving the modal does not strip them.
+        $preserve = $user->getDirectPermissions()
+            ->pluck('name')
+            ->filter(function (string $name) use ($modules) {
+                if (in_array($name, DmsPermissionCatalog::extras(), true)) {
+                    return true;
+                }
+
+                $parts = explode('.', $name);
+                if (count($parts) !== 2) {
+                    return true;
+                }
+
+                [$mod, $act] = $parts;
+                if (! in_array($mod, $modules, true)) {
+                    return true;
+                }
+
+                return in_array($act, ['manage', 'delete'], true);
+            })
+            ->all();
+
+        $allToSync = array_values(array_unique(array_merge($allToSync, $preserve)));
 
         $user->syncPermissions($allToSync);
 

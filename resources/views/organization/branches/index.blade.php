@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search Branch Name, Code, City..."
+            search-placeholder="Search Branch Name, City..."
             :reset-url="route('organization.branches.index')"
         >
             <x-slot name="filters">
@@ -45,9 +45,6 @@
                         <x-ui.sortable-th column="name" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Branch Name
                         </x-ui.sortable-th>
-                        <x-ui.sortable-th column="code" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
-                            Code
-                        </x-ui.sortable-th>
                         <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Company</th>
                         <x-ui.sortable-th column="is_active" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Status
@@ -59,7 +56,6 @@
                     @forelse($items as $item)
                         <tr class="hover:bg-slate-50/75 transition-colors">
                             <td class="px-4 py-3 font-medium text-slate-900">{{ $item->name }}</td>
-                            <td class="px-4 py-3 text-slate-600 font-mono text-xs">{{ $item->code }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->company?->name ?: '—' }}</td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {{ $item->is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
@@ -70,7 +66,7 @@
                                 <div class="flex items-center justify-end gap-1.5">
                                     <x-ui.button variant="secondary" size="sm" :href="route('organization.branches.edit', $item)" title="Edit Branch" aria-label="Edit Branch">Edit</x-ui.button>
                                     <button type="button"
-                                            @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}', '{{ addslashes($item->code) }}', '{{ addslashes($item->company?->name ?? '—') }}')"
+                                            @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}', '{{ addslashes($item->company?->name ?? '—') }}')"
                                             class="inline-flex items-center gap-1 font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 shadow-xs px-2.5 py-1.5 text-xs"
                                             title="Delete Branch"
                                             aria-label="Delete Branch"
@@ -154,10 +150,6 @@
                                         <span class="text-slate-800 font-semibold" x-text="deletingBranchName"></span>
                                     </div>
                                     <div class="flex items-center justify-between">
-                                        <span class="text-slate-500 font-medium">Branch Code:</span>
-                                        <span class="font-mono text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[11px]" x-text="deletingBranchCode"></span>
-                                    </div>
-                                    <div class="flex items-center justify-between">
                                         <span class="text-slate-500 font-medium">Parent Company:</span>
                                         <span class="text-slate-800 font-semibold" x-text="deletingCompanyName"></span>
                                     </div>
@@ -239,10 +231,6 @@
                                         <span class="text-slate-800 font-semibold" x-text="blockedBranchName"></span>
                                     </div>
                                     <div class="flex items-center justify-between">
-                                        <span class="text-slate-500 font-medium">Branch Code:</span>
-                                        <span class="font-mono text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[11px]" x-text="blockedBranchCode"></span>
-                                    </div>
-                                    <div class="flex items-center justify-between">
                                         <span class="text-slate-500 font-medium">Parent Company:</span>
                                         <span class="text-slate-800 font-semibold" x-text="blockedCompanyName"></span>
                                     </div>
@@ -284,10 +272,8 @@ function branchIndex() {
         isDeleting: false,
         deletingBranchId: null,
         deletingBranchName: '',
-        deletingBranchCode: '',
         deletingCompanyName: '',
         blockedBranchName: '',
-        blockedBranchCode: '',
         blockedCompanyName: '',
         blockedReason: '',
         notification: {
@@ -296,18 +282,16 @@ function branchIndex() {
             message: '',
         },
 
-        showBlockedModal(name, code, companyName, reason) {
+        showBlockedModal(name, companyName, reason) {
             this.blockedBranchName = name;
-            this.blockedBranchCode = code;
             this.blockedCompanyName = companyName || '—';
             this.blockedReason = reason;
             this.showBlockedExplanationModal = true;
         },
 
-        promptDelete(id, name, code, companyName) {
+        promptDelete(id, name, companyName) {
             this.deletingBranchId = id;
             this.deletingBranchName = name;
-            this.deletingBranchCode = code;
             this.deletingCompanyName = companyName || '—';
             this.showDeleteModal = true;
         },
@@ -317,7 +301,6 @@ function branchIndex() {
             this.showDeleteModal = false;
             this.deletingBranchId = null;
             this.deletingBranchName = '';
-            this.deletingBranchCode = '';
             this.deletingCompanyName = '';
         },
 

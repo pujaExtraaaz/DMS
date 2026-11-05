@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Master;
 
+use App\Domains\Catalog\Models\Brand;
 use App\Domains\Crm\Models\Lead;
 use App\Domains\Crm\Models\LeadActivity;
 use App\Domains\Crm\Models\LeadConversion;
 use App\Domains\Master\Models\Area;
+use App\Domains\Master\Models\CustomCity;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\CustomerType;
 use App\Domains\Master\Models\Route;
@@ -18,19 +20,24 @@ use App\Support\AuditLogService;
 use App\Support\CodeGenerator;
 use App\Support\IndianCities;
 use App\Support\IndianStates;
+use App\Support\NameCase;
+use App\Support\TitleCase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 
 class CustomerController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
     public function __construct(
         protected GstLookupService $gstLookupService,
@@ -43,19 +50,41 @@ class CustomerController extends Controller
      */
     public function addresses(Customer $customer): JsonResponse
     {
-        $addresses = $customer->activeAddresses()->get()->map(function ($addr) {
+        // Auto-create default party_address if customer has address on customer table but 0 in party_addresses
+        if ($customer->activeAddresses()->count() === 0 && filled($customer->address)) {
+            $customer->addresses()->create([
+                'type' => 'both',
+                'label' => 'Main Office',
+                'name' => $customer->name,
+                'contact_person' => $customer->name,
+                'contact_phone' => $customer->phone,
+                'address_line_1' => $customer->address,
+                'address' => $customer->address,
+                'city' => $customer->city,
+                'state' => $customer->state,
+                'pincode' => $customer->pincode,
+                'gstin' => $customer->gstin,
+                'is_default' => true,
+                'is_default_billing' => true,
+                'is_default_delivery' => true,
+                'is_active' => true,
+            ]);
+        }
+
+        $addresses = $customer->activeAddresses()->get()->map(function ($addr) use ($customer) {
             return [
                 'id' => $addr->id,
                 'label' => $addr->label ?? 'Address #' . $addr->id,
+                'name' => $addr->name ?? $customer->name,
                 'type' => $addr->type ?? 'both',
-                'contact_person' => $addr->contact_person,
-                'contact_phone' => $addr->contact_phone,
+                'contact_person' => $addr->contact_person ?: ($addr->name ?: $customer->name),
+                'contact_phone' => $addr->contact_phone ?: $customer->phone,
                 'address_line_1' => $addr->address_line_1 ?? $addr->address,
                 'address_line_2' => $addr->address_line_2,
-                'city' => $addr->city,
-                'state' => $addr->state,
-                'pincode' => $addr->pincode,
-                'gstin' => $addr->gstin,
+                'city' => $addr->city ?: $customer->city,
+                'state' => $addr->state ?: $customer->state,
+                'pincode' => $addr->pincode ?: $customer->pincode,
+                'gstin' => $addr->gstin ?: $customer->gstin,
                 'is_default_billing' => (bool) ($addr->is_default_billing || $addr->is_default),
                 'is_default_delivery' => (bool) ($addr->is_default_delivery),
                 'display_text' => $addr->display_text,
@@ -82,6 +111,7 @@ class CustomerController extends Controller
                 'code' => $customer->code,
                 'gstin' => $customer->gstin,
                 'state' => $customer->state,
+                'credit_days' => $customer->credit_days,
             ],
             'addresses' => $addresses,
             'default_billing_id' => $defaultBilling ? $defaultBilling['id'] : null,
@@ -99,6 +129,70 @@ class CustomerController extends Controller
             'state' => $state,
             'cities' => $cities,
         ]);
+    }
+
+    public function storeCity(Request $request): JsonResponse
+    {
+        $state = trim((string) $request->input('state', ''));
+        $name = NameCase::format(trim((string) $request->input('name', ''))) ?? '';
+
+        $knownState = null;
+        foreach (IndianStates::namesAlphabetical() as $stateName) {
+            if (strcasecmp($stateName, $state) === 0) {
+                $knownState = $stateName;
+                break;
+            }
+        }
+
+        if ($knownState === null) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select a state before adding a city.',
+            ], 422);
+        }
+
+        if ($name === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'City name is required.',
+            ], 422);
+        }
+
+        if (mb_strlen($name) > 255) {
+            return response()->json([
+                'success' => false,
+                'message' => 'City name cannot exceed 255 characters.',
+            ], 422);
+        }
+
+        $existing = IndianCities::getCitiesForState($knownState);
+        foreach ($existing as $city) {
+            if (strcasecmp($city, $name) === 0) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'This city is already in the list.',
+                    'item' => ['state' => $knownState, 'name' => $city],
+                ]);
+            }
+        }
+
+        if (! IndianCities::isValidCityForState($name, $knownState)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This city belongs to another state.',
+            ], 422);
+        }
+
+        $city = CustomCity::query()->firstOrCreate([
+            'state' => $knownState,
+            'name' => $name,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'City added. It will stay available in this state.',
+            'item' => ['state' => $city->state, 'name' => $city->name],
+        ], 201);
     }
 
     /**
@@ -132,10 +226,13 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = Customer::query()
-            ->with(['customerType', 'area', 'route', 'salesperson', 'salesManager', 'businessGroup'])
+            ->with([
+                'customerType', 'area', 'route', 'salesperson', 'salesManager', 'businessGroup',
+                'salesTargets' => fn ($q) => $q->where('status', 'active')->with('achievement'),
+            ])
             ->when($request->filled('party_type'), function ($q) use ($request) {
                 $type = $request->party_type;
                 if ($type === Customer::PARTY_TYPE_SUNDRY_DEBTORS) {
@@ -154,9 +251,28 @@ class CustomerController extends Controller
                 } elseif ($request->status === 'inactive') {
                     $q->where('is_active', false);
                 }
+            })
+            ->when($request->filled('target_status'), function ($q) use ($request) {
+                if ($request->target_status === 'assigned') {
+                    $q->whereHas('salesTargets', fn ($tq) => $tq->where('status', 'active'));
+                } elseif ($request->target_status === 'unassigned') {
+                    $q->whereDoesntHave('salesTargets', fn ($tq) => $tq->where('status', 'active'));
+                }
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'code', 'phone', 'gstin', 'email']);
+
+        if ($export = $this->exportIfRequested($request, $query, 'Parties', 'Parties', ['Name', 'Code', 'Party Type', 'Phone', 'GSTIN', 'Area', 'Status'], fn ($item) => [
+            $item->name,
+            $item->code,
+            $item->party_type_label,
+            $item->phone ?: '',
+            $item->gstin ?: '',
+            $item->area?->name ?? '',
+            $item->is_active ? 'Active' : 'Inactive',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,
@@ -173,6 +289,7 @@ class CustomerController extends Controller
             'search' => $request->string('search'),
             'partyType' => $request->string('party_type'),
             'status' => $request->string('status'),
+            'targetStatus' => $request->string('target_status'),
             'areas' => Area::where('is_active', true)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
             'sort' => $sortData['sort'],
@@ -202,9 +319,19 @@ class CustomerController extends Controller
             }
         }
 
+        $requestedPartyType = (string) $request->query('party_type', Customer::PARTY_TYPE_SUNDRY_DEBTORS);
+        $allowedPartyTypes = [
+            Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+            Customer::PARTY_TYPE_BOTH,
+        ];
+        if (! in_array($requestedPartyType, $allowedPartyTypes, true)) {
+            $requestedPartyType = Customer::PARTY_TYPE_SUNDRY_DEBTORS;
+        }
+
         $customer = new Customer([
             'code' => $code,
-            'party_type' => Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+            'party_type' => $requestedPartyType,
             'is_active' => true,
         ]);
 
@@ -239,6 +366,7 @@ class CustomerController extends Controller
             'item' => $customer,
             'initialAddresses' => $initialAddresses,
             'lead' => $lead,
+            'returnTo' => $request->query('return_to', old('return_to')),
             ...$this->formData($customer),
         ]);
     }
@@ -322,12 +450,72 @@ class CustomerController extends Controller
             return $this->flashSuccess("Lead '{$lead->name}' converted to Customer '{$customer->name}' ({$customer->code}) successfully.", 'masters.customers.index');
         }
 
+        $returnTo = $request->input('return_to');
+        if ($returnTo === 'orders.create') {
+            return redirect()->route('orders.create', ['customer_id' => $customer->id])
+                ->with('status', TitleCase::format("Party '{$customer->name}' created successfully."))
+                ->with('success', "Customer '{$customer->name}' created successfully.");
+        }
+
+        $returnUrl = $this->safeInternalReturnUrl($request->input('return_url'));
+        if ($returnUrl) {
+            $separator = str_contains($returnUrl, '?') ? '&' : '?';
+            $isPurchasingOrder = str_contains($returnUrl, '/purchasing');
+            $isSalesOrder = str_contains($returnUrl, '/orders') && ! $isPurchasingOrder;
+
+            if ($isPurchasingOrder) {
+                $target = $returnUrl.$separator.'supplier_id='.$customer->id;
+                $message = "Party '{$customer->name}' created successfully. Continue with the purchase document.";
+            } elseif ($isSalesOrder) {
+                $target = $returnUrl.$separator.'customer_id='.$customer->id;
+                $message = "Party '{$customer->name}' created successfully.";
+            } else {
+                $target = $returnUrl;
+                $message = "Party '{$customer->name}' created successfully.";
+            }
+
+            return redirect()
+                ->to($target)
+                ->with('status', TitleCase::format($message))
+                ->with('success', "Customer '{$customer->name}' created successfully.");
+        }
+
         return $this->flashSuccess('Party created successfully.', 'masters.customers.index');
+    }
+
+    /**
+     * Allow redirect only to same-app relative or absolute URLs (open-redirect safe).
+     */
+    protected function safeInternalReturnUrl(mixed $url): ?string
+    {
+        if (! is_string($url)) {
+            return null;
+        }
+
+        $url = trim($url);
+        if ($url === '' || str_starts_with($url, '//')) {
+            return null;
+        }
+
+        if (str_starts_with($url, '/')) {
+            return $url;
+        }
+
+        $appUrl = rtrim((string) config('app.url'), '/');
+        if ($appUrl !== '' && str_starts_with($url, $appUrl.'/')) {
+            return $url;
+        }
+
+        if ($appUrl !== '' && $url === $appUrl) {
+            return $url;
+        }
+
+        return null;
     }
 
     public function edit(Customer $customer): View
     {
-        $customer->load(['contacts', 'addresses', 'bankAccounts', 'creditCheques', 'businessGroup']);
+        $customer->load(['contacts', 'addresses', 'bankAccounts', 'creditCheques', 'businessGroup', 'gemAuthorizations.documents', 'gemAuthorizations.brand']);
 
         $addresses = $customer->activeAddresses()->get()->map(function ($a) {
             return [
@@ -520,6 +708,24 @@ class CustomerController extends Controller
         }
     }
 
+    public function gemDocument(Customer $customer, \App\Domains\Master\Models\PartyGemDocument $document): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $document->loadMissing('authorization');
+        abort_unless(
+            $document->authorization && (int) $document->authorization->customer_id === (int) $customer->id,
+            404
+        );
+
+        $download = request()->boolean('download');
+
+        return Storage::disk($document->disk ?: 'public')->response(
+            $document->path,
+            $document->original_name,
+            [],
+            $download ? 'attachment' : 'inline'
+        );
+    }
+
     public function show(Request $request, Customer $customer): View|JsonResponse
     {
         $customer->load([
@@ -531,9 +737,12 @@ class CustomerController extends Controller
             'route',
             'salesperson',
             'salesManager',
+            'salesTargets' => fn ($q) => $q->latest('starts_on')->with(['achievement', 'creator']),
             'contacts' => fn ($q) => $q->orderBy('is_primary', 'desc')->orderBy('name'),
             'addresses' => fn ($q) => $q->orderBy('is_default_billing', 'desc')->orderBy('is_default_delivery', 'desc'),
             'bankAccounts' => fn ($q) => $q->orderBy('is_primary', 'desc'),
+            'gemAuthorizations.brand',
+            'gemAuthorizations.documents',
         ]);
 
         if ($request->wantsJson() || $request->ajax()) {
@@ -677,6 +886,7 @@ class CustomerController extends Controller
     protected function validated(Request $request, ?Customer $customer = null): array
     {
         $rules = [
+            'return_to' => 'nullable|string|max:100',
             'lead_id' => 'nullable|integer|exists:leads,id',
             'name' => 'required|string|max:255',
             'trade_name' => 'nullable|string|max:255',
@@ -690,6 +900,21 @@ class CustomerController extends Controller
             'sales_manager_id' => 'nullable|exists:users,id',
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
+            'opened_on' => 'nullable|date',
+            'reference_by' => 'nullable|string|max:255',
+            'udyam_number' => 'nullable|string|max:50',
+            'website' => 'nullable|string|max:255',
+            'location_link' => 'nullable|string|max:500',
+            'gem_authorizations' => 'nullable|array',
+            'gem_authorizations.*.id' => 'nullable|integer',
+            'gem_authorizations.*.brand_id' => 'nullable|integer|exists:brands,id',
+            'gem_authorizations.*.gem_registered' => 'nullable|in:0,1',
+            'gem_authorizations.*.gem_authorized' => 'nullable|in:0,1',
+            'gem_authorizations.*.authorization_number' => 'nullable|string|max:100',
+            'gem_authorizations.*.remove_document_ids' => 'nullable|array',
+            'gem_authorizations.*.remove_document_ids.*' => 'integer',
+            'gem_authorizations.*.documents' => 'nullable|array',
+            'gem_authorizations.*.documents.*' => 'file|mimes:jpg,jpeg,png,webp,pdf|max:5120',
             'gstin' => 'nullable|string|max:20',
             'pan' => 'nullable|string|max:20',
             'address' => 'nullable|string',
@@ -697,8 +922,8 @@ class CustomerController extends Controller
             'pincode' => 'nullable|string|max:12',
             'credit_limit' => 'nullable|numeric|min:0',
             'credit_days' => 'nullable|integer|min:0',
-            'credit_status' => 'nullable|in:open,hold,blocked',
-            'credit_period_basis' => 'nullable|in:cumulative,invoice_date,inward_date,receipt_date',
+            'credit_status' => 'nullable|in:open,hold,blocked,restricted,frozen,active',
+            'credit_period_basis' => 'nullable|in:cumulative,invoice_date,inward_date,receipt_date,monthly,quarterly,yearly',
             'interest_rate' => 'nullable|numeric|min:0',
             'is_active' => 'boolean',
             'contacts' => 'nullable|array',
@@ -805,6 +1030,39 @@ class CustomerController extends Controller
                     }
                 }
             }
+
+            $seenBrands = [];
+            foreach ($request->input('gem_authorizations', []) as $index => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $registered = ($row['gem_registered'] ?? '0') === '1';
+                $active = filled($row['brand_id'] ?? null)
+                    || $registered
+                    || filled($row['authorization_number'] ?? null)
+                    || $request->hasFile("gem_authorizations.{$index}.documents");
+
+                if (! $active) {
+                    continue;
+                }
+
+                $brandId = (string) ($row['brand_id'] ?? '');
+                if ($brandId === '') {
+                    $validator->errors()->add("gem_authorizations.{$index}.brand_id", 'Select a Brand/OEM.');
+                } elseif (isset($seenBrands[$brandId])) {
+                    $validator->errors()->add("gem_authorizations.{$index}.brand_id", 'This Brand/OEM is already added for this party.');
+                } else {
+                    $seenBrands[$brandId] = true;
+                }
+
+                if ($registered && ($row['gem_authorized'] ?? '0') === '1' && blank($row['authorization_number'] ?? null)) {
+                    $validator->errors()->add(
+                        "gem_authorizations.{$index}.authorization_number",
+                        'GEM Authorization Number is required when this party is authorized for the OEM on GEM.'
+                    );
+                }
+            }
         });
 
         $data = $validator->validate();
@@ -815,7 +1073,12 @@ class CustomerController extends Controller
             default => $data['party_type'],
         };
         $data['is_active'] = $request->boolean('is_active');
-        $data['customer_type_id'] = $data['customer_type_id'] ?? CustomerType::query()->value('id');
+        $data['customer_type_id'] = filled($data['customer_type_id'] ?? null) ? $data['customer_type_id'] : null;
+        $data['udyam_number'] = filled($data['udyam_number'] ?? null) ? trim($data['udyam_number']) : null;
+        $data['opened_on'] = filled($data['opened_on'] ?? null) ? $data['opened_on'] : null;
+        $data['reference_by'] = filled($data['reference_by'] ?? null) ? trim($data['reference_by']) : null;
+        $data['website'] = filled($data['website'] ?? null) ? trim($data['website']) : null;
+        $data['location_link'] = filled($data['location_link'] ?? null) ? trim($data['location_link']) : null;
         $data['credit_limit'] = $data['credit_limit'] ?? 0;
         $data['credit_days'] = $data['credit_days'] ?? 0;
         $data['interest_rate'] = $data['interest_rate'] ?? 18;
@@ -831,7 +1094,7 @@ class CustomerController extends Controller
             }
         }
 
-        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['pan'], $data['lead_id']);
+        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['gem_authorizations'], $data['pan'], $data['lead_id'], $data['return_to']);
 
         return $data;
     }
@@ -884,7 +1147,9 @@ class CustomerController extends Controller
             ->values();
 
         if ($bankAccounts->isNotEmpty() && !$bankAccounts->contains('is_primary', true)) {
-            $bankAccounts[0]['is_primary'] = true;
+            $row = $bankAccounts->get(0, []);
+            $row['is_primary'] = true;
+            $bankAccounts->put(0, $row);
         }
 
         $existingBankAccounts = $customer->bankAccounts()->get()->keyBy('id');
@@ -942,6 +1207,8 @@ class CustomerController extends Controller
                 }
             }
         }
+
+        $this->syncGemAuthorizations($request, $customer);
     }
 
     protected function syncAddresses(Request $request, Customer $customer): void
@@ -949,10 +1216,13 @@ class CustomerController extends Controller
         $rawAddresses = $request->input('addresses', []);
         $submittedAddresses = collect($rawAddresses)
             ->filter(function ($row) {
+                // Keep only rows that have real address content (label alone is not enough).
                 return filled($row['address_line_1'] ?? null)
                     || filled($row['address'] ?? null)
-                    || filled($row['label'] ?? null)
-                    || filled($row['city'] ?? null);
+                    || filled($row['address_line_2'] ?? null)
+                    || filled($row['city'] ?? null)
+                    || filled($row['state'] ?? null)
+                    || filled($row['pincode'] ?? null);
             })
             ->values();
 
@@ -971,13 +1241,17 @@ class CustomerController extends Controller
         if (!$hasDefaultBilling && $submittedAddresses->isNotEmpty()) {
             $firstBillingIdx = $submittedAddresses->search(fn ($r) => in_array($r['type'] ?? '', ['billing', 'both'], true));
             $idx = $firstBillingIdx !== false ? $firstBillingIdx : 0;
-            $submittedAddresses[$idx]['is_default_billing'] = true;
+            $row = $submittedAddresses->get($idx, []);
+            $row['is_default_billing'] = true;
+            $submittedAddresses->put($idx, $row);
         }
 
         if (!$hasDefaultDelivery && $submittedAddresses->isNotEmpty()) {
             $firstDeliveryIdx = $submittedAddresses->search(fn ($r) => in_array($r['type'] ?? '', ['delivery', 'both', 'shipping'], true));
             $idx = $firstDeliveryIdx !== false ? $firstDeliveryIdx : 0;
-            $submittedAddresses[$idx]['is_default_delivery'] = true;
+            $row = $submittedAddresses->get($idx, []);
+            $row['is_default_delivery'] = true;
+            $submittedAddresses->put($idx, $row);
         }
 
         foreach ($submittedAddresses as $row) {
@@ -1039,6 +1313,94 @@ class CustomerController extends Controller
         }
     }
 
+    protected function syncGemAuthorizations(Request $request, Customer $customer): void
+    {
+        $keptIds = [];
+
+        foreach ($request->input('gem_authorizations', []) as $index => $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $registered = ($row['gem_registered'] ?? '0') === '1';
+            $active = filled($row['brand_id'] ?? null)
+                || $registered
+                || filled($row['authorization_number'] ?? null)
+                || $request->hasFile("gem_authorizations.{$index}.documents");
+
+            if (! $active || blank($row['brand_id'] ?? null)) {
+                continue;
+            }
+
+            $payload = [
+                'brand_id' => $row['brand_id'],
+                'gem_registered' => $registered,
+                'gem_authorized' => $registered && ($row['gem_authorized'] ?? '0') === '1',
+                'authorization_number' => $registered && ($row['gem_authorized'] ?? '0') === '1'
+                    ? (trim((string) ($row['authorization_number'] ?? '')) ?: null)
+                    : null,
+            ];
+
+            $record = null;
+            if (filled($row['id'] ?? null)) {
+                $record = $customer->gemAuthorizations()->whereKey($row['id'])->first();
+            }
+
+            if ($record) {
+                $record->update($payload);
+            } else {
+                $record = $customer->gemAuthorizations()->create($payload);
+            }
+
+            $keptIds[] = $record->id;
+            $this->syncGemDocuments($request, $record, $index, $registered);
+        }
+
+        $customer->gemAuthorizations()
+            ->when($keptIds !== [], fn ($query) => $query->whereNotIn('id', $keptIds))
+            ->with('documents')
+            ->get()
+            ->each(function ($authorization) {
+                $this->deleteGemDocuments($authorization->documents);
+                $authorization->delete();
+            });
+    }
+
+    protected function syncGemDocuments(Request $request, \App\Domains\Master\Models\PartyGemAuthorization $authorization, int $index, bool $registered): void
+    {
+        $removeIds = array_map('intval', (array) ($request->input("gem_authorizations.{$index}.remove_document_ids") ?? []));
+        if (! $registered) {
+            $this->deleteGemDocuments($authorization->documents()->get());
+
+            return;
+        }
+
+        if ($removeIds !== []) {
+            $this->deleteGemDocuments($authorization->documents()->whereIn('id', $removeIds)->get());
+        }
+
+        foreach ($request->file("gem_authorizations.{$index}.documents", []) as $file) {
+            if (! $file) {
+                continue;
+            }
+
+            $authorization->documents()->create([
+                'disk' => 'public',
+                'path' => $file->store('party-gem/'.$authorization->customer_id, 'public'),
+                'original_name' => $file->getClientOriginalName(),
+                'mime' => $file->getClientMimeType(),
+            ]);
+        }
+    }
+
+    protected function deleteGemDocuments(iterable $documents): void
+    {
+        foreach ($documents as $document) {
+            Storage::disk($document->disk ?: 'public')->delete($document->path);
+            $document->delete();
+        }
+    }
+
     protected function formData(?Customer $customer = null): array
     {
         $allUsers = User::orderBy('name')->get();
@@ -1065,11 +1427,38 @@ class CustomerController extends Controller
         }
         $businessGroups = $bgQuery->orderBy('name')->get(['id', 'name', 'code', 'logo_emoji']);
 
+        $brandQuery = Brand::query()->where('is_active', true);
+        if ($customer?->exists) {
+            $selectedBrandIds = $customer->gemAuthorizations()->pluck('brand_id')->filter();
+            if ($selectedBrandIds->isNotEmpty()) {
+                $brandQuery->orWhereIn('id', $selectedBrandIds);
+            }
+        }
+
         return [
             'businessGroups' => $businessGroups,
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
-            'areas' => Area::where('is_active', true)->orderBy('name')->get(),
-            'routes' => Route::where('is_active', true)->orderBy('name')->get(),
+            'brands' => $brandQuery->orderBy('name')->get(['id', 'name']),
+            'companies' => \App\Domains\Organization\Models\Company::query()->orderBy('name')->get(['id', 'name']),
+            'defaultCompanyId' => auth()->user()?->company_id,
+            'areas' => Area::query()
+                ->where(function ($query) use ($customer) {
+                    $query->where('is_active', true);
+                    if ($customer?->area_id) {
+                        $query->orWhere('id', $customer->area_id);
+                    }
+                })
+                ->orderBy('name')
+                ->get(),
+            'routes' => Route::query()
+                ->where(function ($query) use ($customer) {
+                    $query->where('is_active', true);
+                    if ($customer?->route_id) {
+                        $query->orWhere('id', $customer->route_id);
+                    }
+                })
+                ->orderBy('name')
+                ->get(),
             'salesManagers' => $salesManagers,
             'salespersons' => $salespersons,
             'states' => IndianStates::allAlphabetical(),

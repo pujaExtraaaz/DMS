@@ -855,7 +855,7 @@ class VoucherEngine
      * Invoices allocate their number first, then pass it here so the accounting
      * voucher reuses that number instead of taking a second one from the sequence.
      */
-    private function assignedNumber(?string $assignedNumber, Company $company, Branch $branch, FinancialYear $financialYear, VoucherType $type, ?\DateTimeInterface $on = null, ?string $typed = null): string
+    private function assignedNumber(?string $assignedNumber, Company $company, Branch $branch, FinancialYear $financialYear, VoucherType $type, string|\DateTimeInterface|null $on = null, ?string $typed = null): string
     {
         $assignedNumber = trim((string) $assignedNumber);
 
@@ -869,7 +869,11 @@ class VoucherEngine
             return $assignedNumber;
         }
 
-        $number = $this->numbers->resolve($company, $branch, $financialYear, $type, $typed, $on);
+        if (is_string($on) && $on !== '') {
+            $on = \Carbon\Carbon::parse($on);
+        }
+
+        $number = $this->numbers->resolve($company, $branch, $financialYear, $type, $typed, $on instanceof \DateTimeInterface ? $on : null);
 
         if (strlen($number) > 30) {
             throw ValidationException::withMessages([

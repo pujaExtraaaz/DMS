@@ -130,10 +130,10 @@
     </x-ui.page-header>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <x-ui.card
-            class="lg:col-span-2"
-            title="Line Items"
-        >
+        <div class="lg:col-span-2 space-y-6">
+            <x-ui.card
+                title="Line Items"
+            >
             <x-ui.table>
                 <x-slot name="head">
                     <tr>
@@ -209,6 +209,83 @@
             </div>
         </x-ui.card>
 
+        {{-- Payment Terms & Advance Details --}}
+        <x-ui.card title="Payment Terms & Advance Details">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+                <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <span class="text-xs font-medium text-slate-500">Advance Amount Received</span>
+                    <div class="text-lg font-bold text-emerald-700 mt-1">₹{{ number_format($order->advance_amount ?? 0, 2) }}</div>
+                    @if($order->advance_percentage)
+                        <span class="text-xs text-slate-500 font-medium">{{ number_format($order->advance_percentage, 2) }}% of total</span>
+                    @endif
+                </div>
+                <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <span class="text-xs font-medium text-slate-500">Balance Amount Pending</span>
+                    <div class="text-lg font-bold text-indigo-700 mt-1">₹{{ number_format($order->balance_amount ?? max(0, $order->grand_total - ($order->advance_amount ?? 0)), 2) }}</div>
+                </div>
+                <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <span class="text-xs font-medium text-slate-500">Order Grand Total</span>
+                    <div class="text-lg font-bold text-slate-800 mt-1">₹{{ number_format($order->grand_total, 2) }}</div>
+                </div>
+            </div>
+
+            <div>
+                <span class="text-xs font-semibold uppercase text-slate-500">Payment Terms / Schedule</span>
+                <div class="mt-1 p-3 bg-white rounded-lg border border-slate-200 text-sm text-slate-700 whitespace-pre-line">
+                    {{ $order->payment_terms ?: 'No special payment terms recorded.' }}
+                </div>
+            </div>
+        </x-ui.card>
+
+        {{-- Sales, Delivery & Additional Details --}}
+        <x-ui.card title="Sales, Delivery & Reference Details">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div class="space-y-3">
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-slate-500">Salesperson</span>
+                        <span class="font-medium text-slate-800">{{ $order->salesperson?->name ?: ($order->salesperson_name ?: '—') }}</span>
+                    </div>
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-slate-500">Reference No / Enquiry</span>
+                        <span class="font-medium text-slate-800">{{ $order->reference_no ?: '—' }}</span>
+                    </div>
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-slate-500">Terms of Delivery</span>
+                        <span class="font-medium text-slate-800">
+                            @if($order->terms_of_delivery === 'freight_inclusive')
+                                Freight Inclusive
+                            @elseif($order->terms_of_delivery === 'freight_exclusive')
+                                Freight Exclusive
+                            @else
+                                {{ $order->terms_of_delivery ?: '—' }}
+                            @endif
+                        </span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Fulfilment Mode</span>
+                        <span class="font-medium text-slate-800">{{ $order->fulfilment_mode ? ucfirst($order->fulfilment_mode) : '—' }}</span>
+                    </div>
+                </div>
+
+                <div class="space-y-3">
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-slate-500">Supervisor / Caretaker Phone</span>
+                        <span class="font-medium text-slate-800">{{ $order->caretaker_phone ?: '—' }}</span>
+                    </div>
+                    <div class="flex justify-between border-b pb-2">
+                        <span class="text-slate-500">Architect / Firm</span>
+                        <span class="font-medium text-slate-800">{{ $order->architect_name ?: '—' }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Architect Phone</span>
+                        <span class="font-medium text-slate-800">{{ $order->architect_phone ?: '—' }}</span>
+                    </div>
+                </div>
+            </div>
+        </x-ui.card>
+    </div>
+
+    <div class="space-y-6">
         <x-ui.card title="Summary">
             <dl class="space-y-3 text-sm">
                 <div class="flex justify-between">
@@ -237,7 +314,7 @@
                 <div class="flex justify-between">
                     <dt class="text-gray-500">Fulfilment</dt>
                     <dd>
-                        {{ ucfirst($order->fulfilment_mode ?? 'van') }}
+                        {{ $order->fulfilment_mode ? ucfirst($order->fulfilment_mode) : '—' }}
                         @if($order->back_order)
                             <span class="ml-1 text-xs text-amber-600">Back-order</span>
                         @endif
@@ -255,9 +332,11 @@
                     <dt class="text-gray-500">Customer</dt>
                     <dd class="text-right">
                         {{ $order->customer->name }}
-                        <div class="text-xs text-gray-500">
-                            {{ $order->customer->code }}
-                        </div>
+                        @if(filled($order->customer->phone))
+                            <div class="text-xs text-gray-500">
+                                {{ $order->customer->phone }}
+                            </div>
+                        @endif
                     </dd>
                 </div>
 
@@ -278,7 +357,7 @@
                 <div class="flex justify-between">
                     <dt class="text-gray-500">Created By</dt>
                     <dd class="font-medium">
-                        {{ $order->created_by_name ?: ($order->salesperson->name ?? '—') }}
+                        {{ $order->created_by_name ?: ($order->salesperson?->name ?? '—') }}
                     </dd>
                 </div>
 
@@ -330,6 +409,23 @@
                         ₹{{ number_format($order->grand_total, 2) }}
                     </dd>
                 </div>
+
+                <div class="flex justify-between text-emerald-700">
+                    <dt>Advance Received</dt>
+                    <dd class="font-semibold">
+                        ₹{{ number_format($order->advance_amount ?? 0, 2) }}
+                        @if($order->advance_percentage)
+                            <span class="text-xs text-emerald-600 font-normal">({{ number_format($order->advance_percentage, 1) }}%)</span>
+                        @endif
+                    </dd>
+                </div>
+
+                <div class="flex justify-between text-indigo-700 font-semibold">
+                    <dt>Balance Pending</dt>
+                    <dd>
+                        ₹{{ number_format($order->balance_amount ?? max(0, $order->grand_total - ($order->advance_amount ?? 0)), 2) }}
+                    </dd>
+                </div>
             </dl>
 
             @if($order->approved_at)
@@ -374,4 +470,5 @@
             @endif
         </x-ui.card>
     </div>
+</div>
 @endsection

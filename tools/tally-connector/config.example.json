@@ -3,5 +3,5 @@
   "connector_token": "",
   "tally_url": "http://127.0.0.1:9000",
   "company": "",
-  "poll_seconds": 15
+  "poll_seconds": 8
 }

@@ -4,6 +4,7 @@
 <div id="listing-container" data-dynamic-container x-data="partyIndex()">
     <x-ui.page-header title="Parties">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('masters.customers.create')">+ Add Party</x-ui.button>
         </x-slot>
     </x-ui.page-header>

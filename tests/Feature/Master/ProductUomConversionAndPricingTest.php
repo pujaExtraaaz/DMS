@@ -127,6 +127,23 @@ class ProductUomConversionAndPricingTest extends TestCase
         $response->assertSessionHasErrors('alternate_uom_id');
     }
 
+    public function test_alternative_uom_can_be_marked_not_applicable(): void
+    {
+        $payload = [
+            'name' => 'Single Unit Cable',
+            'sku' => 'SU-CABLE-1',
+            'base_uom_id' => $this->mtrUom->id,
+            'alternate_uom_not_applicable' => 1,
+        ];
+
+        $response = $this->actingAs($this->user)->post(route('masters.products.store'), $payload);
+        $response->assertRedirect(route('masters.products.index'));
+
+        $product = \App\Domains\Master\Models\Product::where('sku', 'SU-CABLE-1')->first();
+        $this->assertNotNull($product);
+        $this->assertNull($product->alternate_uom_id);
+    }
+
     public function test_alternative_uom_cannot_be_same_as_base_uom(): void
     {
         $payload = [

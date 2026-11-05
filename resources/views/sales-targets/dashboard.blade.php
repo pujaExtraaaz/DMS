@@ -57,7 +57,7 @@
     {{-- Filter Panel --}}
     <div class="rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs" x-data="{ expanded: false }">
         <form method="GET" action="{{ route('sales-targets.dashboard') }}" class="space-y-3">
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                 {{-- Period Type --}}
                 <div>
                     <label class="block text-[11px] font-semibold text-slate-600 mb-1">Period</label>
@@ -87,9 +87,23 @@
                     <label class="block text-[11px] font-semibold text-slate-600 mb-1">Target Owner</label>
                     <select name="owner_type" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
                         <option value="">All Owners</option>
+                        <option value="party" @selected(request('owner_type') === 'party')>Party / Customer</option>
                         <option value="individual" @selected(request('owner_type') === 'individual')>Individual Salesman</option>
                         <option value="team" @selected(request('owner_type') === 'team')>Team</option>
                         <option value="branch" @selected(request('owner_type') === 'branch')>Branch</option>
+                    </select>
+                </div>
+
+                {{-- Party / Customer --}}
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Party / Customer</label>
+                    <select name="customer_id" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">All Parties</option>
+                        @foreach($parties as $p)
+                            <option value="{{ $p->id }}" @selected(request('customer_id') == $p->id)>
+                                {{ $p->name }} {{ $p->code ? '('.$p->code.')' : '' }}
+                            </option>
+                        @endforeach
                     </select>
                 </div>
 
@@ -127,7 +141,16 @@
             </div>
 
             {{-- Collapsible Advanced Filters --}}
-            <div x-show="expanded" x-cloak class="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            <div x-show="expanded" x-cloak class="pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Company</label>
+                    <select name="company_id" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">All Companies</option>
+                        @foreach($companies as $comp)
+                            <option value="{{ $comp->id }}" @selected(request('company_id') == $comp->id)>{{ $comp->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
                 <div>
                     <label class="block text-[11px] font-semibold text-slate-600 mb-1">Team</label>
                     <select name="sales_team_id" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
@@ -159,7 +182,17 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Status</label>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Progress Status</label>
+                    <select name="progress_status" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">All Progress Statuses</option>
+                        <option value="Not Started" @selected(request('progress_status') === 'Not Started')>Not Started</option>
+                        <option value="In Progress" @selected(request('progress_status') === 'In Progress')>In Progress</option>
+                        <option value="Achieved" @selected(request('progress_status') === 'Achieved')>Achieved</option>
+                        <option value="Period Expired" @selected(request('progress_status') === 'Period Expired')>Period Expired</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Admin Status</label>
                     <select name="status" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
                         <option value="">Active &amp; Completed</option>
                         <option value="active" @selected(request('status') === 'active')>Active</option>
@@ -218,42 +251,98 @@
             </div>
         </div>
 
-        {{-- Card 3: Pending Target Gap --}}
+        {{-- Card 3: Total Shortfall --}}
         <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs relative overflow-hidden">
             <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Shortfall / Pending</span>
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Shortfall</span>
                 <span class="p-2 rounded-lg bg-rose-50 text-rose-600">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </span>
             </div>
             <div class="mt-2 flex items-baseline gap-2">
-                <span class="text-2xl font-bold tracking-tight text-rose-700">₹ {{ number_format($pendingTarget, 2) }}</span>
+                <span class="text-2xl font-bold tracking-tight text-rose-700">₹ {{ number_format($totalShortfall, 2) }}</span>
             </div>
             <div class="mt-3 flex items-center justify-between text-xs text-slate-500">
                 <span>{{ $achievedCount }} targets achieved</span>
-                <span class="text-rose-600 font-medium">{{ $atRiskCount }} at risk</span>
+                <span class="text-rose-600 font-medium">{{ $periodExpiredCount }} expired</span>
             </div>
         </div>
 
-        {{-- Card 4: Quantity & Volume Achievement --}}
+        {{-- Card 4: Overall Achievement Percentage --}}
         <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs relative overflow-hidden">
             <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Units / Quantity Sold</span>
+                <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Overall Achievement</span>
                 <span class="p-2 rounded-lg bg-purple-50 text-purple-600">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>
                 </span>
             </div>
             <div class="mt-2 flex items-baseline gap-2">
-                <span class="text-2xl font-bold tracking-tight text-purple-900">{{ number_format($totalAchievedQty, 0) }}</span>
+                <span class="text-2xl font-bold tracking-tight text-purple-900">{{ $achievementPercent }}%</span>
                 @if($totalTargetQty > 0)
-                    <span class="text-xs text-slate-500 font-medium">/ {{ number_format($totalTargetQty, 0) }} Units</span>
+                    <span class="text-xs text-slate-500 font-medium">({{ number_format($totalAchievedQty, 0) }} / {{ number_format($totalTargetQty, 0) }} Units)</span>
                 @endif
             </div>
             <div class="mt-3 flex items-center justify-between text-xs text-slate-500">
-                <span>MTD Invoiced: ₹ {{ number_format($mtdInvoices, 0) }}</span>
+                <span>MTD: ₹ {{ number_format($mtdInvoices, 0) }}</span>
                 <span>YTD: ₹ {{ number_format($ytdInvoices, 0) }}</span>
             </div>
         </div>
+    </div>
+
+    {{-- Target Progress Status Summary --}}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {{-- Status 1: Not Started --}}
+        <a href="{{ request()->fullUrlWithQuery(['progress_status' => 'Not Started']) }}"
+           class="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs hover:border-slate-300 transition flex items-center justify-between {{ request('progress_status') === 'Not Started' ? 'ring-2 ring-slate-400 bg-slate-50/50' : '' }}">
+            <div>
+                <span class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Targets Not Started</span>
+                <p class="text-xl font-bold text-slate-700 mt-0.5">{{ $notStartedCount }}</p>
+                <span class="text-[10px] text-slate-400">Future start date</span>
+            </div>
+            <span class="p-2 rounded-lg bg-slate-100 text-slate-600">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </span>
+        </a>
+
+        {{-- Status 2: In Progress --}}
+        <a href="{{ request()->fullUrlWithQuery(['progress_status' => 'In Progress']) }}"
+           class="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs hover:border-indigo-300 transition flex items-center justify-between {{ request('progress_status') === 'In Progress' ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : '' }}">
+            <div>
+                <span class="text-[11px] font-semibold text-indigo-600 uppercase tracking-wider">Targets In Progress</span>
+                <p class="text-xl font-bold text-indigo-700 mt-0.5">{{ $inProgressCount }}</p>
+                <span class="text-[10px] text-slate-400">Active tracking</span>
+            </div>
+            <span class="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </span>
+        </a>
+
+        {{-- Status 3: Achieved --}}
+        <a href="{{ request()->fullUrlWithQuery(['progress_status' => 'Achieved']) }}"
+           class="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs hover:border-emerald-300 transition flex items-center justify-between {{ request('progress_status') === 'Achieved' ? 'ring-2 ring-emerald-500 bg-emerald-50/30' : '' }}">
+            <div>
+                <span class="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Targets Achieved</span>
+                <p class="text-xl font-bold text-emerald-700 mt-0.5">{{ $achievedCount }}</p>
+                <span class="text-[10px] text-slate-400">100%+ goal met</span>
+            </div>
+            <span class="p-2 rounded-lg bg-emerald-50 text-emerald-600">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </span>
+        </a>
+
+        {{-- Status 4: Period Expired --}}
+        <a href="{{ request()->fullUrlWithQuery(['progress_status' => 'Period Expired']) }}"
+           class="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs hover:border-rose-300 transition flex items-center justify-between {{ request('progress_status') === 'Period Expired' ? 'ring-2 ring-rose-500 bg-rose-50/30' : '' }}">
+            <div>
+                <span class="text-[11px] font-semibold text-rose-600 uppercase tracking-wider">Targets Period Expired</span>
+                <p class="text-xl font-bold text-rose-700 mt-0.5">{{ $periodExpiredCount }}</p>
+                <span class="text-[10px] text-slate-400">Unachieved past end date</span>
+            </div>
+            <span class="p-2 rounded-lg bg-rose-50 text-rose-600">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            </span>
+        </a>
+    </div>
     </div>
 
     {{-- Middle Section: Monthly Sales Trend & Salesman Leaderboard --}}
@@ -325,6 +414,150 @@
                     </div>
                 @endforelse
             </div>
+        </div>
+    </div>
+
+    {{-- Dedicated Party-Wise Targets Performance Section --}}
+    <div class="rounded-xl border border-slate-200/80 bg-white p-5 shadow-xs">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+                <div class="flex items-center gap-2">
+                    <h2 class="text-base font-bold text-slate-900 tracking-tight">Party-Wise Sales Targets</h2>
+                    <span class="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-600/20">
+                        {{ $partyTargets->count() }} {{ \Illuminate\Support\Str::plural('Party', $partyTargets->count()) }} Assigned
+                    </span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">Live party sales achievement tracked automatically from sales invoices and credit notes.</p>
+            </div>
+            <a href="{{ route('sales-targets.create', ['owner_type' => 'party']) }}"
+               class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3.5 py-1.5 text-xs font-semibold transition">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                Assign Party Target
+            </a>
+        </div>
+
+        <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="min-w-full divide-y divide-slate-200 text-xs text-left">
+                <thead class="bg-slate-50 text-slate-700 font-semibold uppercase tracking-wider">
+                    <tr>
+                        <th class="px-4 py-3">Party Name</th>
+                        <th class="px-4 py-3 text-right">Target Amount (₹)</th>
+                        <th class="px-4 py-3 text-center">Start Date</th>
+                        <th class="px-4 py-3 text-center">End Date</th>
+                        <th class="px-4 py-3 text-right">Actual Sales (₹)</th>
+                        <th class="px-4 py-3 text-right">Shortfall (₹)</th>
+                        <th class="px-4 py-3 text-center">Achievement %</th>
+                        <th class="px-4 py-3 text-center">Remaining Days</th>
+                        <th class="px-4 py-3 text-center">Target Status</th>
+                        <th class="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-slate-700">
+                    @forelse($partyTargets as $pt)
+                        @php
+                            $pAch = $pt->achievement;
+                            $targetAmt = (float) $pt->target_amount;
+                            $achAmt = $pAch ? (float) $pAch->achieved_amount : 0.0;
+                            $shortfall = $pAch ? (float) $pAch->pending_amount : max(0, $targetAmt - $achAmt);
+                            $pct = $pAch ? (float) $pAch->achievement_percent : ($targetAmt > 0 ? round(($achAmt / $targetAmt) * 100, 1) : 0);
+                        @endphp
+                        <tr class="hover:bg-slate-50/80 transition-colors">
+                            <td class="px-4 py-3">
+                                <div class="font-bold text-slate-900">{{ $pt->customer?->name ?? $pt->owner_name }}</div>
+                                <div class="text-[11px] text-slate-400">
+                                    {{ $pt->customer?->code ? 'Code: ' . $pt->customer->code . ' • ' : '' }}
+                                    <span class="font-medium text-slate-500">{{ $pt->name }}</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-right font-semibold text-slate-900">
+                                ₹ {{ number_format($targetAmt, 2) }}
+                            </td>
+                            <td class="px-4 py-3 text-center text-slate-600">
+                                {{ $pt->starts_on->format('d M Y') }}
+                            </td>
+                            <td class="px-4 py-3 text-center text-slate-600">
+                                {{ $pt->ends_on->format('d M Y') }}
+                            </td>
+                            <td class="px-4 py-3 text-right font-bold {{ $pct >= 100 ? 'text-emerald-700' : 'text-slate-900' }}">
+                                ₹ {{ number_format($achAmt, 2) }}
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                @if($pt->progress_status === 'Period Expired' && $shortfall > 0)
+                                    <div class="font-bold text-rose-600">₹ {{ number_format($shortfall, 2) }}</div>
+                                    <div class="text-[10px] text-rose-500 font-semibold uppercase tracking-wider">Unachieved</div>
+                                @elseif($shortfall > 0)
+                                    <span class="font-semibold text-rose-600">₹ {{ number_format($shortfall, 2) }}</span>
+                                @else
+                                    <span class="font-semibold text-emerald-600">₹ 0.00</span>
+                                @endif
+                            </td>
+                            <td class="px-4 py-3 text-center w-28">
+                                <span class="text-xs font-bold {{ $pct >= 100 ? 'text-emerald-700' : ($pct >= 75 ? 'text-indigo-600' : 'text-amber-600') }}">
+                                    {{ $pct }}%
+                                </span>
+                                <div class="w-full bg-slate-100 rounded-full h-1.5 mt-1 overflow-hidden">
+                                    <div class="h-1.5 rounded-full {{ $pct >= 100 ? 'bg-emerald-500' : ($pct >= 60 ? 'bg-indigo-500' : 'bg-amber-500') }}"
+                                         style="width: {{ min(100, $pct) }}%"></div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 text-center whitespace-nowrap">
+                                @php
+                                    $remLabel = $pt->remaining_days_label;
+                                @endphp
+                                @if($pt->progress_status === 'Achieved')
+                                    <span class="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                        <svg class="w-3 h-3 text-emerald-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                        {{ $remLabel }}
+                                    </span>
+                                @elseif($pt->progress_status === 'Period Expired')
+                                    <span class="inline-flex items-center rounded-md bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                        {{ $remLabel }}
+                                    </span>
+                                @elseif($pt->progress_status === 'Not Started')
+                                    <span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                        {{ $remLabel }}
+                                    </span>
+                                @else
+                                    <span class="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                                        {{ $remLabel }}
+                                    </span>
+                                @endif
+                            </td>
+                            <td class="px-4 py-3 text-center whitespace-nowrap">
+                                @if($pt->progress_status === 'Achieved')
+                                    <span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">Achieved</span>
+                                @elseif($pt->progress_status === 'Period Expired')
+                                    <span class="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 ring-1 ring-inset ring-rose-600/20">Period Expired</span>
+                                @elseif($pt->progress_status === 'Not Started')
+                                    <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 ring-1 ring-inset ring-slate-400/20">Not Started</span>
+                                @else
+                                    <span class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">In Progress</span>
+                                @endif
+                            </td>
+                            <td class="px-4 py-3 text-right">
+                                <div class="inline-flex items-center gap-1.5">
+                                    <a href="{{ route('sales-targets.show', $pt) }}"
+                                       class="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition"
+                                       title="View Details">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                    </a>
+                                    <a href="{{ route('sales-targets.edit', $pt) }}"
+                                       class="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition"
+                                       title="Edit Target">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="9" class="py-10 text-center text-xs text-slate-400">
+                                No party-wise sales targets assigned under the current filter selection.
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
         </div>
     </div>
 

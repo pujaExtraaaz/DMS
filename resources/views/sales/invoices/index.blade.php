@@ -27,6 +27,32 @@
                 </select>
 
                 <select
+                    name="einvoice_status"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">E-Invoice: All</option>
+                    <option value="not_applicable" @selected(request('einvoice_status') === 'not_applicable')>E-Inv: N/A</option>
+                    <option value="pending" @selected(request('einvoice_status') === 'pending')>E-Inv: Pending</option>
+                    <option value="generated" @selected(request('einvoice_status') === 'generated')>E-Inv: Active</option>
+                    <option value="cancelled" @selected(request('einvoice_status') === 'cancelled')>E-Inv: Cancelled</option>
+                    <option value="failed" @selected(request('einvoice_status') === 'failed')>E-Inv: Failed</option>
+                </select>
+
+                <select
+                    name="eway_bill_status"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">E-Way Bill: All</option>
+                    <option value="not_applicable" @selected(request('eway_bill_status') === 'not_applicable')>EWB: N/A</option>
+                    <option value="pending" @selected(request('eway_bill_status') === 'pending')>EWB: Pending</option>
+                    <option value="generated" @selected(request('eway_bill_status') === 'generated')>EWB: Active</option>
+                    <option value="cancelled" @selected(request('eway_bill_status') === 'cancelled')>EWB: Cancelled</option>
+                    <option value="failed" @selected(request('eway_bill_status') === 'failed')>EWB: Failed</option>
+                </select>
+
+                <select
                     name="customer_id"
                     data-dynamic-filter
                     class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
@@ -34,6 +60,18 @@
                     <option value="">Customer: All</option>
                     @foreach($customers as $c)
                         <option value="{{ $c->id }}" @selected(request('customer_id') == $c->id)>{{ $c->name }}</option>
+                    @endforeach
+                </select>
+
+                <select
+                    name="salesperson_id"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">Salesperson: All</option>
+                    <option value="unassigned" @selected(request('salesperson_id') === 'unassigned')>Unassigned</option>
+                    @foreach($salespersons as $sp)
+                        <option value="{{ $sp->id }}" @selected(request('salesperson_id') == $sp->id)>{{ $sp->name }}</option>
                     @endforeach
                 </select>
 
@@ -99,12 +137,16 @@
                     <x-ui.sortable-th column="customer" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')">
                         Customer
                     </x-ui.sortable-th>
+                    <x-ui.sortable-th column="salesperson" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')">
+                        Salesperson
+                    </x-ui.sortable-th>
                     <x-ui.sortable-th column="invoice_date" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc">
                         Date
                     </x-ui.sortable-th>
                     <x-ui.sortable-th column="status" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')">
                         Status
                     </x-ui.sortable-th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">Compliance</th>
                     <x-ui.sortable-th column="grand_total" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc" align="right">
                         Total
                     </x-ui.sortable-th>
@@ -120,9 +162,61 @@
                         @endif
                     </td>
                     <td class="px-6 py-4 text-sm font-medium text-slate-900">{{ $invoice->customer?->name }}</td>
+                    <td class="px-6 py-4 text-sm text-slate-600">{{ $invoice->salesperson?->name ?? '—' }}</td>
                     <td class="px-6 py-4 text-sm text-slate-600">{{ $invoice->invoice_date?->format('d M Y') }}</td>
                     <td class="px-6 py-4 text-sm">
                         <x-ui.badge variant="info">{{ ucfirst($invoice->status) }}</x-ui.badge>
+                    </td>
+                    <td class="px-6 py-4 text-xs whitespace-nowrap">
+                        <div class="flex flex-col gap-1 items-start">
+                            {{-- E-Invoice badge --}}
+                            @if($invoice->einvoice_status === 'generated')
+                                <a href="{{ route('invoices.e-invoice.document', $invoice) }}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100" title="IRN: {{ $invoice->eInvoice?->irn }}">
+                                    <svg class="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                    IRN Active
+                                </a>
+                            @elseif($invoice->einvoice_status === 'pending')
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200" title="IRN Pending">
+                                    IRN Pending
+                                </span>
+                            @elseif($invoice->einvoice_status === 'cancelled')
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200" title="IRN Cancelled">
+                                    IRN Cancelled
+                                </span>
+                            @elseif($invoice->einvoice_status === 'failed')
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 border border-red-200" title="IRN Generation Failed">
+                                    IRN Failed
+                                </span>
+                            @else
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200" title="B2C or Non-Tax Invoice">
+                                    IRN N/A
+                                </span>
+                            @endif
+
+                            {{-- E-Way Bill badge --}}
+                            @if($invoice->eway_bill_status === 'generated')
+                                <a href="{{ route('invoices.e-way-bill', $invoice) }}" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100" title="E-Way Bill: {{ $invoice->eWayBill?->eway_bill_no }}">
+                                    <svg class="w-3 h-3 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"/></svg>
+                                    EWB Active
+                                </a>
+                            @elseif($invoice->eway_bill_status === 'pending')
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200" title="EWB Pending">
+                                    EWB Pending
+                                </span>
+                            @elseif($invoice->eway_bill_status === 'cancelled')
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200" title="EWB Cancelled">
+                                    EWB Cancelled
+                                </span>
+                            @elseif($invoice->eway_bill_status === 'failed')
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-700 border border-red-200" title="EWB Failed">
+                                    EWB Failed
+                                </span>
+                            @else
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200">
+                                    EWB N/A
+                                </span>
+                            @endif
+                        </div>
                     </td>
                     <td class="px-6 py-4 text-sm text-right font-medium text-slate-900">₹{{ number_format($invoice->grand_total, 2) }}</td>
                     <td class="px-6 py-4 text-right whitespace-nowrap space-x-1">
@@ -132,7 +226,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="6" class="p-0">
+                    <td colspan="7" class="p-0">
                         <x-ui.empty-state
                             title="No invoices found"
                             description="Try clearing search or filters to see more results."

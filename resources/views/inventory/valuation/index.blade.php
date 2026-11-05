@@ -3,10 +3,11 @@
 @section('content')
 <x-ui.page-header title="FIFO / LIFO Valuation" description="Configure costing method and view inventory value from cost layers" />
 
-<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
     <x-ui.stat-card label="Method" value="{{ strtoupper($valuation['method']) }}" accent="indigo" />
     <x-ui.stat-card label="At Cost" value="₹{{ number_format($valuation['at_cost'], 2) }}" accent="blue" />
     <x-ui.stat-card label="At Landed" value="₹{{ number_format($valuation['at_landed'], 2) }}" accent="emerald" />
+    <x-ui.stat-card label="At Market" value="₹{{ number_format($valuation['at_market'] ?? 0, 2) }}" accent="amber" />
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

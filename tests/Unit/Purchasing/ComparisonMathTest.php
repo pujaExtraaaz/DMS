@@ -59,4 +59,43 @@ class ComparisonMathTest extends TestCase
     {
         $this->assertNull((new ComparisonMath())->measure(['is_quoted' => false, 'basic_rate' => 10, 'quoted_quantity' => 1]));
     }
+
+    public function test_inclusive_gst_is_normalized_before_landed_cost(): void
+    {
+        $math = (new ComparisonMath())->measure([
+            'is_quoted' => true,
+            'quoted_quantity' => 1,
+            'basic_rate' => 118,
+            'tax_basis' => 'inclusive',
+            'discount_type' => 'percent',
+            'discount_value' => 0,
+            'gst_rate' => 18,
+            'freight_type' => 'free',
+        ]);
+
+        $this->assertSame(100.0, $math['exclusive_basic']);
+        $this->assertSame(100.0, $math['net_rate']);
+        $this->assertSame(100.0, $math['taxable_value']);
+        $this->assertSame(18.0, $math['gst_amount']);
+        $this->assertSame(118.0, $math['landed']);
+    }
+
+    public function test_vendor_bank_interest_adds_financing_cost(): void
+    {
+        $math = (new ComparisonMath())->measure([
+            'is_quoted' => true,
+            'quoted_quantity' => 1,
+            'basic_rate' => 1000,
+            'discount_type' => 'percent',
+            'discount_value' => 0,
+            'gst_rate' => 0,
+            'freight_type' => 'free',
+        ], [
+            'bank_interest_percent' => 12,
+            'bank_interest_days' => 365,
+        ]);
+
+        $this->assertSame(120.0, $math['financing_cost']);
+        $this->assertSame(1120.0, $math['landed']);
+    }
 }

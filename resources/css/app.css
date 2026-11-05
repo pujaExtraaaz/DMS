@@ -62,6 +62,8 @@
     .dms-sidebar nav {
         scrollbar-width: thin;
         scrollbar-color: #334155 transparent;
+        scrollbar-gutter: stable;
+        overflow-x: hidden !important;
     }
 
     .dms-sidebar nav::-webkit-scrollbar {
@@ -71,6 +73,65 @@
     .dms-sidebar nav::-webkit-scrollbar-thumb {
         background-color: #334155;
         border-radius: 9999px;
+    }
+
+    /* Collapsed Sidebar Rail Styles: 80px (within requested 76-88px range) */
+    .dms-sidebar.books-rail-collapsed,
+    .dms-sidebar[data-collapsed="true"] {
+        width: 5rem !important; /* 80px */
+        min-width: 5rem !important;
+        max-width: 5rem !important;
+    }
+
+    @media (min-width: 1024px) {
+        .dms-sidebar.books-rail-collapsed,
+        .dms-sidebar[data-collapsed="true"] {
+            width: 5rem !important;
+            min-width: 5rem !important;
+            max-width: 5rem !important;
+        }
+        .dms-sidebar.books-rail-open,
+        .dms-sidebar[data-collapsed="false"] {
+            width: 16rem !important;
+            min-width: 16rem !important;
+            max-width: 16rem !important;
+        }
+    }
+
+    /* Force-hide any expanded text, submenus, numbering, and drag handles when sidebar is collapsed */
+    .dms-sidebar.books-rail-collapsed [x-show*="!$root.sidebarCollapsed"],
+    .dms-sidebar.books-rail-collapsed [x-show*="!sidebarCollapsed"],
+    .dms-sidebar[data-collapsed="true"] [x-show*="!$root.sidebarCollapsed"],
+    .dms-sidebar[data-collapsed="true"] [x-show*="!sidebarCollapsed"],
+    .dms-sidebar.books-rail-collapsed .sidebar-expanded-text,
+    .dms-sidebar[data-collapsed="true"] .sidebar-expanded-text {
+        display: none !important;
+    }
+
+    /* Ensure collapsed icon containers are cleanly displayed and centered */
+    .dms-sidebar.books-rail-collapsed [x-show="$root.sidebarCollapsed"],
+    .dms-sidebar.books-rail-collapsed [x-show="sidebarCollapsed"],
+    .dms-sidebar[data-collapsed="true"] [x-show="$root.sidebarCollapsed"],
+    .dms-sidebar[data-collapsed="true"] [x-show="sidebarCollapsed"] {
+        display: flex !important;
+        justify-content: center !important;
+        width: 100% !important;
+    }
+
+    /* When expanded, ensure collapsed icon links are hidden */
+    .dms-sidebar.books-rail-open [x-show="$root.sidebarCollapsed"],
+    .dms-sidebar.books-rail-open [x-show="sidebarCollapsed"],
+    .dms-sidebar[data-collapsed="false"] [x-show="$root.sidebarCollapsed"],
+    .dms-sidebar[data-collapsed="false"] [x-show="sidebarCollapsed"] {
+        display: none !important;
+    }
+
+    /* In collapsed mode, ensure section items stay centered */
+    .dms-sidebar.books-rail-collapsed .sidebar-section-item,
+    .dms-sidebar[data-collapsed="true"] .sidebar-section-item {
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
     }
     
 }

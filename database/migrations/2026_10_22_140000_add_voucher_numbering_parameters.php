@@ -75,6 +75,10 @@ return new class extends Migration
      */
     private function replaceSequenceUnique(array $columns): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return;
+        }
+
         $current = collect(DB::select("SHOW INDEX FROM acct_voucher_sequences WHERE Key_name = 'voucher_sequences_scope_unique'"))
             ->sortBy('Seq_in_index')
             ->pluck('Column_name')

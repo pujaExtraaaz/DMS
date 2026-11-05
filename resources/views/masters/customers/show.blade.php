@@ -135,6 +135,80 @@
                     </dd>
                 </div>
                 <div>
+                    <dt class="text-xs font-semibold text-slate-500 tracking-wider">Date of Opening</dt>
+                    <dd class="mt-0.5 font-medium text-slate-900">{{ $customer->opened_on?->format('d M Y') ?: '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-slate-500 tracking-wider">Reference By</dt>
+                    <dd class="mt-0.5 font-medium text-slate-900">{{ $customer->reference_by ?: '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-slate-500 tracking-wider">Udyam Number</dt>
+                    <dd class="mt-0.5 font-medium text-slate-900">{{ $customer->udyam_number ?: '—' }}</dd>
+                </div>
+                <div class="sm:col-span-2">
+                    <dt class="text-xs font-semibold text-slate-500 tracking-wider">GEM Authorization Details</dt>
+                    <dd class="mt-2 space-y-3">
+                        @forelse($customer->gemAuthorizations as $authorization)
+                            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <p class="text-sm font-semibold text-slate-900">{{ $authorization->brand?->name ?: 'OEM' }}</p>
+                                <dl class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                    <div>
+                                        <dt class="text-slate-500">Product registered on GEM</dt>
+                                        <dd class="font-medium text-slate-800">{{ $authorization->gem_registered ? 'Yes' : 'No' }}</dd>
+                                    </div>
+                                    @if($authorization->gem_registered)
+                                        <div>
+                                            <dt class="text-slate-500">Party authorized on GEM</dt>
+                                            <dd class="font-medium text-slate-800">{{ $authorization->gem_authorized ? 'Yes' : 'No' }}</dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-slate-500">GEM Authorization Number</dt>
+                                            <dd class="font-medium text-slate-800">{{ $authorization->authorization_number ?: '—' }}</dd>
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <dt class="text-slate-500">GEM Star Rating Photo/Document</dt>
+                                            <dd class="mt-1 space-y-1">
+                                                @forelse($authorization->documents as $document)
+                                                    <div class="flex flex-wrap items-center gap-3">
+                                                        <span class="font-medium text-slate-800">{{ $document->original_name }}</span>
+                                                        <a href="{{ route('masters.customers.gem-documents.show', [$customer, $document]) }}" target="_blank" rel="noopener" class="text-indigo-700 hover:underline">View</a>
+                                                        <a href="{{ route('masters.customers.gem-documents.show', [$customer, $document]) }}?download=1" class="text-indigo-700 hover:underline">Download</a>
+                                                    </div>
+                                                @empty
+                                                    <span>—</span>
+                                                @endforelse
+                                            </dd>
+                                        </div>
+                                    @endif
+                                </dl>
+                            </div>
+                        @empty
+                            <span class="text-sm font-medium text-slate-900">—</span>
+                        @endforelse
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-slate-500 tracking-wider">Website</dt>
+                    <dd class="mt-0.5 font-medium text-slate-900 truncate">
+                        @if($customer->website)
+                            <a href="{{ $customer->website }}" target="_blank" rel="noopener" class="text-indigo-600 hover:underline">{{ $customer->website }}</a>
+                        @else
+                            —
+                        @endif
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-xs font-semibold text-slate-500 tracking-wider">Location Link</dt>
+                    <dd class="mt-0.5 font-medium text-slate-900 truncate">
+                        @if($customer->location_link)
+                            <a href="{{ $customer->location_link }}" target="_blank" rel="noopener" class="text-indigo-600 hover:underline">{{ $customer->location_link }}</a>
+                        @else
+                            —
+                        @endif
+                    </dd>
+                </div>
+                <div>
                     <dt class="text-xs font-semibold text-slate-500 tracking-wider">Contact Person</dt>
                     <dd class="mt-0.5 font-medium text-slate-900">
                         {{ $customer->defaultAddress()?->contact_person ?: ($customer->contacts->first()?->name ?: '—') }}
@@ -219,7 +293,7 @@
                 <div>
                     <dt class="text-xs font-semibold text-slate-500 tracking-wider">Credit Period Basis</dt>
                     <dd class="mt-0.5 font-medium text-slate-900">
-                        {{ $customer->credit_period_basis ? ucfirst(str_replace('_', ' ', $customer->credit_period_basis)) : '—' }}
+                        {{ $customer->creditPeriodBasisLabel() }}
                     </dd>
                 </div>
                 <div>
@@ -231,13 +305,16 @@
                 <div>
                     <dt class="text-xs font-semibold text-slate-500 tracking-wider">Credit Status</dt>
                     <dd class="mt-0.5 font-medium text-slate-900">
-                        @if($customer->credit_status)
-                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ $customer->credit_status === 'frozen' ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-800' }}">
-                                {{ ucfirst($customer->credit_status) }}
-                            </span>
-                        @else
-                            —
-                        @endif
+                        @php
+                            $creditTone = match ($customer->credit_status) {
+                                'hold' => 'bg-amber-100 text-amber-800',
+                                'blocked', 'frozen', 'restricted' => 'bg-red-100 text-red-800',
+                                default => 'bg-emerald-100 text-emerald-800',
+                            };
+                        @endphp
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ $creditTone }}">
+                            {{ $customer->creditStatusLabel() }}
+                        </span>
                     </dd>
                 </div>
                 <div>

@@ -17,13 +17,13 @@ if (!File.Exists(configPath))
 
 var config = JsonSerializer.Deserialize<ConnectorConfig>(File.ReadAllText(configPath))
     ?? throw new InvalidOperationException("config.json is empty.");
-config.PollSeconds = Math.Clamp(config.PollSeconds <= 0 ? 8 : config.PollSeconds, 5, 10);
+config.PollSeconds = Math.Clamp(config.PollSeconds <= 0 ? 8 : config.PollSeconds, 5, 15);
 config.DmsUrl = config.DmsUrl.TrimEnd('/');
 config.TallyUrl = config.TallyUrl.TrimEnd('/');
 
-using var dms = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+using var dms = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
 dms.DefaultRequestHeaders.Add("X-Tally-Connector-Token", config.ConnectorToken);
-using var tally = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+using var tally = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
 try
 {
     Directory.CreateDirectory(Path.Combine(exeDir, "logs"));
@@ -62,7 +62,8 @@ static async Task PollAsync(ConnectorConfig config, HttpClient dms, HttpClient t
         return;
     }
 
-    var pending = await dms.GetFromJsonAsync<PendingResponse>($"{config.DmsUrl}/api/tally-connector/pending?limit=20");
+    // artisan serve can prepend PHP Notice HTML when stdout logging fails (disk full).
+    var pending = await GetJsonAsync<PendingResponse>(dms, $"{config.DmsUrl}/api/tally-connector/pending?limit=20");
     var sent = 0;
     var failed = 0;
     foreach (var item in pending?.Items ?? [])
@@ -74,7 +75,7 @@ static async Task PollAsync(ConnectorConfig config, HttpClient dms, HttpClient t
         await dms.PostAsync($"{config.DmsUrl}/api/tally-connector/{item.Id}/result", new StringContent(body, Encoding.UTF8, "application/json"));
     }
 
-    var exports = await dms.GetFromJsonAsync<ExportResponse>($"{config.DmsUrl}/api/tally-connector/exports");
+    var exports = await GetJsonAsync<ExportResponse>(dms, $"{config.DmsUrl}/api/tally-connector/exports");
     var imported = 0;
     foreach (var item in exports?.Items ?? [])
     {
@@ -85,9 +86,17 @@ static async Task PollAsync(ConnectorConfig config, HttpClient dms, HttpClient t
             continue;
         }
 
+        // ~80MB raw XML becomes larger as JSON; PHP used to reject ~40MB POSTs and drop the body.
+        const int maxImportChars = 80_000_000;
+        if (response.Length > maxImportChars)
+        {
+            Log($"Tally export {item.Key} skipped: payload {response.Length / 1_000_000}MB exceeds safe import size. Shrink the AlterID window.");
+            continue;
+        }
+
         var body = JsonSerializer.Serialize(new ImportBody(item.Key ?? "", response));
         var import = await dms.PostAsync($"{config.DmsUrl}/api/tally-connector/imports", new StringContent(body, Encoding.UTF8, "application/json"));
-        var importText = await import.Content.ReadAsStringAsync();
+        var importText = ExtractJson(await import.Content.ReadAsStringAsync());
         if (!import.IsSuccessStatusCode)
         {
             Log($"DMS import {item.Key} {(int)import.StatusCode}: {Trim(importText, 300)}");
@@ -113,7 +122,7 @@ static async Task PollAsync(ConnectorConfig config, HttpClient dms, HttpClient t
 
     Log(imported == 0
         ? $"Poll sent {sent}, failed {failed}. No Tally changes."
-        : $"Poll sent {sent}, failed {failed}. Checked {imported} lists.");
+        : $"Poll sent {sent}, failed {failed}, imports {imported}.");
 }
 
 static async Task<string> PostTallyAsync(HttpClient tally, string url, string xml)
@@ -143,6 +152,27 @@ static int Tag(string xml, string name)
 }
 
 static string Trim(string value, int max) => value.Length <= max ? value : value[..max];
+
+/// <summary>
+/// Strip PHP notice/warning HTML that artisan serve may prepend when stdout logging fails.
+/// </summary>
+static string ExtractJson(string text)
+{
+    if (string.IsNullOrWhiteSpace(text)) return text;
+    var t = text.TrimStart();
+    if (t.StartsWith('{') || t.StartsWith('[')) return t;
+
+    var obj = t.IndexOf('{');
+    var arr = t.IndexOf('[');
+    var start = obj < 0 ? arr : arr < 0 ? obj : Math.Min(obj, arr);
+    return start < 0 ? t : t[start..];
+}
+
+static async Task<T?> GetJsonAsync<T>(HttpClient client, string url)
+{
+    var text = ExtractJson(await client.GetStringAsync(url));
+    return JsonSerializer.Deserialize<T>(text);
+}
 
 static void Log(string message)
 {

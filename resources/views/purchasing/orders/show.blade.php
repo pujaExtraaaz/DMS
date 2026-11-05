@@ -51,7 +51,7 @@
 <x-ui.card>
 <div class="overflow-x-auto"><table class="min-w-full text-sm">
 <thead class="bg-slate-50"><tr>
-<th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">Batch Name</th><th class="px-3 py-2 text-left">UOM</th><th class="px-3 py-2 text-right">Ordered</th><th class="px-3 py-2 text-right">Received</th><th class="px-3 py-2 text-right">Unit Cost</th><th class="px-3 py-2 text-right">Line Total</th>
+<th class="px-3 py-2 text-left">Product</th><th class="px-3 py-2 text-left">Batch Name</th><th class="px-3 py-2 text-left">UOM</th><th class="px-3 py-2 text-right">Ordered</th><th class="px-3 py-2 text-right">Received</th><th class="px-3 py-2 text-right">MRP</th><th class="px-3 py-2 text-right">Purchase Price Incl. GST</th><th class="px-3 py-2 text-right">Disc. %</th><th class="px-3 py-2 text-right">Unit Cost</th><th class="px-3 py-2 text-right">Line Total</th>
 </tr></thead>
 <tbody class="divide-y">
 @foreach($order->items as $item)
@@ -61,6 +61,9 @@
 <td class="px-3 py-2">{{ $item->uom?->code }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->quantity, 2) }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->received_qty, 2) }}</td>
+<td class="px-3 py-2 text-right">{{ $item->mrp !== null ? '₹'.number_format((float) $item->mrp, 2) : '—' }}</td>
+<td class="px-3 py-2 text-right">{{ $item->purchase_price_inclusive !== null ? '₹'.number_format((float) $item->purchase_price_inclusive, 2) : '—' }}</td>
+<td class="px-3 py-2 text-right">{{ $item->purchase_discount_percent !== null ? number_format((float) $item->purchase_discount_percent, 2).'%' : '—' }}</td>
 <td class="px-3 py-2 text-right">₹{{ number_format($item->unit_cost, 2) }}</td>
 <td class="px-3 py-2 text-right">₹{{ number_format($item->line_total, 2) }}</td>
 </tr>

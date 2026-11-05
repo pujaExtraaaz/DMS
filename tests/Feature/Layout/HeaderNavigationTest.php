@@ -62,11 +62,11 @@ class HeaderNavigationTest extends TestCase
 
         $this->assertStringNotContainsString('OD Limit &amp; Interest', $sidebarContent);
         $sidebarText = strip_tags($sidebarContent);
-        $this->assertStringContainsString('8 · Commercials', $sidebarText);
-        $this->assertStringContainsString('9 · Sales Target Management', $sidebarText);
-        $this->assertStringContainsString('10 · HR · CRM', $sidebarText);
-        $this->assertStringContainsString('11 · Accounting (Books)', $sidebarText);
-        $this->assertStringContainsString('12 · Reports', $sidebarText);
+        $this->assertStringContainsString('Commercials', $sidebarText);
+        $this->assertStringContainsString('Sales Target Management', $sidebarText);
+        $this->assertStringContainsString('HR · CRM', $sidebarText);
+        $this->assertStringContainsString('Accounting (Books)', $sidebarText);
+        $this->assertStringContainsString('Reports', $sidebarText);
         // Dual Books aside is not shown outside the Accounting workspace
         $this->assertStringNotContainsString('books-aside', $content);
         $this->assertStringNotContainsString('books-aq-nav', $sidebarContent);
@@ -75,17 +75,17 @@ class HeaderNavigationTest extends TestCase
         $this->assertStringNotContainsString('Create Unit', $sidebarContent);
         $this->assertStringNotContainsString('Create Godown', $sidebarContent);
 
-        $posReports = strpos($sidebarText, '12 · Reports');
+        $posReports = strpos($sidebarText, 'Reports');
         $posProfile = strpos($sidebarText, $user->name);
         $posUsers = strpos($sidebarText, 'Users &amp; Roles');
         $posLogout = strpos($sidebarText, 'Log Out');
 
-        $this->assertNotFalse($posReports, 'Sidebar must contain 12 · Reports');
+        $this->assertNotFalse($posReports, 'Sidebar must contain Reports');
         $this->assertNotFalse($posProfile, 'Sidebar must contain user profile');
         $this->assertNotFalse($posUsers, 'Sidebar must contain Users & Roles');
         $this->assertNotFalse($posLogout, 'Sidebar must contain Log Out');
 
-        $this->assertTrue($posReports < $posProfile, '12 · Reports must appear before user profile in sidebar');
+        $this->assertTrue($posReports < $posProfile, 'Reports must appear before user profile in sidebar');
         $this->assertTrue($posProfile < $posUsers, 'User profile must appear before Users & Roles in sidebar');
         $this->assertTrue($posUsers < $posLogout, 'Users & Roles must appear before Log Out in sidebar');
 

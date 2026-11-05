@@ -42,6 +42,7 @@ class PurchaseOrder extends Model
         'approved_at',
         'billing_address_id',
         'shipping_address_id',
+        'company_delivery_address_id',
         'billing_address',
         'shipping_address',
     ];
@@ -144,6 +145,11 @@ class PurchaseOrder extends Model
     public function shippingAddress(): BelongsTo
     {
         return $this->belongsTo(\App\Domains\Master\Models\PartyAddress::class, 'shipping_address_id');
+    }
+
+    public function companyDeliveryAddress(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Organization\Models\CompanyDeliveryAddress::class, 'company_delivery_address_id');
     }
 
     public function isEditable(): bool

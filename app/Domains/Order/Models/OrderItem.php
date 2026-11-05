@@ -19,6 +19,7 @@ class OrderItem extends Model
         'back_order_qty',
         'unit_price',
         'line_total',
+        'serial_numbers',
     ];
 
     protected function casts(): array
@@ -30,6 +31,7 @@ class OrderItem extends Model
             'back_order_qty' => 'decimal:4',
             'unit_price' => 'decimal:2',
             'line_total' => 'decimal:2',
+            'serial_numbers' => 'array',
         ];
     }
 

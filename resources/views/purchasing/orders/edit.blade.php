@@ -11,18 +11,35 @@
     <form method="POST" action="{{ route('purchasing.orders.update', $order) }}" class="space-y-4">
         @csrf
         @method('PUT')
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div>
+            <div class="flex items-center justify-between mb-1">
+                <label class="block text-sm font-medium text-slate-700">Voucher No.</label>
+                <a href="{{ route('organization.document-number-series.index') }}"
+                   class="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                   title="Configure voucher numbering">
+                    Configure
+                </a>
+            </div>
+            <input type="text"
+                   value="{{ $order->po_no }}"
+                   readonly
+                   class="block w-full rounded-lg border-gray-200 bg-slate-50 text-sm font-mono text-slate-700">
+        </div>
         <div>
             <div class="flex items-center justify-between mb-1">
                 <label class="block text-sm font-medium text-slate-700">Supplier *</label>
-                <button type="button" @click="$dispatch('open-quick-add-supplier')"
-                        class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                <a href="{{ route('masters.customers.create', [
+                        'party_type' => \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+                        'return_url' => route('purchasing.orders.edit', $order),
+                    ]) }}"
+                   class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
                     + Add Supplier
-                </button>
+                </a>
             </div>
             @include('purchasing.orders.partials.supplier-search', [
                 'suppliers' => $suppliers,
-                'selected' => old('supplier_id', $order->supplier_id),
+                'selected' => old('supplier_id', request('supplier_id', $order->supplier_id)),
             ])
         </div>
         <div>
@@ -37,8 +54,34 @@
                 @endforeach
             </select>
         </div>
-        <x-ui.input name="po_date" id="po_date" label="PO Date" type="date" :value="old('po_date', $order->po_date?->toDateString())" required onchange="recalcPoDueDate()" oninput="recalcPoDueDate()" />
-        <x-ui.input name="expected_date" label="Expected Date" type="date" :value="old('expected_date', $order->expected_date?->toDateString())" />
+        <x-ui.input name="po_date" id="po_date" label="PO Date" type="date" :value="old('po_date', $order->po_date?->toDateString())" required onchange="recalcPoDueDate(); updateExpectedQuickHighlight()" oninput="recalcPoDueDate(); updateExpectedQuickHighlight()" />
+        <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Expected Date</label>
+            <input type="date" name="expected_date" id="po_expected_date"
+                   value="{{ old('expected_date', $order->expected_date?->toDateString()) }}"
+                   onchange="updateExpectedQuickHighlight()"
+                   oninput="updateExpectedQuickHighlight()"
+                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+            <div class="flex flex-wrap items-center gap-1.5 mt-2">
+                <span class="text-[11px] font-medium text-slate-400">Quick:</span>
+                <button type="button" onclick="setPoExpectedDate(0)" id="expected_quick_0"
+                        class="px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300">
+                    Today
+                </button>
+                <button type="button" onclick="setPoExpectedDate(7)" id="expected_quick_7"
+                        class="px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300">
+                    +7 Days
+                </button>
+                <button type="button" onclick="setPoExpectedDate(15)" id="expected_quick_15"
+                        class="px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300">
+                    +15 Days
+                </button>
+                <button type="button" onclick="setPoExpectedDate(30)" id="expected_quick_30"
+                        class="px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300">
+                    +30 Days
+                </button>
+            </div>
+        </div>
 
         <div>
             <div class="flex items-center justify-between mb-1">
@@ -85,43 +128,12 @@
         $currentShippingValue = old('shipping_address', $resolvedConsignee['delivery_address'] !== 'Address not provided' ? $resolvedConsignee['delivery_address'] : ($order->shipping_address ?: ''));
     @endphp
 
-    <!-- Billing & Delivery Addresses -->
-    <div id="supplier-addresses-card" class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
-        <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-            <span class="text-xs font-bold uppercase tracking-wider text-slate-700">Billing &amp; Delivery Addresses</span>
-            <span id="address-status-text" class="text-xs text-slate-500"></span>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Billing Address Card (Supplier) -->
-            <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
-                <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Billing Address (Supplier / Vendor)</label>
-                    <span class="text-[11px] text-indigo-600 font-medium">Billed from</span>
-                </div>
-                <select name="billing_address_id" id="billing_address_id" onchange="handleBillingChange()"
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">Default Address</option>
-                </select>
-                <textarea name="billing_address" id="billing_address" rows="3"
-                          placeholder="Supplier Billing Address Snapshot"
-                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ old('billing_address', $order->billing_address) }}</textarea>
-            </div>
-
-            <!-- Delivery Address Card (Consignee) -->
-            <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
-                <div class="flex items-center justify-between">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery / Dispatch Address (Consignee)</label>
-                    <span class="text-[11px] text-emerald-600 font-medium">Deliver to</span>
-                </div>
-                <textarea name="shipping_address" id="shipping_address" rows="3"
-                          oninput="this.dataset.autoFilled='0'"
-                          placeholder="Consignee Delivery Address (Defaults To Warehouse/Branch Address)"
-                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500">{{ $currentShippingValue }}</textarea>
-                <p class="text-[11px] text-slate-400">Auto-fills from selected warehouse/branch. You may customize if needed.</p>
-            </div>
-        </div>
-    </div>
+    @include('purchasing.orders.partials.party-details', [
+        'initialBillingId' => old('billing_address_id', $order->billing_address_id),
+        'initialBillingText' => old('billing_address', $order->billing_address),
+        'initialDeliveryId' => old('company_delivery_address_id', $order->company_delivery_address_id),
+        'initialShippingText' => $currentShippingValue,
+    ])
 
     <!-- Items Table -->
     <div class="overflow-x-auto border rounded-lg">
@@ -132,6 +144,9 @@
     <th class="px-3 py-2 text-left">Batch Name</th>
     <th class="px-3 py-2 text-left">UOM</th>
     <th class="px-3 py-2 text-left">Qty</th>
+    <th class="px-3 py-2 text-left whitespace-nowrap">MRP</th>
+    <th class="px-3 py-2 text-left whitespace-nowrap">Purchase Price Incl. GST</th>
+    <th class="px-3 py-2 text-left whitespace-nowrap">Purchase Disc. %</th>
     <th class="px-3 py-2 text-left">Unit Cost</th>
     <th class="px-3 py-2 text-left">Tax %</th>
     <th class="px-3 py-2 text-left">Cgst %</th>
@@ -152,6 +167,9 @@
                     'uom_id' => $it->uom_id,
                     'quantity' => (float)$it->quantity,
                     'unit_cost' => (float)$it->unit_cost,
+                    'mrp' => (float) ($it->mrp ?? 0),
+                    'purchase_price_inclusive' => $it->purchase_price_inclusive !== null ? (float) $it->purchase_price_inclusive : null,
+                    'purchase_discount_percent' => $it->purchase_discount_percent !== null ? (float) $it->purchase_discount_percent : null,
                     'tax_percent' => (float)$it->tax_percent,
                     'cgst_percent' => (float)$it->cgst_percent,
                     'sgst_percent' => (float)$it->sgst_percent,
@@ -169,6 +187,9 @@
                     'uom_id' => null,
                     'quantity' => 1,
                     'unit_cost' => 0,
+                    'mrp' => 0,
+                    'purchase_price_inclusive' => null,
+                    'purchase_discount_percent' => null,
                     'tax_percent' => 0,
                     'cgst_percent' => 0,
                     'sgst_percent' => 0,
@@ -197,7 +218,7 @@
                 <select name="items[{{ $idx }}][product_id]" class="po-product hidden" onchange="handlePoProductChange(this)">
                     <option value="">Select product</option>
                     @foreach($products as $p)
-                        <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected(($rowItem['product_id'] ?? null) == $p->id)>{{ $p->name }}</option>
+                        <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-mrp="{{ $p->mrp ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected(($rowItem['product_id'] ?? null) == $p->id)>{{ $p->name }}</option>
                     @endforeach
                 </select>
                 <div class="relative">
@@ -244,6 +265,22 @@
             </select>
         </td>
         <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][quantity]" class="block w-20 rounded-lg border-gray-300 text-sm" value="{{ $rowItem['quantity'] ?? 1 }}" required></td>
+        @php
+            $editUnitCost = (float) ($rowItem['unit_cost'] ?? 0);
+            $editTaxPercent = (float) ($rowItem['tax_percent'] ?? 0);
+            $editMrp = (float) ($rowItem['mrp'] ?? 0);
+            $editPriceInclusive = $rowItem['price_inclusive_tax'] ?? $rowItem['purchase_price_inclusive'] ?? ($editTaxPercent > 0 ? round($editUnitCost * (1 + $editTaxPercent / 100), 2) : round($editUnitCost, 2));
+            $editDiscount = $rowItem['purchase_discount_percent'] ?? ($editMrp > 0 ? round((($editMrp - (float) $editPriceInclusive) / $editMrp) * 100, 2) : '');
+        @endphp
+        <td class="px-3 py-2">
+            <input type="number" step="0.01" min="0" name="items[{{ $idx }}][mrp]" class="po-mrp block w-28 rounded-lg border-gray-300 text-sm" value="{{ $editMrp }}" title="MRP">
+        </td>
+        <td class="px-3 py-2">
+            <input type="number" step="0.01" min="0" name="items[{{ $idx }}][price_inclusive_tax]" class="po-price-inclusive block w-28 rounded-lg border-gray-300 text-sm" value="{{ $editPriceInclusive }}" title="Purchase Price Including GST">
+        </td>
+        <td class="px-3 py-2">
+            <input type="number" step="0.01" name="items[{{ $idx }}][purchase_discount_percent]" class="po-purchase-discount block w-24 rounded-lg border-gray-300 text-sm bg-slate-50" value="{{ $editDiscount }}" title="Purchase Discount %" readonly tabindex="-1">
+        </td>
         <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][unit_cost]" class="po-cost block w-28 rounded-lg border-gray-300 text-sm" value="{{ $rowItem['unit_cost'] ?? 0 }}" required></td>
         <td class="px-3 py-2">
             <input
@@ -284,6 +321,16 @@
         </tr>
     @endforeach
     </tbody></table></div>
+
+    <template id="po-line-template">
+        @include('purchasing.orders.partials.line-row', [
+            'idx' => '__INDEX__',
+            'brands' => $brands,
+            'products' => $products,
+            'uoms' => $uoms,
+            'showRemove' => true,
+        ])
+    </template>
 
     <!-- Section 3: Add Line Button directly below line items table -->
     <div class="mt-3 flex items-center justify-between">
@@ -365,7 +412,6 @@
         <x-ui.button type="submit" variant="primary">Update Purchase Order</x-ui.button>
     </div>
     </form></x-ui.card>
-    <x-quick-add-supplier targetSelect="supplier_id" />
 
     <!-- Floating Product Search Dropdown Menu -->
     <div id="po-product-dropdown-menu"
@@ -374,14 +420,9 @@
         <!-- Sticky Search Box inside Dropdown -->
         <div class="p-2 border-b border-gray-100 bg-gray-50/90 sticky top-0 z-10">
             <div class="relative">
-                <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400">
-                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                </div>
                 <input type="text"
                        id="po-dropdown-search-box"
-                       class="block w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 bg-white placeholder-gray-400"
+                       class="block w-full px-3 py-1.5 text-xs rounded-lg border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 bg-white placeholder-gray-400"
                        placeholder="Search Product By Name Or Part Number..."
                        autocomplete="off"
                        oninput="handleDropdownFilter(this.value)"
@@ -403,6 +444,7 @@
             'brand_id' => $p->brand_id ? (string)$p->brand_id : '',
             'tax_rate' => (float)($p->tax_rate ?? 0),
             'purchase_price' => (float)($p->purchase_price ?? 0),
+            'mrp' => (float)($p->mrp ?? 0),
             'base_uom_id' => $p->base_uom_id ? (string)$p->base_uom_id : '',
         ];
     })->values();
@@ -426,39 +468,54 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function setPoProductPickerEnabled(row, enabled) {
+    const searchInput = row.querySelector('.po-product-search');
+    const toggleBtn = row.querySelector('.po-dropdown-toggle');
+
+    if (searchInput) {
+        searchInput.disabled = !enabled;
+        if (enabled) {
+            searchInput.removeAttribute('disabled');
+            searchInput.placeholder = 'Select product...';
+            searchInput.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+            searchInput.classList.add('bg-white');
+        } else {
+            searchInput.setAttribute('disabled', 'disabled');
+            searchInput.placeholder = 'Select brand first';
+            searchInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+            searchInput.classList.remove('bg-white');
+        }
+    }
+
+    if (toggleBtn) {
+        toggleBtn.disabled = !enabled;
+        if (enabled) {
+            toggleBtn.removeAttribute('disabled');
+            toggleBtn.classList.remove('opacity-40', 'pointer-events-none');
+        } else {
+            toggleBtn.setAttribute('disabled', 'disabled');
+            toggleBtn.classList.add('opacity-40', 'pointer-events-none');
+        }
+    }
+}
+
 function handlePoBrandChange(brandSelect) {
     const row = brandSelect.closest('tr');
     if (!row) return;
 
     const brandId = brandSelect.value;
-    const searchInput = row.querySelector('.po-product-search');
-    const toggleBtn = row.querySelector('.po-dropdown-toggle');
 
-    clearPoProductSelection(brandSelect);
+    try {
+        clearPoProductSelection(brandSelect);
+    } catch (e) {
+        console.error('clearPoProductSelection failed', e);
+    }
 
     if (brandId) {
-        if (searchInput) {
-            searchInput.disabled = false;
-            searchInput.placeholder = 'Select product...';
-            searchInput.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
-            searchInput.classList.add('bg-white');
-        }
-        if (toggleBtn) {
-            toggleBtn.disabled = false;
-            toggleBtn.classList.remove('opacity-40', 'pointer-events-none');
-        }
+        setPoProductPickerEnabled(row, true);
         brandSelect.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
     } else {
-        if (searchInput) {
-            searchInput.disabled = true;
-            searchInput.placeholder = 'Select brand first';
-            searchInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
-            searchInput.classList.remove('bg-white');
-        }
-        if (toggleBtn) {
-            toggleBtn.disabled = true;
-            toggleBtn.classList.add('opacity-40', 'pointer-events-none');
-        }
+        setPoProductPickerEnabled(row, false);
     }
 }
 
@@ -759,22 +816,35 @@ function handlePoProductChange(select) {
     const opt = select.options[select.selectedIndex];
     if (!opt || !opt.value) return;
 
-    const taxVal = parseFloat(opt.dataset.tax) || 0;
-    const costVal = parseFloat(opt.dataset.cost) || 0;
-    const uomVal = opt.dataset.uom;
+    const productMeta = (typeof poProductsList !== 'undefined')
+        ? poProductsList.find(p => String(p.id) === String(opt.value))
+        : null;
+    const taxVal = parseFloat(opt.dataset.tax) || Number(productMeta?.tax_rate) || 0;
+    const costVal = parseFloat(opt.dataset.cost) || Number(productMeta?.purchase_price) || 0;
+    const mrpVal = parseFloat(opt.dataset.mrp) || Number(productMeta?.mrp) || 0;
+    const uomVal = opt.dataset.uom || productMeta?.base_uom_id || '';
 
     const costInput = row.querySelector('.po-cost');
+    const mrpInput = row.querySelector('.po-mrp');
     const taxInput = row.querySelector('.po-tax');
     const cgstInput = row.querySelector('.po-cgst');
     const sgstInput = row.querySelector('.po-sgst');
     const uomSelect = row.querySelector('.po-uom');
 
-    if (costInput && (!costInput.value || parseFloat(costInput.value) === 0)) {
-        costInput.value = costVal;
-    }
     if (taxInput) taxInput.value = taxVal;
     if (cgstInput) cgstInput.value = (taxVal / 2).toFixed(2);
     if (sgstInput) sgstInput.value = (taxVal / 2).toFixed(2);
+    if (mrpInput && (!mrpInput.value || parseFloat(mrpInput.value) === 0)) {
+        mrpInput.value = mrpVal;
+    }
+    if (costInput && (!costInput.value || parseFloat(costInput.value) === 0)) {
+        costInput.value = costVal;
+        syncPoPriceTaxPair(row, 'cost');
+    } else if (costInput) {
+        syncPoPriceTaxPair(row, 'cost');
+    } else {
+        syncPoPurchaseDiscount(row);
+    }
     if (uomSelect && uomVal) uomSelect.value = uomVal;
 
     loadBatchesForProduct(opt.value, row);
@@ -816,6 +886,7 @@ function syncPoTax(row, changed) {
         const half = (taxValue / 2).toFixed(2);
         cgst.value = half;
         sgst.value = half;
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
         return;
     }
@@ -824,14 +895,54 @@ function syncPoTax(row, changed) {
 
     if (changed === 'cgst') {
         sgst.value = Math.max(0, taxValue - cgstValue).toFixed(2);
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
         return;
     }
 
     if (changed === 'sgst') {
         cgst.value = Math.max(0, taxValue - (parseFloat(sgst.value) || 0)).toFixed(2);
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
     }
+}
+
+function poRowTaxPercent(row) {
+    const tax = row.querySelector('.po-tax');
+    return Math.max(0, parseFloat(tax?.value) || 0);
+}
+
+function syncPoPurchaseDiscount(row) {
+    if (!row) return;
+    const mrpInput = row.querySelector('.po-mrp');
+    const inclusiveInput = row.querySelector('.po-price-inclusive');
+    const discountInput = row.querySelector('.po-purchase-discount');
+    if (!discountInput) return;
+
+    const mrp = parseFloat(mrpInput?.value) || 0;
+    const inclusive = parseFloat(inclusiveInput?.value) || 0;
+    discountInput.value = mrp > 0 ? (((mrp - inclusive) / mrp) * 100).toFixed(2) : '';
+}
+
+function syncPoPriceTaxPair(row, source) {
+    if (!row) return;
+    const costInput = row.querySelector('.po-cost');
+    const inclusiveInput = row.querySelector('.po-price-inclusive');
+    if (!costInput || !inclusiveInput) return;
+
+    const tax = poRowTaxPercent(row);
+    const factor = 1 + (tax / 100);
+
+    if (source === 'inclusive') {
+        const inclusive = parseFloat(inclusiveInput.value) || 0;
+        costInput.value = factor > 0 ? (inclusive / factor).toFixed(2) : inclusive.toFixed(2);
+        row.dataset.priceEditSource = 'inclusive';
+    } else {
+        const cost = parseFloat(costInput.value) || 0;
+        inclusiveInput.value = (cost * factor).toFixed(2);
+        row.dataset.priceEditSource = 'cost';
+    }
+    syncPoPurchaseDiscount(row);
 }
 
 function toggleFreightFields() {
@@ -939,80 +1050,50 @@ function recalculatePoTotals() {
     if (summaryGrandTotal) summaryGrandTotal.textContent = '₹' + grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function addPoRow() {
-    const table = document.getElementById('po-lines');
-    const firstRow = table.rows[0];
-    const newRow = firstRow.cloneNode(true);
-
-    newRow.innerHTML = newRow.innerHTML.replace(/items\[\d+\]/g, 'items[' + poi + ']');
-
-    newRow.querySelectorAll('input').forEach(input => {
-        if (input.classList.contains('po-product-search')) {
-            input.value = '';
-            input.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
-        } else if (input.name.includes('[quantity]')) {
-            input.value = '1';
-        } else if (input.name.includes('[batch_no]') || input.name.includes('[batch_name]') || input.name.includes('[serial_no]')) {
-            input.value = '';
+function resetPoSelect(sel) {
+    if (!sel) return;
+    Array.from(sel.options).forEach((opt, index) => {
+        opt.selected = index === 0;
+        if (index === 0) {
+            opt.setAttribute('selected', 'selected');
         } else {
-            input.value = '0';
+            opt.removeAttribute('selected');
         }
     });
+    sel.selectedIndex = 0;
+    sel.value = sel.options[0] ? sel.options[0].value : '';
+}
 
-    const batchInput = newRow.querySelector('.po-batch-input');
-    if (batchInput) {
-        batchInput.setAttribute('list', 'po-batch-list-' + poi);
-        batchInput.value = '';
-    }
-    const datalist = newRow.querySelector('datalist');
-    if (datalist) {
-        datalist.id = 'po-batch-list-' + poi;
-        datalist.innerHTML = '';
-    }
+function addPoRow() {
+    closePoProductDropdown();
 
-    newRow.querySelectorAll('select').forEach(sel => {
-        if (sel.classList.contains('po-product')) {
-            sel.value = '';
-            sel.selectedIndex = 0;
-        } else if (sel.classList.contains('po-brand')) {
-            sel.value = '';
-            sel.selectedIndex = 0;
-            sel.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
-        }
-    });
-
-    const searchInput = newRow.querySelector('.po-product-search');
-    if (searchInput) {
-        searchInput.value = '';
-        searchInput.disabled = true;
-        searchInput.placeholder = 'Select brand first';
-        searchInput.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500', 'bg-white');
-        searchInput.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
+    const table = document.getElementById('po-lines');
+    const tpl = document.getElementById('po-line-template');
+    if (!table || !tpl) {
+        alert('Could not add line. Please refresh the page and try again.');
+        return;
     }
 
-    const clearBtn = newRow.querySelector('.po-clear-product');
-    if (clearBtn) {
-        clearBtn.style.display = 'none';
-    }
+    const index = poi;
+    const html = tpl.innerHTML.replaceAll('__INDEX__', String(index));
+    const wrap = document.createElement('tbody');
+    wrap.innerHTML = html.trim();
+    const newRow = wrap.querySelector('tr');
+    if (!newRow) return;
 
-    const toggleBtn = newRow.querySelector('.po-dropdown-toggle');
-    if (toggleBtn) {
-        toggleBtn.disabled = true;
-        toggleBtn.classList.add('opacity-40', 'pointer-events-none');
-    }
-
-    const toggleSvg = newRow.querySelector('.po-dropdown-toggle svg');
-    if (toggleSvg) {
-        toggleSvg.classList.remove('rotate-180');
-    }
-
-    const removeBtn = newRow.querySelector('.po-remove-btn');
-    if (removeBtn) removeBtn.style.display = 'inline';
+    setPoProductPickerEnabled(newRow, false);
 
     table.appendChild(newRow);
     poi++;
     updateRemoveButtons();
     recalculatePoTotals();
+
+    const brandSelect = newRow.querySelector('.po-brand');
+    if (brandSelect) {
+        brandSelect.disabled = false;
+        brandSelect.removeAttribute('disabled');
+        brandSelect.focus();
+    }
 }
 
 function removePoRow(btn) {
@@ -1046,6 +1127,28 @@ document.addEventListener('input', function (event) {
         recalcPoDueDate();
     }
 
+    if (input.classList.contains('po-price-inclusive')) {
+        const row = input.closest('tr');
+        if (row) {
+            syncPoPriceTaxPair(row, 'inclusive');
+            recalculatePoTotals();
+        }
+        return;
+    }
+
+    if (input.classList.contains('po-mrp')) {
+        const row = input.closest('tr');
+        if (row) syncPoPurchaseDiscount(row);
+        return;
+    }
+
+    if (input.classList.contains('po-cost') || input.name?.includes('[unit_cost]')) {
+        const row = input.closest('tr');
+        if (row) {
+            syncPoPriceTaxPair(row, 'cost');
+        }
+    }
+
     if (input.classList.contains('po-tax')) {
         const row = input.closest('tr');
         if (row) syncPoTax(row, 'tax');
@@ -1062,6 +1165,7 @@ document.addEventListener('input', function (event) {
         input.name?.includes('[unit_cost]') ||
         input.classList.contains('po-tax') ||
         input.classList.contains('po-cost') ||
+        input.classList.contains('po-price-inclusive') ||
         input.id === 'po_freight_amount' ||
         input.id === 'po_freight_tax_rate'
     ) {
@@ -1076,9 +1180,15 @@ document.addEventListener('change', function (event) {
 });
 
 let supplierAddresses = [];
+let companyDeliveryAddresses = [];
+let companyDeliveryMeta = { name: '', legal_name: '' };
 let initialLoad = true;
 
-const initialBillingId = "{{ old('billing_address_id', $order->billing_address_id) }}";
+const initialBillingId = @json(old('billing_address_id', $order->billing_address_id));
+const initialCompanyDeliveryId = @json(old('company_delivery_address_id', $order->company_delivery_address_id));
+const deliveryAddressesUrl = @json(route('purchasing.delivery-addresses.index'));
+const deliveryAddressesStoreUrl = @json(route('purchasing.delivery-addresses.store'));
+const csrfToken = @json(csrf_token());
 
 function setPoCreditDays(days) {
     const input = document.getElementById('po_credit_days');
@@ -1086,6 +1196,56 @@ function setPoCreditDays(days) {
         input.value = parseInt(days, 10) || 0;
     }
     recalcPoDueDate();
+}
+
+function formatLocalDate(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function setPoExpectedDate(daysFromPo) {
+    const poDateInput = document.querySelector('input[name="po_date"]');
+    const expectedInput = document.getElementById('po_expected_date');
+    if (!poDateInput?.value || !expectedInput) return;
+
+    const parts = String(poDateInput.value).split('-');
+    if (parts.length !== 3) return;
+    const base = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    if (Number.isNaN(base.getTime())) return;
+
+    base.setDate(base.getDate() + (parseInt(daysFromPo, 10) || 0));
+    expectedInput.value = formatLocalDate(base);
+    updateExpectedQuickHighlight();
+}
+
+function updateExpectedQuickHighlight() {
+    const poDateInput = document.querySelector('input[name="po_date"]');
+    const expectedInput = document.getElementById('po_expected_date');
+    const options = [0, 7, 15, 30];
+    let active = -1;
+
+    if (poDateInput?.value && expectedInput?.value) {
+        const poParts = String(poDateInput.value).split('-');
+        const exParts = String(expectedInput.value).split('-');
+        if (poParts.length === 3 && exParts.length === 3) {
+            const po = new Date(parseInt(poParts[0], 10), parseInt(poParts[1], 10) - 1, parseInt(poParts[2], 10));
+            const ex = new Date(parseInt(exParts[0], 10), parseInt(exParts[1], 10) - 1, parseInt(exParts[2], 10));
+            const diff = Math.round((ex - po) / 86400000);
+            if (options.includes(diff)) active = diff;
+        }
+    }
+
+    options.forEach((days) => {
+        const btn = document.getElementById(`expected_quick_${days}`);
+        if (!btn) return;
+        if (days === active) {
+            btn.className = 'px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-indigo-600 text-white border-indigo-600';
+        } else {
+            btn.className = 'px-2 py-0.5 text-xs font-medium rounded border transition-colors bg-white text-slate-700 hover:bg-slate-50 border-slate-300';
+        }
+    });
 }
 
 function recalcPoDueDate() {
@@ -1155,15 +1315,113 @@ function updateQuickButtonsHighlight(currentDays) {
     });
 }
 
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value || '—';
+}
+
+function renderBillingDetails(customer, addr) {
+    const empty = document.getElementById('billing-empty-hint');
+    const list = document.getElementById('billing-details-list');
+    const snapshot = document.getElementById('billing_address');
+    const hiddenId = document.getElementById('billing_address_id');
+
+    if (!customer && !addr) {
+        if (empty) empty.classList.remove('hidden');
+        if (list) list.classList.add('hidden');
+        if (snapshot) snapshot.value = '';
+        if (hiddenId) hiddenId.value = '';
+        return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+    if (list) list.classList.remove('hidden');
+
+    const partyName = customer?.name || '';
+    const mailing = addr?.contact_person || partyName;
+    const lines = [addr?.address_line_1, addr?.address_line_2].filter(Boolean).join('\n') || (addr?.full_address || '');
+    setText('billing_party_name', partyName);
+    setText('billing_address_type', addr?.label || (addr?.type ? String(addr.type) : 'Primary'));
+    setText('billing_mailing_name', mailing);
+    setText('billing_address_lines', lines);
+    setText('billing_state', addr?.state || customer?.state || '');
+    setText('billing_pincode', addr?.pincode || '');
+    setText('billing_gstin', addr?.gstin || customer?.gstin || '');
+
+    if (hiddenId) hiddenId.value = addr?.id || initialBillingId || '';
+    if (snapshot) snapshot.value = addr ? (addr.snapshot || addr.full_address || '') : (snapshot.value || '');
+}
+
+function renderDeliveryDetails(addr) {
+    const empty = document.getElementById('delivery-empty-hint');
+    const list = document.getElementById('delivery-details-list');
+    const snapshot = document.getElementById('shipping_address');
+
+    if (!addr) {
+        if (empty) empty.classList.remove('hidden');
+        if (list) list.classList.add('hidden');
+        return;
+    }
+
+    if (empty) empty.classList.add('hidden');
+    if (list) list.classList.remove('hidden');
+
+    setText('delivery_party_name', companyDeliveryMeta.legal_name || companyDeliveryMeta.name || addr.mailing_name || '');
+    setText('delivery_address_type', addr.address_type || '');
+    setText('delivery_mailing_name', addr.mailing_name || companyDeliveryMeta.legal_name || companyDeliveryMeta.name || '');
+    setText('delivery_address_lines', addr.address || '');
+    setText('delivery_state', addr.state || '');
+    setText('delivery_country', addr.country || 'India');
+    setText('delivery_pincode', addr.pincode || '');
+    setText('delivery_gstin', addr.gstin || '');
+
+    if (snapshot) snapshot.value = addr.snapshot || '';
+}
+
+function populateDeliverySelect(selectedId) {
+    const select = document.getElementById('company_delivery_address_id');
+    if (!select) return;
+    select.innerHTML = '<option value="">Select Delivery Address</option>';
+    companyDeliveryAddresses.forEach((addr) => {
+        select.add(new Option(addr.display_text || addr.address_type, addr.id));
+    });
+    const prefer = selectedId || initialCompanyDeliveryId;
+    if (prefer && companyDeliveryAddresses.some((a) => String(a.id) === String(prefer))) {
+        select.value = prefer;
+    } else {
+        const def = companyDeliveryAddresses.find((a) => a.is_default) || companyDeliveryAddresses[0];
+        if (def) select.value = def.id;
+    }
+    handleDeliveryChange();
+}
+
+async function loadCompanyDeliveryAddresses(preferId) {
+    try {
+        const res = await fetch(deliveryAddressesUrl, { headers: { 'Accept': 'application/json' } });
+        const data = await res.json();
+        if (!data.success) throw new Error('Failed');
+        companyDeliveryMeta = data.company || companyDeliveryMeta;
+        companyDeliveryAddresses = data.addresses || [];
+        populateDeliverySelect(preferId || data.default_id);
+        const mailing = document.getElementById('new_delivery_mailing_name');
+        if (mailing && !mailing.value) {
+            mailing.value = companyDeliveryMeta.legal_name || companyDeliveryMeta.name || '';
+        }
+        const gstin = document.getElementById('new_delivery_gstin');
+        if (gstin && !gstin.value && data.company?.gstin) gstin.value = data.company.gstin;
+    } catch (e) {
+        console.error('Failed to load delivery addresses:', e);
+    }
+}
+
 async function handleSupplierChange(supplierId) {
-    const card = document.getElementById('supplier-addresses-card');
     const statusText = document.getElementById('address-status-text');
-    const billingSelect = document.getElementById('billing_address_id');
     const billingSnapshot = document.getElementById('billing_address');
 
     if (!supplierId) {
         supplierAddresses = [];
-        billingSnapshot.value = '';
+        if (billingSnapshot) billingSnapshot.value = '';
+        renderBillingDetails(null, null);
         if (!initialLoad) {
             setPoCreditDays(0);
         }
@@ -1179,7 +1437,7 @@ async function handleSupplierChange(supplierId) {
         }
     }
 
-    statusText.innerText = 'Loading supplier addresses...';
+    if (statusText) statusText.innerText = 'Loading vendor billing details...';
     try {
         const res = await fetch(`{{ url('/masters/customers') }}/${supplierId}/addresses`, {
             headers: { 'Accept': 'application/json' }
@@ -1187,67 +1445,122 @@ async function handleSupplierChange(supplierId) {
         const data = await res.json();
         if (data.success) {
             supplierAddresses = data.addresses || [];
-            statusText.innerText = `${supplierAddresses.length} supplier billing address(es) available`;
-
-            billingSelect.innerHTML = '<option value="">Default Address</option>';
-
-            supplierAddresses.forEach(addr => {
-                const opt1 = new Option(`${addr.label} — ${addr.full_address}`, addr.id);
-                billingSelect.add(opt1);
-            });
-
-            if (initialLoad) {
-                if (initialBillingId) billingSelect.value = initialBillingId;
-                initialLoad = false;
-            } else {
-                if (data.default_billing_id) billingSelect.value = data.default_billing_id;
-                handleBillingChange();
+            let addr = null;
+            if (initialLoad && initialBillingId) {
+                addr = supplierAddresses.find((a) => String(a.id) === String(initialBillingId)) || null;
             }
+            if (!addr) {
+                const billingId = data.default_billing_id;
+                addr = supplierAddresses.find((a) => String(a.id) === String(billingId)) || supplierAddresses[0] || null;
+            }
+            renderBillingDetails(data.customer || null, addr);
+            if (statusText) statusText.innerText = 'Vendor billing loaded automatically';
+            initialLoad = false;
         }
     } catch (e) {
         console.error('Failed to load supplier addresses:', e);
-        statusText.innerText = 'Could not load addresses';
+        if (statusText) statusText.innerText = 'Could not load vendor billing';
+        initialLoad = false;
     }
 }
 
-function handleBillingChange() {
-    const billingSelect = document.getElementById('billing_address_id');
-    const billingSnapshot = document.getElementById('billing_address');
-    const addr = supplierAddresses.find(a => String(a.id) === String(billingSelect.value));
-    if (addr) {
-        billingSnapshot.value = (addr.snapshot || addr.full_address);
-    }
+function handleDeliveryChange() {
+    const select = document.getElementById('company_delivery_address_id');
+    const addr = companyDeliveryAddresses.find((a) => String(a.id) === String(select?.value));
+    renderDeliveryDetails(addr || null);
 }
 
 function handleWarehouseChange(selectEl) {
-    const selectedOption = selectEl.options[selectEl.selectedIndex];
-    const warehouseAddress = selectedOption ? (selectedOption.dataset.address || '') : '';
-    const shippingSnapshot = document.getElementById('shipping_address');
-    if (shippingSnapshot && warehouseAddress) {
-        if (!shippingSnapshot.value || shippingSnapshot.dataset.autoFilled === '1' || shippingSnapshot.value.trim() === '') {
-            shippingSnapshot.value = warehouseAddress;
-            shippingSnapshot.dataset.autoFilled = '1';
+    // Delivery address is chosen from company delivery addresses (Tally-style consignee).
+}
+
+function openDeliveryAddressModal() {
+    const modal = document.getElementById('delivery-address-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    modal.setAttribute('aria-hidden', 'false');
+    const err = document.getElementById('new-delivery-error');
+    if (err) { err.classList.add('hidden'); err.textContent = ''; }
+}
+
+function closeDeliveryAddressModal() {
+    const modal = document.getElementById('delivery-address-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+async function saveDeliveryAddress() {
+    const err = document.getElementById('new-delivery-error');
+    const addressType = document.getElementById('new_delivery_address_type')?.value?.trim() || '';
+    const address = document.getElementById('new_delivery_address')?.value?.trim() || '';
+    if (!addressType || !address) {
+        if (err) { err.textContent = 'Address type and address are required.'; err.classList.remove('hidden'); }
+        return;
+    }
+
+    const payload = {
+        address_type: addressType,
+        mailing_name: document.getElementById('new_delivery_mailing_name')?.value?.trim() || '',
+        address,
+        state: document.getElementById('new_delivery_state')?.value?.trim() || '',
+        country: document.getElementById('new_delivery_country')?.value?.trim() || 'India',
+        pincode: document.getElementById('new_delivery_pincode')?.value?.trim() || '',
+        gstin: document.getElementById('new_delivery_gstin')?.value?.trim() || '',
+        is_default: !!document.getElementById('new_delivery_is_default')?.checked,
+    };
+
+    try {
+        const res = await fetch(deliveryAddressesStoreUrl, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || Object.values(data.errors || {}).flat().join(' ') || 'Could not save address');
         }
+        closeDeliveryAddressModal();
+        document.getElementById('new_delivery_address_type').value = '';
+        document.getElementById('new_delivery_address').value = '';
+        await loadCompanyDeliveryAddresses(data.address?.id);
+    } catch (e) {
+        if (err) { err.textContent = e.message || 'Could not save address'; err.classList.remove('hidden'); }
     }
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    const poLines = document.getElementById('po-lines');
+    if (poLines) {
+        poLines.addEventListener('change', function (event) {
+            if (!event.target) return;
+            if (event.target.classList.contains('po-brand')) {
+                handlePoBrandChange(event.target);
+            } else if (event.target.classList.contains('po-product')) {
+                handlePoProductChange(event.target);
+            }
+        });
+    }
+
+    const btnNew = document.getElementById('btn-new-delivery-address');
+    if (btnNew) btnNew.addEventListener('click', openDeliveryAddressModal);
+
+    loadCompanyDeliveryAddresses(initialCompanyDeliveryId);
+
     const supSelect = document.getElementById('supplier_id');
     if (supSelect && supSelect.value) {
         handleSupplierChange(supSelect.value);
+    } else {
+        initialLoad = false;
     }
-    const whSelect = document.getElementById('warehouse_id');
-    if (whSelect && whSelect.value) {
-        const opt = whSelect.options[whSelect.selectedIndex];
-        const addr = opt ? (opt.dataset.address || '') : '';
-        const shippingSnapshot = document.getElementById('shipping_address');
-        if (shippingSnapshot && !shippingSnapshot.value.trim() && addr) {
-            shippingSnapshot.value = addr;
-            shippingSnapshot.dataset.autoFilled = '1';
-        }
-    }
-    initialLoad = false;
     recalcPoDueDate();
+    updateExpectedQuickHighlight();
 
     const dropdownList = document.getElementById('po-dropdown-list');
     if (dropdownList) {

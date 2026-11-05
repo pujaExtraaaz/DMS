@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Support\CodeGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
@@ -67,12 +68,22 @@ class CompanyProfileController extends Controller
             'bank_accounts.*.bank_account_no' => 'nullable|string|max:50',
             'bank_accounts.*.bank_ifsc' => 'nullable|string|max:20',
             'bank_accounts.*.upi_id' => 'nullable|string|max:100',
+            'bank_accounts.*.swift_code' => ['nullable', 'string', 'min:8', 'max:11', 'regex:/^[A-Za-z]{4}[A-Za-z]{2}[0-9A-Za-z]{2}([0-9A-Za-z]{3})?$/'],
+            'bank_accounts.*.branch' => 'nullable|string|max:255',
+            'bank_accounts.*.bank_branch' => 'nullable|string|max:255',
+            'bank_accounts.*.bsr_code' => 'nullable|string|max:50',
+            'bank_accounts.*.client_code' => 'nullable|string|max:50',
             'bank_accounts.*.od_limit' => 'nullable|numeric|min:0',
             'bank_accounts.*.interest_rate' => 'nullable|numeric|min:0|max:100',
             'bank_name' => 'nullable|string|max:255',
             'bank_account_no' => 'nullable|string|max:50',
             'bank_ifsc' => 'nullable|string|max:20',
             'upi_id' => 'nullable|string|max:100',
+            'swift_code' => ['nullable', 'string', 'min:8', 'max:11', 'regex:/^[A-Za-z]{4}[A-Za-z]{2}[0-9A-Za-z]{2}([0-9A-Za-z]{3})?$/'],
+            'branch' => 'nullable|string|max:255',
+            'bank_branch' => 'nullable|string|max:255',
+            'bsr_code' => 'nullable|string|max:50',
+            'client_code' => 'nullable|string|max:50',
             'od_limit' => 'nullable|numeric|min:0',
             'interest_rate' => 'nullable|numeric|min:0|max:100',
             'purchase_terms_and_conditions' => 'nullable|string',
@@ -85,6 +96,11 @@ class CompanyProfileController extends Controller
             'logo.file' => 'The uploaded logo must be a valid file.',
             'logo.mimes' => 'The company logo must be a file of type: PNG, JPG, JPEG, WEBP, or SVG.',
             'logo.max' => 'The company logo size must not exceed 2 MB.',
+            'bank_accounts.*.swift_code.regex' => 'The SWIFT Code must be a valid 8 or 11 character BIC/SWIFT code (e.g. HDFCINBB or HDFCINBBXXX).',
+            'swift_code.regex' => 'The SWIFT Code must be a valid 8 or 11 character BIC/SWIFT code (e.g. HDFCINBB or HDFCINBBXXX).',
+            'contacts.*.email.email' => 'Each contact email must be a valid email address.',
+            'contacts.*.phone.max' => 'Each contact phone number must not exceed 20 characters.',
+            'contacts.*.pincode.max' => 'Each contact pincode must not exceed 12 characters.',
         ]);
 
         $data['is_active'] = $request->boolean('is_active', true);
@@ -132,7 +148,22 @@ class CompanyProfileController extends Controller
             $data['code'] = $company->code ?: CodeGenerator::forCompany();
         }
 
-        $additionalDetails = $company->additional_details ?? [];
+        $rawDetails = $company->additional_details ?? [];
+        if (is_string($rawDetails)) {
+            $sanitizedJson = preg_replace('/:\s*Null\b/', ':null', $rawDetails);
+            $decoded = json_decode($sanitizedJson, true);
+            $rawDetails = is_array($decoded) ? $decoded : [];
+        } elseif (! is_array($rawDetails)) {
+            $rawDetails = [];
+        }
+
+        $additionalDetails = $rawDetails;
+        unset(
+            $additionalDetails['Contacts'],
+            $additionalDetails['contacts'],
+            $additionalDetails['Bank_Accounts'],
+            $additionalDetails['bank_accounts']
+        );
 
         $contacts = collect($request->input('contacts', []))
             ->filter(fn ($c) => is_array($c) && count(array_filter($c, fn ($val) => ! is_null($val) && $val !== '')) > 0)
@@ -140,14 +171,25 @@ class CompanyProfileController extends Controller
 
         if ($contacts->isNotEmpty()) {
             $primaryContact = $contacts->first();
-            $data['phone'] = $primaryContact['phone'] ?? null;
-            $data['email'] = $primaryContact['email'] ?? null;
-            $data['website'] = $primaryContact['website'] ?? null;
-            $data['state'] = $primaryContact['state'] ?? null;
-            $data['pincode'] = $primaryContact['pincode'] ?? null;
-            $data['address'] = $primaryContact['address'] ?? null;
+            $data['phone'] = filled($primaryContact['phone'] ?? null) ? trim((string) $primaryContact['phone']) : null;
+            $data['email'] = filled($primaryContact['email'] ?? null) ? trim((string) $primaryContact['email']) : null;
+            $data['website'] = filled($primaryContact['website'] ?? null) ? trim((string) $primaryContact['website']) : null;
+            $data['state'] = filled($primaryContact['state'] ?? null) ? trim((string) $primaryContact['state']) : null;
+            $data['pincode'] = filled($primaryContact['pincode'] ?? null) ? trim((string) $primaryContact['pincode']) : null;
+            $data['address'] = filled($primaryContact['address'] ?? null) ? trim((string) $primaryContact['address']) : null;
 
-            $additionalDetails['contacts'] = $contacts->slice(1)->values()->all();
+            $additionalDetails['contacts'] = $contacts->slice(1)->values()->map(function ($c) {
+                return [
+                    'phone' => filled($c['phone'] ?? null) ? trim((string) $c['phone']) : null,
+                    'email' => filled($c['email'] ?? null) ? trim((string) $c['email']) : null,
+                    'website' => filled($c['website'] ?? null) ? trim((string) $c['website']) : null,
+                    'state' => filled($c['state'] ?? null) ? trim((string) $c['state']) : null,
+                    'pincode' => filled($c['pincode'] ?? null) ? trim((string) $c['pincode']) : null,
+                    'address' => filled($c['address'] ?? null) ? trim((string) $c['address']) : null,
+                ];
+            })->all();
+        } else {
+            $additionalDetails['contacts'] = [];
         }
 
         $bankAccounts = collect($request->input('bank_accounts', []))
@@ -156,10 +198,16 @@ class CompanyProfileController extends Controller
 
         if ($bankAccounts->isNotEmpty()) {
             $primaryBank = $bankAccounts->first();
-            $data['bank_name'] = $primaryBank['bank_name'] ?? null;
-            $data['bank_account_no'] = $primaryBank['bank_account_no'] ?? null;
-            $data['bank_ifsc'] = $primaryBank['bank_ifsc'] ?? null;
-            $data['upi_id'] = $primaryBank['upi_id'] ?? null;
+            $data['bank_name'] = filled($primaryBank['bank_name'] ?? null) ? trim((string) $primaryBank['bank_name']) : null;
+            $data['bank_account_no'] = filled($primaryBank['bank_account_no'] ?? null) ? trim((string) $primaryBank['bank_account_no']) : null;
+            $data['bank_ifsc'] = filled($primaryBank['bank_ifsc'] ?? null) ? trim((string) $primaryBank['bank_ifsc']) : null;
+            $data['upi_id'] = filled($primaryBank['upi_id'] ?? null) ? trim((string) $primaryBank['upi_id']) : null;
+            $data['swift_code'] = filled($primaryBank['swift_code'] ?? null) ? strtoupper(trim((string) $primaryBank['swift_code'])) : null;
+            $primaryBranch = filled($primaryBank['branch'] ?? null) ? trim((string) $primaryBank['branch']) : (filled($primaryBank['bank_branch'] ?? null) ? trim((string) $primaryBank['bank_branch']) : null);
+            $data['bank_branch'] = $primaryBranch;
+            $data['branch'] = $primaryBranch;
+            $data['bsr_code'] = filled($primaryBank['bsr_code'] ?? null) ? trim((string) $primaryBank['bsr_code']) : null;
+            $data['client_code'] = filled($primaryBank['client_code'] ?? null) ? trim((string) $primaryBank['client_code']) : null;
             $data['od_limit'] = isset($primaryBank['od_limit']) && is_numeric($primaryBank['od_limit'])
                 ? max(0, (float) $primaryBank['od_limit'])
                 : (isset($data['od_limit']) ? (float) $data['od_limit'] : 0.0);
@@ -167,59 +215,82 @@ class CompanyProfileController extends Controller
                 ? max(0, min(100, (float) $primaryBank['interest_rate']))
                 : (isset($data['interest_rate']) ? (float) $data['interest_rate'] : 0.0);
 
-            $additionalDetails['bank_accounts'] = $bankAccounts->slice(1)->values()->all();
+            $additionalDetails['bank_accounts'] = $bankAccounts->slice(1)->values()->map(function ($b) {
+                $branch = filled($b['branch'] ?? null) ? trim((string) $b['branch']) : (filled($b['bank_branch'] ?? null) ? trim((string) $b['bank_branch']) : null);
+                return [
+                    'bank_name' => filled($b['bank_name'] ?? null) ? trim((string) $b['bank_name']) : null,
+                    'bank_account_no' => filled($b['bank_account_no'] ?? null) ? trim((string) $b['bank_account_no']) : null,
+                    'bank_ifsc' => filled($b['bank_ifsc'] ?? null) ? trim((string) $b['bank_ifsc']) : null,
+                    'upi_id' => filled($b['upi_id'] ?? null) ? trim((string) $b['upi_id']) : null,
+                    'swift_code' => filled($b['swift_code'] ?? null) ? strtoupper(trim((string) $b['swift_code'])) : null,
+                    'branch' => $branch,
+                    'bank_branch' => $branch,
+                    'bsr_code' => filled($b['bsr_code'] ?? null) ? trim((string) $b['bsr_code']) : null,
+                    'client_code' => filled($b['client_code'] ?? null) ? trim((string) $b['client_code']) : null,
+                    'od_limit' => isset($b['od_limit']) && is_numeric($b['od_limit'])
+                        ? max(0, (float) $b['od_limit'])
+                        : 0.0,
+                    'interest_rate' => isset($b['interest_rate']) && is_numeric($b['interest_rate'])
+                        ? max(0, min(100, (float) $b['interest_rate']))
+                        : 0.0,
+                ];
+            })->all();
+        } else {
+            $additionalDetails['bank_accounts'] = [];
         }
 
         $data['additional_details'] = $additionalDetails;
 
         unset($data['contacts'], $data['bank_accounts'], $data['logo'], $data['remove_logo']);
 
-        if ($company->exists) {
-            $company->update($data);
-        } else {
-            $company = Company::create($data);
-            if ($user) {
-                $user->update(['company_id' => $company->id]);
-            }
-        }
-
-        // Synchronize OD configurations per bank account with OdAccount model
-        foreach ($bankAccounts as $bank) {
-            $accNo = trim((string) ($bank['bank_account_no'] ?? ''));
-            if (empty($accNo)) {
-                continue;
+        DB::transaction(function () use (&$company, $data, $user, $bankAccounts) {
+            if ($company->exists) {
+                $company->update($data);
+            } else {
+                $company = Company::create($data);
+                if ($user) {
+                    $user->update(['company_id' => $company->id]);
+                }
             }
 
-            $odLimit = isset($bank['od_limit']) && is_numeric($bank['od_limit'])
-                ? max(0, (float) $bank['od_limit'])
-                : 0.0;
-            $interestRate = isset($bank['interest_rate']) && is_numeric($bank['interest_rate'])
-                ? max(0, min(100, (float) $bank['interest_rate']))
-                : 0.0;
+            // Synchronize OD configurations per bank account with OdAccount model
+            foreach ($bankAccounts as $bank) {
+                $accNo = trim((string) ($bank['bank_account_no'] ?? ''));
+                if (empty($accNo)) {
+                    continue;
+                }
 
-            $existingOd = \App\Domains\Banking\Models\OdAccount::where('company_id', $company->id)
-                ->where('account_number', $accNo)
-                ->first();
+                $odLimit = isset($bank['od_limit']) && is_numeric($bank['od_limit'])
+                    ? max(0, (float) $bank['od_limit'])
+                    : 0.0;
+                $interestRate = isset($bank['interest_rate']) && is_numeric($bank['interest_rate'])
+                    ? max(0, min(100, (float) $bank['interest_rate']))
+                    : 0.0;
 
-            if ($existingOd || $odLimit > 0 || $interestRate > 0) {
-                \App\Domains\Banking\Models\OdAccount::updateOrCreate(
-                    [
-                        'company_id' => $company->id,
-                        'account_number' => $accNo,
-                    ],
-                    [
-                        'bank_name' => $bank['bank_name'] ?? ($existingOd->bank_name ?? 'Bank Account'),
-                        'ifsc_code' => $bank['bank_ifsc'] ?? ($existingOd->ifsc_code ?? null),
-                        'od_limit' => $odLimit,
-                        'interest_rate' => $interestRate,
-                        'interest_calculation_method' => $existingOd->interest_calculation_method ?? 'daily_simple',
-                        'effective_from' => $existingOd->effective_from ?? now()->startOfMonth()->toDateString(),
-                        'status' => 'active',
-                        'updated_by' => $user?->id,
-                    ]
-                );
+                $existingOd = \App\Domains\Banking\Models\OdAccount::where('company_id', $company->id)
+                    ->where('account_number', $accNo)
+                    ->first();
+
+                if ($existingOd || $odLimit > 0 || $interestRate > 0) {
+                    \App\Domains\Banking\Models\OdAccount::updateOrCreate(
+                        [
+                            'company_id' => $company->id,
+                            'account_number' => $accNo,
+                        ],
+                        [
+                            'bank_name' => $bank['bank_name'] ?? ($existingOd->bank_name ?? 'Bank Account'),
+                            'ifsc_code' => $bank['bank_ifsc'] ?? ($existingOd->ifsc_code ?? null),
+                            'od_limit' => $odLimit,
+                            'interest_rate' => $interestRate,
+                            'interest_calculation_method' => $existingOd->interest_calculation_method ?? 'daily_simple',
+                            'effective_from' => $existingOd->effective_from ?? now()->startOfMonth()->toDateString(),
+                            'status' => 'active',
+                            'updated_by' => $user?->id,
+                        ]
+                    );
+                }
             }
-        }
+        });
 
         return $this->flashSuccess('Company profile updated successfully.', 'organization.company-profile');
     }

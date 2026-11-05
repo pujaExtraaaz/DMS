@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Master;
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
+use App\Domains\Inventory\Models\ProductSerial;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\ProductPriceHistory;
 use App\Domains\Master\Models\ProductType;
@@ -13,6 +14,7 @@ use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
 use App\Support\CodeGenerator;
+use App\Support\WarrantyPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,18 +22,114 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 
 class ProductController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
+        // 1. Resolve raw filter inputs
+        $rawBrandId = $request->input('brand_id');
+        $rawCategoryId = $request->input('category_id');
+        $rawSubCategoryId = $request->input('sub_category_id', $request->input('subcategory_id'));
+
+        // 2. Fetch all active brands
+        $brands = Brand::where('is_active', true)->orderBy('name')->get();
+        $brandId = ($rawBrandId && $brands->contains('id', (int) $rawBrandId)) ? (int) $rawBrandId : null;
+
+        // 3. Fetch all active categories & resolve categories relevant to selected brand
+        $allCategories = Category::where('is_active', true)->orderBy('name')->get();
+
+        if ($brandId) {
+            // Check if categories exist that belong to this brand
+            $categoriesForBrand = $allCategories->filter(function ($c) use ($brandId) {
+                return (int) $c->brand_id === (int) $brandId;
+            });
+
+            // If no direct brand_id match, check if any categories have products under this brand
+            if ($categoriesForBrand->isEmpty()) {
+                $categoryIdsWithProducts = Product::where('brand_id', $brandId)
+                    ->whereNotNull('category_id')
+                    ->distinct()
+                    ->pluck('category_id')
+                    ->all();
+
+                $categoriesForBrand = $allCategories->filter(function ($c) use ($categoryIdsWithProducts) {
+                    return in_array($c->id, $categoryIdsWithProducts, true);
+                });
+            }
+
+            // If still empty (no brand-category relationship found), show available categories without incorrectly excluding records
+            $categories = $categoriesForBrand->isNotEmpty() ? $categoriesForBrand->values() : $allCategories;
+        } else {
+            $categories = $allCategories;
+        }
+
+        // Validate and reset category selection if invalid for selected brand
+        $categoryId = ($rawCategoryId && $categories->contains('id', (int) $rawCategoryId)) ? (int) $rawCategoryId : null;
+        if ($rawCategoryId && ! $categoryId) {
+            // Reset dependent subcategory if parent category became invalid
+            $rawSubCategoryId = null;
+        }
+
+        // 4. Fetch all active subcategories & resolve subcategories for selected category and brand
+        $allSubCategories = SubCategory::where('is_active', true)->orderBy('name')->get();
+
+        if ($categoryId) {
+            // Subcategories belonging to the selected category
+            $subCatsForCategory = $allSubCategories->filter(function ($sc) use ($categoryId) {
+                return (int) $sc->category_id === (int) $categoryId;
+            });
+
+            if ($brandId && $subCatsForCategory->isNotEmpty()) {
+                $subCatIdsWithBrandProducts = Product::where('brand_id', $brandId)
+                    ->where('category_id', $categoryId)
+                    ->whereNotNull('sub_category_id')
+                    ->distinct()
+                    ->pluck('sub_category_id')
+                    ->all();
+
+                if (! empty($subCatIdsWithBrandProducts)) {
+                    $brandSpecificSubCats = $subCatsForCategory->filter(function ($sc) use ($subCatIdsWithBrandProducts) {
+                        return in_array($sc->id, $subCatIdsWithBrandProducts, true);
+                    });
+                    if ($brandSpecificSubCats->isNotEmpty()) {
+                        $subCatsForCategory = $brandSpecificSubCats;
+                    }
+                }
+            }
+
+            $subCategories = $subCatsForCategory->values();
+        } elseif ($brandId) {
+            // Brand is selected, but Category is 'All'
+            $subCatIdsForBrand = Product::where('brand_id', $brandId)
+                ->whereNotNull('sub_category_id')
+                ->distinct()
+                ->pluck('sub_category_id')
+                ->all();
+
+            $brandSubCats = $allSubCategories->filter(function ($sc) use ($categories, $subCatIdsForBrand) {
+                return in_array($sc->id, $subCatIdsForBrand, true) || $categories->contains('id', $sc->category_id);
+            });
+
+            $subCategories = $brandSubCats->isNotEmpty() ? $brandSubCats->values() : $allSubCategories;
+        } else {
+            $subCategories = $allSubCategories;
+        }
+
+        // Validate and reset subcategory selection if invalid
+        $subCategoryId = ($rawSubCategoryId && $subCategories->contains('id', (int) $rawSubCategoryId)) ? (int) $rawSubCategoryId : null;
+
+        // 5. Query Products
         $query = Product::query()
-            ->with(['baseUom', 'brand', 'category', 'productType'])
-            ->when($request->filled('brand_id'), fn ($q) => $q->where('brand_id', $request->brand_id))
-            ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->category_id))
+            ->with(['baseUom', 'brand', 'category', 'subCategory', 'productType'])
+            ->when($brandId, fn ($q) => $q->where('brand_id', $brandId))
+            ->when($categoryId, fn ($q) => $q->where('category_id', $categoryId))
+            ->when($subCategoryId, fn ($q) => $q->where('sub_category_id', $subCategoryId))
             ->when($request->filled('product_type'), function ($q) use ($request) {
                 $val = $request->input('product_type');
                 $q->where(function ($sub) use ($val) {
@@ -47,7 +145,24 @@ class ProductController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'hsn_code', 'series', 'model', 'product_type']);
+        $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'hsn_code', 'series', 'model', 'product_type'], [
+            'serials' => ['serial_number'],
+        ]);
+
+        if ($export = $this->exportIfRequested($request, $query, 'Products', 'Products', ['Name', 'Part Number', 'Model', 'Brand', 'Category', 'Subcategory', 'Product Type', 'Base UOM', 'GST Rate', 'Status'], fn ($item) => [
+            $item->name,
+            $item->sku ?: '',
+            $item->model ?: '',
+            $item->brand?->name ?? '',
+            $item->category?->name ?? '',
+            $item->subCategory?->name ?? '',
+            $item->productType?->name ?? $item->product_type ?? '',
+            $item->baseUom?->name ?? '',
+            $item->tax_rate !== null ? (string) $item->tax_rate : '',
+            $item->is_active ? 'Active' : 'Inactive',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,
@@ -69,15 +184,40 @@ class ProductController extends Controller
 
         $items = $query->paginate(15)->withQueryString();
 
+        $serialSearch = trim((string) $request->input('search'));
+        $serialMatches = $serialSearch === ''
+            ? collect()
+            : ProductSerial::query()
+                ->with(['product', 'customer', 'salesInvoice'])
+                ->where('serial_number', $serialSearch)
+                ->limit(10)
+                ->get();
+
         return view('masters.products.index', [
             'items' => $items,
-            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
-            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'serialMatches' => $serialMatches,
+            'brands' => $brands,
+            'categories' => $categories,
+            'subCategories' => $subCategories,
+            'allCategoriesData' => $allCategories->map(fn ($c) => [
+                'id' => (string) $c->id,
+                'brand_id' => $c->brand_id ? (string) $c->brand_id : null,
+                'name' => $c->name,
+            ])->values(),
+            'allSubCategoriesData' => $allSubCategories->map(fn ($sc) => [
+                'id' => (string) $sc->id,
+                'category_id' => $sc->category_id ? (string) $sc->category_id : null,
+                'name' => $sc->name,
+            ])->values(),
             'productTypes' => ProductType::where('is_active', true)->orderBy('name')->get(),
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
             'search' => $request->string('search'),
+            'brandId' => $brandId,
+            'categoryId' => $categoryId,
+            'subCategoryId' => $subCategoryId,
             'productType' => $request->string('product_type'),
+            'status' => $request->string('status'),
         ]);
     }
 
@@ -109,30 +249,130 @@ class ProductController extends Controller
         return back()->with('success', $msg);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
-        return view('masters.products.form', $this->formData(new Product));
+        return view('masters.products.form', [
+            'returnTo' => $request->query('return_to', old('return_to')),
+            'returnUrl' => $this->safeInternalReturnUrl($request->query('return_url', old('return_url'))),
+            'targetRow' => $request->query('target_row', old('target_row')),
+            'orderId' => $request->query('order_id', old('order_id')),
+            ...$this->formData(new Product),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
 
-        DB::transaction(function () use ($data, $request) {
-            $data['serial_no'] = CodeGenerator::forProductSerial();
+        $isManualSerial = $request->filled('serial_no');
+        $maxAttempts = 5;
 
-            $product = Product::create($data);
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                return DB::transaction(function () use ($data, $request, $isManualSerial) {
+                    $insertData = $data;
+                    if (! $isManualSerial || empty($insertData['serial_no'])) {
+                        $insertData['serial_no'] = CodeGenerator::forProductSerial();
+                    }
 
-            $this->syncBaseUom($product);
-            $this->syncAlternateUoms($request, $product);
-        });
+                    $product = Product::create($insertData);
 
-        return $this->flashSuccess('Product created successfully.', 'masters.products.index');
+                    $this->syncBaseUom($product);
+                    $this->syncAlternateUoms($request, $product);
+
+                    $returnTo = $request->input('return_to');
+                    $returnUrl = $this->safeInternalReturnUrl($request->input('return_url'));
+                    $targetRow = $request->input('target_row');
+                    $orderId = $request->input('order_id');
+
+                    if ($returnTo === 'orders.create') {
+                        $params = ['new_product_id' => $product->id];
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $params['target_row'] = $targetRow;
+                        }
+
+                        return redirect()->route('orders.create', $params)
+                            ->with('status', "Product '{$product->name}' created successfully.")
+                            ->with('success', "Product '{$product->name}' created successfully.");
+                    }
+
+                    if ($returnTo === 'orders.edit' && $orderId) {
+                        $params = ['order' => $orderId, 'new_product_id' => $product->id];
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $params['target_row'] = $targetRow;
+                        }
+
+                        return redirect()->route('orders.edit', $params)
+                            ->with('status', "Product '{$product->name}' created successfully.")
+                            ->with('success', "Product '{$product->name}' created successfully.");
+                    }
+
+                    if ($returnTo === 'invoices.create') {
+                        $params = ['new_product_id' => $product->id];
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $params['target_row'] = $targetRow;
+                        }
+
+                        return redirect()->route('invoices.create', $params)
+                            ->with('status', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.")
+                            ->with('success', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.");
+                    }
+
+                    if ($returnUrl) {
+                        $separator = str_contains($returnUrl, '?') ? '&' : '?';
+                        $redirectUrl = $returnUrl . $separator . 'new_product_id=' . $product->id;
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $redirectUrl .= '&target_row=' . urlencode((string) $targetRow);
+                        }
+
+                        return redirect($redirectUrl)
+                            ->with('status', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.")
+                            ->with('success', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.");
+                    }
+
+                    return $this->flashSuccess('Product created successfully.', 'masters.products.index');
+                });
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                if ($isManualSerial) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'serial_no' => 'The product serial number has already been taken.',
+                    ]);
+                }
+
+                if ($attempt >= $maxAttempts) {
+                    return back()->withInput()->withErrors([
+                        'serial_no' => 'Could not generate a unique serial number. Please try again.',
+                    ]);
+                }
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ($this->isDuplicateSerialException($e)) {
+                    if ($isManualSerial) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'serial_no' => 'The product serial number has already been taken.',
+                        ]);
+                    }
+
+                    if ($attempt >= $maxAttempts) {
+                        return back()->withInput()->withErrors([
+                            'serial_no' => 'Could not generate a unique serial number. Please try again.',
+                        ]);
+                    }
+                } else {
+                    throw $e;
+                }
+            }
+        }
+
+        return back()->withInput()->withErrors([
+            'serial_no' => 'Could not generate a unique serial number. Please try again.',
+        ]);
     }
 
-    public function show(Product $product): RedirectResponse
+    public function show(Product $product): View
     {
-        return redirect()->route('masters.products.edit', $product);
+        $product->load(['brand', 'category', 'subCategory', 'productType', 'baseUom', 'alternateUom']);
+
+        return view('masters.products.show', compact('product'));
     }
 
     public function edit(Product $product): View
@@ -158,11 +398,28 @@ class ProductController extends Controller
     {
         $data = $this->validated($request, $product);
 
-        DB::transaction(function () use ($data, $product, $request) {
-            $product->update($data);
-            $this->syncBaseUom($product->fresh());
-            $this->syncAlternateUoms($request, $product->fresh());
-        });
+        if (! $request->filled('serial_no')) {
+            unset($data['serial_no']);
+        }
+
+        try {
+            DB::transaction(function () use ($data, $product, $request) {
+                $product->update($data);
+                $this->syncBaseUom($product->fresh());
+                $this->syncAlternateUoms($request, $product->fresh());
+            });
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+            return back()->withInput()->withErrors([
+                'serial_no' => 'The product serial number has already been taken.',
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($this->isDuplicateSerialException($e)) {
+                return back()->withInput()->withErrors([
+                    'serial_no' => 'The product serial number has already been taken.',
+                ]);
+            }
+            throw $e;
+        }
 
         return $this->flashSuccess('Product updated successfully.', 'masters.products.index');
     }
@@ -259,7 +516,19 @@ class ProductController extends Controller
             ]);
         }
 
-        if ($request->has('product_uoms.0.uom_id') && ! $request->filled('alternate_uom_id')) {
+        if ($request->boolean('sku_not_applicable')) {
+            $request->merge(['sku' => null]);
+        }
+
+        $altNotApplicable = $request->boolean('alternate_uom_not_applicable');
+        if ($altNotApplicable) {
+            $request->merge([
+                'alternate_uom_id' => null,
+                'conversion_factor' => null,
+            ]);
+        }
+
+        if (! $altNotApplicable && $request->has('product_uoms.0.uom_id') && ! $request->filled('alternate_uom_id')) {
             $request->merge([
                 'alternate_uom_id' => $request->input('product_uoms.0.uom_id'),
                 'conversion_factor' => $request->input('product_uoms.0.conversion_factor', $request->input('conversion_factor', 1)),
@@ -290,15 +559,41 @@ class ProductController extends Controller
             $request->merge(['width_in' => round((float) $request->input('width_cm') / 2.54, 2)]);
         }
 
-        $isFormSubmission = $request->boolean('has_dimensions')
+        $skipDimensions = $request->boolean('dimensions_not_applicable');
+        $isFormSubmission = ! $skipDimensions && (
+            $request->boolean('has_dimensions')
             || $request->has('height_cm')
             || $request->has('length_cm')
             || $request->has('width_cm')
-            || $request->has('net_weight');
+            || $request->has('net_weight')
+        );
 
         $data = $request->validate([
+            'return_to' => 'nullable|string|max:100',
+            'return_url' => 'nullable|string|max:500',
+            'order_id' => 'nullable|integer',
+            'target_row' => 'nullable|integer',
             'name' => 'required|string|max:255',
-            'sku' => 'required|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
+            'sku' => 'required_unless:sku_not_applicable,1|nullable|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
+            'serial_no' => [
+                'nullable',
+                'string',
+                'max:50',
+                function ($attribute, $value, $fail) use ($product) {
+                    if ($value !== null && $value !== '') {
+                        $query = DB::table('products')->where('serial_no', $value);
+                        if ($product) {
+                            $query->where('id', '!=', $product->id);
+                        }
+                        if ($query->exists()) {
+                            $fail('The product serial number has already been taken.');
+                        }
+                    }
+                },
+            ],
+            'sku_not_applicable' => 'nullable|boolean',
+            'alternate_uom_not_applicable' => 'nullable|boolean',
+            'dimensions_not_applicable' => 'nullable|boolean',
             'model' => 'nullable|string|max:100',
             'models' => 'nullable|string|max:100',
             'product_type_id' => 'nullable|exists:product_types,id',
@@ -316,15 +611,25 @@ class ProductController extends Controller
             'net_weight' => $isFormSubmission ? 'required|numeric|gt:0' : 'nullable|numeric|gt:0',
             'weight_unit' => 'nullable|string|max:20',
             'base_uom_id' => 'required|exists:uoms,id',
-            'alternate_uom_id' => 'required|exists:uoms,id|different:base_uom_id',
-            'conversion_factor' => 'required|numeric|gt:0',
+            'alternate_uom_id' => ($altNotApplicable ? 'nullable' : 'required').'|exists:uoms,id|different:base_uom_id',
+            'conversion_factor' => ($altNotApplicable ? 'nullable' : 'required').'|numeric|gt:0',
             'brand_id' => 'nullable|exists:brands,id',
             'category_id' => 'nullable|exists:categories,id',
             'sub_category_id' => 'nullable|exists:sub_categories,id',
-            'tax_rate' => 'nullable|numeric|min:0|max:100',
+            'tax_rate' => [$request->exists('tax_rate') ? 'required' : 'nullable', 'numeric', 'min:0', 'max:100'],
             'selling_price' => 'nullable|numeric|min:0',
             'trade_price' => 'nullable|numeric|min:0',
             'purchase_price' => 'nullable|numeric|min:0',
+            'purchase_price_tax_basis' => 'nullable|in:'.implode(',', array_keys(Product::PURCHASE_TAX_BASES)),
+            'supply_type' => 'nullable|in:'.implode(',', array_keys(Product::SUPPLY_TYPES)),
+            'costing_method' => 'nullable|in:'.implode(',', array_keys(Product::COSTING_METHODS)),
+            'market_valuation_method' => 'nullable|in:'.implode(',', array_keys(Product::MARKET_VALUATION_METHODS)),
+            'provide_behaviour' => 'nullable|boolean',
+            'ignore_physical_count_diff' => 'nullable|boolean',
+            'ignore_negative_balances' => 'nullable|boolean',
+            'treat_sales_as_new_manufacture' => 'nullable|boolean',
+            'treat_purchases_as_consumed' => 'nullable|boolean',
+            'treat_rejections_inward_as_scrap' => 'nullable|boolean',
             'calculation_mrp' => 'nullable|numeric|min:0',
             'alt_selling_price' => 'nullable|numeric|min:0',
             'alt_trade_price' => 'nullable|numeric|min:0',
@@ -421,7 +726,7 @@ class ProductController extends Controller
 
         $data['product_type_id'] = $productTypeId;
         $data['product_type'] = $productTypeName;
-        unset($data['models']);
+        unset($data['models'], $data['sku_not_applicable'], $data['alternate_uom_not_applicable'], $data['dimensions_not_applicable']);
         $data['apply_discount_on_payable'] = $request->has('apply_discount_on_payable')
             ? $request->boolean('apply_discount_on_payable')
             : ($product?->apply_discount_on_payable ?? false);
@@ -430,25 +735,54 @@ class ProductController extends Controller
         $data['trade_price'] = $data['trade_price'] ?? 0;
         $data['purchase_price'] = $data['purchase_price'] ?? 0;
         $data['calculation_mrp'] = $data['calculation_mrp'] ?? 0;
+        $data['supply_type'] = $request->exists('supply_type')
+            ? ($data['supply_type'] ?? 'goods')
+            : ($product?->supply_type ?? 'goods');
+        $data['purchase_price_tax_basis'] = $request->exists('purchase_price_tax_basis')
+            ? ($data['purchase_price_tax_basis'] ?? 'exclusive')
+            : ($product?->purchase_price_tax_basis ?? 'exclusive');
+        $data['costing_method'] = $request->exists('costing_method')
+            ? ($data['costing_method'] ?: null)
+            : $product?->costing_method;
+        $data['market_valuation_method'] = $request->exists('market_valuation_method')
+            ? ($data['market_valuation_method'] ?? 'avg_price')
+            : ($product?->market_valuation_method ?? 'avg_price');
+        $data['provide_behaviour'] = $request->exists('provide_behaviour')
+            ? $request->boolean('provide_behaviour')
+            : (bool) ($product?->provide_behaviour ?? false);
+        foreach (array_keys(Product::BEHAVIOUR_FLAGS) as $behaviourFlag) {
+            $data[$behaviourFlag] = $data['provide_behaviour'] && $request->exists($behaviourFlag)
+                ? $request->boolean($behaviourFlag)
+                : ($data['provide_behaviour'] ? (bool) ($product?->{$behaviourFlag} ?? false) : false);
+        }
 
-        $conversion = (float) ($data['conversion_factor'] ?? 1);
-        $data['conversion_factor'] = $conversion;
+        if ($altNotApplicable) {
+            $data['alternate_uom_id'] = null;
+            $data['conversion_factor'] = null;
+            $data['alt_selling_price'] = null;
+            $data['alt_purchase_price'] = null;
+            $data['alt_trade_price'] = null;
+            $data['alt_calculation_mrp'] = null;
+        } else {
+            $conversion = (float) ($data['conversion_factor'] ?? 1);
+            $data['conversion_factor'] = $conversion;
 
-        $data['alt_selling_price'] = (isset($data['alt_selling_price']) && $data['alt_selling_price'] !== null && $data['alt_selling_price'] !== '')
-            ? (float) $data['alt_selling_price']
-            : round(((float) $data['selling_price']) * $conversion, 2);
+            $data['alt_selling_price'] = (isset($data['alt_selling_price']) && $data['alt_selling_price'] !== null && $data['alt_selling_price'] !== '')
+                ? (float) $data['alt_selling_price']
+                : round(((float) $data['selling_price']) * $conversion, 2);
 
-        $data['alt_purchase_price'] = (isset($data['alt_purchase_price']) && $data['alt_purchase_price'] !== null && $data['alt_purchase_price'] !== '')
-            ? (float) $data['alt_purchase_price']
-            : round(((float) $data['purchase_price']) * $conversion, 2);
+            $data['alt_purchase_price'] = (isset($data['alt_purchase_price']) && $data['alt_purchase_price'] !== null && $data['alt_purchase_price'] !== '')
+                ? (float) $data['alt_purchase_price']
+                : round(((float) $data['purchase_price']) * $conversion, 2);
 
-        $data['alt_trade_price'] = (isset($data['alt_trade_price']) && $data['alt_trade_price'] !== null && $data['alt_trade_price'] !== '')
-            ? (float) $data['alt_trade_price']
-            : round(((float) $data['trade_price']) * $conversion, 2);
+            $data['alt_trade_price'] = (isset($data['alt_trade_price']) && $data['alt_trade_price'] !== null && $data['alt_trade_price'] !== '')
+                ? (float) $data['alt_trade_price']
+                : round(((float) $data['trade_price']) * $conversion, 2);
 
-        $data['alt_calculation_mrp'] = (isset($data['alt_calculation_mrp']) && $data['alt_calculation_mrp'] !== null && $data['alt_calculation_mrp'] !== '')
-            ? (float) $data['alt_calculation_mrp']
-            : round(((float) $data['calculation_mrp']) * $conversion, 2);
+            $data['alt_calculation_mrp'] = (isset($data['alt_calculation_mrp']) && $data['alt_calculation_mrp'] !== null && $data['alt_calculation_mrp'] !== '')
+                ? (float) $data['alt_calculation_mrp']
+                : round(((float) $data['calculation_mrp']) * $conversion, 2);
+        }
 
         $data['discount_percent'] = $data['discount_percent'] ?? ($product?->discount_percent ?? 0);
         $data['discount_type'] = $data['discount_type'] ?? ($product?->discount_type ?? 'percent');
@@ -483,10 +817,21 @@ class ProductController extends Controller
         $data['net_weight'] = filled($request->input('net_weight'))
             ? (float) $request->input('net_weight')
             : ($product?->net_weight ?? null);
+        if ($skipDimensions) {
+            $data['height_cm'] = null;
+            $data['length_cm'] = null;
+            $data['width_cm'] = null;
+            $data['height_in'] = null;
+            $data['length_in'] = null;
+            $data['width_in'] = null;
+            $data['net_weight'] = null;
+        }
         $data['weight_unit'] = filled($request->input('weight_unit'))
             ? trim((string) $request->input('weight_unit'))
             : ($product?->weight_unit ?? 'KG');
-        $data['warranty_months'] = $data['warranty_months'] ?? ($product?->warranty_months ?? null);
+        $data['warranty_months'] = $request->has('warranty')
+            ? WarrantyPeriod::months(is_string($data['warranty'] ?? null) ? $data['warranty'] : null)
+            : ($data['warranty_months'] ?? ($product?->warranty_months ?? null));
         $data['warranty_terms'] = $data['warranty_terms'] ?? ($product?->warranty_terms ?? null);
         $data['sender_warranty_months'] = $data['sender_warranty_months'] ?? ($product?->sender_warranty_months ?? null);
         $data['sender_warranty_terms'] = $data['sender_warranty_terms'] ?? ($product?->sender_warranty_terms ?? null);
@@ -530,7 +875,39 @@ class ProductController extends Controller
             $data['image_path'] = $request->file('image')->store('products', 'public');
         }
 
+        unset($data['return_to'], $data['return_url'], $data['order_id'], $data['target_row']);
+
         return $data;
+    }
+
+    /**
+     * Allow redirect only to same-app relative or absolute URLs (open-redirect safe).
+     */
+    protected function safeInternalReturnUrl(mixed $url): ?string
+    {
+        if (! is_string($url)) {
+            return null;
+        }
+
+        $url = trim($url);
+        if ($url === '' || str_starts_with($url, '//')) {
+            return null;
+        }
+
+        if (str_starts_with($url, '/')) {
+            return $url;
+        }
+
+        $appUrl = rtrim((string) config('app.url'), '/');
+        if ($appUrl !== '' && str_starts_with($url, $appUrl.'/')) {
+            return $url;
+        }
+
+        if ($appUrl !== '' && $url === $appUrl) {
+            return $url;
+        }
+
+        return null;
     }
 
     protected function syncBaseUom(Product $product): void
@@ -613,5 +990,14 @@ class ProductController extends Controller
                 'is_active' => true,
             ]);
         }
+    }
+
+    protected function isDuplicateSerialException(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'products_serial_no_unique')
+            || str_contains($message, 'products.serial_no')
+            || (str_contains($message, 'Duplicate entry') && str_contains($message, 'serial_no'));
     }
 }

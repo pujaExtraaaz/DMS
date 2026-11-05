@@ -15,11 +15,11 @@ class DatabaseSeeder extends Seeder
             RolePermissionSeeder::class,
             // Prefer Avit tenant seed over legacy DemoDataSeeder (which creates cross-tenant demo users).
             CleanBusinessDataSeeder::class,
-            AvitDigitalCompanySeeder::class,
-            AvitBooksCompanySeeder::class,
+            // AvitDigitalCompanySeeder::class,
+            // AvitBooksCompanySeeder::class,
             UnlinkExternalUsersSeeder::class,
-            AvitDigitalDemoSeeder::class,
-            AvitBooksDemoSeeder::class,
+            // AvitDigitalDemoSeeder::class,
+            // AvitBooksDemoSeeder::class,
         ]);
 
         // Push all DMS operational data into the linked Books company.

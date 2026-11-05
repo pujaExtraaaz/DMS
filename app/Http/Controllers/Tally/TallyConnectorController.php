@@ -94,28 +94,49 @@ class TallyConnectorController extends Controller
             'response' => 'nullable|string|max:60000',
         ]);
 
-        if ($data['status'] === 'sent') {
+        $response = $data['response'] ?? null;
+        $error = $data['error'] ?? null;
+        $parsed = TallyExportService::parseTallyResponse($response ?: $error);
+        // Duplicate/already-exists is only a soft success on Create.
+        // Alter + Duplicate Original Name means the rename/symbol write failed (0 altered).
+        $isCreate = str_contains((string) $tally_sync_queue->payload, 'ACTION="Create"')
+            || str_contains((string) $tally_sync_queue->payload, "ACTION='Create'");
+        $alreadyExists = $isCreate && $this->isAlreadyExistsFailure($parsed['line_errors']);
+
+        if ($data['status'] === 'sent' || $alreadyExists) {
             $tally_sync_queue->update([
                 'status' => 'sent',
                 'sent_at' => now(),
                 'last_error' => null,
-                'last_response' => $data['response'] ?? null,
+                'last_response' => $response ?? $error,
                 'attempts' => $tally_sync_queue->attempts + 1,
             ]);
 
             try {
-                app(TallyExportService::class)->recordSuccess($tally_sync_queue, $data['response'] ?? null);
-                app(\App\Domains\TallySync\Queue\BooksSyncQueue::class)->recordLink($tally_sync_queue, $data['response'] ?? null);
+                app(TallyExportService::class)->recordSuccess($tally_sync_queue, $response ?? $error);
+                app(\App\Domains\TallySync\Queue\BooksSyncQueue::class)->recordLink($tally_sync_queue, $response ?? $error);
             } catch (\Throwable $e) {
                 Log::warning('Tally mapping update failed', ['id' => $tally_sync_queue->id, 'error' => $e->getMessage()]);
             }
         } else {
             $tally_sync_queue->update([
                 'status' => 'failed',
-                'last_error' => $data['error'] ?? 'Connector reported failure',
-                'last_response' => $data['response'] ?? null,
+                'last_error' => $error ?? 'Connector reported failure',
+                'last_response' => $response,
                 'attempts' => $tally_sync_queue->attempts + 1,
             ]);
+
+            try {
+                app(TallyExportService::class)->healMissingAndRequeue(
+                    $tally_sync_queue->fresh(),
+                    $parsed['line_errors']
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Tally missing-master heal failed', [
+                    'id' => $tally_sync_queue->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return response()->json([
@@ -123,6 +144,25 @@ class TallyConnectorController extends Controller
             'id' => $tally_sync_queue->id,
             'status' => $tally_sync_queue->fresh()->status,
         ]);
+    }
+
+    /**
+     * @param  list<string>  $lineErrors
+     */
+    protected function isAlreadyExistsFailure(array $lineErrors): bool
+    {
+        foreach ($lineErrors as $error) {
+            $text = mb_strtolower($error);
+            if (
+                str_contains($text, 'duplicate')
+                || str_contains($text, 'already exists')
+                || str_contains($text, 'already exist')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function exports(): JsonResponse
@@ -139,9 +179,18 @@ class TallyConnectorController extends Controller
 
     public function imports(Request $request): JsonResponse
     {
+        // post_max_size exceeded → PHP empties the body; surface that clearly instead of a vague validation error.
+        if ($request->header('Content-Length') && empty($request->all()) && (int) $request->header('Content-Length') > 0) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Import body was empty — PHP post_max_size/memory likely rejected the payload. Raise limits or shrink the export window.',
+            ], 413);
+        }
+
         $data = $request->validate([
             'key' => 'required|string|max:40',
-            'xml' => 'required|string|max:8000000',
+            // Chunked exports stay well under this; keep headroom for dense voucher windows.
+            'xml' => 'required|string|max:120000000',
         ]);
 
         return response()->json([

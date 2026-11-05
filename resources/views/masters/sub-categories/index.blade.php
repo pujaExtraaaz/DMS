@@ -4,6 +4,7 @@
 <div id="listing-container" data-dynamic-container x-data="subCategoryIndex()">
     <x-ui.page-header title="Sub Categories">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('masters.sub-categories.create')">+ Add Sub Category</x-ui.button>
         </x-slot>
     </x-ui.page-header>

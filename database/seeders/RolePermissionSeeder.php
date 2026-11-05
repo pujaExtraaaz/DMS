@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Support\DmsPermissionCatalog;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -10,52 +11,6 @@ use Tally\Authorization\PermissionCatalog;
 
 class RolePermissionSeeder extends Seeder
 {
-    protected array $modules = [
-        'dashboard',
-        'organization',
-        'masters',
-        'products',
-        'customers',
-        'price-master',
-        'orders',
-        'quotations',
-        'inventory',
-        'stock',
-        'purchases',
-        'purchase-orders',
-        'sales',
-        'invoices',
-        'payments',
-        'cheques',
-        'credit-notes',
-        'communications',
-        'logistics',
-        'delivery',
-        'settlement',
-        'deals',
-        'targets',
-        'schemes',
-        'interest',
-        'hrms',
-        'crm',
-        'tally',
-        'reports',
-    ];
-
-    protected array $extraPermissions = [
-        'orders.approve',
-        'orders.book',
-        'orders.convert',
-        'orders.override-credit',
-        'orders.back-order',
-        'payments.reconcile',
-        'settlement.entry',
-        'create orders',
-        'manage settlements',
-        'quotations.view-profit',
-        'cheques.unfreeze',
-    ];
-
     public function run(): void
     {
         app()[PermissionRegistrar::class]
@@ -77,6 +32,8 @@ class RolePermissionSeeder extends Seeder
                 'masters.view',
                 'products.view',
                 'customers.view',
+                'customers.create',
+                'customers.edit',
                 'price-master.view',
 
                 'orders.view',
@@ -87,8 +44,27 @@ class RolePermissionSeeder extends Seeder
                 'orders.convert',
                 'orders.manage',
 
+                'quotations.view',
+                'quotations.create',
+                'quotations.edit',
+
                 'sales.view',
                 'invoices.view',
+
+                'targets.view',
+                'targets.manage',
+                'sales_targets.view',
+                'sales_targets.create',
+                'sales_targets.edit',
+                'sales_targets.manage',
+
+                'crm.view',
+                'crm.create',
+                'crm.edit',
+                'crm.manage',
+
+                'deals.view',
+                'schemes.view',
 
                 'reports.view',
                 'reports.manage',
@@ -109,8 +85,18 @@ class RolePermissionSeeder extends Seeder
 
                 'create orders',
 
+                'quotations.view',
+                'quotations.create',
+
                 'sales.view',
                 'invoices.view',
+
+                'targets.view',
+                'sales_targets.view',
+
+                'crm.view',
+                'crm.create',
+                'crm.edit',
             ],
 
             'purchase' => [
@@ -149,7 +135,13 @@ class RolePermissionSeeder extends Seeder
                 'credit-notes.manage',
                 'interest.view',
                 'interest.manage',
+                'od.view',
+                'od.create',
+                'od.edit',
+                'od.manage',
                 'invoices.view',
+                'tally.view',
+                'accounting.view',
                 'reports.view',
             ],
 
@@ -158,9 +150,11 @@ class RolePermissionSeeder extends Seeder
                 'reports.view',
                 'reports.manage',
                 'targets.view',
+                'sales_targets.view',
                 'schemes.view',
                 'deals.view',
                 'organization.view',
+                'od.view',
             ],
 
             'warehouse' => [
@@ -190,10 +184,20 @@ class RolePermissionSeeder extends Seeder
                 'payments.manage',
                 'payments.reconcile',
 
+                'cheques.view',
+                'cheques.manage',
+                'credit-notes.view',
+                'credit-notes.manage',
+
                 'settlement.view',
                 'settlement.create',
                 'settlement.edit',
                 'settlement.manage',
+
+                'od.view',
+                'od.manage',
+                'tally.view',
+                'accounting.view',
 
                 'reports.view',
                 'manage settlements',
@@ -223,32 +227,26 @@ class RolePermissionSeeder extends Seeder
                 'guard_name' => 'web',
             ]);
 
-            $role->syncPermissions($rolePermissions);
+            // Super-admin always mirrors the full catalog.
+            // Other roles: grant the template set without stripping any
+            // permissions already assigned to that role outside this seeder.
+            if ($roleName === 'super-admin') {
+                $role->syncPermissions($rolePermissions);
+                continue;
+            }
+
+            $existing = $role->permissions()->pluck('name')->all();
+            $merged = array_values(array_unique(array_merge($existing, $rolePermissions)));
+            $role->syncPermissions($merged);
         }
     }
 
     protected function seedPermissions(): array
     {
-        $permissions = [];
-
-        foreach ($this->modules as $module) {
-            foreach (
-                ['view', 'create', 'edit', 'manage']
-                as $action
-            ) {
-                $permissions[] = "{$module}.{$action}";
-            }
-        }
-
-        $permissions = array_merge(
-            $permissions,
-            $this->extraPermissions,
+        $permissions = array_values(array_unique(array_merge(
+            DmsPermissionCatalog::names(),
             PermissionCatalog::all(),
-        );
-
-        $permissions = array_values(
-            array_unique($permissions)
-        );
+        )));
 
         foreach ($permissions as $permission) {
             Permission::query()->firstOrCreate([

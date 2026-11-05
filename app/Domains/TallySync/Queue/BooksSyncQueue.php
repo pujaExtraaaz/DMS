@@ -18,6 +18,7 @@ use Tally\Models\Godown;
 use Tally\Models\Ledger;
 use Tally\Models\Product;
 use Tally\Models\ProductGroup;
+use Tally\Models\StockTransaction;
 use Tally\Models\TallyLink;
 use Tally\Models\Unit;
 use Tally\Models\Voucher;
@@ -27,6 +28,7 @@ class BooksSyncQueue
     /** @var array<string, class-string<Model>> */
     public const MODELS = [
         'books_voucher' => Voucher::class,
+        'books_stock_journal' => StockTransaction::class,
         'books_ledger' => Ledger::class,
         'books_group' => AccountGroup::class,
         'books_stock_item' => Product::class,
@@ -163,7 +165,7 @@ class BooksSyncQueue
 
     private function action(Model $model, string $type): ?string
     {
-        if ($model instanceof Voucher) {
+        if ($model instanceof Voucher || $model instanceof StockTransaction) {
             $status = $model->status instanceof VoucherStatus ? $model->status : VoucherStatus::tryFrom((string) $model->status);
             $linked = $this->linked($model, $type);
             if ($status === VoucherStatus::Cancelled) {
@@ -190,17 +192,21 @@ class BooksSyncQueue
 
     private function dependencies(Model $model): void
     {
+        // Groups before ledgers (and parent groups before child groups via recursive enqueue).
         if ($model instanceof Ledger && $model->account_group_id) {
-            $group = $model->accountGroup;
-            if ($group) {
-                $this->enqueue($group);
+            $model->loadMissing('accountGroup.parent');
+            if ($model->accountGroup) {
+                $this->enqueue($model->accountGroup);
             }
         }
 
         if ($model instanceof Product) {
-            $model->loadMissing(['primaryUnit', 'productGroup']);
+            $model->loadMissing(['primaryUnit', 'alternateUnit', 'productGroup.parent']);
             if ($model->primaryUnit) {
                 $this->enqueue($model->primaryUnit);
+            }
+            if ($model->alternateUnit) {
+                $this->enqueue($model->alternateUnit);
             }
             if ($model->productGroup) {
                 $this->enqueue($model->productGroup);
@@ -225,6 +231,7 @@ class BooksSyncQueue
                 'inventoryLines.product.productGroup',
                 'inventoryLines.godown',
                 'inventoryLines.destinationGodown',
+                'billAllocations.bill.entry.voucher',
             ]);
             foreach ($model->entries as $entry) {
                 if ($entry->ledger) {
@@ -244,6 +251,37 @@ class BooksSyncQueue
                 if ($line->destinationGodown) {
                     $this->enqueue($line->destinationGodown);
                 }
+            }
+            // Agst Ref payments need the source purchase/sales voucher in Tally first.
+            foreach ($model->billAllocations as $allocation) {
+                $source = $allocation->bill?->entry?->voucher;
+                if ($source && $source->getKey() !== $model->getKey()) {
+                    $this->enqueue($source);
+                }
+            }
+        }
+
+        if ($model instanceof StockTransaction) {
+            $model->loadMissing([
+                'lines.product.primaryUnit',
+                'lines.product.productGroup',
+                'lines.godown',
+                'sourceGodown',
+                'destinationGodown',
+            ]);
+            foreach ($model->lines as $line) {
+                if ($line->product) {
+                    $this->enqueue($line->product);
+                }
+                if ($line->godown) {
+                    $this->enqueue($line->godown);
+                }
+            }
+            if ($model->sourceGodown) {
+                $this->enqueue($model->sourceGodown);
+            }
+            if ($model->destinationGodown) {
+                $this->enqueue($model->destinationGodown);
             }
         }
     }

@@ -315,6 +315,59 @@ class GstLookupTest extends TestCase
         $this->assertEquals('422001', $addresses[1]['pincode']);
     }
 
+    public function test_single_additional_place_object_is_not_expanded_into_field_rows(): void
+    {
+        config([
+            'services.gst.provider' => 'sandbox',
+            'services.gst.api_key' => 'valid-sandbox-key',
+            'services.gst.api_secret' => 'valid-sandbox-secret',
+        ]);
+
+        Http::fake([
+            'https://api.sandbox.co.in/authenticate' => Http::response(['access_token' => 'token-xyz'], 200),
+            'https://api.sandbox.co.in/gst/compliance/public/gstin/search' => Http::response([
+                'data' => [
+                    'data' => [
+                        'gstin' => '27AAAAA0000A1Z2',
+                        'lgnm' => 'Single Extra Place Pvt Ltd',
+                        'tradeNam' => 'Single Extra',
+                        'sts' => 'Active',
+                        'pradr' => [
+                            'addr' => [
+                                'bno' => '1',
+                                'bnm' => 'HQ',
+                                'st' => 'Main Road',
+                                'loc' => 'Pune',
+                                'stcd' => 'Maharashtra',
+                                'pncd' => '411001',
+                            ],
+                        ],
+                        // Provider sometimes returns one additional place as an object, not a list.
+                        'adadr' => [
+                            'addr' => [
+                                'bno' => '9',
+                                'bnm' => 'Depot',
+                                'st' => 'Ring Road',
+                                'loc' => 'Nashik',
+                                'stcd' => 'Maharashtra',
+                                'pncd' => '422001',
+                            ],
+                            'ntr' => 'Warehouse',
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $response = $this->actingAs($this->user)
+            ->getJson(route('masters.customers.gst-lookup', ['gstin' => '27AAAAA0000A1Z2']));
+
+        $response->assertStatus(200);
+        $addresses = $response->json('party.addresses');
+        $this->assertCount(2, $addresses);
+        $this->assertEquals('422001', $addresses[1]['pincode']);
+    }
+
     public function test_cancelled_registration_is_flagged(): void
     {
         config([

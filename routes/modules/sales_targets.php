@@ -3,7 +3,7 @@
 use App\Http\Controllers\Target\SalesTargetController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('sales-targets')->name('sales-targets.')->group(function () {
+Route::prefix('sales-targets')->name('sales-targets.')->middleware('role_or_permission:super-admin|sales_targets.view|sales_targets.create|sales_targets.edit|sales_targets.manage|targets.view|targets.manage')->group(function () {
     Route::get('/dashboard', [SalesTargetController::class, 'dashboard'])->name('dashboard');
     Route::get('/', [SalesTargetController::class, 'index'])->name('index');
     Route::get('/create', [SalesTargetController::class, 'create'])->name('create');

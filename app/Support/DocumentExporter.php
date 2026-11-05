@@ -488,9 +488,19 @@ class DocumentExporter
         ];
 
         $totals = [
-            'Subtotal (Taxable)' => '₹ ' . number_format((float) $invoice->subtotal, 2),
-            'Tax Amount' => '₹ ' . number_format((float) $invoice->tax_amount, 2),
+            'Subtotal (Taxable)' => '₹ ' . number_format((float) ($invoice->taxable_amount ?? $invoice->subtotal), 2),
         ];
+
+        if ((float) $invoice->cgst_amount > 0) {
+            $totals['CGST'] = '₹ ' . number_format((float) $invoice->cgst_amount, 2);
+        }
+        if ((float) $invoice->sgst_amount > 0) {
+            $totals['SGST'] = '₹ ' . number_format((float) $invoice->sgst_amount, 2);
+        }
+        if ((float) $invoice->igst_amount > 0) {
+            $totals['IGST'] = '₹ ' . number_format((float) $invoice->igst_amount, 2);
+        }
+        $totals['Tax Amount'] = '₹ ' . number_format((float) $invoice->tax_amount, 2);
 
         if ((float) ($invoice->freight_charge ?? 0) > 0) {
             $totals['Freight / Landed Charge'] = '₹ ' . number_format((float) $invoice->freight_charge, 2);
@@ -498,6 +508,10 @@ class DocumentExporter
 
         if ((float) ($invoice->other_charges ?? 0) > 0) {
             $totals['Other Charges'] = '₹ ' . number_format((float) $invoice->other_charges, 2);
+        }
+
+        if ($invoice->round_off !== null && (float) $invoice->round_off != 0) {
+            $totals['Round Off'] = ((float)$invoice->round_off > 0 ? '+₹ ' : '-₹ ') . number_format(abs((float) $invoice->round_off), 2);
         }
 
         $totals['Grand Total'] = '₹ ' . number_format((float) $invoice->grand_total, 2);
@@ -574,17 +588,44 @@ class DocumentExporter
             'Status' => ucfirst($invoice->status),
             'Billing Address' => preg_replace('/\s+/', ' ', trim($invoice->billing_address ?: ($invoice->customer?->address ?: '—'))),
             'Delivery Address' => preg_replace('/\s+/', ' ', trim($invoice->shipping_address ?: ($invoice->billing_address ?: ($invoice->customer?->address ?: '—')))),
+            'Delivery Note No' => $invoice->delivery_note_na ? 'Not Applicable' : ($invoice->delivery_note_no ?? '—'),
+            'Dispatch Doc No' => $invoice->dispatch_doc_no ?? '—',
+            'Dispatched Through' => $invoice->dispatched_through ?? ($invoice->transport_mode ?? '—'),
+            'Destination' => $invoice->destination ?? '—',
+            'Carrier / Agent' => $invoice->carrier_name ?? '—',
+            'LR / RR No' => $invoice->lr_rr_no ?? '—',
+            'LR / RR Date' => $invoice->lr_rr_date?->format('d/m/Y') ?? '—',
+            'Motor Vehicle No' => $invoice->vehicle_no ?? '—',
+            'Order No' => $invoice->order_no ?? ($invoice->order?->order_no ?? '—'),
+            'Payment Terms' => $invoice->payment_terms ?? '—',
+            'Other References' => $invoice->other_references ?? ($invoice->reference_no ?? '—'),
+            'Terms of Delivery' => $invoice->terms_of_delivery ?? '—',
         ];
 
         $totals = [
-            'Subtotal (Taxable)' => '₹ ' . number_format((float) $invoice->subtotal, 2),
+            'Subtotal (Taxable)' => '₹ ' . number_format((float) ($invoice->taxable_amount ?? $invoice->subtotal), 2),
             'Total Discount' => '₹ ' . number_format((float) $invoice->discount_amount, 2),
-            'Total Tax' => '₹ ' . number_format((float) $invoice->tax_amount, 2),
-            'Grand Total' => '₹ ' . number_format((float) $invoice->grand_total, 2),
-            'Paid Amount' => '₹ ' . number_format((float) $invoice->paid_amount, 2),
-            'Balance Due' => '₹ ' . number_format((float) ($invoice->grand_total - $invoice->paid_amount), 2),
-            'Amount in Words' => self::numberToIndianWords($invoice->grand_total),
         ];
+
+        if ((float) $invoice->cgst_amount > 0) {
+            $totals['Central Tax (CGST)'] = '₹ ' . number_format((float) $invoice->cgst_amount, 2);
+        }
+        if ((float) $invoice->sgst_amount > 0) {
+            $totals['State Tax (SGST)'] = '₹ ' . number_format((float) $invoice->sgst_amount, 2);
+        }
+        if ((float) $invoice->igst_amount > 0) {
+            $totals['Integrated Tax (IGST)'] = '₹ ' . number_format((float) $invoice->igst_amount, 2);
+        }
+        $totals['Total Tax'] = '₹ ' . number_format((float) $invoice->tax_amount, 2);
+
+        if ($invoice->round_off !== null && (float) $invoice->round_off != 0) {
+            $totals['Round Off'] = ((float)$invoice->round_off > 0 ? '+₹ ' : '-₹ ') . number_format(abs((float) $invoice->round_off), 2);
+        }
+
+        $totals['Grand Total'] = '₹ ' . number_format((float) $invoice->grand_total, 2);
+        $totals['Paid Amount'] = '₹ ' . number_format((float) $invoice->paid_amount, 2);
+        $totals['Balance Due'] = '₹ ' . number_format((float) ($invoice->grand_total - $invoice->paid_amount), 2);
+        $totals['Amount in Words'] = self::numberToIndianWords($invoice->grand_total);
 
         if ($format === 'csv') {
             return self::exportCsv($filename, $headers, $rows, $meta, $totals);
@@ -698,7 +739,7 @@ class DocumentExporter
     public static function exportSalesInvoicesListing(Collection|iterable $invoices, string $format): Response|StreamedResponse
     {
         $filename = 'Sales-Invoices-' . now()->format('Ymd-His') . '.' . ($format === 'excel' ? 'xlsx' : $format);
-        $headers = ['Invoice No', 'Date', 'Due Date', 'Customer', 'Status', 'Taxable (₹)', 'Discount (₹)', 'Tax (₹)', 'Grand Total (₹)', 'Paid (₹)', 'Balance (₹)'];
+        $headers = ['Invoice No', 'Date', 'Due Date', 'Customer', 'Salesperson', 'Status', 'Taxable (₹)', 'Discount (₹)', 'Tax (₹)', 'Grand Total (₹)', 'Paid (₹)', 'Balance (₹)'];
         $rows = [];
         $totalSum = 0;
 
@@ -709,6 +750,7 @@ class DocumentExporter
                 $inv->invoice_date?->format('d/m/Y') ?? '',
                 $inv->due_date?->format('d/m/Y') ?? '',
                 $inv->customer?->name ?? '',
+                $inv->salesperson?->name ?? '—',
                 ucfirst($inv->status),
                 number_format((float) $inv->subtotal, 2, '.', ''),
                 number_format((float) $inv->discount_amount, 2, '.', ''),
@@ -741,6 +783,31 @@ class DocumentExporter
         }
 
         return self::exportExcel($filename, 'Sales Invoices', $headers, $rows, $meta, $totals);
+    }
+
+    public static function exportTabular(string $basename, string $title, array $headers, array $rows, string $format): Response|StreamedResponse
+    {
+        $format = $format === 'excel' ? 'xlsx' : $format;
+        $extension = $format === 'xlsx' ? 'xlsx' : $format;
+        $filename = $basename.'-'.now()->format('Ymd-His').'.'.$extension;
+        $meta = [
+            '_title' => $title,
+            'Exported At' => now()->format('d M Y H:i:s'),
+            'Total Records' => count($rows),
+        ];
+
+        if ($format === 'csv') {
+            return self::exportCsv($filename, $headers, $rows, $meta);
+        }
+
+        if ($format === 'pdf') {
+            return ReportExporter::pdf($filename, $title, $headers, $rows, [
+                'Generated' => now()->format('d M Y H:i'),
+                'Records' => (string) count($rows),
+            ]);
+        }
+
+        return self::exportExcel($filename, $title, $headers, $rows, $meta);
     }
 }
 

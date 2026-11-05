@@ -161,7 +161,7 @@ class PurchaseComparisonService
                     }
 
                     $quote = $item->quotes->firstWhere('purchase_comparison_vendor_id', $vendor->id);
-                    $math = $quote ? $this->math->measure($quote->toArray()) : null;
+                    $math = $quote ? $this->math->measure($quote->toArray(), $vendor->toArray()) : null;
                     $rate = $item->final_rate !== null ? (float) $item->final_rate : (float) ($math['net_rate'] ?? 0);
                     $lineFreight = $item->final_freight !== null ? (float) $item->final_freight : (float) ($math['freight'] ?? 0);
                     $freight += $lineFreight;
@@ -221,7 +221,7 @@ class PurchaseComparisonService
 
             foreach ($sheet->vendors as $vendor) {
                 $quote = $item->quotes->firstWhere('purchase_comparison_vendor_id', $vendor->id);
-                $math = $quote ? $this->math->measure($quote->toArray()) : null;
+                $math = $quote ? $this->math->measure($quote->toArray(), $vendor->toArray()) : null;
                 if ($math) {
                     $landed[$vendor->id] = $math['landed'];
                     $basic[$vendor->id] = $math['basic_rate'];
@@ -385,6 +385,16 @@ class PurchaseComparisonService
                 'valid_until' => $vendor['valid_until'] ?? null,
                 'credit_period' => $vendor['credit_period'] ?? null,
                 'advance_payment' => $vendor['advance_payment'] ?? null,
+                'payment_mode' => $vendor['payment_mode'] ?? null,
+                'credit_days' => $vendor['credit_days'] !== '' && $vendor['credit_days'] !== null ? (int) $vendor['credit_days'] : null,
+                'payment_due_date' => $vendor['payment_due_date'] ?: null,
+                'pdc_details' => $vendor['pdc_details'] ?? null,
+                'cdc_details' => $vendor['cdc_details'] ?? null,
+                'cash_discount_percent' => $vendor['cash_discount_percent'] ?? 0,
+                'cash_discount_days' => $vendor['cash_discount_days'] !== '' && $vendor['cash_discount_days'] !== null ? (int) $vendor['cash_discount_days'] : null,
+                'bank_interest_percent' => $vendor['bank_interest_percent'] ?? 0,
+                'bank_interest_days' => $vendor['bank_interest_days'] !== '' && $vendor['bank_interest_days'] !== null ? (int) $vendor['bank_interest_days'] : null,
+                'financing_notes' => $vendor['financing_notes'] ?? null,
                 'credit_limit_note' => $vendor['credit_limit_note'] ?? null,
                 'replacement_policy' => $vendor['replacement_policy'] ?? null,
                 'return_policy' => $vendor['return_policy'] ?? null,
@@ -468,13 +478,16 @@ class PurchaseComparisonService
                     'basic_rate' => $quote['basic_rate'] !== '' && $quote['basic_rate'] !== null ? $quote['basic_rate'] : null,
                     'discount_type' => $quote['discount_type'] ?? 'percent',
                     'discount_value' => $quote['discount_value'] ?? 0,
+                    'cash_discount_percent' => $quote['cash_discount_percent'] ?? 0,
                     'gst_rate' => $quote['gst_rate'] ?? 0,
+                    'tax_basis' => ($quote['tax_basis'] ?? 'exclusive') === 'inclusive' ? 'inclusive' : 'exclusive',
                     'freight_type' => $quote['freight_type'] ?? 'free',
                     'freight_mode' => $quote['freight_mode'] ?? 'amount',
                     'freight_value' => $quote['freight_value'] ?? 0,
                     'packing_charges' => $quote['packing_charges'] ?? 0,
                     'insurance_charges' => $quote['insurance_charges'] ?? 0,
                     'other_charges' => $quote['other_charges'] ?? 0,
+                    'financing_cost' => $quote['financing_cost'] ?? 0,
                     'warranty_period' => $quote['warranty_period'] ?? null,
                     'warranty_type' => $quote['warranty_type'] ?? null,
                     'stock_availability' => $quote['stock_availability'] ?? null,

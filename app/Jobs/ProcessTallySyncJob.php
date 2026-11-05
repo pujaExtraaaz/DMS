@@ -41,7 +41,7 @@ class ProcessTallySyncJob implements ShouldQueue
         $item->increment('attempts');
 
         try {
-            $endpoint = config('services.tally.endpoint');
+            $endpoint = config('tally_sync.endpoint', config('services.tally.endpoint'));
 
             if (! $endpoint) {
                 $item->update([
@@ -56,7 +56,7 @@ class ProcessTallySyncJob implements ShouldQueue
             $response = Http::timeout(20)
                 ->withHeaders([
                     'Content-Type' => 'application/xml',
-                    'X-Tally-Company' => (string) config('services.tally.company'),
+                    'X-Tally-Company' => (string) config('tally_sync.company', config('services.tally.company', '')),
                 ])
                 ->withBody($item->payload ?? '', 'application/xml')
                 ->post($endpoint);

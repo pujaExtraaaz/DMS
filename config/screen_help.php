@@ -324,13 +324,13 @@ return [
     ],
 
     'tally' => [
-        'title' => 'Tally Sync (dormant)',
-        'summary' => 'Native Books is the live accounting path. TallyPrime sync templates are kept for a future re-enable (TALLY_SYNC_ENABLED).',
+        'title' => 'Tally Sync Queue',
+        'summary' => 'When TALLY_SYNC_ENABLED=true, posted DMS/Books documents enqueue XML for the office C# connector (tally_connector.exe). Native Books remains the live ledger.',
         'steps' => [
-            'Use Books (sidebar · 10) for ledgers, vouchers, and reports.',
-            'Tally XML templates live under App\\Domains\\TallySync\\Templates.',
-            'To revive sync later: set TALLY_SYNC_ENABLED=true and register the connector routes.',
-            'Retry failed rows only after sync is re-enabled and ledger/item names match.',
+            'Download the Connector ZIP on the Tally PC, edit config.json, keep TallyPrime HTTP open, run tally_connector.exe.',
+            'Outbound covers sales/purchase invoices, receipts/payments, credit notes, PO, sales order, quotation, receipt note (GRN), masters, and Books stock journals / journal vouchers (freight, landed cost, cheques).',
+            'Inbound Receipt Notes create Books goods receipts (not payment Receipts). Sales/Purchase Orders and Quotations stay DMS-owned.',
+            'Retry failed rows after ledger and stock-item names match Tally masters.',
         ],
     ],
 

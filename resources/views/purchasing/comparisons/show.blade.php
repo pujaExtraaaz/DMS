@@ -43,6 +43,21 @@
                     <div class="text-slate-600">GSTIN {{ $vendor->gstin ?: '—' }}</div>
                     <div class="text-slate-600">Quotation {{ $vendor->quotation_number ?: '—' }} · {{ $vendor->quotation_date?->format('d M Y') ?: 'no date' }} · valid {{ $vendor->valid_until?->format('d M Y') ?: '—' }}</div>
                     <div class="mt-1 text-slate-600">Credit {{ $vendor->credit_period ?: '—' }} · Advance {{ $vendor->advance_payment ?: '—' }} · Credit limit {{ $vendor->credit_limit_note ?: '—' }}</div>
+                    <div class="text-slate-600">
+                        Mode {{ $vendor->payment_mode ? strtoupper($vendor->payment_mode) : '—' }}
+                        · Credit days {{ $vendor->credit_days ?? '—' }}
+                        · Due {{ $vendor->payment_due_date?->format('d M Y') ?: '—' }}
+                    </div>
+                    <div class="text-slate-600">
+                        PDC {{ $vendor->pdc_details ?: '—' }} · CDC {{ $vendor->cdc_details ?: '—' }}
+                        · Cash discount {{ rtrim(rtrim(number_format((float) $vendor->cash_discount_percent, 2, '.', ''), '0'), '.') }}%
+                        @if($vendor->cash_discount_days) ({{ $vendor->cash_discount_days }} days) @endif
+                    </div>
+                    <div class="text-slate-600">
+                        Bank interest {{ rtrim(rtrim(number_format((float) $vendor->bank_interest_percent, 2, '.', ''), '0'), '.') }}%
+                        @if($vendor->bank_interest_days) / {{ $vendor->bank_interest_days }} days @endif
+                        · {{ $vendor->financing_notes ?: 'No financing note' }}
+                    </div>
                     <div class="text-slate-600">Replacement {{ $vendor->replacement_policy ?: '—' }} · Returns {{ $vendor->return_policy ?: '—' }} · Support {{ $vendor->installation_support ?: '—' }}</div>
                     <div class="text-slate-600">Transporter {{ $vendor->transporter ?: '—' }} · Freight paid by {{ $vendor->freight_paid_by === 'company' ? 'AVIT Digital' : 'Vendor' }} · Delivery {{ $vendor->delivery_location ?: '—' }} · Partial {{ $vendor->partial_delivery ? 'Yes' : 'No' }}</div>
                     @if($vendor->files->isNotEmpty())
@@ -100,11 +115,21 @@
                                             @if($cell['is_lowest_basic'])<span class="text-emerald-800">lowest</span>@endif
                                             @if($cell['is_highest_basic'])<span class="text-rose-700">highest</span>@endif
                                         </div>
-                                        <div>Discount {{ number_format($cell['math']['discount_per_unit'], 2) }} · Net {{ number_format($cell['math']['net_rate'], 2) }} @if($cell['is_lowest_net'])<span class="text-emerald-800">lowest</span>@endif</div>
-                                        <div>Freight {{ number_format($cell['math']['freight'], 2) }} · Other {{ number_format($cell['math']['charges'], 2) }}</div>
-                                        <div>Pre-GST {{ number_format($cell['math']['pre_gst'], 2) }}</div>
+                                        <div>Tax {{ ($cell['math']['tax_basis'] ?? 'exclusive') === 'inclusive' ? 'Inclusive' : 'Exclusive' }}</div>
+                                        <div>Discount {{ number_format($cell['math']['discount_per_unit'], 2) }}
+                                            @if(($cell['math']['cash_discount_per_unit'] ?? 0) > 0)
+                                                · Cash disc {{ number_format($cell['math']['cash_discount_per_unit'], 2) }}
+                                            @endif
+                                            · Net {{ number_format($cell['math']['net_rate'], 2) }} @if($cell['is_lowest_net'])<span class="text-emerald-800">lowest</span>@endif
+                                        </div>
+                                        <div>Freight {{ number_format($cell['math']['freight'], 2) }} · Other {{ number_format($cell['math']['charges'], 2) }}
+                                            @if(($cell['math']['financing_cost'] ?? 0) > 0)
+                                                · Financing {{ number_format($cell['math']['financing_cost'], 2) }}
+                                            @endif
+                                        </div>
+                                        <div>Taxable {{ number_format($cell['math']['taxable_value'] ?? $cell['math']['pre_gst'], 2) }}</div>
                                         <div>GST {{ number_format($cell['math']['gst_amount'], 2) }} ({{ rtrim(rtrim(number_format($cell['math']['gst_rate'], 2, '.', ''), '0'), '.') }}%)</div>
-                                        <div class="font-semibold">Landed {{ number_format($cell['math']['landed'], 2) }} @if($cell['is_lowest'])<span class="text-emerald-800">lowest</span>@endif</div>
+                                        <div class="font-semibold">Landed / Invoice {{ number_format($cell['math']['landed'], 2) }} @if($cell['is_lowest'])<span class="text-emerald-800">lowest</span>@endif</div>
                                         <div>Per unit {{ number_format($cell['math']['per_unit'], 2) }}</div>
                                         <div class="text-xs text-slate-600">Gap {{ number_format($cell['gap'], 2) }} · Saving vs highest {{ number_format($cell['saving'], 2) }}%</div>
                                         <div class="text-xs text-slate-600">Warranty {{ $cell['quote']->warranty_period ?: '—' }} {{ $cell['quote']->warranty_type ? '('.str_replace('_', ' ', $cell['quote']->warranty_type).')' : '' }}</div>

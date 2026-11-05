@@ -57,15 +57,14 @@ class QuickAddCustomerInOrderTest extends TestCase
         $response->assertStatus(200);
         $content = $response->getContent();
 
-        // 1. Verify "+ Add Customer" button is present beside Customer label
+        // 1. Verify "+ Add Customer" links to Create Party with return_to parameter
         $this->assertStringContainsString('+ Add Customer', $content);
-        $this->assertStringContainsString('$dispatch(\'open-quick-add-customer\')', $content);
+        $this->assertStringContainsString(route('masters.customers.create', ['return_to' => 'orders.create']), $content);
+        $this->assertStringContainsString('saveDraftAndRedirect', $content);
 
-        // 2. Verify Quick Add Customer modal is included
+        // 2. Verify Quick Add Customer modal is also included for backward compatibility
         $this->assertStringContainsString('Quick Add Customer', $content);
         $this->assertStringContainsString('customer_id', $content);
-        $this->assertStringContainsString('quickAddCustomerModal', $content);
-        $this->assertStringContainsString('Auto-generated if blank', $content);
     }
 
     public function test_quick_add_customer_endpoint_creates_customer_and_default_address(): void

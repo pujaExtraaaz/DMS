@@ -717,27 +717,11 @@ class GstLookupService
             'Principal Place of Business'
         );
 
-        $additionalAddresses = [];
-        $adadr = $data['adadr'] ?? $data['additional_places_of_business'] ?? [];
-        if (is_array($adadr)) {
-            foreach ($adadr as $index => $block) {
-                $addr = is_array($block) ? ($block['addr'] ?? $block['address'] ?? $block) : [];
-                $normalized = $this->normalizeAddressBlock($addr, $gstin, 'Additional Place of Business '.((int) $index + 1));
-                if ($normalized['address_line_1'] === '' && $normalized['city'] === '' && $normalized['pincode'] === '') {
-                    continue;
-                }
-                if ($this->addressesMatch($principal, $normalized)) {
-                    continue;
-                }
-                $nature = $block['ntr'] ?? null;
-                if (is_array($nature)) {
-                    $normalized['nature_of_business'] = array_values(array_filter(array_map('strval', $nature)));
-                } elseif (is_string($nature) && trim($nature) !== '') {
-                    $normalized['nature_of_business'] = [trim($nature)];
-                }
-                $additionalAddresses[] = $normalized;
-            }
-        }
+        $additionalAddresses = $this->normalizeAdditionalPlaces(
+            $data['adadr'] ?? $data['additional_places_of_business'] ?? [],
+            $gstin,
+            $principal
+        );
 
         $nba = $data['nba'] ?? $data['nature_of_business'] ?? null;
         $natureOfBusiness = [];
@@ -962,6 +946,99 @@ class GstLookupService
         return $normalize($a['address_line_1'] ?? '') === $normalize($b['address_line_1'] ?? '')
             && $normalize($a['city'] ?? '') === $normalize($b['city'] ?? '')
             && $normalize($a['pincode'] ?? '') === $normalize($b['pincode'] ?? '');
+    }
+
+    /**
+     * Normalize GST additional places into a short, unique list of address blocks.
+     * Providers may return a list, a single place object, or unrelated associative payloads.
+     *
+     * @param  mixed  $adadr
+     * @param  array<string, mixed>  $principal
+     * @return list<array<string, mixed>>
+     */
+    protected function normalizeAdditionalPlaces(mixed $adadr, string $gstin, array $principal): array
+    {
+        if (! is_array($adadr) || $adadr === []) {
+            return [];
+        }
+
+        // Single place-of-business object (has addr / address fields) — wrap as a list.
+        if ($this->looksLikePlaceOfBusinessBlock($adadr)) {
+            $adadr = [$adadr];
+        } elseif (! array_is_list($adadr)) {
+            $values = array_values($adadr);
+            $first = $values[0] ?? null;
+            // JSON objects with string numeric keys still hold place blocks.
+            if (is_array($first) && $this->looksLikePlaceOfBusinessBlock($first)) {
+                $adadr = $values;
+            } else {
+                // Associative junk — ignore rather than inventing dozens of fake addresses.
+                return [];
+            }
+        }
+
+        $additionalAddresses = [];
+        $seen = [];
+        $maxPlaces = 10;
+
+        foreach ($adadr as $index => $block) {
+            if (count($additionalAddresses) >= $maxPlaces) {
+                break;
+            }
+            if (! is_array($block) || ! $this->looksLikePlaceOfBusinessBlock($block)) {
+                continue;
+            }
+
+            $addr = $block['addr'] ?? $block['address'] ?? $block;
+            if (! is_array($addr) && ! is_string($addr)) {
+                continue;
+            }
+
+            $normalized = $this->normalizeAddressBlock($addr, $gstin, 'Additional Place of Business '.((int) $index + 1));
+            if ($normalized['address_line_1'] === '' && $normalized['city'] === '' && $normalized['pincode'] === '') {
+                continue;
+            }
+            if ($this->addressesMatch($principal, $normalized)) {
+                continue;
+            }
+
+            $fingerprint = strtolower(trim(
+                ($normalized['address_line_1'] ?? '').'|'.($normalized['city'] ?? '').'|'.($normalized['pincode'] ?? '')
+            ));
+            if ($fingerprint === '||' || isset($seen[$fingerprint])) {
+                continue;
+            }
+            $seen[$fingerprint] = true;
+
+            $nature = $block['ntr'] ?? null;
+            if (is_array($nature)) {
+                $normalized['nature_of_business'] = array_values(array_filter(array_map('strval', $nature)));
+            } elseif (is_string($nature) && trim($nature) !== '') {
+                $normalized['nature_of_business'] = [trim($nature)];
+            }
+
+            $additionalAddresses[] = $normalized;
+        }
+
+        return $additionalAddresses;
+    }
+
+    /**
+     * @param  array<string, mixed>  $block
+     */
+    protected function looksLikePlaceOfBusinessBlock(array $block): bool
+    {
+        if (isset($block['addr']) || isset($block['address'])) {
+            return true;
+        }
+
+        foreach (['bno', 'bnm', 'st', 'loc', 'pncd', 'flno', 'dst', 'stcd', 'building_number', 'street', 'pincode', 'address_line_1', 'city'] as $key) {
+            if (array_key_exists($key, $block) && (is_string($block[$key]) || is_numeric($block[$key]))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function nullableString(mixed $value): ?string

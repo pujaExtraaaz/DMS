@@ -55,10 +55,16 @@ class UomSync
             255
         );
 
+        $uqc = strtoupper(trim((string) ($uom->code ?: '')));
+        if ($uqc === '' || ! preg_match('/^[A-Z0-9]{2,8}$/', $uqc)) {
+            $uqc = null;
+        }
+
         $attributes = [
             'company_id' => $company->id,
             'name' => $name,
             'symbol' => $symbol,
+            'gst_uqc' => $uqc,
             'decimal_places' => 2,
             'is_active' => (bool) $uom->is_active,
         ];

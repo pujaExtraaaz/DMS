@@ -20,10 +20,21 @@
                     data-dynamic-filter
                     class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
                 >
-                    <option value="">Status: All</option>
-                    @foreach(['draft', 'pending', 'approved', 'paid', 'partially_paid', 'cancelled'] as $st)
+                    <option value="">Invoice Status: All</option>
+                    @foreach(['draft', 'posted', 'paid', 'cancelled'] as $st)
                         <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst(str_replace('_', ' ', $st)) }}</option>
                     @endforeach
+                </select>
+
+                <select
+                    name="material_receipt_status"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">Material: All</option>
+                    <option value="in_transit" @selected(request('material_receipt_status') === 'in_transit')>In Transit</option>
+                    <option value="partially_received" @selected(request('material_receipt_status') === 'partially_received')>Partially Received</option>
+                    <option value="received" @selected(request('material_receipt_status') === 'received')>Received</option>
                 </select>
 
                 <select
@@ -104,8 +115,12 @@
                             Supplier
                         </x-ui.sortable-th>
                         <x-ui.sortable-th column="invoice_date" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc">
-                            Date
+                            Invoice Date
                         </x-ui.sortable-th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold text-slate-500">Material Status</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold text-slate-500">Expected / Receipt</th>
+                        <th class="px-3 py-3 text-right text-xs font-semibold text-slate-500">Transit Days</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold text-slate-500">Payment Due</th>
                         <x-ui.sortable-th column="total_amount" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc" align="right">
                             Total
                         </x-ui.sortable-th>
@@ -114,6 +129,13 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">
                     @forelse($invoices as $invoice)
+                        @php
+                            $matClass = match ($invoice->material_receipt_status) {
+                                'received' => 'bg-emerald-50 text-emerald-700',
+                                'partially_received' => 'bg-amber-50 text-amber-800',
+                                default => 'bg-sky-50 text-sky-800',
+                            };
+                        @endphp
                         <tr class="hover:bg-slate-50/75 transition-colors">
                             <td class="px-6 py-4 text-sm font-medium font-mono text-xs text-slate-900">
                                 {{ $invoice->invoice_number ?? $invoice->invoice_no }}
@@ -126,6 +148,25 @@
                             </td>
                             <td class="px-6 py-4 text-sm text-slate-600">
                                 {{ $invoice->invoice_date?->format('d M Y') }}
+                            </td>
+                            <td class="px-3 py-4">
+                                <span class="inline-flex px-2 py-0.5 rounded text-[11px] font-semibold {{ $matClass }}">
+                                    {{ $invoice->materialReceiptLabel() }}
+                                </span>
+                                @if($invoice->isDeliveryOverdue())
+                                    <span class="ml-1 text-[10px] font-bold text-rose-600">OVERDUE</span>
+                                @endif
+                            </td>
+                            <td class="px-3 py-4 text-xs text-slate-600">
+                                <div>Exp: {{ $invoice->expected_delivery_date?->format('d M Y') ?? '—' }}</div>
+                                <div>Act: {{ $invoice->actual_material_receipt_date?->format('d M Y') ?? '—' }}</div>
+                            </td>
+                            <td class="px-3 py-4 text-sm text-right font-mono text-slate-700">
+                                {{ $invoice->daysInTransit() ?? '—' }}
+                            </td>
+                            <td class="px-3 py-4 text-xs text-slate-600">
+                                <div>{{ $invoice->due_date?->format('d M Y') ?? '—' }}</div>
+                                <div class="font-medium">{{ $invoice->paymentStatusLabel() }}</div>
                             </td>
                             <td class="px-6 py-4 text-sm text-right font-medium text-slate-900">
                                 ₹{{ number_format($invoice->total_amount ?? $invoice->grand_total, 2) }}
@@ -210,7 +251,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="p-0">
+                            <td colspan="10" class="p-0">
                                 <x-ui.empty-state
                                     title="No purchase invoices found"
                                     description="Try clearing search or filters to see more results."

@@ -30,6 +30,15 @@ class Warehouse extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::creating(function (Warehouse $warehouse) {
+            if (blank($warehouse->code)) {
+                $warehouse->code = \App\Support\CodeGenerator::forWarehouse($warehouse->company_id ? (int) $warehouse->company_id : null);
+            }
+        });
+    }
+
     public function getNameAttribute($value): string
     {
         if ($this->trashed()) {

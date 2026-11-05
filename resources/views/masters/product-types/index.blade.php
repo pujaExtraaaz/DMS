@@ -37,6 +37,7 @@
             </div>
         </div>
         <div class="flex items-center gap-2">
+            <x-ui.export-menu />
             <button type="button"
                     @click="openAddModal()"
                     class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all">
@@ -320,7 +321,7 @@
     <div x-cloak
          x-show="showFormModal"
          class="fixed inset-y-0 right-0 z-50 overflow-y-auto transition-all duration-300"
-         :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-[72px]' : 'left-0 lg:left-64'"
+         :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-20' : 'left-0 lg:left-64'"
          role="dialog"
          aria-modal="true"
          aria-labelledby="form-modal-title"
@@ -335,7 +336,7 @@
              x-transition:leave-start="opacity-100"
              x-transition:leave-end="opacity-0"
              class="fixed inset-y-0 right-0 bg-slate-900/60 backdrop-blur-xs transition-all duration-300"
-             :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-[72px]' : 'left-0 lg:left-64'"
+             :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-20' : 'left-0 lg:left-64'"
              @click="closeFormModal()"></div>
 
         <div class="relative flex min-h-full items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">
@@ -469,7 +470,7 @@
     <div x-cloak
          x-show="showViewModal"
          class="fixed inset-y-0 right-0 z-50 overflow-y-auto transition-all duration-300"
-         :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-[72px]' : 'left-0 lg:left-64'"
+         :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-20' : 'left-0 lg:left-64'"
          role="dialog"
          aria-modal="true"
          @keydown.escape.window="showViewModal = false">
@@ -483,7 +484,7 @@
              x-transition:leave-start="opacity-100"
              x-transition:leave-end="opacity-0"
              class="fixed inset-y-0 right-0 bg-slate-900/60 backdrop-blur-xs transition-all duration-300"
-             :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-[72px]' : 'left-0 lg:left-64'"
+             :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-20' : 'left-0 lg:left-64'"
              @click="showViewModal = false"></div>
 
         <div class="relative flex min-h-full items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">
@@ -560,7 +561,7 @@
     <div x-cloak
          x-show="showDeleteModal"
          class="fixed inset-y-0 right-0 z-50 overflow-y-auto transition-all duration-300"
-         :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-[72px]' : 'left-0 lg:left-64'"
+         :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-20' : 'left-0 lg:left-64'"
          role="dialog"
          aria-modal="true"
          @keydown.escape.window="cancelDelete()">
@@ -574,7 +575,7 @@
              x-transition:leave-start="opacity-100"
              x-transition:leave-end="opacity-0"
              class="fixed inset-y-0 right-0 bg-slate-900/60 backdrop-blur-xs transition-all duration-300"
-             :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-[72px]' : 'left-0 lg:left-64'"
+             :class="($root && $root.sidebarCollapsed) ? 'left-0 lg:left-20' : 'left-0 lg:left-64'"
              @click="cancelDelete()"></div>
 
         <div class="relative flex min-h-full items-center justify-center p-4 sm:p-6 lg:p-8 pointer-events-none">

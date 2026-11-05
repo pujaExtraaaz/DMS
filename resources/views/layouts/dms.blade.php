@@ -146,10 +146,7 @@
                             Install App
                         </button>
 
-                        <div class="hidden md:flex items-center gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-1.5">
-                            <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-                            </svg>
+                        <div class="hidden md:flex items-center rounded-lg bg-slate-50 border border-slate-200 px-3 py-1.5">
                             <input type="search" placeholder="Search..." class="w-40 lg:w-52 bg-transparent border-0 text-sm text-slate-700 placeholder:text-slate-400 focus:ring-0 p-0" />
                         </div>
 
@@ -197,9 +194,9 @@
     </div>
 
     @livewireScripts
-    <script src="{{ asset('js/dynamic-tables.js') }}" defer></script>
+    <script src="{{ asset('js/dynamic-tables.js') }}?v=20261028" defer></script>
     <script src="{{ asset('js/title-case.js') }}" defer></script>
-    <script src="{{ asset('js/searchable-select.js') }}" defer></script>
+    <script src="{{ asset('js/searchable-select.js') }}?v=20261028b" defer></script>
     @stack('scripts')
     @include('partials.sync-conflict')
 </body>

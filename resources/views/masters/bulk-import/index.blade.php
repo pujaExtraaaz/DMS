@@ -1,7 +1,7 @@
 @extends('layouts.dms')
 @section('title', 'Bulk Import')
 @section('content')
-<x-ui.page-header title="Bulk Import" description="Upload Products, Parties or Price Master data. Download the template, fill it, upload — the system validates, updates existing rows by key, and shows a downloadable error report." />
+<x-ui.page-header title="Bulk Import" description="Import Setup, Catalog, Products, Parties and Price List from CSV/Excel. Download each template, fill it, then upload in the order shown — the system validates, updates by key, and provides an error report." />
 
 @if(session('status'))
     <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">{{ session('status') }}</div>
@@ -45,19 +45,32 @@
     </x-ui.card>
 @endif
 
+<p class="mb-4 text-xs text-slate-500">
+    Recommended order: Companies → Branches → Warehouses → Financial Years → UOMs → Brands → Categories → Sub Categories → Product Types → Products → Parties → Price List.
+</p>
+
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
     @foreach([
-        'products' => ['Products', 'Match on Part Number; UOM code must exist. Missing brand / category auto-created.'],
-        'parties' => ['Parties (Customers &amp; Suppliers)', 'Match on Code; classification (customer type) auto-created if new. Contact + billing address created inline.'],
-        'price-master' => ['Price Master', 'Match on Customer Type + Part Number + UOM + Min Qty; updates rate.'],
-        'leads' => ['CRM Leads', 'Match on Mobile or Email. Maps Contact Name, Company, Title, Secondary Email, Mobiles, Landline, Sales Person, Tag, Address, etc.'],
+        'companies' => ['Companies', 'Match on Code. Creates/updates company profile fields.'],
+        'branches' => ['Branches', 'Match on Company Code + Branch Code. Company must exist first.'],
+        'warehouses' => ['Warehouses', 'Match on Company + Warehouse Code. Branch must exist first.'],
+        'financial-years' => ['Financial Years', 'Match on Company + date range. Can mark one year as current.'],
+        'uoms' => ['UOMs', 'Match on Code. Required before Products / Price List imports.'],
+        'brands' => ['Brands', 'Match on Company + Name. Optional company_code uses your login company when blank.'],
+        'categories' => ['Categories', 'Match on Brand + Name. Import Brands first.'],
+        'sub-categories' => ['Sub Categories', 'Match on Brand + Category + Name. Import Categories first.'],
+        'product-types' => ['Product Types', 'Match on Company + Name/Code. Sets track_serial and description.'],
+        'products' => ['Products', 'Match on Part Number; UOM codes must exist. Brand/category/sub-category/type auto-created if missing.'],
+        'parties' => ['Parties (Customers &amp; Suppliers)', 'Match on Code, else GSTIN, else Name — re-import updates instead of duplicating. Classification, area and route auto-created.'],
+        'price-master' => ['Price List', 'Match on Customer Type + Part Number + UOM + Min Qty. Supports rate_includes_gst.'],
+        'leads' => ['CRM Leads', 'Match on Mobile or Email. Maps Contact Name, Company, Title, Mobiles, Address, etc.'],
     ] as $type => [$label, $note])
         <x-ui.card :title="$label">
             <p class="text-xs text-slate-500 mb-3">{!! $note !!}</p>
             <div class="flex flex-col gap-2">
                 <a href="{{ route('masters.bulk-import.template', $type) }}"
                    class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                    ⬇ Download template CSV
+                    Download template CSV
                 </a>
                 <form method="POST" enctype="multipart/form-data" action="{{ route('masters.bulk-import.upload', $type) }}" class="space-y-2">
                     @csrf

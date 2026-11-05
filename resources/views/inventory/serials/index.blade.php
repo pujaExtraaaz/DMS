@@ -13,10 +13,9 @@
 @if($query !== '')
     @if($serial)
         <x-ui.card class="mb-6" title="Serial Detail">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div><p class="text-xs text-slate-500">Serial</p><p class="font-semibold">{{ $serial->serial_number }}</p></div>
-                <div><p class="text-xs text-slate-500">Status</p><p class="font-semibold">{{ $serial->status }}</p></div>
-                <div><p class="text-xs text-slate-500">Product</p><p class="font-semibold">{{ $serial->product?->name }}</p></div>
+            @include('inventory.serials.partials.warranty-result', ['serial' => $serial])
+            <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-100 pt-4 text-sm">
+                <div><p class="text-xs text-slate-500">Stock Status</p><p class="font-semibold">{{ ucfirst(str_replace('_', ' ', $serial->status)) }}</p></div>
                 <div><p class="text-xs text-slate-500">Warehouse</p><p class="font-semibold">{{ $serial->warehouse?->name ?? 'Unassigned' }}</p></div>
                 <div><p class="text-xs text-slate-500">Inward</p><p class="font-semibold">{{ $serial->inwardItem?->inward?->inward_no ?? '—' }}</p></div>
                 <div><p class="text-xs text-slate-500">Reservation</p><p class="font-semibold">{{ $serial->reservation_note ?? '—' }}</p></div>
@@ -94,6 +93,7 @@
 <x-ui.sortable-th column="serial_number" label="Serial" :currentSort="$sort" :currentDirection="$direction" />
 <x-ui.sortable-th column="product" label="Product" :currentSort="$sort" :currentDirection="$direction" />
 <x-ui.sortable-th column="status" label="Status" :currentSort="$sort" :currentDirection="$direction" />
+<th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Warranty Status</th>
 <x-ui.sortable-th column="warehouse" label="Warehouse" :currentSort="$sort" :currentDirection="$direction" />
 <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Note</th>
 </tr></thead>
@@ -105,11 +105,15 @@
 <td class="px-3 py-2">
     <x-ui.badge>{{ ucfirst(str_replace('_', ' ', $row->status)) }}</x-ui.badge>
 </td>
+<td class="px-3 py-2">
+    @php $warrantyStatus = $row->warrantyStatus(); @endphp
+    <x-ui.badge :variant="match ($warrantyStatus) { 'Under Warranty' => 'success', 'Out of Warranty' => 'danger', default => 'neutral' }">{{ $warrantyStatus ?? 'No warranty' }}</x-ui.badge>
+</td>
 <td class="px-3 py-2">{{ $row->warehouse?->name ?? '—' }}</td>
 <td class="px-3 py-2">{{ $row->reservation_note ?? '—' }}</td>
 </tr>
 @empty
-<tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">No serials found.</td></tr>
+<tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">No serials found.</td></tr>
 @endforelse
 </tbody></table>
 </div>

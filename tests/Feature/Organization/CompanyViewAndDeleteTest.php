@@ -118,7 +118,7 @@ class CompanyViewAndDeleteTest extends TestCase
         $response->assertSee('Micro');
         $response->assertSee('020-12345678');
         $response->assertSee('contact@apextech.test');
-        $response->assertSee('HDFC Bank');
+        $response->assertSee('Hdfc Bank');
         $response->assertSee('50200012345678');
         $response->assertSee('HDFC0001234');
         $response->assertSee('apextech@hdfcbank');

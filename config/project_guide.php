@@ -21,8 +21,8 @@ return [
                     'summary' => 'A company owns the books. A branch is an operating location. A warehouse is where quantity sits.',
                     'steps' => [
                         'Add each legal company under Companies. Sister concerns stay separate; they are grouped only for reporting.',
-                        'Add a branch for every location that raises invoices or holds stock, then a warehouse under that branch.',
-                        'Pick the working company, branch, and financial year in the Books top bar. Reports follow that selection.',
+                        'Add a branch for every location that raises invoices or holds stock. Branch code is assigned automatically — you only enter the name and details.',
+                        'Add a warehouse under that branch, then pick the working company, branch, and financial year in the Books top bar. Reports follow that selection.',
                     ],
                 ],
                 [
@@ -94,10 +94,19 @@ return [
                     ],
                 ],
                 [
+                    'title' => 'Goods receipt (inward)',
+                    'summary' => 'The receipt note records what arrived against a purchase order before or beside the supplier bill.',
+                    'steps' => [
+                        'Create a purchase inward against the purchase order and warehouse, enter received and accepted quantities, then post it.',
+                        'Posting the inward updates stock for accepted quantity. The purchase invoice remains the payable document.',
+                        'When Tally sync is on, a posted inward queues as a Tally Receipt Note (stock). The purchase invoice still queues as Purchase.',
+                    ],
+                ],
+                [
                     'title' => 'Freight bills and comparison',
                     'summary' => 'Transport billed separately, and vendor quotes compared before the order, stay under Purchases.',
                     'steps' => [
-                        'Record a freight bill when the transporter invoices you apart from the goods bill.',
+                        'Record a freight bill when the transporter invoices you apart from the goods bill. Posting it can create a Books landed-cost journal for Tally.',
                         'Use Comparison Sheets to line up vendor quotes, landed cost, and the chosen supplier before converting to purchase orders.',
                         'Open the purchase invoice print when you need the same layout used for the Books purchase document.',
                     ],
@@ -122,8 +131,8 @@ return [
                     'title' => 'Transfers and adjustments',
                     'summary' => 'A transfer moves quantity between warehouses. An adjustment changes quantity.',
                     'steps' => [
-                        'Use Stock Transfer to move quantity from one warehouse to another. Company-wide stock does not change.',
-                        'Use Adjustments for damage, shortage, or found stock, and post the adjustment.',
+                        'Use Stock Transfer to move quantity from one warehouse to another. Company-wide stock does not change. Posted transfers sync to Books as stock journals for Tally.',
+                        'Use Adjustments for damage, shortage, or found stock, and post the adjustment so Books and Tally receive a posted stock journal.',
                         'Open Stock Valuation when you need the value of stock on hand, not only the quantity.',
                     ],
                 ],
@@ -147,8 +156,8 @@ return [
                     'title' => 'Quotations and orders',
                     'summary' => 'A quotation is an offer. An order is the commercial commitment. Neither one posts stock by itself.',
                     'steps' => [
-                        'Create a quotation while the customer has not confirmed the rate or quantity.',
-                        'Create an order with the customer, warehouse, products, and prices once they confirm.',
+                        'Create a quotation while the customer has not confirmed the rate or quantity. Mark it sent or accepted when you want it on the Tally queue (Quotation voucher).',
+                        'Create an order with the customer, warehouse, products, and prices once they confirm. Approving the order queues a Tally Sales Order when sync is on.',
                         'Use Region Policies only when a brand may be sold in limited territories.',
                     ],
                 ],
@@ -335,9 +344,80 @@ return [
                     'title' => 'Sales, purchases, receipts, and payments',
                     'summary' => 'Documents raised in DMS are copied into Books. A posted Books document is not overwritten.',
                     'steps' => [
-                        'Sales invoices, purchase invoices, receipts, and payments made in the operational modules sync into Books.',
+                        'Sales invoices, purchase invoices, receipts, payments, cheques, freight, and landed cost made in the operational modules sync into Books.',
                         'E-Invoice on a sales invoice follows the sales layout. E-Invoice on a purchase invoice follows the purchase layout.',
                         'Record banking, GST, stock journals, and period-end adjustments from the Books sections. Cancel or reverse a posted document. Do not delete it.',
+                    ],
+                ],
+            ],
+        ],
+        [
+            'number' => 11,
+            'title' => 'Tally Connector',
+            'purpose' => 'Bridge the hosted DMS to office TallyPrime so commercial vouchers and masters stay aligned without exposing Tally to the internet.',
+            'sections' => [
+                [
+                    'title' => 'How the connector works',
+                    'summary' => 'DMS lives on the internet. TallyPrime lives only on the office PC. A small Windows program (tally_connector.exe) sits between them and moves XML both ways on a timer.',
+                    'steps' => [
+                        'The cloud server never opens Tally directly. Only the connector on the Tally PC can talk to Tally at http://127.0.0.1:9000.',
+                        'Every few seconds (poll_seconds, default 8, clamped 5–10) the EXE wakes up, calls DMS APIs with the connector token, talks to local Tally, then sleeps again.',
+                        'Two jobs run each poll: (1) take Pending queue XML from DMS and import it into Tally; (2) ask Tally for master/voucher/report exports and post the replies back into Books.',
+                        'While the EXE is running, Tally is open with HTTP/XML enabled, and TALLY_SYNC_ENABLED=true on the server, sync is automatic — you do not click Send on each document.',
+                    ],
+                ],
+                [
+                    'title' => 'Outbound path (DMS → Tally)',
+                    'summary' => 'Posted or approved DMS work becomes a Pending row on the Tally Queue. The connector delivers that XML into Tally and reports Sent or Failed.',
+                    'steps' => [
+                        'You post or approve a document in DMS (invoice, payment, PO, sales order, quotation, GRN, stock journal, and so on). Auto-enqueue writes a tally_sync_queues row with status Pending and an XML payload.',
+                        'The connector calls GET /api/tally-connector/pending, receives up to about 20 items, and POSTs each payload to local Tally as text/xml.',
+                        'Tally accepts or rejects the voucher. The connector then POSTs /api/tally-connector/{id}/result so the queue row becomes Sent or Failed (with the Tally error text when it fails).',
+                        'Open Integrations → Tally Queue to watch Pending → Sent. Retry a Failed row only after the ledger or stock-item name in Tally matches what DMS sent.',
+                    ],
+                ],
+                [
+                    'title' => 'Inbound path (Tally → DMS)',
+                    'summary' => 'The same poll also pulls data out of Tally Desktop into DMS — Books plus linked operational modules (masters, purchases, inventory, sales). The cloud never calls Tally directly; the office EXE does.',
+                    'steps' => [
+                        'The connector calls GET /api/tally-connector/exports. DMS returns a list of Tally export-request XML documents (masters, vouchers, reports).',
+                        'Each request is POSTed to local Tally. Tally replies with the current data. The connector POSTs that reply to /api/tally-connector/imports.',
+                        'DMS applies the import into Books first, then sync handlers can mirror into other modules where a link exists: ledgers, stock items, godowns, vouchers, stock journals, and report snapshots.',
+                        'A Tally Receipt Note becomes a goods receipt / stock-in (not a cash Receipt). Sales orders, purchase orders, quotations, and delivery notes from Tally are skipped because DMS owns those documents.',
+                        'If both sides changed the same record, a conflict is logged and neither side is overwritten. Resolve it manually, then let the next poll continue.',
+                    ],
+                ],
+                [
+                    'title' => 'Install and keep it running',
+                    'summary' => 'Download once on the Tally PC, fill config.json, keep Tally and the EXE running. install-task.ps1 is optional auto-start on Windows logon.',
+                    'steps' => [
+                        'Open Reporting → Tally Connector (or Tally Queue → Download Connector). Download tally-connector.zip on the Windows PC that runs Tally — not on the web server.',
+                        'Unzip. Edit config.json next to tally_connector.exe: dms_url (your DMS site), connector_token (same as server TALLY_CONNECTOR_TOKEN), tally_url (usually http://127.0.0.1:9000), company (exact Tally company name), poll_seconds (default 8).',
+                        'In TallyPrime load the company and enable it as HTTP/XML server on that port. Leave Tally open while the connector runs.',
+                        'Double-click tally_connector.exe and leave the window open. The console logs each poll (sent/failed counts and import summaries). Logs also append under a logs folder next to the EXE.',
+                        'Optional: run install-task.ps1 once (PowerShell) to register scheduled task “DMS Tally Connector” at user logon so the EXE starts after reboot. Sync still works if you start the EXE by hand instead.',
+                        'No Node.js is required. Server .env must have TALLY_SYNC_ENABLED=true, TALLY_CONNECTOR_TOKEN, and usually TALLY_COMPANY; then php artisan config:clear.',
+                    ],
+                ],
+                [
+                    'title' => 'What syncs outbound',
+                    'summary' => 'With sync enabled, these documents queue as Pending until the connector marks them Sent.',
+                    'steps' => [
+                        'Masters: stock items, party ledgers, units, godowns.',
+                        'Sales and purchase: invoices, credit notes, purchase orders, sales orders, quotations, receipt notes (GRN).',
+                        'Money: receipts/payments; cleared standalone cheques as Receipt or Payment vouchers.',
+                        'Stock and cost: Books stock journals (transfer/adjustment), freight and landed-cost journals.',
+                        'Delivery, settlement, load sheet, and outstanding ledger do not create their own queue rows — they reuse the invoice or payment already synced.',
+                    ],
+                ],
+                [
+                    'title' => 'What syncs inbound and what is skipped',
+                    'summary' => 'Inbound refreshes Books from Tally. Some voucher types are intentionally not imported.',
+                    'steps' => [
+                        'Imported: groups, ledgers, units, godowns, stock items; sales/purchase/receipt/payment/contra/journal/credit note/debit note vouchers; stock journals; report packs (day book, P&L, trial balance, balance sheet, GST).',
+                        'Receipt Note → Books goods receipt + stock-in. Payment Receipt stays an accounting receipt.',
+                        'Skipped on import: sales order, purchase order, quotation, delivery note (DMS remains the source of truth).',
+                        'If a queue row fails outbound, fix the name mismatch in Tally (or remap), then Retry on the Tally Queue screen.',
                     ],
                 ],
             ],

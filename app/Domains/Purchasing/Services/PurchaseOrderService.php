@@ -1,15 +1,16 @@
 <?php
-
 namespace App\Domains\Purchasing\Services;
 
 use App\Domains\Banking\Models\BankAccountTransaction;
 use App\Domains\Banking\Models\OdAccount;
+use App\Domains\Inventory\Models\ProductSerial;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
+use App\Domains\Organization\Models\CompanyDeliveryAddress;
 use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Purchasing\Models\PurchaseInward;
 use App\Domains\Purchasing\Models\PurchaseInwardItem;
@@ -77,52 +78,12 @@ class PurchaseOrderService
 
             unset($item);
 
-            $billingAddress = null;
-            if (!empty($data['billing_address_id'])) {
-                $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['billing_address_id'])
-                    ->where('customer_id', $supplier->id)
-                    ->first();
-                if (!$billingAddress) {
-                    throw ValidationException::withMessages([
-                        'billing_address_id' => 'The selected billing address does not belong to the selected supplier.',
-                    ]);
-                }
-            }
-            $shippingAddress = null;
-            if (!empty($data['shipping_address_id'])) {
-                $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['shipping_address_id'])
-                    ->where('customer_id', $supplier->id)
-                    ->first();
-                if (!$shippingAddress) {
-                    throw ValidationException::withMessages([
-                        'shipping_address_id' => 'The selected delivery address does not belong to the selected supplier.',
-                    ]);
-                }
-            }
-
-            if (!$billingAddress) {
-                $billingAddress = $supplier->defaultBillingAddress();
-            }
-
-            $billingSnapshot = !empty($data['billing_address'])
-                ? $data['billing_address']
-                : ($billingAddress ? $billingAddress->formatSnapshot() : $supplier->address);
-
             $warehouse = !empty($data['warehouse_id'])
                 ? Warehouse::with(['branch', 'company'])->find($data['warehouse_id'])
                 : null;
 
-            $defaultDeliveryAddress = $warehouse?->address
-                ?: ($warehouse?->branch?->address
-                    ?: ($warehouse?->company?->address
-                        ?: ($actor->company?->address ?? null)));
-
-            $rawShipping = !empty($data['shipping_address']) ? trim($data['shipping_address']) : null;
-            if ($rawShipping && ($rawShipping === $billingSnapshot || $rawShipping === $supplier->address)) {
-                $shippingSnapshot = $defaultDeliveryAddress ?: $rawShipping;
-            } else {
-                $shippingSnapshot = $rawShipping ?: ($shippingAddress ? $shippingAddress->formatSnapshot() : $defaultDeliveryAddress);
-            }
+            $companyId = $data['company_id'] ?? $warehouse?->company_id ?? $actor->company_id ?? Company::defaultCompanyId();
+            $addresses = $this->resolvePurchaseOrderPartyAddresses($supplier, $data, $warehouse, $companyId);
 
             $freight = $this->freightCharges($data, $subtotal);
             $grandTotal = round($subtotal + $taxAmount + $freight['freight_total'], 2);
@@ -138,15 +99,16 @@ class PurchaseOrderService
             );
 
             $po = PurchaseOrder::create([
-                'company_id' => $data['company_id'] ?? $actor->company_id ?? \App\Domains\Organization\Models\Company::defaultCompanyId(),
+                'company_id' => $companyId,
                 'branch_id' => $data['branch_id'] ?? $actor->branch_id,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'supplier_id' => $supplier->id,
-                'billing_address_id' => $billingAddress?->id,
-                'shipping_address_id' => $shippingAddress?->id,
-                'billing_address' => $billingSnapshot,
-                'shipping_address' => $shippingSnapshot,
-                'po_no' => $this->documentNumberService->next('PO'),
+                'billing_address_id' => $addresses['billing_address_id'],
+                'shipping_address_id' => null,
+                'company_delivery_address_id' => $addresses['company_delivery_address_id'],
+                'billing_address' => $addresses['billing_address'],
+                'shipping_address' => $addresses['shipping_address'],
+                'po_no' => $this->resolvePurchaseOrderNumber($data, $companyId),
                 'po_date' => $data['po_date'],
                 'expected_date' => $data['expected_date'] ?? null,
                 'credit_days' => $due['credit_days'],
@@ -178,6 +140,9 @@ class PurchaseOrderService
                     'quantity' => $item['quantity'],
                     'received_qty' => 0,
                     'unit_cost' => $item['unit_cost'],
+                    'mrp' => $item['mrp'] ?? null,
+                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
+                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
@@ -289,56 +254,19 @@ class PurchaseOrderService
 
             unset($item);
 
-            $billingAddress = null;
-            if (!empty($data['billing_address_id'])) {
-                $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['billing_address_id'])
-                    ->where('customer_id', $supplier->id)
-                    ->first();
-                if (!$billingAddress) {
-                    throw ValidationException::withMessages([
-                        'billing_address_id' => 'The selected billing address does not belong to the selected supplier.',
-                    ]);
-                }
-            }
-            $shippingAddress = null;
-            if (!empty($data['shipping_address_id'])) {
-                $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['shipping_address_id'])
-                    ->where('customer_id', $supplier->id)
-                    ->first();
-                if (!$shippingAddress) {
-                    throw ValidationException::withMessages([
-                        'shipping_address_id' => 'The selected delivery address does not belong to the selected supplier.',
-                    ]);
-                }
-            }
-
-            if (!$billingAddress && empty($data['billing_address'])) {
-                $billingAddress = $supplier->defaultBillingAddress();
-            }
-
-            $billingSnapshot = !empty($data['billing_address'])
-                ? $data['billing_address']
-                : ($billingAddress ? $billingAddress->formatSnapshot() : ($order->billing_address ?: $supplier->address));
-
             $warehouse = !empty($data['warehouse_id'])
                 ? Warehouse::with(['branch', 'company'])->find($data['warehouse_id'])
                 : ($order->warehouse()->with(['branch', 'company'])->first());
 
-            $defaultDeliveryAddress = $warehouse?->address
-                ?: ($warehouse?->branch?->address
-                    ?: ($warehouse?->company?->address
-                        ?: ($order->company?->address ?? null)));
-
-            $rawShipping = !empty($data['shipping_address']) ? trim($data['shipping_address']) : null;
-            if ($rawShipping && ($rawShipping === $billingSnapshot || $rawShipping === $supplier->address)) {
-                $shippingSnapshot = $defaultDeliveryAddress ?: $rawShipping;
-            } else {
-                $existingShipping = $order->shipping_address;
-                if ($existingShipping && ($existingShipping === $order->billing_address || $existingShipping === $supplier->address)) {
-                    $existingShipping = null;
-                }
-                $shippingSnapshot = $rawShipping ?: ($shippingAddress ? $shippingAddress->formatSnapshot() : ($existingShipping ?: $defaultDeliveryAddress));
-            }
+            $companyId = $data['company_id'] ?? $warehouse?->company_id ?? $order->company_id ?? Company::defaultCompanyId();
+            $addresses = $this->resolvePurchaseOrderPartyAddresses(
+                $supplier,
+                $data,
+                $warehouse,
+                $companyId,
+                $order->shipping_address,
+                $order->billing_address,
+            );
 
             $newStatus = $order->status;
             if (! empty($data['submit_for_approval'])) {
@@ -361,10 +289,11 @@ class PurchaseOrderService
             $order->update([
                 'warehouse_id' => $data['warehouse_id'] ?? null,
                 'supplier_id' => $supplier->id,
-                'billing_address_id' => $billingAddress?->id ?? $order->billing_address_id,
-                'shipping_address_id' => $shippingAddress?->id ?? $order->shipping_address_id,
-                'billing_address' => $billingSnapshot,
-                'shipping_address' => $shippingSnapshot,
+                'billing_address_id' => $addresses['billing_address_id'] ?? $order->billing_address_id,
+                'shipping_address_id' => null,
+                'company_delivery_address_id' => $addresses['company_delivery_address_id'],
+                'billing_address' => $addresses['billing_address'],
+                'shipping_address' => $addresses['shipping_address'],
                 'po_date' => $data['po_date'],
                 'expected_date' => $data['expected_date'] ?? null,
                 'credit_days' => $due['credit_days'],
@@ -397,6 +326,9 @@ class PurchaseOrderService
                     'quantity' => $item['quantity'],
                     'received_qty' => 0,
                     'unit_cost' => $item['unit_cost'],
+                    'mrp' => $item['mrp'] ?? null,
+                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
+                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
@@ -547,8 +479,12 @@ class PurchaseOrderService
             $overrideReason = $data['rate_override_reason'] ?? null;
             $needsOverride = false;
 
+            $priceType = strtolower(trim((string)($data['price_type'] ?? 'exclusive'))) === 'inclusive' ? 'inclusive' : 'exclusive';
             $subtotal = 0;
             $taxAmount = 0;
+            $cgstTotal = 0;
+            $sgstTotal = 0;
+            $igstTotal = 0;
             $prepared = [];
 
             foreach ($items as $item) {
@@ -566,7 +502,7 @@ class PurchaseOrderService
                     $needsOverride = true;
                 }
 
-                $line = $item['quantity'] * $item['unit_cost'];
+                $enteredUnitCost = (float) $item['unit_cost'];
                 $taxPercent = (float) ($item['tax_percent'] ?? 0);
 
                 $cgstPercent = array_key_exists('cgst_percent', $item)
@@ -583,21 +519,39 @@ class PurchaseOrderService
                     ]);
                 }
 
-                $cgstAmount = $line * ($cgstPercent / 100);
-                $sgstAmount = $line * ($sgstPercent / 100);
-                $tax = $cgstAmount + $sgstAmount;
+                $qty = (float) $item['quantity'];
+                if ($priceType === 'inclusive') {
+                    $baseUnitCost = $taxPercent > 0 ? round($enteredUnitCost * 100 / (100 + $taxPercent), 4) : $enteredUnitCost;
+                    $line = round($qty * $baseUnitCost, 2);
+                    $tax = round($line * ($taxPercent / 100), 2);
+                    $lineTotal = round($line + $tax, 2);
+                } else {
+                    $baseUnitCost = $enteredUnitCost;
+                    $line = round($qty * $baseUnitCost, 2);
+                    $tax = round($line * ($taxPercent / 100), 2);
+                    $lineTotal = round($line + $tax, 2);
+                }
+
+                $cgstAmount = round($tax / 2, 2);
+                $sgstAmount = round($tax - $cgstAmount, 2);
 
                 $subtotal += $line;
                 $taxAmount += $tax;
+                $cgstTotal += $cgstAmount;
+                $sgstTotal += $sgstAmount;
 
                 $prepared[] = [
                     ...$item,
+                    'price_type' => $priceType,
+                    'entered_unit_cost' => $enteredUnitCost,
+                    'unit_cost' => $baseUnitCost,
+                    'taxable_amount' => $line,
                     'tax_percent' => $taxPercent,
                     'cgst_percent' => $cgstPercent,
                     'sgst_percent' => $sgstPercent,
                     'cgst_amount' => $cgstAmount,
                     'sgst_amount' => $sgstAmount,
-                    'line_total' => $line + $tax,
+                    'line_total' => $lineTotal,
                     'other_vendor_rate' => $otherRate,
                 ];
             }
@@ -661,7 +615,11 @@ class PurchaseOrderService
 
             $freightCharge = max(0.0, (float) ($data['freight_charge'] ?? 0));
             $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
-            $grandTotal = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+            $totalBeforeRound = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+            $roundOff = isset($data['round_off']) && $data['round_off'] !== null && $data['round_off'] !== ''
+                ? round((float) $data['round_off'], 2)
+                : \App\Domains\Master\Services\GstTaxCalculationService::computeRoundOff($totalBeforeRound);
+            $grandTotal = round(max(0, $totalBeforeRound + $roundOff), 2);
 
             $warehouse = !empty($data['warehouse_id']) ? Warehouse::find($data['warehouse_id']) : null;
             $companyId = $data['company_id'] ?? $warehouse?->company_id ?? $actor->company_id ?? Company::defaultCompanyId() ?? 1;
@@ -708,16 +666,27 @@ class PurchaseOrderService
                 'supplier_invoice_no' => $data['supplier_invoice_no'] ?? $data['supplier_invoice_number'] ?? null,
                 'invoice_date' => $data['invoice_date'],
                 'purchase_receive_date' => $data['purchase_receive_date'] ?? null,
+                'material_dispatch_date' => $data['material_dispatch_date'] ?? null,
+                'expected_delivery_date' => $data['expected_delivery_date'] ?? null,
+                'actual_material_receipt_date' => null,
                 'payment_order_date' => $data['payment_order_date'] ?? null,
                 'due_date' => $data['due_date'] ?? $due['due_date'],
                 'credit_days' => $data['credit_days'] ?? null,
                 'due_date_basis' => $due['due_date_basis'],
                 'due_date_source_date' => $due['due_date_source_date'],
+                // Financial invoice is recorded; physical stock stays In Transit until receipt confirmation.
                 'status' => 'posted',
+                'material_receipt_status' => PurchaseInvoice::MATERIAL_IN_TRANSIT,
+                'price_type' => $priceType,
                 'subtotal' => $subtotal,
+                'taxable_amount' => $subtotal,
                 'tax_amount' => $taxAmount,
+                'cgst_amount' => $cgstTotal,
+                'sgst_amount' => $sgstTotal,
+                'igst_amount' => $igstTotal,
                 'freight_charge' => $freightCharge,
                 'other_charges' => $otherCharges,
+                'round_off' => $roundOff,
                 'grand_total' => $grandTotal,
                 'rate_override_reason' => $overrideReason,
                 'notes' => $data['notes'] ?? null,
@@ -732,7 +701,14 @@ class PurchaseOrderService
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
+                    'received_qty' => 0,
                     'unit_cost' => $item['unit_cost'],
+                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
+                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
+                    'price_type' => $priceType,
+                    'entered_unit_cost' => $item['entered_unit_cost'] ?? $item['unit_cost'],
+                    'unit_cost' => $item['unit_cost'],
+                    'taxable_amount' => $item['taxable_amount'] ?? ($item['quantity'] * $item['unit_cost']),
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
@@ -755,6 +731,7 @@ class PurchaseOrderService
                             $invoice->warehouse_id,
                             $piItem,
                             $actor,
+                            'in_transit',
                         );
                     }
                 }
@@ -815,13 +792,30 @@ class PurchaseOrderService
     public function updateInvoice(PurchaseInvoice $invoice, array $data, User $actor): PurchaseInvoice
     {
         return DB::transaction(function () use ($invoice, $data, $actor) {
+            if (
+                $invoice->inventoryMovements()->exists()
+                || (float) $invoice->items()->sum('received_qty') > 0
+                || in_array($invoice->material_receipt_status, [
+                    PurchaseInvoice::MATERIAL_PARTIALLY_RECEIVED,
+                    PurchaseInvoice::MATERIAL_RECEIVED,
+                ], true)
+            ) {
+                throw ValidationException::withMessages([
+                    'items' => 'This invoice has material receipt activity. Edit is blocked so stock stays accurate. Use Receive Material for further receipts.',
+                ]);
+            }
+
             $supplierId = (int) $data['supplier_id'];
             $items = $this->normalizeItems($data['items'] ?? []);
             $overrideReason = $data['rate_override_reason'] ?? $invoice->rate_override_reason;
             $needsOverride = false;
 
+            $priceType = strtolower(trim((string)($data['price_type'] ?? 'exclusive'))) === 'inclusive' ? 'inclusive' : 'exclusive';
             $subtotal = 0;
             $taxAmount = 0;
+            $cgstTotal = 0;
+            $sgstTotal = 0;
+            $igstTotal = 0;
             $prepared = [];
 
             foreach ($items as $item) {
@@ -839,7 +833,7 @@ class PurchaseOrderService
                     $needsOverride = true;
                 }
 
-                $line = $item['quantity'] * $item['unit_cost'];
+                $enteredUnitCost = (float) $item['unit_cost'];
                 $taxPercent = (float) ($item['tax_percent'] ?? 0);
 
                 $cgstPercent = array_key_exists('cgst_percent', $item)
@@ -856,21 +850,39 @@ class PurchaseOrderService
                     ]);
                 }
 
-                $cgstAmount = $line * ($cgstPercent / 100);
-                $sgstAmount = $line * ($sgstPercent / 100);
-                $tax = $cgstAmount + $sgstAmount;
+                $qty = (float) $item['quantity'];
+                if ($priceType === 'inclusive') {
+                    $baseUnitCost = $taxPercent > 0 ? round($enteredUnitCost * 100 / (100 + $taxPercent), 4) : $enteredUnitCost;
+                    $line = round($qty * $baseUnitCost, 2);
+                    $tax = round($line * ($taxPercent / 100), 2);
+                    $lineTotal = round($line + $tax, 2);
+                } else {
+                    $baseUnitCost = $enteredUnitCost;
+                    $line = round($qty * $baseUnitCost, 2);
+                    $tax = round($line * ($taxPercent / 100), 2);
+                    $lineTotal = round($line + $tax, 2);
+                }
+
+                $cgstAmount = round($tax / 2, 2);
+                $sgstAmount = round($tax - $cgstAmount, 2);
 
                 $subtotal += $line;
                 $taxAmount += $tax;
+                $cgstTotal += $cgstAmount;
+                $sgstTotal += $sgstAmount;
 
                 $prepared[] = [
                     ...$item,
+                    'price_type' => $priceType,
+                    'entered_unit_cost' => $enteredUnitCost,
+                    'unit_cost' => $baseUnitCost,
+                    'taxable_amount' => $line,
                     'tax_percent' => $taxPercent,
                     'cgst_percent' => $cgstPercent,
                     'sgst_percent' => $sgstPercent,
                     'cgst_amount' => $cgstAmount,
                     'sgst_amount' => $sgstAmount,
-                    'line_total' => $line + $tax,
+                    'line_total' => $lineTotal,
                     'other_vendor_rate' => $otherRate,
                 ];
             }
@@ -935,7 +947,11 @@ class PurchaseOrderService
 
             $freightCharge = max(0.0, (float) ($data['freight_charge'] ?? 0));
             $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
-            $grandTotal = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+            $totalBeforeRound = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
+            $roundOff = isset($data['round_off']) && $data['round_off'] !== null && $data['round_off'] !== ''
+                ? round((float) $data['round_off'], 2)
+                : \App\Domains\Master\Services\GstTaxCalculationService::computeRoundOff($totalBeforeRound);
+            $grandTotal = round(max(0, $totalBeforeRound + $roundOff), 2);
 
             $warehouse = ! empty($data['warehouse_id']) ? Warehouse::find($data['warehouse_id']) : null;
             $companyId = $data['company_id'] ?? $invoice->company_id ?? $warehouse?->company_id ?? $actor->company_id ?? Company::defaultCompanyId() ?? 1;
@@ -989,15 +1005,24 @@ class PurchaseOrderService
                 'supplier_invoice_no' => $data['supplier_invoice_number'] ?? $data['supplier_invoice_no'] ?? $invoice->supplier_invoice_no,
                 'invoice_date' => $data['invoice_date'],
                 'purchase_receive_date' => $data['purchase_receive_date'] ?? null,
+                'material_dispatch_date' => $data['material_dispatch_date'] ?? $invoice->material_dispatch_date,
+                'expected_delivery_date' => $data['expected_delivery_date'] ?? $invoice->expected_delivery_date,
                 'payment_order_date' => $data['payment_order_date'] ?? null,
                 'due_date' => $data['due_date'] ?? $due['due_date'],
                 'credit_days' => $data['credit_days'] ?? null,
                 'due_date_basis' => $due['due_date_basis'],
                 'due_date_source_date' => $due['due_date_source_date'],
+                'material_receipt_status' => PurchaseInvoice::MATERIAL_IN_TRANSIT,
+                'price_type' => $priceType,
                 'subtotal' => $subtotal,
+                'taxable_amount' => $subtotal,
                 'tax_amount' => $taxAmount,
+                'cgst_amount' => $cgstTotal,
+                'sgst_amount' => $sgstTotal,
+                'igst_amount' => $igstTotal,
                 'freight_charge' => $freightCharge,
                 'other_charges' => $otherCharges,
+                'round_off' => $roundOff,
                 'grand_total' => $grandTotal,
                 'rate_override_reason' => $overrideReason,
                 'notes' => $data['notes'] ?? null,
@@ -1007,7 +1032,7 @@ class PurchaseOrderService
 
             // Clean up old items and history
             foreach ($invoice->items as $oldItem) {
-                \App\Domains\Inventory\Models\ProductSerial::where('source_type', $oldItem->getMorphClass())
+                ProductSerial::where('source_type', $oldItem->getMorphClass())
                     ->where('source_id', $oldItem->id)
                     ->delete();
             }
@@ -1022,7 +1047,14 @@ class PurchaseOrderService
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
+                    'received_qty' => 0,
                     'unit_cost' => $item['unit_cost'],
+                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
+                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
+                    'price_type' => $priceType,
+                    'entered_unit_cost' => $item['entered_unit_cost'] ?? $item['unit_cost'],
+                    'unit_cost' => $item['unit_cost'],
+                    'taxable_amount' => $item['taxable_amount'] ?? ($item['quantity'] * $item['unit_cost']),
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
@@ -1045,6 +1077,7 @@ class PurchaseOrderService
                             $invoice->warehouse_id,
                             $piItem,
                             $actor,
+                            'in_transit',
                         );
                     }
                 }
@@ -1171,30 +1204,146 @@ class PurchaseOrderService
                 return $invoice;
             }
 
+            // Financial posting only — physical stock is added via receiveMaterial().
             $invoice->update([
                 'status' => 'posted',
                 'posted_at' => now(),
             ]);
 
-            if ($invoice->inventoryMovements()->doesntExist() && $invoice->warehouse_id) {
-                foreach ($invoice->items as $item) {
-                    $this->stockMovementService->recordIn(
-                        $item->product,
-                        $item->uom ?? $item->product->baseUom,
-                        (float) $item->quantity,
-                        'purchase_invoice',
-                        $invoice,
-                        "Stock inward from PI {$invoice->invoice_no}",
-                        auth()->user(),
-                        $invoice->warehouse_id,
-                        (float) $item->unit_cost,
-                        null,
-                        $item->batch_no,
-                    );
-                }
+            return $invoice;
+        });
+    }
+
+    /**
+     * Confirm physical material receipt (full or partial) and post stock for newly received qty only.
+     *
+     * @param  array{actual_material_receipt_date?:string, mark_all_received?:bool, items?:array<int, array{id:int|string, receive_qty?:float|int|string}>}  $data
+     */
+    public function receiveMaterial(PurchaseInvoice $invoice, array $data, User $actor): PurchaseInvoice
+    {
+        return DB::transaction(function () use ($invoice, $data, $actor) {
+            if ($invoice->status === 'cancelled') {
+                throw ValidationException::withMessages([
+                    'invoice' => 'Cancelled purchase invoices cannot receive material.',
+                ]);
             }
 
-            return $invoice;
+            if (! $invoice->warehouse_id) {
+                throw ValidationException::withMessages([
+                    'warehouse_id' => 'A warehouse is required before material can be received into stock.',
+                ]);
+            }
+
+            $invoice->load(['items.product.baseUom', 'items.uom']);
+            $receiptDate = $data['actual_material_receipt_date']
+                ?? $data['purchase_receive_date']
+                ?? now()->toDateString();
+            $markAll = (bool) ($data['mark_all_received'] ?? false);
+            $incoming = collect($data['items'] ?? [])->keyBy(fn ($row) => (string) ($row['id'] ?? ''));
+            $anyReceived = false;
+
+            foreach ($invoice->items as $item) {
+                $already = (float) $item->received_qty;
+                $ordered = (float) $item->quantity;
+                $remaining = max(0, $ordered - $already);
+
+                if ($remaining <= 0) {
+                    continue;
+                }
+
+                if ($markAll) {
+                    $delta = $remaining;
+                } else {
+                    $row = $incoming->get((string) $item->id);
+                    $delta = (float) ($row['receive_qty'] ?? 0);
+                }
+
+                if ($delta <= 0) {
+                    continue;
+                }
+
+                if ($delta > $remaining + 0.0001) {
+                    throw ValidationException::withMessages([
+                        "items.{$item->id}.receive_qty" => "Receive qty for {$item->product?->name} cannot exceed remaining {$remaining}.",
+                    ]);
+                }
+
+                $delta = min($delta, $remaining);
+                $uom = $item->uom ?? $item->product?->baseUom;
+                if (! $item->product || ! $uom) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Product/UOM missing on an invoice line; cannot receive stock.',
+                    ]);
+                }
+
+                $this->stockMovementService->recordIn(
+                    $item->product,
+                    $uom,
+                    $delta,
+                    'purchase_invoice',
+                    $invoice,
+                    "Material receipt for PI {$invoice->invoice_no}",
+                    $actor,
+                    $invoice->warehouse_id,
+                    (float) $item->unit_cost,
+                    null,
+                    $item->batch_no,
+                );
+
+                if (! empty($item->batch_no)) {
+                    $this->serialBatchService->upsertBatch(
+                        $item->product,
+                        $uom,
+                        (string) $item->batch_no,
+                        $delta,
+                        (float) $item->unit_cost,
+                        $invoice->warehouse_id,
+                        $item->expiry_date?->toDateString(),
+                        $item,
+                        $item->batch_selling_price !== null ? (float) $item->batch_selling_price : null,
+                        $item->batch_mrp !== null ? (float) $item->batch_mrp : null,
+                    );
+                }
+
+                $activateCount = (int) max(1, (int) round($delta));
+                ProductSerial::query()
+                    ->where('source_type', $item->getMorphClass())
+                    ->where('source_id', $item->id)
+                    ->where('status', 'in_transit')
+                    ->orderBy('id')
+                    ->limit($activateCount)
+                    ->update(['status' => 'in_stock']);
+
+                $item->update(['received_qty' => $already + $delta]);
+                $anyReceived = true;
+            }
+
+            if (! $anyReceived) {
+                throw ValidationException::withMessages([
+                    'items' => 'Enter at least one receive quantity greater than zero.',
+                ]);
+            }
+
+            $invoice->refresh()->load('items');
+            $totalOrdered = (float) $invoice->items->sum('quantity');
+            $totalReceived = (float) $invoice->items->sum('received_qty');
+
+            $status = PurchaseInvoice::MATERIAL_IN_TRANSIT;
+            if ($totalReceived <= 0) {
+                $status = PurchaseInvoice::MATERIAL_IN_TRANSIT;
+            } elseif ($totalReceived + 0.0001 >= $totalOrdered) {
+                $status = PurchaseInvoice::MATERIAL_RECEIVED;
+            } else {
+                $status = PurchaseInvoice::MATERIAL_PARTIALLY_RECEIVED;
+            }
+
+            $invoice->update([
+                'material_receipt_status' => $status,
+                'actual_material_receipt_date' => $receiptDate,
+                'purchase_receive_date' => $invoice->purchase_receive_date ?: $receiptDate,
+            ]);
+
+            return $invoice->fresh(['items.product', 'items.uom', 'supplier', 'warehouse', 'purchaseOrder']);
         });
     }
 
@@ -1277,25 +1426,56 @@ class PurchaseOrderService
                 $uomId = Product::query()->whereKey($item['product_id'])->value('base_uom_id');
             }
 
+            $taxPercent = isset($item['tax_percent'])
+                ? (float) $item['tax_percent']
+                : ((float) ($item['cgst_percent'] ?? 0) + (float) ($item['sgst_percent'] ?? 0));
+            $cgstPercent = isset($item['cgst_percent'])
+                ? (float) $item['cgst_percent']
+                : ($taxPercent / 2);
+            $sgstPercent = isset($item['sgst_percent'])
+                ? (float) $item['sgst_percent']
+                : ($taxPercent / 2);
+
+            $unitCost = (float) ($item['unit_cost'] ?? 0);
+            $mrp = null;
+            if (isset($item['mrp']) && $item['mrp'] !== '') {
+                $mrp = (float) $item['mrp'];
+            } elseif (isset($item['batch_mrp']) && $item['batch_mrp'] !== '') {
+                $mrp = (float) $item['batch_mrp'];
+            }
+
+            $purchasePriceInclusive = null;
+            if (isset($item['purchase_price_inclusive']) && $item['purchase_price_inclusive'] !== '') {
+                $purchasePriceInclusive = (float) $item['purchase_price_inclusive'];
+            } elseif (isset($item['price_inclusive_tax']) && $item['price_inclusive_tax'] !== '') {
+                $purchasePriceInclusive = (float) $item['price_inclusive_tax'];
+            } elseif ($unitCost > 0) {
+                $purchasePriceInclusive = round($unitCost * (1 + ($taxPercent / 100)), 4);
+            }
+
+            $purchaseDiscountPercent = null;
+            if (isset($item['purchase_discount_percent']) && $item['purchase_discount_percent'] !== '') {
+                $purchaseDiscountPercent = round((float) $item['purchase_discount_percent'], 2);
+            } elseif ($mrp !== null && $mrp > 0 && $purchasePriceInclusive !== null) {
+                $purchaseDiscountPercent = round((($mrp - $purchasePriceInclusive) / $mrp) * 100, 2);
+            }
+
             $normalized[] = [
                 'product_id' => (int) $item['product_id'],
                 'uom_id' => (int) $uomId,
                 'quantity' => $qty,
-                'unit_cost' => (float) ($item['unit_cost'] ?? 0),
-                'tax_percent' => isset($item['tax_percent'])
-                    ? (float) $item['tax_percent']
-                    : ((float) ($item['cgst_percent'] ?? 0) + (float) ($item['sgst_percent'] ?? 0)),
-                'cgst_percent' => isset($item['cgst_percent'])
-                    ? (float) $item['cgst_percent']
-                    : ((float) ($item['tax_percent'] ?? 0) / 2),
-                'sgst_percent' => isset($item['sgst_percent'])
-                    ? (float) $item['sgst_percent']
-                    : ((float) ($item['tax_percent'] ?? 0) / 2),
+                'unit_cost' => $unitCost,
+                'mrp' => $mrp,
+                'purchase_price_inclusive' => $purchasePriceInclusive,
+                'purchase_discount_percent' => $purchaseDiscountPercent,
+                'tax_percent' => $taxPercent,
+                'cgst_percent' => $cgstPercent,
+                'sgst_percent' => $sgstPercent,
                 'weight' => isset($item['weight']) ? (float) $item['weight'] : null,
                 'batch_no' => $item['batch_no'] ?? $item['batch_number'] ?? $item['batch_name'] ?? null,
                 'serial_no' => filled($item['serial_no'] ?? null) ? trim((string) $item['serial_no']) : null,
                 'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
-                'batch_mrp' => isset($item['batch_mrp']) && $item['batch_mrp'] !== '' ? (float) $item['batch_mrp'] : null,
+                'batch_mrp' => $mrp,
                 'serials' => ! empty($item['serials'])
                     ? (is_array($item['serials']) ? $item['serials'] : preg_split('/[\s,;]+/', (string) $item['serials'], -1, PREG_SPLIT_NO_EMPTY))
                     : (! empty($item['serial_numbers'])
@@ -1353,6 +1533,115 @@ class PurchaseOrderService
             'freight_tax_amount' => $taxAmount,
             'freight_total' => round($amount + $taxAmount, 2),
             'freight_notes' => $notes,
+        ];
+    }
+
+    protected function resolvePurchaseOrderNumber(array $data, ?int $companyId): string
+    {
+        $series = $this->documentNumberService->resolveSeries('PO', $companyId);
+        $poDate = ! empty($data['po_date']) ? \Illuminate\Support\Carbon::parse($data['po_date']) : now();
+
+        if ($series && $series->isManual()) {
+            $poNo = strtoupper(trim((string) ($data['po_no'] ?? '')));
+            if ($poNo === '') {
+                throw ValidationException::withMessages([
+                    'po_no' => 'Voucher number is required when Purchase Order numbering is set to manual.',
+                ]);
+            }
+
+            $exists = PurchaseOrder::query()
+                ->where('po_no', $poNo)
+                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                ->exists();
+
+            if ($exists) {
+                throw ValidationException::withMessages([
+                    'po_no' => 'This voucher number already exists.',
+                ]);
+            }
+
+            return $poNo;
+        }
+
+        if ($series) {
+            return $this->documentNumberService->nextFromSeries($series, $poDate, $companyId);
+        }
+
+        return $this->documentNumberService->next('PO', $poDate, 4, $companyId);
+    }
+
+    /**
+     * Billing = supplier (auto). Delivery = our company delivery address (dropdown / create).
+     *
+     * @return array{billing_address_id: int|null, billing_address: string|null, company_delivery_address_id: int|null, shipping_address: string|null}
+     */
+    protected function resolvePurchaseOrderPartyAddresses(
+        Customer $supplier,
+        array $data,
+        ?Warehouse $warehouse,
+        ?int $companyId,
+        ?string $existingShipping = null,
+        ?string $existingBilling = null,
+    ): array {
+        $billingAddress = null;
+        if (! empty($data['billing_address_id'])) {
+            $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $data['billing_address_id'])
+                ->where('customer_id', $supplier->id)
+                ->first();
+            if (! $billingAddress) {
+                throw ValidationException::withMessages([
+                    'billing_address_id' => 'The selected billing address does not belong to the selected supplier.',
+                ]);
+            }
+        }
+
+        if (! $billingAddress) {
+            $billingAddress = $supplier->defaultBillingAddress();
+        }
+
+        $billingSnapshot = ! empty($data['billing_address'])
+            ? trim((string) $data['billing_address'])
+            : ($billingAddress ? $billingAddress->formatSnapshot() : ($existingBilling ?: $supplier->address));
+
+        $companyDelivery = null;
+        if (! empty($data['company_delivery_address_id'])) {
+            $query = CompanyDeliveryAddress::query()
+                ->where('id', $data['company_delivery_address_id'])
+                ->where('is_active', true);
+            if ($companyId) {
+                $query->where('company_id', $companyId);
+            }
+            $companyDelivery = $query->first();
+            if (! $companyDelivery) {
+                throw ValidationException::withMessages([
+                    'company_delivery_address_id' => 'The selected delivery address was not found for this company.',
+                ]);
+            }
+        }
+
+        $defaultDeliveryAddress = $warehouse?->address
+            ?: ($warehouse?->branch?->address
+                ?: ($warehouse?->company?->address
+                    ?: (Company::query()->find($companyId)?->address)));
+
+        $rawShipping = ! empty($data['shipping_address']) ? trim((string) $data['shipping_address']) : null;
+        if ($rawShipping && ($rawShipping === $billingSnapshot || $rawShipping === $supplier->address)) {
+            $rawShipping = null;
+        }
+
+        $existingClean = $existingShipping;
+        if ($existingClean && ($existingClean === $existingBilling || $existingClean === $supplier->address || $existingClean === $billingSnapshot)) {
+            $existingClean = null;
+        }
+
+        $shippingSnapshot = $rawShipping
+            ?: ($companyDelivery ? $companyDelivery->formatSnapshot() : ($existingClean ?: $defaultDeliveryAddress));
+
+        return [
+            'billing_address_id' => $billingAddress?->id,
+            'billing_address' => $billingSnapshot,
+            'company_delivery_address_id' => $companyDelivery?->id,
+            'shipping_address' => $shippingSnapshot,
         ];
     }
 }

@@ -72,6 +72,46 @@
             'is_primary' => (bool) $contact->is_primary,
         ])->values()->all()
         : []);
+
+    $savedGemAuthorizations = ($item->exists ? $item->gemAuthorizations()->with('documents')->orderBy('id')->get() : collect());
+    $oldGemAuthorizations = old('gem_authorizations');
+    if (is_array($oldGemAuthorizations)) {
+        $initialGemAuthorizations = collect($oldGemAuthorizations)->values()->map(function ($row, $index) use ($savedGemAuthorizations) {
+            $saved = filled($row['id'] ?? null) ? $savedGemAuthorizations->firstWhere('id', (int) $row['id']) : null;
+
+            return [
+                'key' => 'gem-'.($row['id'] ?? 'new-'.$index),
+                'id' => $row['id'] ?? '',
+                'brand_id' => (string) ($row['brand_id'] ?? ''),
+                'gem_registered' => (string) ($row['gem_registered'] ?? '0'),
+                'gem_authorized' => (string) ($row['gem_authorized'] ?? '0'),
+                'authorization_number' => $row['authorization_number'] ?? '',
+                'documents' => $saved ? $saved->documents->map(fn ($doc) => [
+                    'id' => $doc->id,
+                    'name' => $doc->original_name,
+                    'view_url' => route('masters.customers.gem-documents.show', [$item, $doc]),
+                    'download_url' => route('masters.customers.gem-documents.show', [$item, $doc]).'?download=1',
+                    'is_image' => $doc->isImage(),
+                ])->values()->all() : [],
+            ];
+        })->all();
+    } else {
+        $initialGemAuthorizations = $savedGemAuthorizations->map(fn ($row) => [
+            'key' => 'gem-'.$row->id,
+            'id' => $row->id,
+            'brand_id' => (string) $row->brand_id,
+            'gem_registered' => $row->gem_registered ? '1' : '0',
+            'gem_authorized' => $row->gem_authorized ? '1' : '0',
+            'authorization_number' => $row->authorization_number ?? '',
+            'documents' => $row->documents->map(fn ($doc) => [
+                'id' => $doc->id,
+                'name' => $doc->original_name,
+                'view_url' => route('masters.customers.gem-documents.show', [$item, $doc]),
+                'download_url' => route('masters.customers.gem-documents.show', [$item, $doc]).'?download=1',
+                'is_image' => $doc->isImage(),
+            ])->values()->all(),
+        ])->all();
+    }
 @endphp
 
 @section('content')
@@ -79,6 +119,8 @@
     <x-slot name="actions">
         @if(isset($lead))
             <x-ui.button variant="secondary" :href="route('crm.leads.index')">Back to Leads</x-ui.button>
+        @elseif(($returnTo ?? request('return_to', old('return_to'))) === 'orders.create')
+            <x-ui.button variant="secondary" :href="route('orders.create')">Back to Book Order</x-ui.button>
         @else
             <x-ui.button variant="secondary" :href="route('masters.customers.index')">Back</x-ui.button>
         @endif
@@ -108,16 +150,50 @@
         </div>
     @endif
 
+    @php
+        $returnUrl = old('return_url', request('return_url'));
+        $isReturnToPo = is_string($returnUrl) && str_contains($returnUrl, '/purchasing/orders/create');
+    @endphp
+    @if(! $item->exists && filled($returnUrl))
+        <div class="mb-4 bg-indigo-50/90 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-indigo-900 shadow-2xs max-w-5xl">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                </div>
+                <div>
+                    <span class="font-bold">{{ $isReturnToPo ? 'Adding Supplier for Purchase Order' : 'Return After Save' }}</span>
+                    <p class="text-indigo-700 text-[11px]">
+                        {{ $isReturnToPo
+                            ? 'Save this party, then you will be returned to New Purchase Order with the supplier selected.'
+                            : 'After saving, you will be redirected back to the page you came from.' }}
+                    </p>
+                </div>
+            </div>
+            <a href="{{ $returnUrl }}"
+               class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white text-indigo-700 border border-indigo-200 font-semibold rounded-xl hover:bg-indigo-100 hover:text-indigo-900 transition shadow-2xs shrink-0">
+                &larr; Cancel &amp; Go Back
+            </a>
+        </div>
+    @endif
+
     <form method="POST"
           action="{{ $item->exists ? route('masters.customers.update', $item) : route('masters.customers.store') }}"
+          enctype="multipart/form-data"
           class="space-y-6 max-w-5xl"
-          x-data="partyFormController()">
+          x-data="partyFormController()"
+          @add-city="openCityModal($event.detail.index, $event.detail.name)">
         @csrf
         @if($item->exists) @method('PUT') @endif
+        @if(! $item->exists && filled($returnUrl))
+            <input type="hidden" name="return_url" value="{{ $returnUrl }}">
+        @endif
         @if(isset($lead))
             <input type="hidden" name="lead_id" value="{{ $lead->id }}">
         @elseif(old('lead_id'))
             <input type="hidden" name="lead_id" value="{{ old('lead_id') }}">
+        @endif
+        @if(($returnTo ?? request('return_to', old('return_to'))) === 'orders.create')
+            <input type="hidden" name="return_to" value="orders.create">
         @endif
 
         <div>
@@ -194,7 +270,7 @@
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Party Type *</label>
                     <select name="party_type" x-model="form.party_type" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         @foreach([\App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_DEBTORS => 'Sundry Debtors', \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS => 'Sundry Creditors', \App\Domains\Master\Models\Customer::PARTY_TYPE_BOTH => 'Both'] as $val => $label)
-                            <option value="{{ $val }}" @selected(old('party_type', $item->party_type_key ?? 'sundry_debtors')===$val)>{{ $label }}</option>
+                            <option value="{{ $val }}" @selected(old('party_type', $item->party_type_key ?? request('party_type', 'sundry_debtors'))===$val)>{{ $label }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -273,17 +349,12 @@
                             <!-- Search Field -->
                             <div class="p-2 border-b border-slate-100 bg-slate-50/80 sticky top-0 z-10">
                                 <div class="relative">
-                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
-                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                                        </svg>
-                                    </div>
                                     <input type="text"
                                            x-ref="businessGroupSearchInput"
                                            x-model="businessGroupSearch"
                                            @keydown="onBusinessGroupKeyDown($event)"
                                            placeholder="Search Business Group by name or code..."
-                                           class="block w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                           class="block w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                                 </div>
                             </div>
 
@@ -348,14 +419,27 @@
                 </div>
 
                 <div>
-                    <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center justify-between mb-1 gap-2">
                         <label for="customer_type_id" class="block text-xs font-semibold text-slate-700 tracking-wider">Classification</label>
-                        <button type="button"
-                                @click="openClassificationModal()"
-                                class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 hover:underline focus:outline-none">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            Add Manually
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button type="button"
+                                    @click="openClassificationModal('add')"
+                                    class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline focus:outline-none">
+                                Add
+                            </button>
+                            <button type="button"
+                                    @click="openClassificationModal('edit')"
+                                    :disabled="!selectedCustomerTypeId"
+                                    class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline focus:outline-none disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">
+                                Edit
+                            </button>
+                            <button type="button"
+                                    @click="openClassificationModal('delete')"
+                                    :disabled="!selectedCustomerTypeId"
+                                    class="text-xs text-rose-600 hover:text-rose-800 font-semibold hover:underline focus:outline-none disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">
+                                Delete
+                            </button>
+                        </div>
                     </div>
                     <select name="customer_type_id"
                             id="customer_type_id"
@@ -371,6 +455,8 @@
                             <option :value="t.id" x-text="t.name"></option>
                         </template>
                     </select>
+                    <p class="mt-1 text-[11px] text-slate-500">Optional. Add, edit, or delete a classification without leaving this form.</p>
+                    <p x-show="classificationError && !classificationModalOpen" x-cloak class="mt-1 text-xs text-rose-600" x-text="classificationError"></p>
                 </div>
 
                 <div>
@@ -391,6 +477,144 @@
                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 </div>
 
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Date of Opening</label>
+                    <input type="date" name="opened_on" x-model="form.opened_on"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <p class="mt-1 text-[11px] text-slate-500">The date this party account was opened.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Reference By</label>
+                    <input type="text" name="reference_by" x-model="form.reference_by" maxlength="255"
+                           placeholder="Person who introduced this party"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Udyam Number</label>
+                    <input type="text" name="udyam_number" x-model="form.udyam_number" maxlength="50"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div class="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h4 class="text-sm font-semibold text-slate-800">GEM Authorization Details</h4>
+                            <p class="text-xs text-slate-500">Add a separate record for each OEM, such as Sony or Epson.</p>
+                        </div>
+                        <button type="button" @click="addGemAuthorization()"
+                                class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">
+                            <span class="text-sm leading-none">+</span>
+                            <span x-text="gemAuthorizations.length ? 'Add More' : 'Add OEM'"></span>
+                        </button>
+                    </div>
+
+                    @php
+                        $gemErrors = collect($errors->getMessages())->filter(fn ($messages, $key) => str_starts_with((string) $key, 'gem_authorizations'))->flatten();
+                    @endphp
+                    @if($gemErrors->isNotEmpty())
+                        <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 space-y-1">
+                            @foreach($gemErrors as $message)
+                                <p>{{ $message }}</p>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    <p x-show="gemAuthorizations.length === 0" class="text-xs text-slate-500">No OEM authorization records yet.</p>
+
+                    <div class="space-y-3">
+                        <template x-for="(row, idx) in gemAuthorizations" :key="row.key">
+                            <div class="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                                <div class="flex items-center justify-between gap-2">
+                                    <p class="text-xs font-bold uppercase tracking-wider text-slate-600" x-text="`OEM #${idx + 1}`"></p>
+                                    <button type="button" @click="removeGemAuthorization(idx)" class="text-xs font-semibold text-rose-600 hover:text-rose-800">Remove</button>
+                                </div>
+                                <input type="hidden" :name="`gem_authorizations[${idx}][id]`" :value="row.id">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1 gap-2">
+                                            <label class="block text-xs font-semibold text-slate-700 tracking-wider">Brand/OEM Name *</label>
+                                            <button type="button" @click="openBrandModal(idx)"
+                                                    class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline">
+                                                + Create Brand/OEM
+                                            </button>
+                                        </div>
+                                        <select :name="`gem_authorizations[${idx}][brand_id]`" x-model="row.brand_id" required
+                                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                            <option value="">Select Brand/OEM</option>
+                                            <template x-for="brand in brands" :key="brand.id">
+                                                <option :value="String(brand.id)" x-text="brand.name"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Is this OEM’s product registered on GEM?</label>
+                                        <select :name="`gem_authorizations[${idx}][gem_registered]`" x-model="row.gem_registered"
+                                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                            <option value="0">No</option>
+                                            <option value="1">Yes</option>
+                                        </select>
+                                    </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Have we authorized this party on GEM?</label>
+                                        <select :name="`gem_authorizations[${idx}][gem_authorized]`" x-model="row.gem_authorized"
+                                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                            <option value="0">No</option>
+                                            <option value="1">Yes</option>
+                                        </select>
+                                    </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                                            GEM Authorization Number
+                                            <span x-show="row.gem_authorized === '1'">*</span>
+                                        </label>
+                                        <input type="text" :name="`gem_authorizations[${idx}][authorization_number]`" x-model="row.authorization_number" maxlength="100"
+                                               :required="row.gem_registered === '1' && row.gem_authorized === '1'"
+                                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <p x-show="row.gem_authorized !== '1'" class="mt-1 text-[11px] text-slate-500">Not required when this party is not authorized on GEM.</p>
+                                    </div>
+                                    <div class="md:col-span-2" x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GEM Star Rating Photo/Document</label>
+                                        <div class="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/40 p-3 space-y-2">
+                                            <template x-if="row.documents.length">
+                                                <div class="space-y-2">
+                                                    <template x-for="doc in row.documents" :key="doc.id">
+                                                        <div class="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                                            <span class="text-xs font-medium text-slate-800" x-text="doc.name"></span>
+                                                            <a :href="doc.view_url" target="_blank" rel="noopener" class="text-xs font-semibold text-indigo-700 hover:underline">View</a>
+                                                            <a :href="doc.download_url" class="text-xs font-semibold text-indigo-700 hover:underline">Download</a>
+                                                            <label class="inline-flex items-center gap-1.5 text-xs text-rose-600">
+                                                                <input type="checkbox" :name="`gem_authorizations[${idx}][remove_document_ids][]`" :value="doc.id" class="rounded border-gray-300 text-rose-600">
+                                                                Remove
+                                                            </label>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                            <input type="file" :name="`gem_authorizations[${idx}][documents][]`" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,image/*,application/pdf"
+                                                   class="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white">
+                                            <p class="text-[11px] text-slate-500">Upload a photo or PDF as proof. You can add more than one file. This is not required when authorization is No.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Website</label>
+                    <input type="text" name="website" x-model="form.website" maxlength="255" placeholder="https://"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Location Link</label>
+                    <input type="text" name="location_link" x-model="form.location_link" maxlength="500" placeholder="https://"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
                 <input type="hidden" name="address" :value="form.address">
                 <input type="hidden" name="state" :value="form.state">
                 <input type="hidden" name="pincode" :value="form.pincode">
@@ -404,12 +628,24 @@
                     <h3 class="text-sm font-semibold text-slate-700">Addresses &amp; Locations</h3>
                     <p class="text-xs text-slate-500">Multiple addresses allowed per party. Set default billing and delivery addresses.</p>
                 </div>
-                <button type="button" @click="addAddress()"
-                        class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                    Add Address
-                </button>
+                <div class="flex items-center gap-2">
+                    <button type="button"
+                            x-show="gstPendingExtraAddresses.length > 0"
+                            x-cloak
+                            @click="applyPendingGstExtraAddresses()"
+                            class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition shadow-sm">
+                        <span x-text="`+ Include ${gstPendingExtraAddresses.length} from GST`"></span>
+                    </button>
+                    <button type="button" @click="addAddress()"
+                            class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        Add Address
+                    </button>
+                </div>
             </div>
+            <p x-show="gstPendingExtraAddresses.length > 0" x-cloak class="text-xs text-emerald-700">
+                GST also reported additional place(s) of business. Principal address was applied — include the extras only if you need them.
+            </p>
 
             <div class="space-y-4">
                 <template x-for="(addr, idx) in addresses" :key="idx">
@@ -444,9 +680,9 @@
 
                         <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Label *</label>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Label</label>
                                 <input type="text" :name="`addresses[${idx}][label]`" x-model="addr.label" placeholder="E.G. Head Office, Warehouse"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Address Type</label>
@@ -471,10 +707,10 @@
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 1 *</label>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 1 (optional)</label>
                                 <input type="text" :name="`addresses[${idx}][address_line_1]`" x-model="addr.address_line_1" @input="syncPrimaryAddress()"
                                        placeholder="Flat / Door / Block No., Premises, Street"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 2 (optional)</label>
@@ -486,7 +722,7 @@
 
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">State *</label>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">State (optional)</label>
                                 <div class="relative" x-data="stateDropdown(addr, statesList, () => syncPrimaryAddress())" @click.outside="close()">
                                     <!-- Hidden input for standard form submission -->
                                     <input type="hidden" :name="`addresses[${idx}][state]`" :value="addr.state">
@@ -528,18 +764,13 @@
                                          style="display: none;">
                                         <div class="p-2 border-b border-slate-100 bg-slate-50/70 sticky top-0 z-10">
                                             <div class="relative">
-                                                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
-                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                                                    </svg>
-                                                </div>
                                                 <input type="text"
                                                        x-ref="searchInput"
                                                        x-model="search"
                                                        @input="highlightedIndex = 0"
                                                        @keydown="onKeyDown($event)"
                                                        placeholder="Search State..."
-                                                       class="block w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                                       class="block w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                                             </div>
                                         </div>
                                         <ul x-ref="optionsList" class="max-h-48 overflow-y-auto py-1 text-sm divide-y divide-slate-50">
@@ -570,8 +801,16 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">City *</label>
-                                <div class="relative" x-data="cityDropdown(addr, stateCities)" @click.outside="close()">
+                                <div class="flex items-center justify-between mb-1 gap-2">
+                                    <label class="block text-xs font-medium text-slate-700">City (optional)</label>
+                                    <button type="button"
+                                            @click="openCityModal(idx)"
+                                            :disabled="!addr.state"
+                                            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">
+                                        + Add City
+                                    </button>
+                                </div>
+                                <div class="relative" x-data="cityDropdown(addr, stateCities, idx)" @click.outside="close()">
                                     <!-- Hidden input for standard form submission -->
                                     <input type="hidden" :name="`addresses[${idx}][city]`" :value="addr.city">
 
@@ -618,21 +857,16 @@
                                          style="display: none;">
                                         <div class="p-2 border-b border-slate-100 bg-slate-50/70 sticky top-0 z-10">
                                             <div class="relative">
-                                                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
-                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                                                    </svg>
-                                                </div>
                                                 <input type="text"
                                                        x-ref="searchInput"
                                                        x-model="search"
                                                        @input="highlightedIndex = 0"
                                                        @keydown="onKeyDown($event)"
                                                        placeholder="Search City..."
-                                                       class="block w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                                       class="block w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                                             </div>
                                         </div>
-                                        <ul x-ref="optionsList" class="max-h-48 overflow-y-auto py-1 text-sm divide-y divide-slate-50">
+                                        <ul x-ref="optionsList" class="max-h-64 overflow-y-auto py-1 text-sm divide-y divide-slate-50">
                                             <template x-for="(city, cIdx) in filteredCities" :key="city">
                                                 <li :data-index="cIdx"
                                                     @click="selectCity(city)"
@@ -648,8 +882,12 @@
                                                 </li>
                                             </template>
                                             <template x-if="filteredCities.length === 0">
-                                                <li class="p-3 text-xs text-slate-400 text-center italic">
-                                                    No cities found
+                                                <li class="p-3 text-xs text-slate-500 text-center">
+                                                    <span x-show="!search.trim()">No cities found</span>
+                                                    <button type="button" x-show="search.trim()" @click="addSearchedCity()"
+                                                            class="font-semibold text-indigo-700 hover:underline">
+                                                        Add "<span x-text="search.trim()"></span>"
+                                                    </button>
                                                 </li>
                                             </template>
                                         </ul>
@@ -660,10 +898,10 @@
                                 </div>
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">PIN Code *</label>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">PIN Code (optional)</label>
                                 <input type="text" :name="`addresses[${idx}][pincode]`" x-model="addr.pincode" maxlength="12" @input="syncPrimaryAddress()"
                                        placeholder="6-Digit Pin Code"
-                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required>
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                         </div>
                     </div>
@@ -688,19 +926,47 @@
                     @endforeach
                 </x-ui.select>
 
-                <x-ui.select name="area_id" label="Area">
-                    <option value="">Unassigned</option>
-                    @foreach($areas as $a)
-                        <option value="{{ $a->id }}" @selected(old('area_id', $item->area_id)==$a->id)>{{ $a->name }}</option>
-                    @endforeach
-                </x-ui.select>
+                <div>
+                    <div class="flex items-center justify-between mb-1 gap-2">
+                        <label for="area_id" class="block text-sm font-medium text-gray-700">Area</label>
+                        <div class="flex items-center gap-2">
+                            <button type="button" @click="openLookupModal('area', 'add')" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline">Add</button>
+                            <button type="button" @click="openLookupModal('area', 'edit')" :disabled="!selectedAreaId" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">Edit</button>
+                            <button type="button" @click="openLookupModal('area', 'delete')" :disabled="!selectedAreaId" class="text-xs text-rose-600 hover:text-rose-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">Delete</button>
+                        </div>
+                    </div>
+                    <select name="area_id" id="area_id" x-ref="areaSelect" x-model="selectedAreaId"
+                            class="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Unassigned</option>
+                        @foreach($areas as $a)
+                            <option value="{{ $a->id }}" @selected(old('area_id', $item->area_id)==$a->id)>{{ $a->name }}</option>
+                        @endforeach
+                        <template x-for="area in customAreas" :key="area.id">
+                            <option :value="area.id" x-text="area.name"></option>
+                        </template>
+                    </select>
+                </div>
 
-                <x-ui.select name="route_id" label="Delivery Route">
-                    <option value="">Unassigned</option>
-                    @foreach($routes as $r)
-                        <option value="{{ $r->id }}" @selected(old('route_id', $item->route_id)==$r->id)>{{ $r->name }}</option>
-                    @endforeach
-                </x-ui.select>
+                <div>
+                    <div class="flex items-center justify-between mb-1 gap-2">
+                        <label for="route_id" class="block text-sm font-medium text-gray-700">Delivery Route</label>
+                        <div class="flex items-center gap-2">
+                            <button type="button" @click="openLookupModal('route', 'add')" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline">Add</button>
+                            <button type="button" @click="openLookupModal('route', 'edit')" :disabled="!selectedRouteId" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">Edit</button>
+                            <button type="button" @click="openLookupModal('route', 'delete')" :disabled="!selectedRouteId" class="text-xs text-rose-600 hover:text-rose-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">Delete</button>
+                        </div>
+                    </div>
+                    <select name="route_id" id="route_id" x-ref="routeSelect" x-model="selectedRouteId"
+                            class="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Unassigned</option>
+                        @foreach($routes as $r)
+                            <option value="{{ $r->id }}" @selected(old('route_id', $item->route_id)==$r->id)>{{ $r->name }}</option>
+                        @endforeach
+                        <template x-for="route in customRoutes" :key="route.id">
+                            <option :value="route.id" x-text="route.name"></option>
+                        </template>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -709,17 +975,54 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <x-ui.input name="credit_limit" label="Credit Limit (₹)" type="number" step="0.01" :value="old('credit_limit', $item->credit_limit ?? 0)" />
                 <x-ui.input name="credit_days" label="Credit Period (Days)" type="number" :value="old('credit_days', $item->credit_days ?? 0)" />
+                @php
+                    $creditStatuses = ['open' => 'Open', 'hold' => 'On Hold', 'blocked' => 'Blocked'];
+                    $currentCreditStatus = old('credit_status', $item->credit_status ?? 'open');
+                    foreach (['restricted' => 'Restricted', 'frozen' => 'Frozen', 'active' => 'Active'] as $legacyValue => $legacyLabel) {
+                        if ($currentCreditStatus === $legacyValue) {
+                            $creditStatuses[$legacyValue] = $legacyLabel;
+                        }
+                    }
+                    $creditBases = [
+                        'cumulative' => 'Cumulative / Balance',
+                        'invoice_date' => 'Invoice Date',
+                        'inward_date' => 'Inward Date',
+                        'receipt_date' => 'Receipt Date',
+                    ];
+                    $currentCreditBasis = old('credit_period_basis', $item->credit_period_basis ?? 'cumulative');
+                    foreach (['monthly' => 'Monthly', 'quarterly' => 'Quarterly', 'yearly' => 'Yearly'] as $legacyValue => $legacyLabel) {
+                        if ($currentCreditBasis === $legacyValue) {
+                            $creditBases[$legacyValue] = $legacyLabel;
+                        }
+                    }
+                @endphp
                 <x-ui.select name="credit_status" label="Credit Status">
-                    @foreach(['open' => 'Open', 'hold' => 'On Hold', 'blocked' => 'Blocked'] as $val => $label)
-                        <option value="{{ $val }}" @selected(old('credit_status', $item->credit_status ?? 'open')===$val)>{{ $label }}</option>
+                    @foreach($creditStatuses as $val => $label)
+                        <option value="{{ $val }}" @selected($currentCreditStatus===$val)>{{ $label }}</option>
                     @endforeach
                 </x-ui.select>
                 <x-ui.select name="credit_period_basis" label="Credit Period Basis">
-                    @foreach(['cumulative' => 'Cumulative / Balance', 'invoice_date' => 'Invoice Date', 'inward_date' => 'Inward Date', 'receipt_date' => 'Receipt Date'] as $val => $label)
-                        <option value="{{ $val }}" @selected(old('credit_period_basis', $item->credit_period_basis ?? 'cumulative')===$val)>{{ $label }}</option>
+                    @foreach($creditBases as $val => $label)
+                        <option value="{{ $val }}" @selected($currentCreditBasis===$val)>{{ $label }}</option>
                     @endforeach
                 </x-ui.select>
                 <x-ui.input name="interest_rate" label="Overdue Interest Rate (% per annum)" type="number" step="0.01" :value="old('interest_rate', $item->interest_rate ?? 18)" />
+            </div>
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] leading-relaxed text-slate-600">
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p class="font-semibold text-slate-700">Credit Status</p>
+                    <p class="mt-1"><span class="font-medium">Open</span> allows new orders and invoices. The credit limit still applies.</p>
+                    <p class="mt-1"><span class="font-medium">On Hold</span> stops new billing until you set the status back to Open.</p>
+                    <p class="mt-1"><span class="font-medium">Blocked</span> stops new billing. A cheque-bounce freeze is stored as Frozen and stops billing the same way.</p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p class="font-semibold text-slate-700">Credit Period Basis</p>
+                    <p class="mt-1">Credit days are counted from the date chosen here.</p>
+                    <p class="mt-1"><span class="font-medium">Invoice Date</span> — due date is the invoice date plus the credit days.</p>
+                    <p class="mt-1"><span class="font-medium">Inward Date</span> — due date is the goods inward date plus the credit days.</p>
+                    <p class="mt-1"><span class="font-medium">Receipt Date</span> — due date is the receipt date plus the credit days. The invoice date is used until a receipt date is recorded.</p>
+                    <p class="mt-1"><span class="font-medium">Cumulative / Balance</span> — the same credit days apply to the outstanding balance, and each bill’s due date starts from the invoice date.</p>
+                </div>
             </div>
 
             <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 text-xs text-slate-600">
@@ -863,11 +1166,6 @@
                                     <option value="savings">Savings Account</option>
                                 </select>
                             </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">IFSC Code</label>
-                                <input type="text" :name="`bank_accounts[${idx}][ifsc_code]`" x-model="acc.ifsc_code" maxlength="20"
-                                       class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
                         </div>
                     </div>
                 </template>
@@ -882,9 +1180,133 @@
             <x-ui.button type="submit" variant="primary">
                 {{ isset($lead) ? 'Save Customer & Complete Conversion' : 'Save Party' }}
             </x-ui.button>
-            <x-ui.button variant="secondary" :href="isset($lead) ? route('crm.leads.index') : route('masters.customers.index')">
+            <x-ui.button variant="secondary" :href="isset($lead) ? route('crm.leads.index') : ((($returnTo ?? request('return_to', old('return_to'))) === 'orders.create') ? route('orders.create') : route('masters.customers.index'))">
                 Cancel
             </x-ui.button>
+        </div>
+
+        <!-- Create Brand / OEM Modal -->
+        <div x-show="brandModalOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @keydown.escape.window="closeBrandModal()">
+            <div class="flex items-center justify-center min-h-screen px-4">
+                <div class="fixed inset-0 bg-slate-900/50" @click="closeBrandModal()"></div>
+                <div class="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" @click.stop>
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800">Create Brand/OEM</h3>
+                        <button type="button" @click="closeBrandModal()" class="text-slate-400 hover:text-slate-600">Close</button>
+                    </div>
+                    <div x-show="brandError" x-cloak class="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" x-text="brandError"></div>
+                    <div class="mt-4 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Company</label>
+                            <select x-model="brandForm.company_id" class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                <option value="">Select Company</option>
+                                @foreach(($companies ?? []) as $company)
+                                    <option value="{{ $company->id }}">{{ $company->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Brand Name *</label>
+                            <input type="text" x-model="brandForm.name" maxlength="255" placeholder="e.g. Sony, Samsung..."
+                                   class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Detail</label>
+                            <textarea x-model="brandForm.detail" rows="4" maxlength="2000" placeholder="Enter Brand Details..."
+                                      class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
+                        </div>
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="checkbox" x-model="brandForm.is_active" class="rounded border-gray-300 text-indigo-600"> Active
+                        </label>
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" @click="closeBrandModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700">Cancel</button>
+                            <button type="button" @click="saveBrand()" :disabled="brandSaving" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                <span x-text="brandSaving ? 'Saving...' : 'Save'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add City Modal -->
+        <div x-show="cityModalOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @keydown.escape.window="closeCityModal()">
+            <div class="flex items-center justify-center min-h-screen px-4">
+                <div class="fixed inset-0 bg-slate-900/50" @click="closeCityModal()"></div>
+                <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" @click.stop>
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800">Add City</h3>
+                        <button type="button" @click="closeCityModal()" class="text-slate-400 hover:text-slate-600">Close</button>
+                    </div>
+                    <div x-show="cityError" x-cloak class="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" x-text="cityError"></div>
+                    <div class="mt-4 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">State</label>
+                            <input type="text" :value="cityForm.state" readonly class="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">City Name *</label>
+                            <input type="text" x-model="cityForm.name" x-ref="cityInput" maxlength="255" @keydown.enter.prevent="saveCity()"
+                                   placeholder="e.g. Jagraon"
+                                   class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                            <p class="mt-1 text-[11px] text-slate-500">Saved cities stay in this state's list for every party.</p>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" @click="closeCityModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700">Cancel</button>
+                            <button type="button" @click="saveCity()" :disabled="citySaving" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                <span x-text="citySaving ? 'Saving...' : 'Save'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Area / Delivery Route Modal -->
+        <div x-show="lookupModalOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @keydown.escape.window="closeLookupModal()">
+            <div class="flex items-center justify-center min-h-screen px-4">
+                <div class="fixed inset-0 bg-slate-900/50" @click="closeLookupModal()"></div>
+                <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" @click.stop>
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800" x-text="lookupTitle()"></h3>
+                        <button type="button" @click="closeLookupModal()" class="text-slate-400 hover:text-slate-600">Close</button>
+                    </div>
+                    <div x-show="lookupError" x-cloak class="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" x-text="lookupError"></div>
+                    <div class="mt-4 space-y-4" x-show="lookupMode !== 'delete'">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1" x-text="lookupKind === 'area' ? 'Area Name *' : 'Delivery Route Name *'"></label>
+                            <input type="text" x-model="lookupForm.name" x-ref="lookupInput" maxlength="255" @keydown.enter.prevent="saveLookup()"
+                                   class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                        </div>
+                        <div x-show="lookupKind === 'route'">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Area</label>
+                            <select x-model="lookupForm.area_id" class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                <option value="">Unassigned</option>
+                                <template x-for="area in areaOptions()" :key="area.id">
+                                    <option :value="String(area.id)" x-text="area.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" @click="closeLookupModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700">Cancel</button>
+                            <button type="button" @click="saveLookup()" :disabled="lookupSaving" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                <span x-text="lookupSaving ? 'Saving...' : (lookupMode === 'edit' ? 'Update' : 'Save')"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-4 space-y-4" x-show="lookupMode === 'delete'" x-cloak>
+                        <p class="text-sm text-slate-700" x-text="lookupKind === 'area'
+                            ? 'Delete this area? Parties using it will have no area, and delivery routes linked to it will be unassigned from the area.'
+                            : 'Delete this delivery route? Parties using it will have no delivery route.'"></p>
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" @click="closeLookupModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700">Cancel</button>
+                            <button type="button" @click="deleteLookup()" :disabled="lookupSaving" class="rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                <span x-text="lookupSaving ? 'Deleting...' : 'Delete'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Add Classification Modal -->
@@ -919,7 +1341,8 @@
                      @click.stop>
 
                     <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-                        <h3 class="text-base font-semibold text-slate-800" id="modal-title">Add Classification</h3>
+                        <h3 class="text-base font-semibold text-slate-800" id="modal-title"
+                            x-text="classificationMode === 'edit' ? 'Edit Classification' : (classificationMode === 'delete' ? 'Delete Classification' : 'Add Classification')"></h3>
                         <button type="button" @click="closeClassificationModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                         </button>
@@ -937,7 +1360,7 @@
                         <span x-text="classificationSuccess"></span>
                     </div>
 
-                    <div class="mt-4 space-y-4">
+                    <div class="mt-4 space-y-4" x-show="classificationMode !== 'delete'">
                         <div>
                             <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Classification Name *</label>
                             <input type="text"
@@ -947,7 +1370,7 @@
                                    @keydown.enter.prevent="saveClassification()"
                                    placeholder="E.G. Retailer, Super Stockist, Corporate"
                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed">
-                            <p class="text-[11px] text-slate-500 mt-1">This classification will be saved to the master database and selected automatically.</p>
+                            <p class="text-[11px] text-slate-500 mt-1" x-text="classificationMode === 'edit' ? 'The selected classification name will be updated.' : 'This classification will be saved and selected automatically.'"></p>
                         </div>
 
                         <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
@@ -962,7 +1385,25 @@
                                     :disabled="classificationSaving"
                                     class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 shadow-sm transition">
                                 <svg x-show="classificationSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                                <span x-text="classificationSaving ? 'Saving...' : 'Save'"></span>
+                                <span x-text="classificationSaving ? 'Saving...' : (classificationMode === 'edit' ? 'Update' : 'Save')"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 space-y-4" x-show="classificationMode === 'delete'" x-cloak>
+                        <p class="text-sm text-slate-700">Delete <span class="font-semibold" x-text="selectedClassificationName()"></span>? Parties using it will have no classification.</p>
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeClassificationModal()"
+                                    :disabled="classificationSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    @click="deleteClassification()"
+                                    :disabled="classificationSaving"
+                                    class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-50">
+                                <span x-text="classificationSaving ? 'Deleting...' : 'Delete'"></span>
                             </button>
                         </div>
                     </div>
@@ -1196,24 +1637,57 @@ function partyFormController() {
         },
         gstLookupInfo: null,
         gstLookupAppliedKey: '',
+        gstPendingExtraAddresses: [],
         selectedCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
         previousCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
         customClassifications: [],
         knownClassificationNames: {!! json_encode($customerTypes->pluck('name')->map(fn($n) => mb_strtolower(trim($n)))->values()) !!},
         classificationModalOpen: false,
+        classificationMode: 'add',
         newClassificationName: '',
         classificationSaving: false,
         classificationError: '',
         classificationSuccess: '',
+        cityModalOpen: false,
+        cityModalIndex: null,
+        citySaving: false,
+        cityError: '',
+        cityForm: { state: '', name: '' },
+        selectedAreaId: {!! json_encode((string) old('area_id', $item->area_id ?? '')) !!},
+        selectedRouteId: {!! json_encode((string) old('route_id', $item->route_id ?? '')) !!},
+        customAreas: [],
+        customRoutes: [],
+        knownAreas: {!! json_encode(($areas ?? collect())->map(fn ($area) => ['id' => (string) $area->id, 'name' => $area->name])->values()) !!},
+        knownRoutes: {!! json_encode(($routes ?? collect())->map(fn ($route) => ['id' => (string) $route->id, 'name' => $route->name, 'area_id' => $route->area_id ? (string) $route->area_id : ''])->values()) !!},
+        lookupModalOpen: false,
+        lookupKind: 'area',
+        lookupMode: 'add',
+        lookupSaving: false,
+        lookupError: '',
+        lookupForm: { name: '', area_id: '' },
 
-        openClassificationModal() {
+        selectedClassificationName() {
+            const selectEl = this.$refs.classificationSelect;
+            if (!selectEl || !this.selectedCustomerTypeId) {
+                return '';
+            }
+            const option = selectEl.querySelector(`option[value="${this.selectedCustomerTypeId}"]`);
+            return (option?.textContent || '').trim();
+        },
+        openClassificationModal(mode = 'add') {
+            if ((mode === 'edit' || mode === 'delete') && !this.selectedCustomerTypeId) {
+                return;
+            }
+            this.classificationMode = mode;
             this.classificationModalOpen = true;
-            this.newClassificationName = '';
+            this.newClassificationName = mode === 'edit' ? this.selectedClassificationName() : '';
             this.classificationError = '';
             this.classificationSuccess = '';
-            this.$nextTick(() => {
-                this.$refs.classificationInput?.focus();
-            });
+            if (mode !== 'delete') {
+                this.$nextTick(() => {
+                    this.$refs.classificationInput?.focus();
+                });
+            }
         },
         closeClassificationModal() {
             this.classificationModalOpen = false;
@@ -1241,7 +1715,8 @@ function partyFormController() {
 
             // Client-side case-insensitive duplicate check
             const lowerName = name.toLowerCase();
-            if (this.knownClassificationNames.includes(lowerName)) {
+            const currentName = this.classificationMode === 'edit' ? this.selectedClassificationName().toLowerCase() : '';
+            if (lowerName !== currentName && this.knownClassificationNames.includes(lowerName)) {
                 this.classificationError = 'A classification with this name already exists.';
                 return;
             }
@@ -1250,9 +1725,14 @@ function partyFormController() {
             this.classificationError = '';
             this.classificationSuccess = '';
 
+            const isEdit = this.classificationMode === 'edit';
+            const url = isEdit
+                ? "{{ url('masters/customer-types') }}/" + this.selectedCustomerTypeId + "/quick-update"
+                : "{{ route('masters.customer-types.quick-store') }}";
+
             try {
-                const response = await fetch("{{ route('masters.customer-types.quick-store') }}", {
-                    method: 'POST',
+                const response = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
@@ -1272,25 +1752,41 @@ function partyFormController() {
                 const newItem = data.item;
                 const newIdStr = String(newItem.id);
 
-                const alreadyCustom = this.customClassifications.some(c => String(c.id) === newIdStr);
-                if (!alreadyCustom) {
-                    this.customClassifications.push({
-                        id: newItem.id,
-                        name: newItem.name
-                    });
-                }
-                this.knownClassificationNames.push(newItem.name.trim().toLowerCase());
+                if (isEdit) {
+                    const selectEl = this.$refs.classificationSelect;
+                    const option = selectEl?.querySelector(`option[value="${newIdStr}"]`);
+                    if (option) {
+                        option.textContent = newItem.name;
+                    }
+                    const custom = this.customClassifications.find(c => String(c.id) === newIdStr);
+                    if (custom) {
+                        custom.name = newItem.name;
+                    }
+                    if (currentName) {
+                        this.knownClassificationNames = this.knownClassificationNames.filter(n => n !== currentName);
+                    }
+                    this.knownClassificationNames.push(newItem.name.trim().toLowerCase());
+                    this.classificationSuccess = data.message || 'Classification updated successfully!';
+                } else {
+                    const alreadyCustom = this.customClassifications.some(c => String(c.id) === newIdStr);
+                    if (!alreadyCustom) {
+                        this.customClassifications.push({
+                            id: newItem.id,
+                            name: newItem.name
+                        });
+                    }
+                    this.knownClassificationNames.push(newItem.name.trim().toLowerCase());
 
-                const selectEl = this.$refs.classificationSelect;
-                if (selectEl && !selectEl.querySelector(`option[value="${newItem.id}"]`)) {
-                    const opt = new Option(newItem.name, newItem.id);
-                    const addManuallyOpt = selectEl.querySelector('option[value="__add_manually__"]');
-                    selectEl.insertBefore(opt, addManuallyOpt);
-                }
+                    const selectEl = this.$refs.classificationSelect;
+                    if (selectEl && !selectEl.querySelector(`option[value="${newItem.id}"]`)) {
+                        const opt = new Option(newItem.name, newItem.id);
+                        selectEl.add(opt);
+                    }
 
-                this.selectedCustomerTypeId = newIdStr;
-                this.previousCustomerTypeId = newIdStr;
-                this.classificationSuccess = data.message || 'Classification created successfully!';
+                    this.selectedCustomerTypeId = newIdStr;
+                    this.previousCustomerTypeId = newIdStr;
+                    this.classificationSuccess = data.message || 'Classification created successfully!';
+                }
 
                 setTimeout(() => {
                     this.closeClassificationModal();
@@ -1301,15 +1797,272 @@ function partyFormController() {
                 this.classificationSaving = false;
             }
         },
+        async deleteClassification() {
+            if (!this.selectedCustomerTypeId) {
+                return;
+            }
+
+            this.classificationSaving = true;
+            this.classificationError = '';
+
+            try {
+                const response = await fetch("{{ url('masters/customer-types') }}/" + this.selectedCustomerTypeId + "/quick-destroy", {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.classificationError = data.message || 'Failed to delete classification.';
+                    return;
+                }
+
+                const removedName = this.selectedClassificationName().toLowerCase();
+                const selectEl = this.$refs.classificationSelect;
+                const option = selectEl?.querySelector(`option[value="${this.selectedCustomerTypeId}"]`);
+                if (option) {
+                    option.remove();
+                }
+                this.customClassifications = this.customClassifications.filter(c => String(c.id) !== String(this.selectedCustomerTypeId));
+                this.knownClassificationNames = this.knownClassificationNames.filter(n => n !== removedName);
+                this.selectedCustomerTypeId = '';
+                this.previousCustomerTypeId = '';
+                this.closeClassificationModal();
+            } catch (err) {
+                this.classificationError = 'An error occurred while deleting the classification. Please try again.';
+            } finally {
+                this.classificationSaving = false;
+            }
+        },
+
+        openCityModal(index, name = '') {
+            const address = this.addresses[index];
+            if (!address || !address.state) {
+                return;
+            }
+            this.cityModalIndex = index;
+            this.cityForm.state = address.state;
+            this.cityForm.name = name || '';
+            this.cityError = '';
+            this.cityModalOpen = true;
+            this.$nextTick(() => this.$refs.cityInput?.focus());
+        },
+
+        closeCityModal() {
+            this.cityModalOpen = false;
+            this.cityError = '';
+            this.cityModalIndex = null;
+        },
+
+        async saveCity() {
+            const name = (this.cityForm.name || '').trim();
+            if (!name) {
+                this.cityError = 'City name is required.';
+                return;
+            }
+            this.citySaving = true;
+            this.cityError = '';
+            try {
+                const response = await fetch("{{ route('masters.cities.quick-store') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ state: this.cityForm.state, name: name })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.cityError = data.message || 'Failed to add the city.';
+                    return;
+                }
+                const state = data.item.state;
+                const cityName = data.item.name;
+                const current = Array.isArray(this.stateCities[state]) ? [...this.stateCities[state]] : [];
+                if (!current.some(city => city.toLowerCase() === cityName.toLowerCase())) {
+                    current.push(cityName);
+                    current.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+                    this.stateCities[state] = current;
+                }
+                if (this.cityModalIndex !== null && this.addresses[this.cityModalIndex]) {
+                    this.addresses[this.cityModalIndex].city = cityName;
+                }
+                this.closeCityModal();
+            } catch (err) {
+                this.cityError = 'An error occurred while adding the city. Please try again.';
+            } finally {
+                this.citySaving = false;
+            }
+        },
+
+        lookupTitle() {
+            const label = this.lookupKind === 'area' ? 'Area' : 'Delivery Route';
+            if (this.lookupMode === 'edit') return 'Edit ' + label;
+            if (this.lookupMode === 'delete') return 'Delete ' + label;
+            return 'Add ' + label;
+        },
+
+        areaOptions() {
+            return [...this.knownAreas, ...this.customAreas];
+        },
+
+        selectedLookupName(kind) {
+            const id = kind === 'area' ? this.selectedAreaId : this.selectedRouteId;
+            const select = kind === 'area' ? this.$refs.areaSelect : this.$refs.routeSelect;
+            const option = select?.querySelector(`option[value="${id}"]`);
+            return (option?.textContent || '').trim();
+        },
+
+        openLookupModal(kind, mode) {
+            const selectedId = kind === 'area' ? this.selectedAreaId : this.selectedRouteId;
+            if ((mode === 'edit' || mode === 'delete') && !selectedId) {
+                return;
+            }
+            this.lookupKind = kind;
+            this.lookupMode = mode;
+            this.lookupError = '';
+            this.lookupForm.name = mode === 'edit' ? this.selectedLookupName(kind) : '';
+            const route = this.knownRoutes.find(item => String(item.id) === String(this.selectedRouteId))
+                || this.customRoutes.find(item => String(item.id) === String(this.selectedRouteId));
+            this.lookupForm.area_id = kind === 'route' && mode === 'edit' ? (route?.area_id || '') : (this.selectedAreaId || '');
+            this.lookupModalOpen = true;
+            if (mode !== 'delete') {
+                this.$nextTick(() => this.$refs.lookupInput?.focus());
+            }
+        },
+
+        closeLookupModal() {
+            this.lookupModalOpen = false;
+            this.lookupError = '';
+        },
+
+        async saveLookup() {
+            const name = (this.lookupForm.name || '').trim();
+            const label = this.lookupKind === 'area' ? 'Area' : 'Delivery route';
+            if (!name) {
+                this.lookupError = label + ' name is required.';
+                return;
+            }
+            const isEdit = this.lookupMode === 'edit';
+            const selectedId = this.lookupKind === 'area' ? this.selectedAreaId : this.selectedRouteId;
+            const base = this.lookupKind === 'area' ? "{{ url('masters/areas') }}" : "{{ url('masters/routes') }}";
+            const url = isEdit ? base + '/' + selectedId + '/quick-update' : base + '/quick-store';
+            this.lookupSaving = true;
+            this.lookupError = '';
+            try {
+                const payload = { name: name };
+                if (this.lookupKind === 'route') {
+                    payload.area_id = this.lookupForm.area_id || null;
+                }
+                const response = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.lookupError = data.message || 'Failed to save.';
+                    return;
+                }
+                const item = {
+                    id: String(data.item.id),
+                    name: data.item.name,
+                    area_id: data.item.area_id ? String(data.item.area_id) : ''
+                };
+                if (this.lookupKind === 'area') {
+                    this.applyLookupItem('area', item, isEdit);
+                    this.selectedAreaId = item.id;
+                } else {
+                    this.applyLookupItem('route', item, isEdit);
+                    this.selectedRouteId = item.id;
+                }
+                this.closeLookupModal();
+            } catch (err) {
+                this.lookupError = 'An error occurred while saving. Please try again.';
+            } finally {
+                this.lookupSaving = false;
+            }
+        },
+
+        applyLookupItem(kind, item, isEdit) {
+            const customKey = kind === 'area' ? 'customAreas' : 'customRoutes';
+            const knownKey = kind === 'area' ? 'knownAreas' : 'knownRoutes';
+            const select = kind === 'area' ? this.$refs.areaSelect : this.$refs.routeSelect;
+            if (isEdit) {
+                const option = select?.querySelector(`option[value="${item.id}"]`);
+                if (option) option.textContent = item.name;
+                const custom = this[customKey].find(row => String(row.id) === item.id);
+                if (custom) Object.assign(custom, item);
+                const known = this[knownKey].find(row => String(row.id) === item.id);
+                if (known) Object.assign(known, item);
+                return;
+            }
+            if (!this[customKey].some(row => String(row.id) === item.id) && !this[knownKey].some(row => String(row.id) === item.id)) {
+                this[customKey].push(item);
+            }
+            if (select && !select.querySelector(`option[value="${item.id}"]`)) {
+                select.add(new Option(item.name, item.id));
+            }
+        },
+
+        async deleteLookup() {
+            const selectedId = this.lookupKind === 'area' ? this.selectedAreaId : this.selectedRouteId;
+            if (!selectedId) return;
+            const base = this.lookupKind === 'area' ? "{{ url('masters/areas') }}" : "{{ url('masters/routes') }}";
+            this.lookupSaving = true;
+            this.lookupError = '';
+            try {
+                const response = await fetch(base + '/' + selectedId + '/quick-destroy', {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.lookupError = data.message || 'Failed to delete.';
+                    return;
+                }
+                const select = this.lookupKind === 'area' ? this.$refs.areaSelect : this.$refs.routeSelect;
+                select?.querySelector(`option[value="${selectedId}"]`)?.remove();
+                if (this.lookupKind === 'area') {
+                    this.customAreas = this.customAreas.filter(row => String(row.id) !== String(selectedId));
+                    this.knownAreas = this.knownAreas.filter(row => String(row.id) !== String(selectedId));
+                    this.selectedAreaId = '';
+                } else {
+                    this.customRoutes = this.customRoutes.filter(row => String(row.id) !== String(selectedId));
+                    this.knownRoutes = this.knownRoutes.filter(row => String(row.id) !== String(selectedId));
+                    this.selectedRouteId = '';
+                }
+                this.closeLookupModal();
+            } catch (err) {
+                this.lookupError = 'An error occurred while deleting. Please try again.';
+            } finally {
+                this.lookupSaving = false;
+            }
+        },
 
         form: {
             name: {!! json_encode(old('name', $item->name ?? '')) !!},
             trade_name: {!! json_encode(old('trade_name', $item->trade_name ?? '')) !!},
             gstin: {!! json_encode(old('gstin', $item->gstin ?? '')) !!},
-            party_type: {!! json_encode(old('party_type', $item->party_type_key ?? 'sundry_debtors')) !!},
+            party_type: {!! json_encode(old('party_type', $item->party_type_key ?? request('party_type', 'sundry_debtors'))) !!},
             pan: {!! json_encode(old('pan', $item->pan ?? '')) !!},
             phone: {!! json_encode(old('phone', $item->phone ?? '')) !!},
             email: {!! json_encode(old('email', $item->email ?? '')) !!},
+            opened_on: {!! json_encode(old('opened_on', $item->opened_on?->format('Y-m-d') ?? ($item->exists ? '' : now()->toDateString()))) !!},
+            reference_by: {!! json_encode(old('reference_by', $item->reference_by ?? '')) !!},
+            udyam_number: {!! json_encode(old('udyam_number', $item->udyam_number ?? '')) !!},
+            website: {!! json_encode(old('website', $item->website ?? '')) !!},
+            location_link: {!! json_encode(old('location_link', $item->location_link ?? '')) !!},
             address: {!! json_encode(old('address', $item->address ?? '')) !!},
             state: {!! json_encode(old('state', $item->state ?? '')) !!},
             pincode: {!! json_encode(old('pincode', $item->pincode ?? '')) !!},
@@ -1318,6 +2071,18 @@ function partyFormController() {
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
         contacts: {!! json_encode($initialContacts) !!},
         addresses: {!! json_encode($initialAddresses) !!},
+        gemAuthorizations: {!! json_encode($initialGemAuthorizations) !!},
+        brands: {!! json_encode(($brands ?? collect())->map(fn ($brand) => ['id' => (string) $brand->id, 'name' => $brand->name])->values()) !!},
+        brandModalOpen: false,
+        brandModalIndex: null,
+        brandSaving: false,
+        brandError: '',
+        brandForm: {
+            company_id: {!! json_encode((string) ($defaultCompanyId ?? '')) !!},
+            name: '',
+            detail: '',
+            is_active: true,
+        },
         _ifscTimers: {},
         _ifscLastFetched: {},
         stateCities: {!! json_encode($stateCities ?? \App\Support\IndianCities::all()) !!},
@@ -1351,6 +2116,84 @@ function partyFormController() {
             this.contacts.forEach((contact, index) => {
                 contact.is_primary = index === idx;
             });
+        },
+
+        addGemAuthorization() {
+            this.gemAuthorizations.push({
+                key: 'gem-new-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+                id: '',
+                brand_id: '',
+                gem_registered: '0',
+                gem_authorized: '0',
+                authorization_number: '',
+                documents: [],
+            });
+        },
+
+        removeGemAuthorization(idx) {
+            this.gemAuthorizations.splice(idx, 1);
+        },
+
+        openBrandModal(idx) {
+            this.brandModalIndex = idx;
+            this.brandError = '';
+            this.brandForm.name = '';
+            this.brandForm.detail = '';
+            this.brandForm.is_active = true;
+            this.brandModalOpen = true;
+        },
+
+        closeBrandModal() {
+            this.brandModalOpen = false;
+            this.brandError = '';
+            this.brandModalIndex = null;
+        },
+
+        async saveBrand() {
+            const name = (this.brandForm.name || '').trim();
+            if (!name) {
+                this.brandError = 'Brand Name is required.';
+                return;
+            }
+
+            this.brandSaving = true;
+            this.brandError = '';
+
+            try {
+                const response = await fetch("{{ route('masters.brands.quick-store') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        company_id: this.brandForm.company_id || null,
+                        name: name,
+                        detail: this.brandForm.detail || '',
+                        is_active: this.brandForm.is_active ? 1 : 0,
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.brandError = data.message || 'Failed to create the brand.';
+                    return;
+                }
+
+                const item = data.item;
+                if (!this.brands.some(brand => String(brand.id) === String(item.id))) {
+                    this.brands.push({ id: String(item.id), name: item.name });
+                    this.brands.sort((a, b) => a.name.localeCompare(b.name));
+                }
+                if (this.brandModalIndex !== null && this.gemAuthorizations[this.brandModalIndex]) {
+                    this.gemAuthorizations[this.brandModalIndex].brand_id = String(item.id);
+                }
+                this.closeBrandModal();
+            } catch (err) {
+                this.brandError = 'An error occurred while creating the brand. Please try again.';
+            } finally {
+                this.brandSaving = false;
+            }
         },
 
         addAddress() {
@@ -1493,79 +2336,117 @@ function partyFormController() {
                 && !String(addr.pincode || '').trim();
         },
 
-        applyGstAddresses(party) {
-            if (!this.addresses) this.addresses = [];
-            const returned = Array.isArray(party.addresses) && party.addresses.length
-                ? party.addresses
-                : [{
-                    label: party.address_label || 'Principal Place of Business',
-                    address_line_1: party.address_line_1 || party.address || '',
-                    address_line_2: party.address_line_2 || '',
-                    city: party.city || '',
-                    state: party.state || '',
-                    pincode: party.pincode || '',
-                }];
-
+        mapGstAddressRows(party, { includeAdditional = false } = {}) {
             const take = (value) => {
                 const clean = String(value || '').trim();
                 return clean || null;
             };
 
-            // Always refresh the principal / default billing address from the latest GST fetch.
-            const principal = returned[0] || null;
-            if (principal) {
-                let primary = this.addresses.find(a => a.is_default_billing) || this.addresses[0];
-                if (!primary) {
-                    this.addAddress();
-                    primary = this.addresses[0];
-                }
+            // Only accept real address objects — never iterate strings/scalars.
+            const raw = Array.isArray(party.addresses)
+                ? party.addresses.filter((row) => row && typeof row === 'object' && !Array.isArray(row))
+                : [];
 
-                const label = take(principal.label) || 'Principal Place of Business';
-                if (!String(primary.label || '').trim()
-                    || ['Head Office', 'Branch / Warehouse', 'Principal Place of Business'].includes(primary.label)
-                    || String(primary.label || '').startsWith('Additional Place of Business')) {
-                    primary.label = label;
-                }
+            const fallback = [{
+                label: party.address_label || 'Principal Place of Business',
+                address_line_1: party.address_line_1 || party.address || '',
+                address_line_2: party.address_line_2 || '',
+                city: party.city || '',
+                state: party.state || '',
+                pincode: party.pincode || '',
+            }];
 
-                if (take(principal.address_line_1)) primary.address_line_1 = take(principal.address_line_1);
-                if (take(principal.address_line_2) !== null) primary.address_line_2 = take(principal.address_line_2) || '';
-                if (take(principal.city)) primary.city = take(principal.city);
-                if (take(principal.state) || take(party.state)) primary.state = take(principal.state) || take(party.state);
-                if (take(principal.pincode)) primary.pincode = take(principal.pincode);
-            }
+            const sourceRows = raw.length ? raw : fallback;
+            const seen = new Set();
+            const mapped = [];
 
-            // Add only new additional places of business (never duplicate).
-            const existingKeys = new Set(this.addresses.map(a => this.addressFingerprint(a)));
-            returned.slice(1).forEach((src, index) => {
-                const mapped = {
-                    label: take(src.label) || `Additional Place of Business ${index + 1}`,
+            sourceRows.forEach((src, index) => {
+                // Default: principal only. Additional places are opt-in.
+                if (!includeAdditional && mapped.length >= 1) return;
+                if (includeAdditional && mapped.length >= 10) return;
+
+                const row = {
+                    label: take(src.label)
+                        || (index === 0 ? 'Principal Place of Business' : `Additional Place of Business ${index}`),
                     address_line_1: take(src.address_line_1) || '',
                     address_line_2: take(src.address_line_2) || '',
                     city: take(src.city) || '',
                     state: take(src.state) || take(party.state) || '',
                     pincode: take(src.pincode) || '',
                 };
-                const key = this.addressFingerprint(mapped);
-                if (!mapped.address_line_1 && !mapped.city && !mapped.pincode) return;
-                if (existingKeys.has(key)) return;
+                if (!row.address_line_1 && !row.city && !row.pincode) return;
+                const key = this.addressFingerprint(row);
+                if (seen.has(key)) return;
+                seen.add(key);
+                mapped.push(row);
+            });
 
+            return mapped;
+        },
+
+        applyGstAddresses(party, { includeAdditional = false } = {}) {
+            const allMapped = this.mapGstAddressRows(party, { includeAdditional: true });
+            const principal = allMapped.slice(0, 1);
+            const extras = allMapped.slice(1);
+
+            // Always stash extras so user can opt in later if needed.
+            this.gstPendingExtraAddresses = includeAdditional ? [] : extras;
+
+            const mapped = includeAdditional ? allMapped : principal;
+            if (!mapped.length) return;
+
+            const previous = Array.isArray(this.addresses) ? this.addresses : [];
+            this.addresses = mapped.map((row, index) => {
+                const prior = previous.find((a) => this.addressFingerprint(a) === this.addressFingerprint(row))
+                    || (index === 0 ? (previous.find((a) => a.is_default_billing) || previous[0]) : null);
+
+                return {
+                    id: prior?.id ?? null,
+                    label: row.label,
+                    contact_person: prior?.contact_person || '',
+                    contact_phone: prior?.contact_phone || '',
+                    address_line_1: row.address_line_1,
+                    address_line_2: row.address_line_2,
+                    city: row.city,
+                    state: row.state,
+                    pincode: row.pincode,
+                    type: prior?.type || 'both',
+                    is_default_billing: index === 0,
+                    is_default_delivery: index === 0,
+                };
+            });
+
+            this.syncPrimaryAddress();
+        },
+
+        applyPendingGstExtraAddresses() {
+            const extras = Array.isArray(this.gstPendingExtraAddresses) ? this.gstPendingExtraAddresses : [];
+            if (!extras.length) return;
+
+            if (!Array.isArray(this.addresses)) this.addresses = [];
+            const existingKeys = new Set(this.addresses.map((a) => this.addressFingerprint(a)));
+
+            extras.forEach((row) => {
+                const key = this.addressFingerprint(row);
+                if (existingKeys.has(key)) return;
+                existingKeys.add(key);
                 this.addresses.push({
                     id: null,
-                    label: mapped.label,
+                    label: row.label || 'Additional Place of Business',
                     contact_person: '',
                     contact_phone: '',
-                    address_line_1: mapped.address_line_1,
-                    address_line_2: mapped.address_line_2,
-                    city: mapped.city,
-                    state: mapped.state,
-                    pincode: mapped.pincode,
+                    address_line_1: row.address_line_1 || '',
+                    address_line_2: row.address_line_2 || '',
+                    city: row.city || '',
+                    state: row.state || '',
+                    pincode: row.pincode || '',
                     type: 'both',
                     is_default_billing: false,
                     is_default_delivery: false,
                 });
-                existingKeys.add(key);
             });
 
+            this.gstPendingExtraAddresses = [];
             this.syncPrimaryAddress();
         },
 
@@ -1581,6 +2462,7 @@ function partyFormController() {
             const gstin = (this.form.gstin || '').trim().toUpperCase();
             this.form.gstin = gstin;
             this.gstLookupInfo = null;
+            this.gstPendingExtraAddresses = [];
 
             if (gstin.length !== 15) {
                 this.gstFeedback = {
@@ -1626,13 +2508,17 @@ function partyFormController() {
                         this.form.address = String(data.party.address || data.party.address_line_1).trim();
                     }
 
-                    this.applyGstAddresses(data.party);
-                    this.gstLookupAppliedKey = [
+                    const appliedKey = [
                         gstin,
                         data.party.address_line_1 || '',
                         data.party.pincode || '',
-                        (data.party.addresses || []).length
+                        Array.isArray(data.party.addresses) ? data.party.addresses.length : 0
                     ].join('::');
+                    if (this.gstLookupAppliedKey !== appliedKey) {
+                        // Principal address only by default; extras available via "+ Include from GST".
+                        this.applyGstAddresses(data.party, { includeAdditional: false });
+                        this.gstLookupAppliedKey = appliedKey;
+                    }
 
                     this.gstLookupInfo = {
                         legal_name: data.party.legal_name || '',
@@ -1652,14 +2538,18 @@ function partyFormController() {
                     const statusText = data.party.status ? ` (Status: ${data.party.status})` : '';
                     const isInactive = !!data.party.is_inactive
                         || (data.party.status && !['active', 'provisional'].includes(String(data.party.status).toLowerCase()));
+                    const extraCount = this.gstPendingExtraAddresses.length;
                     this.gstFeedback = {
                         type: isInactive ? 'warning' : 'success',
                         message: (data.message || 'GSTIN verified successfully from official records.') + statusText,
                         note: isInactive
                             ? `Warning: GST registration status is reported as ${data.party.status}. Please review carefully before saving.`
-                            : 'Details updated from GST records. Phone, email, party type, credit, and bank details remain manual.'
+                            : (extraCount > 0
+                                ? `Principal address applied. ${extraCount} additional GST place(s) available under Addresses if needed.`
+                                : 'Details updated from GST records. Phone, email, party type, credit, and bank details remain manual.')
                     };
                 } else {
+                    this.gstPendingExtraAddresses = [];
                     this.gstLookupInfo = null;
                     const note = data.is_configured === false
                         ? 'Add GST_API_KEY and GST_API_SECRET to .env, then run php artisan config:clear. PAN and State were filled from the GSTIN where possible.'
@@ -1805,7 +2695,7 @@ function stateDropdown(addr, statesList, onStateSelected) {
     };
 }
 
-function cityDropdown(addr, stateCities) {
+function cityDropdown(addr, stateCities, addressIndex) {
     return {
         open: false,
         search: '',
@@ -1855,6 +2745,12 @@ function cityDropdown(addr, stateCities) {
             this.$nextTick(() => {
                 this.$refs.triggerButton?.focus();
             });
+        },
+        addSearchedCity() {
+            const name = (this.search || '').trim();
+            if (!name) return;
+            this.$dispatch('add-city', { index: addressIndex, name: name });
+            this.close();
         },
         onKeyDown(event) {
             const list = this.filteredCities;

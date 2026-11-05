@@ -452,11 +452,12 @@ class WarehouseDeleteTest extends TestCase
         $resActive->assertSee('Delta Warehouse');
         $resActive->assertDontSee('Gamma Warehouse');
 
-        // Edit page loads successfully
+        // Edit page loads successfully without code field
         $resEdit = $this->actingAs($this->adminUser)
             ->get(route('organization.warehouses.edit', $wAlpha));
         $resEdit->assertOk();
-        $resEdit->assertSee('DW01');
+        $resEdit->assertSee('Delta Warehouse');
+        $resEdit->assertDontSee('name="code"', false);
     }
 
     /**

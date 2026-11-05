@@ -67,4 +67,13 @@ class TallySyncMappingService
 
         return $mapping->fresh();
     }
+
+    public function forgetForDms(string $entityType, int $entityId, string $tallyType): void
+    {
+        TallySyncMapping::query()
+            ->where('entity_type', $entityType)
+            ->where('entity_id', $entityId)
+            ->where('tally_type', $tallyType)
+            ->delete();
+    }
 }

@@ -66,6 +66,16 @@ class PurchaseOrderSync
             throw new \RuntimeException('Supplier '.$order->supplier_id.' did not sync before the purchase order.');
         }
 
+        $narrationParts = array_values(array_filter([
+            $order->notes,
+            $order->expected_date ? 'Expected '.$order->expected_date->format('d-M-Y') : null,
+            $order->credit_days ? ((int) $order->credit_days).' credit days' : null,
+            $order->due_date ? 'Due '.$order->due_date->format('d-M-Y') : null,
+            $order->is_freight_applicable && (float) $order->freight_total > 0
+                ? 'Freight '.number_format((float) $order->freight_total, 2, '.', '')
+                : null,
+        ]));
+
         $attributes = [
             'company_id' => $company->id,
             'branch_id' => $branchId,
@@ -74,9 +84,10 @@ class PurchaseOrderSync
             'order_date' => $date,
             'supplier_ledger_id' => $party->ledger_id,
             'purchase_ledger_id' => BooksCompany::purchaseLedger($company)->id,
-            'narration' => $order->notes,
+            'narration' => $narrationParts !== [] ? implode(' | ', $narrationParts) : null,
             'subtotal' => $order->subtotal ?? 0,
             'discount_total' => 0,
+            'delivery_charge' => $order->is_freight_applicable ? ($order->freight_total ?? 0) : 0,
             'tax_total' => $order->tax_amount ?? 0,
             'grand_total' => $order->grand_total ?? 0,
             'status' => $order->status === 'draft' ? 'open' : (in_array($order->status, ['closed', 'cancelled'], true) ? $order->status : 'open'),

@@ -35,6 +35,6 @@
         </div>
         @livewireScripts
         <script src="{{ asset('js/title-case.js') }}" defer></script>
-        <script src="{{ asset('js/searchable-select.js') }}" defer></script>
+        <script src="{{ asset('js/searchable-select.js') }}?v=20261028b" defer></script>
     </body>
 </html>

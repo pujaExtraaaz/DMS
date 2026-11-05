@@ -179,24 +179,7 @@
                     Select what this user can access.
                 </p>
 
-                @foreach([
-                    'Dashboard',
-                    'Products',
-                    'Customers',
-                    'Price Master',
-                    'Orders',
-                    'Stock',
-                    'Purchases',
-                    'Invoices',
-                    'Payments',
-                    'Communications',
-                    'Logistics',
-                    'Delivery',
-                    'Settlement',
-                    'Reports'
-                ] as $module)
-
-                    @php($key = \Illuminate\Support\Str::slug($module))
+                @foreach(\App\Support\DmsPermissionCatalog::uiModules() as $module => $key)
 
                     <div class="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 hover:bg-gray-50">
 
@@ -207,7 +190,7 @@
                         {{-- Permission Options --}}
                         <div class="flex shrink-0 items-center gap-6">
 
-                            @foreach(['view', 'create', 'edit'] as $action)
+                            @foreach(\App\Support\DmsPermissionCatalog::uiActions() as $action)
 
                                 <label class="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
 
