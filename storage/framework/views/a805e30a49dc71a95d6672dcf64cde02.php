@@ -1,0 +1,165 @@
+<?php $attributes ??= new \Illuminate\View\ComponentAttributeBag;
+
+$__newAttributes = [];
+$__propNames = \Illuminate\View\ComponentAttributeBag::extractPropNames(([
+    'activeTab' => 'dashboard',
+    'tabCounts' => [],
+]));
+
+foreach ($attributes->all() as $__key => $__value) {
+    if (in_array($__key, $__propNames)) {
+        $$__key = $$__key ?? $__value;
+    } else {
+        $__newAttributes[$__key] = $__value;
+    }
+}
+
+$attributes = new \Illuminate\View\ComponentAttributeBag($__newAttributes);
+
+unset($__propNames);
+unset($__newAttributes);
+
+foreach (array_filter(([
+    'activeTab' => 'dashboard',
+    'tabCounts' => [],
+]), 'is_string', ARRAY_FILTER_USE_KEY) as $__key => $__value) {
+    $$__key = $$__key ?? $__value;
+}
+
+$__defined_vars = get_defined_vars();
+
+foreach ($attributes->all() as $__key => $__value) {
+    if (array_key_exists($__key, $__defined_vars)) unset($$__key);
+}
+
+unset($__defined_vars, $__key, $__value); ?>
+
+<?php
+    $bgCount = $tabCounts['business_groups'] ?? \App\Domains\Organization\Models\BusinessGroup::count();
+    $scCount = $tabCounts['sister_concerns'] ?? \App\Domains\Organization\Models\Company::count();
+    $txCount = $tabCounts['transactions'] ?? 0;
+?>
+
+<div class="space-y-6 mb-6">
+    
+    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-purple-800 via-indigo-800 to-purple-900 p-6 sm:p-8 text-white shadow-xl">
+        <div class="absolute inset-0 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:16px_16px] opacity-10"></div>
+        <div class="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+            <div class="flex items-center gap-4">
+                <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-white shadow-inner">
+                    <svg class="h-7 w-7 text-purple-200" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Zm0 3h.008v.008h-.008v-.008Z" />
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">Sister Concern Management</h1>
+                    <p class="mt-1 text-sm sm:text-base text-purple-200 font-medium">Business Groups • Sister Concerns • Inter-Company Transactions</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($activeTab === 'sister-concerns'): ?>
+                    <button type="button"
+                            @click="$dispatch('open-add-company-modal')"
+                            class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-purple-800 shadow-md hover:bg-purple-50 transition cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>Add Company</span>
+                    </button>
+                <?php elseif($activeTab === 'transactions'): ?>
+                    <button type="button"
+                            @click="$dispatch('open-add-transaction-modal')"
+                            class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-purple-800 shadow-md hover:bg-purple-50 transition cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>New Transaction</span>
+                    </button>
+                <?php elseif($activeTab === 'reports'): ?>
+                    <div class="flex items-center gap-2">
+                        <a href="<?php echo e(route('organization.sister-concerns.reports.export', array_merge(request()->query(), ['format' => 'csv']))); ?>" class="inline-flex items-center gap-2 rounded-xl bg-white px-3.5 py-2 text-xs font-semibold text-purple-800 shadow-md hover:bg-purple-50 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            <span>Export CSV</span>
+                        </a>
+                        <a href="<?php echo e(route('organization.sister-concerns.reports.export', array_merge(request()->query(), ['format' => 'excel']))); ?>" class="inline-flex items-center gap-2 rounded-xl bg-purple-900/60 border border-purple-300/30 px-3.5 py-2 text-xs font-semibold text-white shadow-md hover:bg-purple-900 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            <span>Export Excel</span>
+                        </a>
+                    </div>
+                <?php elseif($activeTab === 'business-groups'): ?>
+                    <button type="button"
+                            @click="$dispatch('open-add-group-modal')"
+                            class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-purple-800 shadow-md hover:bg-purple-50 transition cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>Add Group</span>
+                    </button>
+                <?php else: ?>
+                    <a href="<?php echo e(route('organization.business-groups.index')); ?>" class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-purple-800 shadow-md hover:bg-purple-50 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span>Add Group</span>
+                    </a>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    
+    <div class="border-b border-slate-200">
+        <nav class="-mb-px flex space-x-6 sm:space-x-8 overflow-x-auto scrollbar-none" aria-label="Sister Concern Navigation Tabs">
+            
+            <a href="<?php echo e(route('organization.sister-concerns.dashboard')); ?>"
+               class="whitespace-nowrap pb-3.5 px-1 border-b-2 text-sm font-semibold flex items-center gap-2 transition <?php echo e($activeTab === 'dashboard' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'); ?>">
+                <svg class="w-4 h-4 <?php echo e($activeTab === 'dashboard' ? 'text-purple-600' : 'text-slate-400'); ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                </svg>
+                <span>Dashboard</span>
+            </a>
+
+            
+            <a href="<?php echo e(route('organization.business-groups.index')); ?>"
+               class="whitespace-nowrap pb-3.5 px-1 border-b-2 text-sm font-semibold flex items-center gap-2 transition <?php echo e($activeTab === 'business-groups' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'); ?>">
+                <svg class="w-4 h-4 <?php echo e($activeTab === 'business-groups' ? 'text-purple-600' : 'text-slate-400'); ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+                <span>Business Groups</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold <?php echo e($activeTab === 'business-groups' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'); ?>">
+                    <?php echo e($bgCount); ?>
+
+                </span>
+            </a>
+
+            
+            <a href="<?php echo e(route('organization.sister-concerns.companies')); ?>"
+               class="whitespace-nowrap pb-3.5 px-1 border-b-2 text-sm font-semibold flex items-center gap-2 transition <?php echo e($activeTab === 'sister-concerns' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'); ?>">
+                <svg class="w-4 h-4 <?php echo e($activeTab === 'sister-concerns' ? 'text-purple-600' : 'text-slate-400'); ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                </svg>
+                <span>Sister Concerns</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold <?php echo e($activeTab === 'sister-concerns' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'); ?>">
+                    <?php echo e($scCount); ?>
+
+                </span>
+            </a>
+
+            
+            <a href="<?php echo e(route('organization.sister-concerns.transactions')); ?>"
+               class="whitespace-nowrap pb-3.5 px-1 border-b-2 text-sm font-semibold flex items-center gap-2 transition <?php echo e($activeTab === 'transactions' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'); ?>">
+                <svg class="w-4 h-4 <?php echo e($activeTab === 'transactions' ? 'text-purple-600' : 'text-slate-400'); ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                </svg>
+                <span>Transactions</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold <?php echo e($activeTab === 'transactions' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'); ?>">
+                    <?php echo e($txCount); ?>
+
+                </span>
+            </a>
+
+            
+            <a href="<?php echo e(route('organization.sister-concerns.reports')); ?>"
+               class="whitespace-nowrap pb-3.5 px-1 border-b-2 text-sm font-semibold flex items-center gap-2 transition <?php echo e($activeTab === 'reports' ? 'border-purple-600 text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'); ?>">
+                <svg class="w-4 h-4 <?php echo e($activeTab === 'reports' ? 'text-purple-600' : 'text-slate-400'); ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                <span>Consolidated Reports</span>
+            </a>
+        </nav>
+    </div>
+</div>
+
+<?php /**PATH D:\xampp\htdocs\DMS\resources\views/organization/sister-concerns/partials/header.blade.php ENDPATH**/ ?>
