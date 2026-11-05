@@ -70,6 +70,18 @@ class PartyTypeTest extends TestCase
         $this->assertFalse($party->isSupplier());
     }
 
+    public function test_supplier_party_type_key_stays_a_select_slug(): void
+    {
+        $party = new Customer([
+            'name' => 'Central Warehousing Corporation',
+            'party_type' => Customer::PARTY_TYPE_SUNDRY_CREDITORS,
+        ]);
+
+        $this->assertSame('sundry_creditors', $party->party_type_key);
+        $this->assertSame('Sundry Creditors', $party->party_type_label);
+        $this->assertTrue($party->isSupplier());
+    }
+
     public function test_can_create_party_as_sundry_creditors(): void
     {
         $response = $this->actingAs($this->user)->post(route('masters.customers.store'), [

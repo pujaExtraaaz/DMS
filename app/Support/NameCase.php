@@ -336,6 +336,7 @@ class NameCase
         // Enum slugs and technical options
         'type',
         'party_type',
+        'party_type_key',
         'party_role',
         'account_type',
         'discount_type',

@@ -72,16 +72,27 @@ class Customer extends Model
 
     public function getPartyTypeKeyAttribute(): string
     {
-        return match ($this->party_type) {
-            'sundry_creditors', 'supplier' => self::PARTY_TYPE_SUNDRY_CREDITORS,
-            'both' => self::PARTY_TYPE_BOTH,
-            default => self::PARTY_TYPE_SUNDRY_DEBTORS,
-        };
+        return $this->canonicalPartyType();
     }
 
     public function getPartyTypeLabelAttribute(): string
     {
-        return self::PARTY_TYPES[$this->party_type_key] ?? 'Sundry Debtors';
+        return self::PARTY_TYPES[$this->canonicalPartyType()] ?? 'Sundry Debtors';
+    }
+
+    /**
+     * Stored party type as the form slug. Reads the raw column so title-casing
+     * cannot turn "sundry_creditors" into a value the select does not recognise.
+     */
+    public function canonicalPartyType(): string
+    {
+        $raw = (string) ($this->attributes['party_type'] ?? '');
+
+        return match ($raw) {
+            'sundry_creditors', 'supplier' => self::PARTY_TYPE_SUNDRY_CREDITORS,
+            'both' => self::PARTY_TYPE_BOTH,
+            default => self::PARTY_TYPE_SUNDRY_DEBTORS,
+        };
     }
 
     public function isSupplier(): bool

@@ -266,11 +266,19 @@
                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 </div>
 
+                @php
+                    $selectedPartyType = old('party_type', $item->getAttributes()['party_type'] ?? request('party_type', 'sundry_debtors'));
+                    $selectedPartyType = match ($selectedPartyType) {
+                        'sundry_creditors', 'supplier' => 'sundry_creditors',
+                        'both' => 'both',
+                        default => 'sundry_debtors',
+                    };
+                @endphp
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Party Type *</label>
                     <select name="party_type" x-model="form.party_type" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         @foreach([\App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_DEBTORS => 'Sundry Debtors', \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS => 'Sundry Creditors', \App\Domains\Master\Models\Customer::PARTY_TYPE_BOTH => 'Both'] as $val => $label)
-                            <option value="{{ $val }}" @selected(old('party_type', $item->party_type_key ?? request('party_type', 'sundry_debtors'))===$val)>{{ $label }}</option>
+                            <option value="{{ $val }}" @selected($selectedPartyType === $val)>{{ $label }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -2054,7 +2062,7 @@ function partyFormController() {
             name: {!! json_encode(old('name', $item->name ?? '')) !!},
             trade_name: {!! json_encode(old('trade_name', $item->trade_name ?? '')) !!},
             gstin: {!! json_encode(old('gstin', $item->gstin ?? '')) !!},
-            party_type: {!! json_encode(old('party_type', $item->party_type_key ?? request('party_type', 'sundry_debtors'))) !!},
+            party_type: {!! json_encode($selectedPartyType) !!},
             pan: {!! json_encode(old('pan', $item->pan ?? '')) !!},
             phone: {!! json_encode(old('phone', $item->phone ?? '')) !!},
             email: {!! json_encode(old('email', $item->email ?? '')) !!},
