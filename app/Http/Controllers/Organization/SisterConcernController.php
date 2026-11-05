@@ -8,8 +8,11 @@ use App\Domains\Organization\Models\BusinessGroup;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\InterCompanyTransaction;
 use App\Domains\Organization\Models\Warehouse;
+use App\Domains\Organization\Services\ConsolidatedReportService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -17,6 +20,11 @@ use Illuminate\View\View;
 
 class SisterConcernController extends Controller
 {
+    public function __construct(
+        protected ?ConsolidatedReportService $reportService = null
+    ) {
+        $this->reportService = $this->reportService ?? app(ConsolidatedReportService::class);
+    }
     /**
      * Real-time record counts for navigation tabs.
      */
@@ -48,41 +56,72 @@ class SisterConcernController extends Controller
     public function dashboard(Request $request): View
     {
         $tabCounts = $this->getTabCounts();
+        $user = $request->user();
 
-        // 1. Total Business Groups
+        // 1. Resolve Authorized Business Groups & Selected Group
+        $businessGroups = $this->reportService->resolveAuthorizedBusinessGroups($user);
+        if ($businessGroups->isEmpty()) {
+            $businessGroups = BusinessGroup::where('is_active', true)->orderBy('name')->get();
+        }
+
+        $selectedGroupId = $request->input('business_group_id')
+            ? (int) $request->input('business_group_id')
+            : ($businessGroups->first()?->id ?? 0);
+
+        $selectedGroup = $businessGroups->firstWhere('id', $selectedGroupId) ?? $businessGroups->first();
+
+        // 2. Resolve Companies associated with this Group / Proprietor
+        $groupCompanies = $selectedGroup
+            ? $this->reportService->resolveGroupCompanies($selectedGroup)
+            : Company::where('is_active', true)->orderBy('name')->get();
+
+        // 3. Business Selector (All Sister Concerns vs Specific Company)
+        $selectedCompanyId = $request->filled('company_id') && $request->input('company_id') !== 'all'
+            ? (int) $request->input('company_id')
+            : null;
+
+        $activeCompanies = $selectedCompanyId
+            ? $groupCompanies->where('id', $selectedCompanyId)
+            : $groupCompanies;
+
+        // 4. Financial Year & Period Resolution
+        $fyData = $this->reportService->resolveFinancialYears();
+        $dateRange = $this->reportService->resolveDateRange($request, $fyData);
+        $fromDate = $dateRange['from_date'];
+        $toDate = $dateRange['to_date'];
+        $periodType = $dateRange['period_type'];
+        $periodLabel = $dateRange['period_label'];
+        $selectedFy = $dateRange['financial_year'];
+
+        // 5. Consolidated Business Performance Calculations
+        $comparison = $this->reportService->getComparisonMatrix($activeCompanies, $fromDate, $toDate);
+        $combined = $comparison['combined'];
+        $comparisonCompanies = $comparison['companies'];
+        $interCompany = $comparison['inter_company'];
+
+        // 6. Monthly Trends for Visual Performance Chart
+        $monthlyTrends = $this->reportService->getMonthlyTrends($activeCompanies->pluck('id')->all(), $fromDate, $toDate);
+
+        // 7. Legacy Counts and Metrics for Tab & Test Compatibility
         $businessGroupsCount = BusinessGroup::count();
-
-        // 2. Total Sister Concerns
         $companiesCount = Company::count();
+        $headOfficesCount = Company::where('is_default', true)->count() ?: ($companiesCount > 0 ? 1 : 0);
 
-        // 3. Total Head Offices
-        $headOfficesCount = Company::where('is_default', true)->count();
-        if ($headOfficesCount === 0 && $companiesCount > 0) {
-            $headOfficesCount = 1;
-        }
-
-        // 4. Total Turnover
-        $totalTurnover = 0.0;
-        if (Schema::hasTable('invoices')) {
-            $totalTurnover = (float) DB::table('invoices')->where('status', '!=', 'cancelled')->sum('grand_total');
-        }
-        if ($totalTurnover <= 0 && Schema::hasTable('orders')) {
-            $totalTurnover = (float) DB::table('orders')->where('status', '!=', 'cancelled')->sum('grand_total');
-        }
-
-        // Format turnover
+        $totalTurnover = (float) $combined['sales'];
         $turnoverInLakhs = round($totalTurnover / 100000, 2);
         $turnoverFormatted = $turnoverInLakhs >= 1
             ? '₹' . number_format($turnoverInLakhs, 2) . ' L'
-            : '₹' . number_format($totalTurnover, 2);
+            : ($totalTurnover > 0 ? '₹' . number_format($totalTurnover, 2) : '₹0.00');
 
-        // 5. Total Employees
         $employeesCount = 0;
         if (class_exists(Employee::class) && Schema::hasTable('employees')) {
-            $employeesCount = Employee::count();
+            $empQ = Employee::query();
+            if ($activeCompanies->isNotEmpty()) {
+                $empQ->whereIn('company_id', $activeCompanies->pluck('id')->all());
+            }
+            $employeesCount = $empQ->count();
         }
 
-        // 6. Active Transactions
         $activeTransactions = 0;
         if (Schema::hasTable('inter_company_transactions') && InterCompanyTransaction::count() > 0) {
             $activeTransactions = InterCompanyTransaction::whereIn('status', ['Pending', 'Approved'])->count();
@@ -93,7 +132,6 @@ class SisterConcernController extends Controller
             $activeTransactions = DB::table('invoices')->whereIn('status', ['issued', 'partial'])->count();
         }
 
-        // 7. Total Transaction Value
         $totalTransactionValue = 0.0;
         if (Schema::hasTable('inter_company_transactions') && InterCompanyTransaction::count() > 0) {
             $totalTransactionValue = (float) InterCompanyTransaction::where('status', '!=', 'Cancelled')->sum('net_amount');
@@ -109,7 +147,6 @@ class SisterConcernController extends Controller
             ? '₹' . number_format($transValInLakhs, 2) . ' L'
             : '₹' . number_format($totalTransactionValue, 2);
 
-        // 8. Settled Transactions
         $settledTransactions = 0;
         if (Schema::hasTable('inter_company_transactions') && InterCompanyTransaction::count() > 0) {
             $settledTransactions = InterCompanyTransaction::where('status', 'Settled')->count();
@@ -121,40 +158,37 @@ class SisterConcernController extends Controller
             $settledTransactions = max($settledTransactions, $paidInvoices);
         }
 
-        // Chart 1: Group-wise Turnover (₹ Lakhs)
+        // Charts
         $groups = BusinessGroup::with(['companies.warehouses'])->get();
         $groupTurnoverLabels = [];
         $groupTurnoverValues = [];
 
-        foreach ($groups as $group) {
-            $groupTurnoverLabels[] = $group->name;
-            $companyIds = $group->companies->pluck('id')->toArray();
-            $turnover = 0.0;
+        foreach ($groups as $grp) {
+            $groupTurnoverLabels[] = $grp->name;
+            $grpCoIds = $grp->companies->pluck('id')->toArray();
+            $grpTurnover = 0.0;
 
-            if (!empty($companyIds) && Schema::hasTable('warehouses') && Schema::hasTable('orders')) {
-                $whIds = Warehouse::whereIn('company_id', $companyIds)->pluck('id')->toArray();
-                if (!empty($whIds)) {
-                    $turnover = (float) DB::table('orders')->whereIn('warehouse_id', $whIds)->where('status', '!=', 'cancelled')->sum('grand_total');
+            if (! empty($grpCoIds) && Schema::hasTable('warehouses') && Schema::hasTable('orders')) {
+                $whIds = Warehouse::whereIn('company_id', $grpCoIds)->pluck('id')->toArray();
+                if (! empty($whIds)) {
+                    $grpTurnover = (float) DB::table('orders')->whereIn('warehouse_id', $whIds)->where('status', '!=', 'cancelled')->sum('grand_total');
                 }
             }
 
-            if ($turnover <= 0 && $group->isDefault()) {
-                $turnover = $totalTurnover;
+            if ($grpTurnover <= 0 && $grp->isDefault()) {
+                $grpTurnover = $totalTurnover;
             }
 
-            $groupTurnoverValues[] = round($turnover / 100000, 2);
+            $groupTurnoverValues[] = round($grpTurnover / 100000, 2);
         }
 
-        // Fallback for empty groups
         if (empty($groupTurnoverLabels)) {
             $groupTurnoverLabels = ['Default Group'];
             $groupTurnoverValues = [round($totalTurnover / 100000, 2)];
         }
 
-        // Chart 2: Entity Type Distribution
         $branchesCount = Branch::count();
         $warehousesCount = Warehouse::count();
-
         $entityDistribution = [
             'labels' => ['Head Office', 'Branches', 'Warehouses'],
             'data' => [$headOfficesCount, $branchesCount, $warehousesCount],
@@ -167,19 +201,131 @@ class SisterConcernController extends Controller
             'total_turnover' => $totalTurnover,
             'turnover_formatted' => $turnoverFormatted,
             'employees_count' => $employeesCount,
+            'total_employees' => $employeesCount,
             'active_transactions_count' => $activeTransactions,
             'total_transaction_value' => $totalTransactionValue,
             'transaction_value_formatted' => $transactionValueFormatted,
             'settled_transactions_count' => $settledTransactions,
+            // Consolidated Financial KPI metrics
+            'combined_sales' => $combined['sales'],
+            'combined_purchases' => $combined['purchases'],
+            'combined_expenses' => $combined['expenses'],
+            'combined_gross_profit' => $combined['gross_profit'],
+            'combined_net_profit' => $combined['net_profit'],
+            'combined_gross_margin' => $combined['gross_margin'],
+            'combined_net_margin' => $combined['net_margin'],
+            'total_receivables' => $combined['receivables'],
+            'total_payables' => $combined['payables'],
+        ];
+
+        // Comparison Chart Datasets
+        $comparisonChart = [
+            'labels' => collect($comparisonCompanies)->pluck('name')->all(),
+            'sales' => collect($comparisonCompanies)->pluck('sales')->all(),
+            'purchases' => collect($comparisonCompanies)->pluck('purchases')->all(),
+            'profits' => collect($comparisonCompanies)->pluck('net_profit')->all(),
+            'expenses' => collect($comparisonCompanies)->pluck('expenses')->all(),
         ];
 
         return view('organization.sister-concerns.dashboard', [
             'tabCounts' => $tabCounts,
             'stats' => $stats,
+            'businessGroups' => $businessGroups,
+            'selectedGroup' => $selectedGroup,
+            'groupCompanies' => $groupCompanies,
+            'selectedCompanyId' => $selectedCompanyId,
+            'activeCompanies' => $activeCompanies,
+            'financialYears' => $fyData['years'],
+            'selectedFy' => $selectedFy,
+            'fromDate' => $fromDate,
+            'toDate' => $toDate,
+            'periodType' => $periodType,
+            'periodLabel' => $periodLabel,
+            'comparison' => $comparison,
+            'combined' => $combined,
+            'comparisonCompanies' => $comparisonCompanies,
+            'interCompany' => $interCompany,
+            'monthlyTrends' => $monthlyTrends,
+            'comparisonChart' => $comparisonChart,
             'groupTurnoverLabels' => $groupTurnoverLabels,
             'groupTurnoverValues' => $groupTurnoverValues,
             'entityDistribution' => $entityDistribution,
         ]);
+    }
+
+    /**
+     * Update Common Proprietor Information for a Business Group.
+     */
+    public function updateProprietor(Request $request): RedirectResponse|JsonResponse
+    {
+        $data = $request->validate([
+            'business_group_id' => 'required|exists:business_groups,id',
+            'proprietor_name' => 'required|string|max:191',
+            'proprietor_relationship' => 'nullable|string|max:191',
+            'proprietor_email' => 'nullable|email|max:191',
+            'proprietor_phone' => 'nullable|string|max:50',
+            'proprietor_pan' => 'nullable|string|max:20',
+        ]);
+
+        $group = BusinessGroup::findOrFail($data['business_group_id']);
+        $group->update([
+            'proprietor_name' => $data['proprietor_name'],
+            'proprietor_relationship' => $data['proprietor_relationship'] ?: 'Common ownership and business oversight',
+            'proprietor_email' => $data['proprietor_email'] ?? $group->proprietor_email,
+            'proprietor_phone' => $data['proprietor_phone'] ?? $group->proprietor_phone,
+            'proprietor_pan' => $data['proprietor_pan'] ?? $group->proprietor_pan,
+        ]);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Proprietor details updated successfully.',
+                'group' => $group,
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Common Proprietor details updated successfully.');
+    }
+
+    /**
+     * Associate an existing or newly created Business with the Common Proprietor / Business Group.
+     */
+    public function associateBusiness(Request $request): RedirectResponse|JsonResponse
+    {
+        $data = $request->validate([
+            'business_group_id' => 'required|exists:business_groups,id',
+            'company_id' => 'required|exists:companies,id',
+            'business_type' => 'nullable|string|max:100',
+            'main_work' => 'nullable|string',
+        ]);
+
+        $group = BusinessGroup::findOrFail($data['business_group_id']);
+        $company = Company::findOrFail($data['company_id']);
+
+        // Update company fields
+        $companyUpdate = ['business_group_id' => $group->id];
+        if (filled($data['business_type'])) {
+            $companyUpdate['business_type'] = $data['business_type'];
+        }
+        if (filled($data['main_work'])) {
+            $companyUpdate['main_work'] = $data['main_work'];
+        }
+        $company->update($companyUpdate);
+
+        // Ensure pivot link exists
+        if (! $group->companies()->where('companies.id', $company->id)->exists()) {
+            $group->companies()->attach($company->id);
+        }
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Business '{$company->name}' successfully associated with {$group->name}.",
+                'company' => $company,
+            ]);
+        }
+
+        return redirect()->back()->with('success', "Business '{$company->name}' associated with {$group->name} successfully.");
     }
 
     /**

@@ -111,7 +111,9 @@
                     @if($invoice->delivery_note_na)<div>Delivery Note: N/A</div>
                     @elseif($invoice->delivery_note_no)<div>Delivery Note: {{ $invoice->delivery_note_no }}</div>@endif
                     @if($invoice->dispatch_doc_no)<div>Dispatch Doc: {{ $invoice->dispatch_doc_no }}</div>@endif
-                    @if($invoice->dispatched_through || $invoice->transport_mode)<div>Transport: {{ $invoice->dispatched_through ?: $invoice->transport_mode }}</div>@endif
+                    @if($invoice->transport_mode && $invoice->transport_mode !== 'Not Applicable')<div>Mode: {{ $invoice->transport_mode }}</div>@endif
+                    @if($invoice->dispatched_through)<div>Dispatched Via: {{ $invoice->dispatched_through }}</div>@endif
+                    @if($invoice->transporter_name)<div>Transporter: {{ $invoice->transporter_name }} @if($invoice->transporter_id)({{ $invoice->transporter_id }})@endif</div>@endif
                     @if($invoice->destination)<div>Destination: {{ $invoice->destination }}</div>@endif
                     @if($invoice->carrier_name)<div>Carrier: {{ $invoice->carrier_name }}</div>@endif
                     @if($invoice->lr_rr_no)<div>LR/RR No: {{ $invoice->lr_rr_no }} @if($invoice->lr_rr_date)({{ $invoice->lr_rr_date->format('d/m/Y') }})@endif</div>@endif
@@ -138,14 +140,14 @@
                     @else
                         <div><span class="bold">6. IRN No.:</span> {{ $invoice->einvoice_status === 'not_applicable' ? 'N/A (B2C Supply)' : 'Not Generated' }}</div>
                     @endif
-                    @if($invoice->eWayBill?->eway_bill_no)
-                        <div><span class="bold">E-Way Bill No.:</span> <span style="font-family: monospace;">{{ $invoice->eWayBill->eway_bill_no }}</span></div>
+                    @if($invoice->eway_bill_no || $invoice->eWayBill?->eway_bill_no)
+                        <div><span class="bold">E-Way Bill No.:</span> <span style="font-family: monospace;">{{ $invoice->eway_bill_no ?: $invoice->eWayBill->eway_bill_no }}</span> @if($invoice->eway_bill_date || $invoice->eWayBill?->ewb_date)<span style="font-size: 8px;">({{ ($invoice->eway_bill_date ?: $invoice->eWayBill?->ewb_date)->format('d/m/Y') }})</span>@endif</div>
                     @endif
                 </td>
                 <td style="width: 50%;">
-                    <div><span class="bold">Dispatch from:</span> {{ $companyName }} ({{ $companyGstin }})</div>
-                    <div><span class="bold">Address:</span> {{ $companyAddress }}</div>
-                    <div><span class="bold">State:</span> {{ $companyState }} &nbsp;&nbsp; <span class="bold">Pincode:</span> {{ $companyPincode }}</div>
+                    <div><span class="bold">Dispatch from:</span> {{ $invoice->consignor_name ?: $companyName }} ({{ $invoice->consignor_gstin ?: $companyGstin }})</div>
+                    <div><span class="bold">Address:</span> {{ $invoice->consignor_address_line_1 ?: $companyAddress }}</div>
+                    <div><span class="bold">State:</span> {{ $invoice->consignor_state ?: $companyState }} &nbsp;&nbsp; <span class="bold">Pincode:</span> {{ $invoice->consignor_pincode ?: $companyPincode }}</div>
                 </td>
             </tr>
         </table>
@@ -159,14 +161,16 @@
                 <td>
                     <div><span class="bold">Name:</span> {{ $invoice->billingAddress?->contact_person ?: $customer->name }}</div>
                     <div><span class="bold">Address:</span> {!! nl2br(e($invoice->billing_address ?: ($customer->address ?: '-'))) !!}</div>
+                    @if($invoice->bill_to_place)<div><span class="bold">Place:</span> {{ $invoice->bill_to_place }}</div>@endif
                     <div><span class="bold">State:</span> {{ $invoice->billingAddress?->state ?: ($customer->state ?: '-') }} &nbsp;&nbsp; <span class="bold">Pin Code:</span> {{ $invoice->billingAddress?->pincode ?: ($customer->pincode ?: '-') }}</div>
                     <div><span class="bold">GSTIN/Unique ID:</span> {{ $invoice->billingAddress?->gstin ?: ($customer->gstin ?: '-') }}</div>
                 </td>
                 <td>
-                    <div><span class="bold">Name:</span> {{ $invoice->shippingAddress?->contact_person ?: ($customer->shipping_name ?: $customer->name) }}</div>
+                    <div><span class="bold">Name:</span> {{ $invoice->consignee_name ?: ($invoice->shippingAddress?->contact_person ?: ($customer->shipping_name ?: $customer->name)) }}</div>
                     <div><span class="bold">Address:</span> {!! nl2br(e($invoice->shipping_address ?: ($invoice->billing_address ?: ($customer->shipping_address ?: ($customer->address ?: '-'))))) !!}</div>
-                    <div><span class="bold">State:</span> {{ $invoice->shippingAddress?->state ?: ($invoice->delivery_state ?: ($customer->shipping_state ?: ($customer->state ?: '-'))) }} &nbsp;&nbsp; <span class="bold">Pin Code:</span> {{ $invoice->shippingAddress?->pincode ?: ($customer->shipping_pincode ?: ($customer->pincode ?: '-')) }}</div>
-                    <div><span class="bold">GSTIN/Unique ID:</span> {{ $invoice->shippingAddress?->gstin ?: ($customer->shipping_gstin ?: ($customer->gstin ?: '-')) }}</div>
+                    @if($invoice->ship_to_place)<div><span class="bold">Place:</span> {{ $invoice->ship_to_place }}</div>@endif
+                    <div><span class="bold">State:</span> {{ $invoice->consignee_state ?: ($invoice->shippingAddress?->state ?: ($invoice->delivery_state ?: ($customer->shipping_state ?: ($customer->state ?: '-')))) }} &nbsp;&nbsp; <span class="bold">Pin Code:</span> {{ $invoice->consignee_pincode ?: ($invoice->shippingAddress?->pincode ?: ($customer->shipping_pincode ?: ($customer->pincode ?: '-'))) }}</div>
+                    <div><span class="bold">GSTIN/Unique ID:</span> {{ $invoice->consignee_gstin ?: ($invoice->shippingAddress?->gstin ?: ($customer->shipping_gstin ?: ($customer->gstin ?: '-'))) }}</div>
                 </td>
             </tr>
         </table>

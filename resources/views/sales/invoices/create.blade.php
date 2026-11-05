@@ -351,10 +351,10 @@
             </div>
 
             {{-- Delivery Address Card --}}
-            <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+            <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2.5">
                 <div class="flex items-center justify-between">
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery / Consignee Address</label>
-                    <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium">
+                    <label class="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer font-medium select-none">
                         <input type="checkbox"
                                x-model="sameAsBilling"
                                @change="onSameAsBillingToggle()"
@@ -362,28 +362,123 @@
                         <span>Same as Billing Address</span>
                     </label>
                 </div>
-                <div x-show="!sameAsBilling">
-                    <select name="shipping_address_id"
-                            x-model="selectedShippingId"
-                            @change="onShippingAddressChange()"
-                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        <option value="">Default Delivery Address</option>
-                        <template x-for="addr in partyAddresses" :key="addr.id">
-                            <option :value="addr.id" x-text="`${addr.label} — ${addr.full_address}`"></option>
+                
+                {{-- Dropdown and Quick Add button when not Same as Billing --}}
+                <div x-show="!sameAsBilling" class="space-y-2">
+                    <div class="flex items-center gap-2">
+                        <select name="shipping_address_id"
+                                x-model="selectedShippingId"
+                                @change="onShippingAddressChange()"
+                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">-- Select Saved Delivery Address --</option>
+                            <template x-for="addr in partyAddresses" :key="addr.id">
+                                <option :value="addr.id" x-text="`${addr.label || 'Address'} — ${addr.full_address || addr.address_line_1}`"></option>
+                            </template>
+                        </select>
+                        <button type="button"
+                                @click="openAddressModal()"
+                                class="inline-flex items-center gap-1 whitespace-nowrap px-3 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-sm transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            <span>Add Address</span>
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Alert when no delivery addresses found --}}
+                <div x-show="!sameAsBilling && partyAddresses.length === 0 && customerId" class="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center justify-between" x-cloak>
+                    <span>No saved delivery addresses found for this party.</span>
+                    <button type="button" @click="openAddressModal()" class="font-semibold text-indigo-700 hover:underline">+ Add Delivery Address</button>
+                </div>
+
+                <div x-show="sameAsBilling" class="text-xs text-slate-500 italic py-1 bg-slate-50 px-2.5 rounded border border-slate-100 flex items-center gap-1.5" x-cloak>
+                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Delivery address automatically matches the selected Billing Address.</span>
+                </div>
+
+                {{-- Selected Delivery Address Formatted Card --}}
+                <div x-show="selectedShippingAddress" class="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5" x-cloak>
+                    <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+                        <div class="flex items-center gap-1.5">
+                            <span class="font-semibold text-slate-800" x-text="selectedShippingAddress?.name || selectedShippingAddress?.contact_person || 'Consignee'"></span>
+                            <span class="inline-block px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-700 rounded" x-text="selectedShippingAddress?.label || selectedShippingAddress?.type || 'Delivery'"></span>
+                        </div>
+                        <template x-if="selectedShippingAddress?.gstin">
+                            <span class="inline-block px-1.5 py-0.5 text-[10px] font-mono font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">
+                                GST: <span x-text="selectedShippingAddress.gstin"></span>
+                            </span>
                         </template>
-                    </select>
+                    </div>
+                    <div class="text-slate-600">
+                        <template x-if="selectedShippingAddress?.contact_phone">
+                            <div class="text-[11px] text-slate-500">Contact: <span class="font-medium text-slate-700" x-text="selectedShippingAddress.contact_phone"></span></div>
+                        </template>
+                        <div x-text="selectedShippingAddress?.address_line_1 || ''"></div>
+                        <template x-if="selectedShippingAddress?.address_line_2">
+                            <div x-text="selectedShippingAddress.address_line_2"></div>
+                        </template>
+                        <div>
+                            <span x-text="selectedShippingAddress?.city || ''"></span><span x-show="selectedShippingAddress?.city && selectedShippingAddress?.state">, </span>
+                            <span class="font-medium text-slate-700" x-text="selectedShippingAddress?.state || ''"></span>
+                            <template x-if="selectedShippingAddress?.pincode">
+                                <span> - <span x-text="selectedShippingAddress.pincode"></span></span>
+                            </template>
+                        </div>
+                    </div>
                 </div>
-                <div x-show="sameAsBilling" class="text-xs text-slate-500 italic py-1">
-                    Delivery address matches the selected Billing Address.
+
+                {{-- Snapshot Textarea --}}
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-500 mb-1">Address Snapshot (Stored with Invoice)</label>
+                    <textarea name="shipping_address"
+                              x-model="shippingSnapshot"
+                              rows="2"
+                              placeholder="Delivery Address Snapshot"
+                              class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                 </div>
-                <textarea name="shipping_address"
-                          x-model="shippingSnapshot"
-                          rows="3"
-                          placeholder="Delivery Address Snapshot"
-                          class="block w-full rounded-lg border-gray-200 text-xs text-slate-700 bg-slate-50 focus:bg-white focus:border-indigo-500 focus:ring-indigo-500"></textarea>
                 @error('shipping_address_id')
                     <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
                 @enderror
+            </div>
+        </div>
+
+        {{-- Place of Party Section --}}
+        <div class="mt-4 pt-3.5 border-t border-slate-200">
+            <div class="flex items-center justify-between mb-2.5">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    Place of Party
+                </span>
+                <span class="text-[11px] text-slate-500">Auto-populated from party billing and delivery places</span>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-white p-3 rounded-lg border border-slate-200">
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                        Bill to Place
+                    </label>
+                    <input type="text"
+                           name="bill_to_place"
+                           x-model="billToPlace"
+                           placeholder="E.g. Mumbai, Pune"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <p class="mt-1 text-[11px] text-slate-400">Buyer city / supply origin for billing.</p>
+                    @error('bill_to_place')
+                        <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
+                <div class="bg-white p-3 rounded-lg border border-slate-200">
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                        Ship to Place
+                    </label>
+                    <input type="text"
+                           name="ship_to_place"
+                           x-model="shipToPlace"
+                           placeholder="E.g. Pune, Nagpur"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <p class="mt-1 text-[11px] text-slate-400">Consignee delivery destination place.</p>
+                    @error('ship_to_place')
+                        <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                    @enderror
+                </div>
             </div>
         </div>
     </div>
@@ -536,101 +631,6 @@
                                 <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
                             @enderror
                         </div>
-
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                                Transport Mode
-                            </label>
-                            <select name="transport_mode" x-model="transportMode"
-                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                                <option value="1">1 - Road</option>
-                                <option value="2">2 - Rail</option>
-                                <option value="3">3 - Air</option>
-                                <option value="4">4 - Ship</option>
-                            </select>
-                        </div>
-
-                        {{-- 8. Distance (KM) & Vehicle Type --}}
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                                Distance (in KM)
-                            </label>
-                            <input type="number"
-                                   min="1"
-                                   max="9999"
-                                   name="distance_km"
-                                   x-model.number="distanceKm"
-                                   placeholder="E.g. 150"
-                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            @error('distance_km')
-                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                            @enderror
-                        </div>
-
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                                Vehicle Type
-                            </label>
-                            <select name="vehicle_type" x-model="vehicleType"
-                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                                <option value="R">Regular Cargo (R)</option>
-                                <option value="O">Over Dimensional Cargo (ODC)</option>
-                            </select>
-                        </div>
-
-                        {{-- 9. Transporter ID & Name --}}
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                                Transporter ID / GSTIN
-                            </label>
-                            <input type="text"
-                                   name="transporter_id"
-                                   x-model="transporterId"
-                                   placeholder="15-digit GSTIN or TRANS ID"
-                                   maxlength="25"
-                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono">
-                            @error('transporter_id')
-                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                            @enderror
-                        </div>
-
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                                Transporter Name
-                            </label>
-                            <input type="text"
-                                   name="transporter_name"
-                                   x-model="transporterName"
-                                   placeholder="E.g. VRL Logistics Ltd"
-                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            @error('transporter_name')
-                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                            @enderror
-                        </div>
-
-                        {{-- 10. E-Way Bill Requirement Option --}}
-                        <div class="sm:col-span-2 pt-2 border-t border-slate-200">
-                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                                E-Way Bill Requirement
-                            </label>
-                            <div class="flex flex-wrap items-center gap-4 text-xs">
-                                <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="radio" name="eway_bill_required" value="auto" x-model="ewayBillRequired" class="text-indigo-600 focus:ring-indigo-500">
-                                    <span class="font-medium text-slate-800">Auto-Determined (Recommended — Mandatory if &gt; ₹50,000)</span>
-                                </label>
-                                <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                                    <input type="radio" name="eway_bill_required" value="yes" x-model="ewayBillRequired" class="text-indigo-600 focus:ring-indigo-500">
-                                    <span class="font-medium text-slate-800">Yes (Generate)</span>
-                                </label>
-                                <label class="inline-flex items-center gap-1.5 cursor-pointer" :class="isEWayBillMandatory ? 'opacity-50 cursor-not-allowed' : ''">
-                                    <input type="radio" name="eway_bill_required" value="no" x-model="ewayBillRequired" :disabled="isEWayBillMandatory" class="text-indigo-600 focus:ring-indigo-500">
-                                    <span class="font-medium text-slate-800">No (Exempt)</span>
-                                </label>
-                            </div>
-                            <p x-show="isEWayBillMandatory" class="mt-1 text-[11px] text-amber-600 font-medium" x-cloak>
-                                Consignment value exceeds ₹50,000 threshold; E-Way Bill is legally mandatory under GST Rule 138.
-                            </p>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -716,6 +716,386 @@
         </x-ui.card>
     </div>
 
+    {{-- Card 3: e-Way Bill, Consignor, Consignee & Transport Details --}}
+    <x-ui.card>
+        <div class="space-y-6">
+            {{-- Header & e-Way Bill Details --}}
+            <div>
+                <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
+                    <div>
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-800">e-Way Bill Details</h4>
+                        <p class="text-[11px] text-slate-500">Applicable for inter-state or intra-state movement of goods exceeding ₹50,000 consignment value.</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer font-medium select-none">
+                            <input type="checkbox"
+                                   x-model="ewayNa"
+                                   @change="onEwayNaToggle()"
+                                   class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <span>Not Applicable / Exempt</span>
+                        </label>
+                    </div>
+                </div>
+
+                {{-- Requirement Selector --}}
+                <div class="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-2">
+                        e-Way Bill Requirement Mode
+                    </label>
+                    <div class="flex flex-wrap items-center gap-5 text-xs">
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                            <input type="radio" name="eway_bill_required" value="auto" x-model="ewayBillRequired" class="text-indigo-600 focus:ring-indigo-500">
+                            <span class="font-medium text-slate-800">Auto-Determined (Recommended — Mandatory if &gt; ₹50,000)</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                            <input type="radio" name="eway_bill_required" value="yes" x-model="ewayBillRequired" class="text-indigo-600 focus:ring-indigo-500">
+                            <span class="font-medium text-slate-800">Yes (Generate / Mandatory)</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer" :class="isEWayBillMandatory ? 'opacity-50 cursor-not-allowed' : ''">
+                            <input type="radio" name="eway_bill_required" value="no" x-model="ewayBillRequired" :disabled="isEWayBillMandatory" class="text-indigo-600 focus:ring-indigo-500">
+                            <span class="font-medium text-slate-800">No (Exempt)</span>
+                        </label>
+                    </div>
+                    <p x-show="isEWayBillMandatory" class="mt-1.5 text-[11px] text-amber-700 font-medium flex items-center gap-1" x-cloak>
+                        <svg class="w-3.5 h-3.5 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        <span>Consignment value exceeds ₹50,000 threshold; E-Way Bill is legally mandatory under GST Rule 138.</span>
+                    </p>
+                </div>
+
+                {{-- e-Way Bill Document & Classification Fields --}}
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-3.5" :class="ewayNa ? 'opacity-50 pointer-events-none' : ''">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                            e-Way Bill No. <span class="text-slate-400 font-normal">(Optional / Manual)</span>
+                        </label>
+                        <input type="text"
+                               name="eway_bill_no"
+                               x-model="ewayBillNo"
+                               placeholder="12-digit e-Way Bill No"
+                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                        @error('eway_bill_no')
+                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                            e-Way Bill Date
+                        </label>
+                        <input type="date"
+                               name="eway_bill_date"
+                               x-model="ewayBillDate"
+                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        @error('eway_bill_date')
+                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                            Sub-Type
+                        </label>
+                        <select name="eway_sub_type" x-model="ewaySubType"
+                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="Supply">Supply</option>
+                            <option value="Export">Export</option>
+                            <option value="Job Work">Job Work</option>
+                            <option value="SKD/CKD">SKD / CKD</option>
+                            <option value="Recipient Not Known">Recipient Not Known</option>
+                            <option value="For Own Use">For Own Use</option>
+                            <option value="Exhibition/Fair">Exhibition or Fair</option>
+                            <option value="Line Sales">Line Sales</option>
+                            <option value="Others">Others</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                            Document Type
+                        </label>
+                        <select name="eway_doc_type" x-model="ewayDocType"
+                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="Tax Invoice">Tax Invoice</option>
+                            <option value="Bill of Supply">Bill of Supply</option>
+                            <option value="Delivery Challan">Delivery Challan</option>
+                            <option value="Others">Others</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                            Supply Type
+                        </label>
+                        <select name="eway_supply_type" x-model="ewaySupplyType"
+                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="Outward">Outward</option>
+                            <option value="Inward">Inward</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Consignor & Consignee Details (2 Columns) --}}
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4 border-t border-slate-200">
+                {{-- Consignor Details (From) --}}
+                <div class="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-indigo-600"></span>
+                            Consignor Details (From - Seller)
+                        </h5>
+                        <span class="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                            Company Master
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Party / Company Name</label>
+                            <input type="text" name="consignor_name" x-model="consignorName" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">GSTIN / UIN</label>
+                            <input type="text" name="consignor_gstin" x-model="consignorGstin" class="block w-full rounded-lg border-gray-300 text-xs font-mono uppercase focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">State</label>
+                            <input type="text" name="consignor_state" x-model="consignorState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Type</label>
+                            <input type="text" name="consignor_address_type" x-model="consignorAddressType" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Actual State</label>
+                            <input type="text" name="consignor_actual_state" x-model="consignorActualState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 1</label>
+                            <input type="text" name="consignor_address_line_1" x-model="consignorAddressLine1" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 2</label>
+                            <input type="text" name="consignor_address_line_2" x-model="consignorAddressLine2" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">City / Place</label>
+                            <input type="text" name="consignor_city" x-model="consignorCity" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">PIN Code</label>
+                            <input type="text" name="consignor_pincode" x-model="consignorPincode" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Consignee Details (To) --}}
+                <div class="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                        <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                            Consignee Details (To - Delivery Party)
+                        </h5>
+                        <span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                            Party Delivery Master
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Consignee Name</label>
+                            <input type="text" name="consignee_name" x-model="consigneeName" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">GSTIN / UIN</label>
+                            <input type="text" name="consignee_gstin" x-model="consigneeGstin" class="block w-full rounded-lg border-gray-300 text-xs font-mono uppercase focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">State</label>
+                            <input type="text" name="consignee_state" x-model="consigneeState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Type</label>
+                            <input type="text" name="consignee_address_type" x-model="consigneeAddressType" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Actual State</label>
+                            <input type="text" name="consignee_actual_state" x-model="consigneeActualState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 1</label>
+                            <input type="text" name="consignee_address_line_1" x-model="consigneeAddressLine1" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 2</label>
+                            <input type="text" name="consignee_address_line_2" x-model="consigneeAddressLine2" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">City / Place</label>
+                            <input type="text" name="consignee_city" x-model="consigneeCity" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">PIN Code</label>
+                            <input type="text" name="consignee_pincode" x-model="consigneePincode" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Transport Details & Part B (Vehicle / Transporter) --}}
+            <div class="pt-4 border-t border-slate-200">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+                        Transport Details &amp; Part B (Vehicle Details)
+                    </h5>
+                    <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer font-medium select-none">
+                        <input type="checkbox"
+                               x-model="partBNa"
+                               @change="onPartBNaToggle()"
+                               class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <span>Part B Not Applicable (Direct Handover / Local)</span>
+                    </label>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs" :class="partBNa ? 'opacity-50 pointer-events-none' : ''">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">
+                            Mode of Transport
+                        </label>
+                        <select name="transport_mode"
+                                x-model="transportMode"
+                                @change="onTransportModeChange()"
+                                class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                            <option value="Not Applicable">Not Applicable</option>
+                            <option value="1 - Road">1 - Road</option>
+                            <option value="2 - Rail">2 - Rail</option>
+                            <option value="3 - Air">3 - Air</option>
+                            <option value="4 - Ship">4 - Ship</option>
+                        </select>
+                        @error('transport_mode')
+                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">
+                            Distance (in KM)
+                        </label>
+                        <input type="number"
+                               min="0"
+                               max="9999"
+                               name="distance_km"
+                               x-model.number="distanceKm"
+                               placeholder="E.g. 150 (0 for auto-calc)"
+                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        <p class="mt-0.5 text-[10px] text-slate-400">Portal auto-calculates if left 0 based on PIN codes.</p>
+                        @error('distance_km')
+                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">
+                            Transporter Name
+                        </label>
+                        <select name="transporter_name"
+                                x-model="transporterName"
+                                @change="onTransporterChange($event)"
+                                class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                            <option value="">-- None / Select Transporter --</option>
+                            @foreach($transporters as $transporter)
+                                <option value="{{ $transporter->name }}"
+                                        data-transporter-id="{{ $transporter->gstin ?: $transporter->code }}"
+                                        @selected(old('transporter_name') === $transporter->name)>
+                                    {{ $transporter->name }} @if($transporter->gstin)({{ $transporter->gstin }})@elseif($transporter->code)({{ $transporter->code }})@endif
+                                </option>
+                            @endforeach
+                            @if(filled(old('transporter_name')) && !$transporters->contains('name', old('transporter_name')))
+                                <option value="{{ old('transporter_name') }}" selected>{{ old('transporter_name') }}</option>
+                            @endif
+                        </select>
+                        <p class="mt-0.5 text-[10px] text-slate-400">Selects party and auto-fetches Transporter ID.</p>
+                        @error('transporter_name')
+                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">
+                            Transporter ID / GSTIN
+                        </label>
+                        <input type="text"
+                               name="transporter_id"
+                               x-model="transporterId"
+                               placeholder="15-digit GSTIN or TRANS ID"
+                               maxlength="25"
+                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono uppercase">
+                        <p class="mt-0.5 text-[10px] text-slate-400">Auto-filled from master; editable if missing.</p>
+                        @error('transporter_id')
+                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                            <span>Doc / LR / RR / Airway Bill No.</span>
+                            <span x-show="!isRoadMode && transportMode !== 'Not Applicable'" class="text-[10px] text-indigo-600 font-semibold" x-cloak>(Required)</span>
+                        </label>
+                        <input type="text"
+                               name="lr_rr_no"
+                               x-model="lrRrNo"
+                               placeholder="E.g. LR-10293 or AWB-88123"
+                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        @error('lr_rr_no')
+                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">
+                            Doc / LR-RR Date
+                        </label>
+                        <input type="date"
+                               name="lr_rr_date"
+                               x-model="lrRrDate"
+                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        @error('lr_rr_date')
+                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div :class="isRoadMode ? '' : 'opacity-70'">
+                        <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                            <span>Vehicle Number</span>
+                            <span x-show="!isRoadMode" class="text-[10px] text-slate-400 font-normal" x-cloak>(Optional for Rail/Air/Ship)</span>
+                        </label>
+                        <input type="text"
+                               name="motor_vehicle_no"
+                               x-model="motorVehicleNo"
+                               placeholder="E.g. MH-12-AB-1234"
+                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono uppercase">
+                        <input type="hidden" name="vehicle_no" :value="motorVehicleNo">
+                        @error('motor_vehicle_no')
+                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div :class="isRoadMode ? '' : 'opacity-70'">
+                        <label class="block font-semibold text-slate-700 mb-1">
+                            Vehicle Type
+                        </label>
+                        <select name="vehicle_type" x-model="vehicleType"
+                                class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                            <option value="R">Regular Cargo (R)</option>
+                            <option value="O">Over Dimensional Cargo (ODC)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </x-ui.card>
+
     {{-- Card 2: Dynamic Line Items (Matches Purchase Invoice layout and design) --}}
     <x-ui.card padding="false">
         <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -723,18 +1103,23 @@
                 <div class="flex items-center gap-3">
                     <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
                     {{-- Price Type Toggle (Tax Exclusive / Tax Inclusive) --}}
-                    <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
-                        <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
-                               :class="priceType === 'exclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
-                            <input type="radio" name="price_type" value="exclusive" x-model="priceType" @change="recalc()" class="sr-only">
+                    <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold" role="group" aria-label="Tax Mode Toggle">
+                        <button type="button"
+                                @click="setPriceType('exclusive')"
+                                :class="priceType === 'exclusive' ? 'bg-white text-indigo-700 shadow-2xs font-bold border border-slate-200' : 'text-slate-600 hover:text-slate-900 font-medium border border-transparent'"
+                                class="cursor-pointer px-3 py-1 rounded-md transition flex items-center gap-1.5 focus:outline-none">
+                            <span class="w-1.5 h-1.5 rounded-full transition-colors" :class="priceType === 'exclusive' ? 'bg-indigo-600' : 'bg-transparent'"></span>
                             Tax Exclusive
-                        </label>
-                        <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
-                               :class="priceType === 'inclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
-                            <input type="radio" name="price_type" value="inclusive" x-model="priceType" @change="recalc()" class="sr-only">
+                        </button>
+                        <button type="button"
+                                @click="setPriceType('inclusive')"
+                                :class="priceType === 'inclusive' ? 'bg-white text-indigo-700 shadow-2xs font-bold border border-slate-200' : 'text-slate-600 hover:text-slate-900 font-medium border border-transparent'"
+                                class="cursor-pointer px-3 py-1 rounded-md transition flex items-center gap-1.5 focus:outline-none">
+                            <span class="w-1.5 h-1.5 rounded-full transition-colors" :class="priceType === 'inclusive' ? 'bg-indigo-600' : 'bg-transparent'"></span>
                             Tax Inclusive
-                        </label>
+                        </button>
                     </div>
+                    <input type="hidden" name="price_type" :value="priceType">
                 </div>
                 <p class="text-xs text-slate-500 mt-0.5">
                     <span x-show="priceType === 'exclusive'">Unit price is taxable base price. Applicable GST is added to calculate total.</span>
@@ -755,18 +1140,18 @@
         </div>
 
         <div class="overflow-x-auto border-t border-slate-200">
-            <table class="w-full min-w-[1360px] text-left text-xs border-collapse">
+            <table class="w-full min-w-[1440px] text-left text-xs border-collapse">
                 <thead class="bg-slate-50 text-slate-600 tracking-wider border-b border-slate-200 font-semibold text-[11px]">
                     <tr>
-                        <th class="p-3 min-w-[340px] lg:min-w-[380px]">Product / Description</th>
+                        <th class="p-3 min-w-[320px] lg:min-w-[360px]">Product / Description</th>
                         <th class="p-3 min-w-[85px] w-24 text-center">Unit</th>
                         <th class="p-3 min-w-[110px] w-28 text-right">Qty *</th>
-                        <th class="p-3 min-w-[140px] w-36 text-right" x-text="priceType === 'inclusive' ? 'Unit Price (Inc GST) *' : 'Unit Price (₹) *'"></th>
-                        <th class="p-3 min-w-[140px] w-36 text-left">Discount</th>
+                        <th class="p-3 min-w-[140px] w-36 text-right" x-text="priceType === 'inclusive' ? 'Unit Price (Inc GST) *' : 'Unit Price (₹) *'">Unit Price (₹) *</th>
+                        <th class="p-3 min-w-[190px] w-48 text-left">Discount</th>
                         <th class="p-3 min-w-[90px] w-24 text-right" x-show="isIntraState()">CGST %</th>
                         <th class="p-3 min-w-[90px] w-24 text-right" x-show="isIntraState()">SGST %</th>
-                        <th class="p-3 min-w-[100px] w-28 text-center" x-text="isIntraState() ? 'Total Tax %' : 'IGST %'"></th>
-                        <th class="p-3 min-w-[130px] w-36">Batch No</th>
+                        <th class="p-3 min-w-[100px] w-28 text-center" x-text="isIntraState() ? 'Total Tax %' : 'IGST %'">Tax Rate / IGST</th>
+                        <th class="p-3 min-w-[140px] w-40">Batch No</th>
                         <th class="p-3 min-w-[140px] w-36 text-right">Line Total (₹)</th>
                         <th class="p-3 min-w-[50px] w-14 text-center"></th>
                     </tr>
@@ -775,26 +1160,25 @@
                     <template x-for="(row, i) in lines" :key="row._key">
                         <tr class="align-top hover:bg-slate-50/50 transition-colors">
                             {{-- Product & Serials Column --}}
-                            <td class="p-3 min-w-[340px] lg:min-w-[380px]">
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="text-xs font-medium text-slate-600">Product <span class="text-red-500">*</span></span>
-                                    <a href="{{ route('masters.products.create', ['return_to' => 'invoices.create', 'return_url' => route('invoices.create')]) }}"
-                                       @click="saveDraftAndRedirectToProduct($event, i)"
-                                       class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5"
-                                       title="Add a new product to master catalog">
-                                        + Quick Add
-                                    </a>
-                                </div>
+                            <td class="p-3 align-top min-w-[320px] lg:min-w-[360px]">
                                 <select :name="`items[${i}][product_id]`"
                                         x-model="row.product_id"
                                         @change="onProductChange(i)"
                                         required
-                                        class="block w-full rounded-md border-gray-300 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-h-[38px] px-3 py-2 bg-white">
+                                        class="block w-full rounded-md border-gray-300 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 h-[38px] px-3 py-2 bg-white">
                                     <option value="">Select product...</option>
                                     <template x-for="p in products" :key="p.id">
                                         <option :value="p.id" x-text="p.name" :selected="String(p.id) === String(row.product_id)"></option>
                                     </template>
                                 </select>
+                                <div class="mt-1 flex items-center justify-between text-[11px]">
+                                    <a href="{{ route('masters.products.create', ['return_to' => 'invoices.create', 'return_url' => route('invoices.create')]) }}"
+                                       @click="saveDraftAndRedirectToProduct($event, i)"
+                                       class="font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5"
+                                       title="Add a new product to master catalog">
+                                        + Quick Add
+                                    </a>
+                                </div>
 
                                 {{-- Serial Number Tracking Block --}}
                                 <div class="mt-2" x-show="isSerialTracked(row)" x-cloak>
@@ -811,11 +1195,11 @@
                             </td>
 
                             {{-- UOM Column --}}
-                            <td class="p-3 align-top min-w-[85px] w-24 text-center pt-5">
+                            <td class="p-3 align-top min-w-[85px] w-24 text-center">
                                 <select :name="`items[${i}][uom_id]`"
                                         x-model="row.uom_id"
                                         required
-                                        class="block w-full rounded-md border-gray-300 text-xs font-semibold text-slate-700 py-1.5 px-2 bg-white">
+                                        class="block w-full rounded-md border-gray-300 text-xs font-semibold text-slate-700 h-[38px] px-2 bg-white shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                                     <template x-for="u in uoms" :key="u.id">
                                         <option :value="u.id" x-text="u.code" :selected="String(u.id) === String(row.uom_id)"></option>
                                     </template>
@@ -831,7 +1215,7 @@
                                        x-model.number="row.quantity"
                                        @input="recalc()"
                                        required
-                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                       class="block w-full h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                                 <template x-if="row.ordered_quantity">
                                     <p class="mt-1 text-[10px] text-slate-400 text-right" x-text="`Order Qty: ${row.ordered_quantity}`"></p>
                                 </template>
@@ -846,16 +1230,17 @@
                                        x-model.number="row.unit_price"
                                        @input="recalc()"
                                        required
-                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-900">
+                                       class="block w-full h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-900">
                             </td>
 
                             {{-- Line Discount Column --}}
-                            <td class="p-3 align-top min-w-[140px] w-36">
-                                <div class="flex items-center gap-1">
+                            <td class="p-3 align-top min-w-[190px] w-48">
+                                <div class="flex items-center rounded-md shadow-sm border border-gray-300 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 bg-white">
                                     <select :name="`items[${i}][discount_type]`"
                                             x-model="row.discount_type"
                                             @change="recalc()"
-                                            class="rounded-md border-gray-300 text-xs px-1.5 py-2 w-14">
+                                            aria-label="Discount Type"
+                                            class="h-[38px] rounded-l-md border-0 bg-slate-50 px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 focus:ring-0 border-r border-gray-200 w-14 shrink-0">
                                         <option value="percent">%</option>
                                         <option value="flat">₹</option>
                                     </select>
@@ -866,41 +1251,48 @@
                                            x-model.number="row.discount_value"
                                            @input="recalc()"
                                            placeholder="0"
-                                           class="block w-full min-h-[38px] px-2 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                           aria-label="Discount Value"
+                                           class="block w-full min-w-0 h-[38px] border-0 px-2.5 py-2 text-xs font-mono text-right text-slate-900 rounded-r-md focus:ring-0">
                                 </div>
                                 <template x-if="lineDiscount(row) > 0">
-                                    <p class="mt-1 text-[10px] text-slate-500 text-right" x-text="`- ${formatCurrency(lineDiscount(row))}`"></p>
+                                    <p class="mt-1 text-[10px] text-slate-500 text-right font-mono" x-text="`- ${formatCurrency(lineDiscount(row))}`"></p>
                                 </template>
                             </td>
 
                             {{-- CGST % Column (Intra-State only) --}}
-                            <td class="p-3 align-top min-w-[90px] w-24 text-right pt-5 font-mono text-xs text-slate-700" x-show="isIntraState()">
-                                <span x-text="((row.tax_rate / 2).toFixed(2) + '%')"></span>
+                            <td class="p-3 align-top min-w-[90px] w-24 text-right" x-show="isIntraState()">
+                                <div class="h-[38px] flex items-center justify-end font-mono text-xs text-slate-700">
+                                    <span x-text="((row.tax_rate / 2).toFixed(2) + '%')"></span>
+                                </div>
                             </td>
 
                             {{-- SGST % Column (Intra-State only) --}}
-                            <td class="p-3 align-top min-w-[90px] w-24 text-right pt-5 font-mono text-xs text-slate-700" x-show="isIntraState()">
-                                <span x-text="((row.tax_rate / 2).toFixed(2) + '%')"></span>
+                            <td class="p-3 align-top min-w-[90px] w-24 text-right" x-show="isIntraState()">
+                                <div class="h-[38px] flex items-center justify-end font-mono text-xs text-slate-700">
+                                    <span x-text="((row.tax_rate / 2).toFixed(2) + '%')"></span>
+                                </div>
                             </td>
 
                             {{-- Tax Rate / IGST % Column --}}
-                            <td class="p-3 align-top min-w-[100px] w-28 text-center pt-5 font-semibold text-xs text-slate-700">
-                                <span x-text="isIntraState() ? ((row.tax_rate || 0).toFixed(2) + '%') : ((row.tax_rate || 0).toFixed(2) + '% (IGST)')"></span>
+                            <td class="p-3 align-top min-w-[100px] w-28 text-center">
+                                <div class="h-[38px] flex items-center justify-center font-semibold text-xs text-slate-700">
+                                    <span x-text="isIntraState() ? ((row.tax_rate || 0).toFixed(2) + '%') : ((row.tax_rate || 0).toFixed(2) + '% (IGST)')"></span>
+                                </div>
                             </td>
 
                             {{-- Batch No Column --}}
-                            <td class="p-3 align-top min-w-[130px] w-36">
+                            <td class="p-3 align-top min-w-[140px] w-40">
                                 <div class="flex items-center gap-1">
                                     <input type="text"
                                            :name="`items[${i}][batch_no]`"
                                            x-model="row.batch_no"
                                            placeholder="Optional"
-                                           class="block w-full min-h-[38px] px-2.5 py-2 text-xs rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                           class="block w-full h-[38px] px-2.5 py-2 text-xs rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                                     <button type="button"
                                             @click="openBatchPicker(i)"
                                             x-show="row.product_id"
                                             title="Pick batch"
-                                            class="rounded-md border border-slate-300 bg-white px-2 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 shrink-0">
+                                            class="h-[38px] rounded-md border border-slate-300 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 shrink-0">
                                         Pick
                                     </button>
                                 </div>
@@ -910,20 +1302,25 @@
                             </td>
 
                             {{-- Line Total Column --}}
-                            <td class="p-3 align-top min-w-[140px] w-36 text-right pt-5 font-bold font-mono text-slate-900 text-sm whitespace-nowrap"
-                                x-text="formatCurrency(lineTotal(row))"></td>
+                            <td class="p-3 align-top min-w-[140px] w-36 text-right">
+                                <div class="h-[38px] flex items-center justify-end font-bold font-mono text-slate-900 text-sm whitespace-nowrap"
+                                     x-text="formatCurrency(lineTotal(row))">
+                                </div>
+                            </td>
 
                             {{-- Remove Row Action Column --}}
-                            <td class="p-3 align-top min-w-[50px] w-14 text-center pt-4">
-                                <button type="button"
-                                        @click="removeItem(i)"
-                                        x-show="lines.length > 1"
-                                        class="inline-flex items-center justify-center w-8 h-8 rounded-md text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
-                                        title="Remove row">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                    </svg>
-                                </button>
+                            <td class="p-3 align-top min-w-[50px] w-14 text-center">
+                                <div class="h-[38px] flex items-center justify-center">
+                                    <button type="button"
+                                            @click="removeItem(i)"
+                                            x-show="lines.length > 1"
+                                            class="inline-flex items-center justify-center w-8 h-8 rounded-md text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition cursor-pointer"
+                                            title="Remove row">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                        </svg>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     </template>
@@ -990,15 +1387,15 @@
                 <template x-if="isIntraState()">
                     <div class="space-y-1.5 pt-1 border-t border-dashed border-slate-200">
                         <div class="flex justify-between items-center text-slate-500 text-[11px]">
-                            <span>CGST Total:</span>
+                            <span x-text="priceType === 'inclusive' ? 'Extracted CGST Total:' : 'CGST Total:'">CGST Total:</span>
                             <span class="font-mono" x-text="formatCurrency(cgstTotal())"></span>
                         </div>
                         <div class="flex justify-between items-center text-slate-500 text-[11px]">
-                            <span>SGST Total:</span>
+                            <span x-text="priceType === 'inclusive' ? 'Extracted SGST Total:' : 'SGST Total:'">SGST Total:</span>
                             <span class="font-mono" x-text="formatCurrency(sgstTotal())"></span>
                         </div>
                         <div class="flex justify-between items-center text-slate-700 font-medium">
-                            <span>Total Tax (CGST + SGST):</span>
+                            <span x-text="priceType === 'inclusive' ? 'Total Extracted Tax (CGST + SGST):' : 'Total Tax (CGST + SGST):'">Total Tax (CGST + SGST):</span>
                             <span class="font-mono font-semibold text-sm" x-text="formatCurrency(totalTaxAmount())"></span>
                         </div>
                     </div>
@@ -1007,7 +1404,7 @@
                 <template x-if="!isIntraState()">
                     <div class="space-y-1.5 pt-1 border-t border-dashed border-slate-200">
                         <div class="flex justify-between items-center text-slate-700 font-medium">
-                            <span>Total Tax (IGST - Inter-State):</span>
+                            <span x-text="priceType === 'inclusive' ? 'Total Extracted Tax (IGST):' : 'Total Tax (IGST - Inter-State):'">Total Tax (IGST - Inter-State):</span>
                             <span class="font-mono font-semibold text-sm" x-text="formatCurrency(totalTaxAmount())"></span>
                         </div>
                     </div>
@@ -1130,6 +1527,177 @@
             Create Invoice
         </x-ui.button>
     </div>
+
+    {{-- Quick Add Delivery Address Modal --}}
+    <div x-show="addressModal.open"
+         x-cloak
+         class="fixed inset-0 z-50 overflow-y-auto"
+         aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div x-show="addressModal.open"
+                 x-transition:enter="ease-out duration-300"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="ease-in duration-200"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @click="addressModal.open = false"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"></div>
+
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+            <div x-show="addressModal.open"
+                 x-transition:enter="ease-out duration-300"
+                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave="ease-in duration-200"
+                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-xl sm:w-full">
+                
+                <div class="bg-indigo-600 px-5 py-3.5 flex items-center justify-between text-white">
+                    <h3 class="text-sm font-bold flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        <span>Add New Delivery Address</span>
+                    </h3>
+                    <button type="button" @click="addressModal.open = false" class="text-indigo-100 hover:text-white">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+
+                <div class="p-6 space-y-4 text-xs">
+                    <div x-show="addressModal.error" class="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg" x-text="addressModal.error"></div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Address Label *</label>
+                            <input type="text" x-model="addressModal.label" placeholder="E.g. Main Warehouse, Branch 2" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Address Type</label>
+                            <select x-model="addressModal.type" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="delivery">Delivery</option>
+                                <option value="warehouse">Warehouse</option>
+                                <option value="both">Both (Billing & Delivery)</option>
+                                <option value="shipping">Shipping</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Contact Person</label>
+                            <input type="text" x-model="addressModal.contact_person" placeholder="Name" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Contact Phone</label>
+                            <input type="text" x-model="addressModal.contact_phone" placeholder="Phone Number" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block font-semibold text-slate-700 mb-1">Address Line 1 *</label>
+                            <input type="text" x-model="addressModal.address_line_1" placeholder="Plot / Flat / Building / Street" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block font-semibold text-slate-700 mb-1">Address Line 2</label>
+                            <input type="text" x-model="addressModal.address_line_2" placeholder="Area / Landmark" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">City *</label>
+                            <input type="text" x-model="addressModal.city" placeholder="City / Town" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">State *</label>
+                            <select x-model="addressModal.state" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="">-- Select State --</option>
+                                @foreach(\App\Support\IndianStates::namesAlphabetical() as $st)
+                                    <option value="{{ $st }}">{{ $st }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">PIN Code</label>
+                            <input type="text" x-model="addressModal.pincode" placeholder="6-digit PIN" class="w-full rounded-lg border-gray-300 text-xs font-mono focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">GSTIN (Optional)</label>
+                            <input type="text" x-model="addressModal.gstin" placeholder="15-digit GSTIN" class="w-full rounded-lg border-gray-300 text-xs font-mono uppercase focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+                        <div class="sm:col-span-2 pt-1">
+                            <label class="inline-flex items-center gap-2 cursor-pointer font-medium text-slate-700">
+                                <input type="checkbox" x-model="addressModal.is_default_delivery" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span>Set as default delivery address for this customer</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 px-5 py-3 flex items-center justify-end gap-2.5 border-t border-slate-200">
+                    <button type="button" @click="addressModal.open = false" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition">Cancel</button>
+                    <button type="button" @click="saveNewAddress()" :disabled="addressModal.saving" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition disabled:opacity-50">
+                        <span x-show="!addressModal.saving">Save Address</span>
+                        <span x-show="addressModal.saving">Saving...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Pick Batch Modal --}}
+    <div x-show="batchPicker.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @keydown.escape.window="closeBatchPicker()">
+        <div class="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
+            <div class="mb-3 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-slate-800">Pick Available Batch</h3>
+                <button type="button" @click="closeBatchPicker()" class="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
+            </div>
+            <template x-if="batchPicker.loading">
+                <div class="py-8 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
+                    <svg class="w-6 h-6 animate-spin text-indigo-600" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    <span>Loading available batches…</span>
+                </div>
+            </template>
+            <template x-if="!batchPicker.loading && batchPicker.error">
+                <div class="py-6 text-center text-rose-600 font-medium" x-text="batchPicker.error"></div>
+            </template>
+            <template x-if="!batchPicker.loading && !batchPicker.error && batchPicker.batches.length === 0">
+                <div class="py-6 text-center text-slate-500">
+                    <p>No active batches available for this product.</p>
+                    <p class="text-xs text-slate-400 mt-1">You may enter a batch number manually in the line item.</p>
+                </div>
+            </template>
+            <template x-if="!batchPicker.loading && !batchPicker.error && batchPicker.batches.length > 0">
+                <div class="max-h-96 overflow-y-auto">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="sticky top-0 bg-slate-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Batch No</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Warehouse</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Expiry</th>
+                                <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Available</th>
+                                <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Selling Price (₹)</th>
+                                <th class="px-3 py-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <template x-for="b in batchPicker.batches" :key="b.id">
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-3 py-2 font-mono font-medium text-slate-800" x-text="b.batch_no || '—'"></td>
+                                    <td class="px-3 py-2 text-slate-600" x-text="b.warehouse || '—'"></td>
+                                    <td class="px-3 py-2 text-slate-500" x-text="b.expiry_date || '—'"></td>
+                                    <td class="px-3 py-2 text-right font-mono font-semibold text-slate-800" x-text="b.available_qty"></td>
+                                    <td class="px-3 py-2 text-right font-mono text-slate-700" x-text="formatCurrency(b.selling_price ?? b.unit_cost)"></td>
+                                    <td class="px-3 py-2 text-right">
+                                        <button type="button" @click="applyBatch(b)" class="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700 transition">
+                                            Use
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+        </div>
+    </div>
 </form>
 
 {{-- Quick Add Customer Modal Component --}}
@@ -1138,56 +1706,18 @@
 {{-- Quick Add Product Modal Component --}}
 <x-quick-add-product />
 
-{{-- Pick Batch Modal --}}
-<div x-show="batchPicker.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @keydown.escape.window="batchPicker.open = false">
-    <div class="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
-        <div class="mb-3 flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-slate-800">Pick Available Batch</h3>
-            <button type="button" @click="batchPicker.open = false" class="text-slate-400 hover:text-slate-600 font-bold text-lg">✕</button>
-        </div>
-        <template x-if="batchPicker.loading">
-            <p class="py-6 text-center text-slate-500">Loading batches…</p>
-        </template>
-        <template x-if="!batchPicker.loading && batchPicker.batches.length === 0">
-            <p class="py-6 text-center text-slate-500">No active batches available for this product.</p>
-        </template>
-        <template x-if="!batchPicker.loading && batchPicker.batches.length > 0">
-            <div class="max-h-96 overflow-y-auto">
-                <table class="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead class="sticky top-0 bg-slate-50">
-                        <tr>
-                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Batch No</th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Warehouse</th>
-                            <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Expiry</th>
-                            <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Available</th>
-                            <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Selling Price (₹)</th>
-                            <th class="px-3 py-2"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        <template x-for="b in batchPicker.batches" :key="b.id">
-                            <tr>
-                                <td class="px-3 py-2 font-mono font-medium text-slate-800" x-text="b.batch_no || '—'"></td>
-                                <td class="px-3 py-2 text-slate-600" x-text="b.warehouse || '—'"></td>
-                                <td class="px-3 py-2 text-slate-500" x-text="b.expiry_date || '—'"></td>
-                                <td class="px-3 py-2 text-right font-mono font-semibold text-slate-800" x-text="b.available_qty"></td>
-                                <td class="px-3 py-2 text-right font-mono text-slate-700" x-text="formatCurrency(b.selling_price ?? b.unit_cost)"></td>
-                                <td class="px-3 py-2 text-right">
-                                    <button type="button" @click="applyBatch(b)" class="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700 transition">
-                                        Use
-                                    </button>
-                                </td>
-                            </tr>
-                        </template>
-                    </tbody>
-                </table>
-            </div>
-        </template>
-    </div>
-</div>
-
 @push('scripts')
 <script>
+window.batchPicker = window.batchPicker || {
+    open: false,
+    loading: false,
+    targetIdx: null,
+    productId: null,
+    selectedBatch: null,
+    batches: [],
+    error: null,
+};
+
 function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, initialOrders, companyState, newProduct, savedDraft, targetRow) {
     return {
         products: products || [],
@@ -1230,12 +1760,80 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         lrRrNo: initialOrder ? (initialOrder.lr_rr_no || '') : '{{ old('lr_rr_no', '') }}',
         lrRrDate: initialOrder ? (initialOrder.lr_rr_date || '') : '{{ old('lr_rr_date', '') }}',
         motorVehicleNo: initialOrder ? (initialOrder.vehicle_no || '') : '{{ old('motor_vehicle_no', old('vehicle_no', '')) }}',
-        transportMode: '{{ old('transport_mode', '1') }}',
+        transportMode: '{{ old('transport_mode', '1 - Road') }}',
         vehicleType: '{{ old('vehicle_type', 'R') }}',
         distanceKm: {{ old('distance_km', 0) }},
         transporterId: '{{ old('transporter_id', '') }}',
         transporterName: '{{ old('transporter_name', '') }}',
+        billToPlace: initialOrder ? (initialOrder.bill_to_place || '') : '{{ old('bill_to_place', '') }}',
+        shipToPlace: initialOrder ? (initialOrder.ship_to_place || '') : '{{ old('ship_to_place', '') }}',
         ewayBillRequired: '{{ old('eway_bill_required', 'auto') }}',
+        ewayBillNo: '{{ old('eway_bill_no', '') }}',
+        ewayBillDate: '{{ old('eway_bill_date', '') }}',
+        ewaySubType: '{{ old('eway_sub_type', 'Supply') }}',
+        ewayDocType: '{{ old('eway_doc_type', 'Tax Invoice') }}',
+        ewaySupplyType: '{{ old('eway_supply_type', 'Outward') }}',
+        ewayNa: false,
+        partBNa: false,
+
+        get isRoadMode() {
+            return !this.transportMode || this.transportMode === '1 - Road' || this.transportMode === '1' || this.transportMode === 'Road';
+        },
+
+        onTransporterChange(event) {
+            const select = event.target;
+            if (!this.transporterName) {
+                this.transporterId = '';
+                return;
+            }
+            const opt = select.options[select.selectedIndex];
+            const tid = opt ? opt.getAttribute('data-transporter-id') : '';
+            this.transporterId = tid ? tid.trim() : '';
+        },
+
+        onTransportModeChange() {
+            this.partBNa = (this.transportMode === 'Not Applicable');
+        },
+
+        // Consignor Details (From)
+        consignorName: '{{ old('consignor_name', $company?->name ?? '') }}',
+        consignorGstin: '{{ old('consignor_gstin', $company?->gstin ?? '') }}',
+        consignorState: '{{ old('consignor_state', $company?->state ?? '') }}',
+        consignorAddressType: '{{ old('consignor_address_type', 'Principal Place of Business') }}',
+        consignorAddressLine1: '{{ old('consignor_address_line_1', $company?->address ?? '') }}',
+        consignorAddressLine2: '{{ old('consignor_address_line_2', '') }}',
+        consignorPincode: '{{ old('consignor_pincode', $company?->pincode ?? '') }}',
+        consignorCity: '{{ old('consignor_city', '') }}',
+        consignorActualState: '{{ old('consignor_actual_state', $company?->state ?? '') }}',
+
+        // Consignee Details (To)
+        consigneeName: '{{ old('consignee_name', '') }}',
+        consigneeGstin: '{{ old('consignee_gstin', '') }}',
+        consigneeState: '{{ old('consignee_state', '') }}',
+        consigneeAddressType: '{{ old('consignee_address_type', 'Delivery') }}',
+        consigneeAddressLine1: '{{ old('consignee_address_line_1', '') }}',
+        consigneeAddressLine2: '{{ old('consignee_address_line_2', '') }}',
+        consigneePincode: '{{ old('consignee_pincode', '') }}',
+        consigneeCity: '{{ old('consignee_city', '') }}',
+        consigneeActualState: '{{ old('consignee_actual_state', '') }}',
+
+        // Quick Add Address Modal state
+        addressModal: {
+            open: false,
+            saving: false,
+            error: '',
+            label: 'Delivery Branch',
+            type: 'delivery',
+            contact_person: '',
+            contact_phone: '',
+            address_line_1: '',
+            address_line_2: '',
+            city: '',
+            state: '',
+            pincode: '',
+            gstin: '',
+            is_default_delivery: true,
+        },
 
         // Order Details
         orderNo: initialOrder ? (initialOrder.order_no || initialOrder.order_number || '') : '{{ old('order_no', '') }}',
@@ -1259,7 +1857,15 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         universalValue: {{ old('universal_discount_value', 0) }},
         selectedSchemeId: '{{ old('scheme_id', '') }}',
 
-        batchPicker: { open: false, loading: false, targetIdx: null, batches: [] },
+        batchPicker: {
+            open: false,
+            loading: false,
+            targetIdx: null,
+            productId: null,
+            selectedBatch: null,
+            batches: [],
+            error: null,
+        },
 
         onDeliveryNoteNaToggle() {
             if (this.deliveryNoteNa) {
@@ -1319,6 +1925,13 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 if (draft.lrRrNo) this.lrRrNo = draft.lrRrNo;
                 if (draft.lrRrDate) this.lrRrDate = draft.lrRrDate;
                 if (draft.motorVehicleNo) this.motorVehicleNo = draft.motorVehicleNo;
+                if (draft.transportMode) this.transportMode = draft.transportMode;
+                if (draft.transporterName) this.transporterName = draft.transporterName;
+                if (draft.transporterId) this.transporterId = draft.transporterId;
+                if (draft.vehicleType) this.vehicleType = draft.vehicleType;
+                if (draft.distanceKm !== undefined) this.distanceKm = draft.distanceKm;
+                if (draft.billToPlace) this.billToPlace = draft.billToPlace;
+                if (draft.shipToPlace) this.shipToPlace = draft.shipToPlace;
                 if (draft.orderNo) this.orderNo = draft.orderNo;
                 if (draft.paymentTerms) this.paymentTerms = draft.paymentTerms;
                 if (draft.otherReferences) this.otherReferences = draft.otherReferences;
@@ -1335,6 +1948,7 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 if (draft.universalType) this.universalType = draft.universalType;
                 if (draft.universalValue !== undefined) this.universalValue = draft.universalValue;
                 if (draft.selectedSchemeId) this.selectedSchemeId = draft.selectedSchemeId;
+                if (draft.priceType) this.priceType = draft.priceType;
 
                 if (Array.isArray(draft.lines) && draft.lines.length > 0) {
                     this.lines = draft.lines.map(it => {
@@ -1500,6 +2114,13 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 lrRrNo: this.lrRrNo || '',
                 lrRrDate: this.lrRrDate || '',
                 motorVehicleNo: this.motorVehicleNo || '',
+                transportMode: this.transportMode || '',
+                transporterName: this.transporterName || '',
+                transporterId: this.transporterId || '',
+                vehicleType: this.vehicleType || '',
+                distanceKm: this.distanceKm || 0,
+                billToPlace: this.billToPlace || '',
+                shipToPlace: this.shipToPlace || '',
                 orderNo: this.orderNo || '',
                 paymentTerms: this.paymentTerms || '',
                 otherReferences: this.otherReferences || '',
@@ -1513,6 +2134,7 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 universalType: this.universalType || 'flat',
                 universalValue: this.universalValue || 0,
                 selectedSchemeId: this.selectedSchemeId || '',
+                priceType: this.priceType || 'exclusive',
                 lines: (this.lines || []).map(r => ({
                     product_id: r.product_id || '',
                     uom_id: r.uom_id || '',
@@ -1589,6 +2211,8 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             this.billingSnapshot = '';
             this.shippingSnapshot = '';
             this.deliveryState = '';
+            this.billToPlace = '';
+            this.shipToPlace = '';
         },
 
         async onCustomerChange(id) {
@@ -1648,6 +2272,122 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             ]);
         },
 
+        get selectedShippingAddress() {
+            const id = this.sameAsBilling ? this.selectedBillingId : this.selectedShippingId;
+            return this.partyAddresses.find(a => String(a.id) === String(id)) || null;
+        },
+
+        openAddressModal() {
+            if (!this.customerId) {
+                alert('Please select a customer first.');
+                return;
+            }
+            const cust = this.customers.find(c => String(c.id) === String(this.customerId));
+            this.addressModal.open = true;
+            this.addressModal.saving = false;
+            this.addressModal.error = '';
+            this.addressModal.label = 'Delivery Branch';
+            this.addressModal.type = 'delivery';
+            this.addressModal.contact_person = cust?.name || '';
+            this.addressModal.contact_phone = cust?.phone || '';
+            this.addressModal.address_line_1 = '';
+            this.addressModal.address_line_2 = '';
+            this.addressModal.city = cust?.city || '';
+            this.addressModal.state = cust?.state || '';
+            this.addressModal.pincode = cust?.pincode || '';
+            this.addressModal.gstin = cust?.gstin || '';
+            this.addressModal.is_default_delivery = true;
+        },
+
+        async saveNewAddress() {
+            if (!this.addressModal.address_line_1 || !this.addressModal.city || !this.addressModal.state) {
+                this.addressModal.error = 'Address Line 1, City, and State are required.';
+                return;
+            }
+            this.addressModal.saving = true;
+            this.addressModal.error = '';
+            try {
+                const res = await fetch(`{{ url('/masters/customers') }}/${this.customerId}/addresses`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        label: this.addressModal.label,
+                        type: this.addressModal.type,
+                        contact_person: this.addressModal.contact_person,
+                        contact_phone: this.addressModal.contact_phone,
+                        address_line_1: this.addressModal.address_line_1,
+                        address_line_2: this.addressModal.address_line_2,
+                        city: this.addressModal.city,
+                        state: this.addressModal.state,
+                        pincode: this.addressModal.pincode,
+                        gstin: this.addressModal.gstin,
+                        is_default_delivery: this.addressModal.is_default_delivery,
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    this.addressModal.error = data.message || (data.errors ? Object.values(data.errors).flat().join(', ') : 'Failed to save address.');
+                    return;
+                }
+                const newAddr = data.address;
+                this.partyAddresses.push(newAddr);
+                this.sameAsBilling = false;
+                this.selectedShippingId = newAddr.id;
+                this.onShippingAddressChange();
+                this.addressModal.open = false;
+            } catch (err) {
+                console.error(err);
+                this.addressModal.error = 'Network or server error while saving address.';
+            } finally {
+                this.addressModal.saving = false;
+            }
+        },
+
+        syncConsigneeFromAddress(addr) {
+            const cust = this.customers.find(c => String(c.id) === String(this.customerId));
+            if (addr) {
+                this.consigneeName = addr.contact_person || addr.name || cust?.name || '';
+                this.consigneeGstin = addr.gstin || cust?.gstin || '';
+                this.consigneeState = addr.state || cust?.state || '';
+                this.consigneeAddressType = addr.label || 'Delivery';
+                this.consigneeAddressLine1 = addr.address_line_1 || addr.address || cust?.address || '';
+                this.consigneeAddressLine2 = addr.address_line_2 || '';
+                this.consigneePincode = addr.pincode || cust?.pincode || '';
+                this.consigneeCity = addr.city || cust?.city || '';
+                this.consigneeActualState = addr.state || cust?.state || '';
+            } else if (cust) {
+                this.consigneeName = cust.name || '';
+                this.consigneeGstin = cust.gstin || '';
+                this.consigneeState = cust.state || '';
+                this.consigneeAddressType = 'Delivery';
+                this.consigneeAddressLine1 = cust.address || '';
+                this.consigneeAddressLine2 = '';
+                this.consigneePincode = cust.pincode || '';
+                this.consigneeCity = cust.city || '';
+                this.consigneeActualState = cust.state || '';
+            }
+        },
+
+        onEwayNaToggle() {
+            if (this.ewayNa) {
+                this.ewayBillRequired = 'no';
+                this.ewayBillNo = '';
+                this.ewayBillDate = '';
+            } else {
+                this.ewayBillRequired = 'auto';
+            }
+        },
+
+        onPartBNaToggle() {
+            if (this.partBNa) {
+                this.distanceKm = 0;
+            }
+        },
+
         async loadCustomerAddresses(id) {
             this.addressesLoading = true;
             try {
@@ -1657,14 +2397,20 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 const data = await res.json();
                 if (data.success) {
                     this.partyAddresses = data.addresses || [];
-                    this.selectedBillingId = data.default_billing_id || (this.partyAddresses[0]?.id ?? '');
-                    this.selectedShippingId = data.default_delivery_id || this.selectedBillingId;
+                    if (this.partyAddresses.length === 1) {
+                        this.selectedBillingId = this.partyAddresses[0].id;
+                        this.selectedShippingId = this.partyAddresses[0].id;
+                    } else {
+                        this.selectedBillingId = data.default_billing_id || (this.partyAddresses[0]?.id ?? '');
+                        this.selectedShippingId = data.default_delivery_id || this.selectedBillingId;
+                    }
 
                     this.onBillingAddressChange();
                     if (!this.sameAsBilling) {
                         this.onShippingAddressChange();
                     } else {
                         this.shippingSnapshot = this.billingSnapshot;
+                        this.syncConsigneeFromAddress(this.selectedShippingAddress);
                     }
                 }
             } catch (e) {
@@ -1677,34 +2423,50 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         onBillingAddressChange() {
             const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedBillingId));
             this.billingSnapshot = addr ? (addr.snapshot || addr.full_address) : '';
+            if (addr?.city) {
+                this.billToPlace = addr.city;
+            }
             if (this.sameAsBilling) {
                 this.selectedShippingId = this.selectedBillingId;
                 this.shippingSnapshot = this.billingSnapshot;
+                if (addr?.city) {
+                    this.shipToPlace = addr.city;
+                }
                 if (addr?.state) {
                     this.deliveryState = addr.state;
                     this.recalc();
                 }
+                this.syncConsigneeFromAddress(addr);
             }
         },
 
         onShippingAddressChange() {
             const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedShippingId));
             this.shippingSnapshot = addr ? (addr.snapshot || addr.full_address) : '';
+            if (addr?.city) {
+                this.shipToPlace = addr.city;
+            }
             if (addr?.state) {
                 this.deliveryState = addr.state;
                 this.recalc();
             }
+            this.syncConsigneeFromAddress(addr);
         },
 
         onSameAsBillingToggle() {
             if (this.sameAsBilling) {
                 this.selectedShippingId = this.selectedBillingId;
                 this.shippingSnapshot = this.billingSnapshot;
+                this.shipToPlace = this.billToPlace;
                 const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedBillingId));
+                if (addr?.city) {
+                    this.shipToPlace = addr.city;
+                }
                 if (addr?.state) {
                     this.deliveryState = addr.state;
                     this.recalc();
                 }
+                this.syncConsigneeFromAddress(addr);
             } else {
                 this.onShippingAddressChange();
             }
@@ -1805,6 +2567,21 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                     if (ord.delivery_state) {
                         this.deliveryState = ord.delivery_state;
                     }
+                    if (ord.bill_to_place) {
+                        this.billToPlace = ord.bill_to_place;
+                    }
+                    if (ord.ship_to_place) {
+                        this.shipToPlace = ord.ship_to_place;
+                    }
+                    if (ord.transport_mode) {
+                        this.transportMode = ord.transport_mode;
+                    }
+                    if (ord.transporter_name) {
+                        this.transporterName = ord.transporter_name;
+                    }
+                    if (ord.transporter_id) {
+                        this.transporterId = ord.transporter_id;
+                    }
 
                     if (ord.billing_address_id) {
                         this.selectedBillingId = ord.billing_address_id;
@@ -1887,7 +2664,7 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         },
 
         get isEWayBillMandatory() {
-            return (Number(this.grandTotal) || 0) >= 50000;
+            return (Number(this.grandTotal()) || 0) >= 50000;
         },
 
         get isEWayBillApplicable() {
@@ -2002,38 +2779,86 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         // Batch Picker Modal Handlers
         async openBatchPicker(idx) {
             const row = this.lines[idx];
-            if (!row.product_id) return;
+            if (!row || !row.product_id) return;
             this.batchPicker.open = true;
             this.batchPicker.loading = true;
+            this.batchPicker.error = null;
             this.batchPicker.targetIdx = idx;
+            this.batchPicker.productId = row.product_id;
+            this.batchPicker.selectedBatch = null;
             this.batchPicker.batches = [];
+
+            if (window.batchPicker) {
+                window.batchPicker.open = true;
+                window.batchPicker.loading = true;
+                window.batchPicker.error = null;
+                window.batchPicker.targetIdx = idx;
+                window.batchPicker.productId = row.product_id;
+                window.batchPicker.batches = [];
+            }
+
             try {
                 const params = new URLSearchParams();
                 if (row.uom_id) params.set('uom_id', row.uom_id);
                 const res = await fetch(`{{ url('/inventory/batches') }}/${row.product_id}?${params.toString()}`, {
                     headers: { 'Accept': 'application/json' }
                 });
+                if (!res.ok) {
+                    throw new Error(`HTTP error ${res.status}`);
+                }
                 const data = await res.json();
-                this.batchPicker.batches = data.batches || [];
+                const fetchedBatches = Array.isArray(data.batches) ? data.batches : [];
+                this.batchPicker.batches = fetchedBatches;
+                if (window.batchPicker) {
+                    window.batchPicker.batches = fetchedBatches;
+                }
             } catch (e) {
-                console.error(e);
+                console.error('Batch fetch error:', e);
+                this.batchPicker.batches = [];
+                this.batchPicker.error = 'Unable to load batches. Please try again.';
+                if (window.batchPicker) {
+                    window.batchPicker.batches = [];
+                    window.batchPicker.error = this.batchPicker.error;
+                }
             } finally {
                 this.batchPicker.loading = false;
+                if (window.batchPicker) {
+                    window.batchPicker.loading = false;
+                }
+            }
+        },
+
+        closeBatchPicker() {
+            this.batchPicker.open = false;
+            this.batchPicker.loading = false;
+            this.batchPicker.targetIdx = null;
+            this.batchPicker.selectedBatch = null;
+            this.batchPicker.error = null;
+            if (window.batchPicker) {
+                window.batchPicker.open = false;
+                window.batchPicker.loading = false;
+                window.batchPicker.targetIdx = null;
+                window.batchPicker.selectedBatch = null;
+                window.batchPicker.error = null;
             }
         },
 
         applyBatch(b) {
+            if (!b || this.batchPicker.targetIdx === null) return;
             const row = this.lines[this.batchPicker.targetIdx];
             if (!row) return;
             row.batch_no = b.batch_no || '';
             row.batch_meta = b;
+            this.batchPicker.selectedBatch = b;
             if (b.uom_id) row.uom_id = b.uom_id;
             const price = b.selling_price ?? b.unit_cost;
-            if (price) row.unit_price = Number(price);
+            if (price !== null && price !== undefined && price !== '') {
+                row.unit_price = Number(price);
+            }
             if (b.available_qty && Number(row.quantity) > Number(b.available_qty)) {
                 row.quantity = Number(b.available_qty);
             }
-            this.batchPicker.open = false;
+            this.closeBatchPicker();
             this.recalc();
         },
 
@@ -2129,22 +2954,28 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         },
 
         autoRoundOff() {
+            this.isManualRoundOff = false;
             const total = this.totalBeforeRoundOff();
             this.roundOff = Math.round((Math.round(total) - total) * 100) / 100;
-            this.isManualRoundOff = false;
         },
 
         grandTotal() {
             const total = this.totalBeforeRoundOff();
-            if (!this.isManualRoundOff) {
-                this.roundOff = Math.round((Math.round(total) - total) * 100) / 100;
-            }
             const r = Number(this.roundOff) || 0;
             return Math.max(0, Math.round((total + r) * 100) / 100);
         },
 
         recalc() {
-            // Trigger Alpine reactivity across all dependent getters
+            if (!this.isManualRoundOff) {
+                const total = this.totalBeforeRoundOff();
+                this.roundOff = Math.round((Math.round(total) - total) * 100) / 100;
+            }
+        },
+
+        setPriceType(type) {
+            if (this.priceType === type) return;
+            this.priceType = type;
+            this.recalc();
         },
 
         formatCurrency(n) {
@@ -2238,6 +3069,21 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             return det ? det.benefit : 0;
         },
     };
+}
+
+window.salesInvoiceForm = salesInvoiceForm;
+
+function registerSalesInvoiceAlpine() {
+    if (typeof window.Alpine !== 'undefined' && typeof Alpine.data === 'function') {
+        Alpine.data('salesInvoiceForm', salesInvoiceForm);
+        Alpine.data('batchPicker', () => window.batchPicker);
+    }
+}
+
+if (typeof window.Alpine !== 'undefined') {
+    registerSalesInvoiceAlpine();
+} else {
+    document.addEventListener('alpine:init', registerSalesInvoiceAlpine);
 }
 </script>
 @endpush

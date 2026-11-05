@@ -1,11 +1,57 @@
 @extends('layouts.dms')
 @section('title', $invoice->invoice_no)
 @section('content')
+<div x-data="{
+    cancelEInvoiceModal: false,
+    cancelEwayModal: false,
+    generateEwayModal: false,
+    updateVehicleModal: false,
+    printSettingsModal: false,
+    printCopyType: 'all',
+    printCopies: 3,
+    cancelReason: '1',
+    cancelRemarks: '',
+    ewayCancelReason: '1',
+    ewayCancelRemarks: '',
+    vehicleNo: @js($invoice->vehicle_no ?? ''),
+    vehicleType: @js($invoice->vehicle_type ?? 'R'),
+    vehicleReason: 'Breakdown / Transshipment',
+    distanceKm: @js($invoice->distance_km ?? 50),
+    transportMode: @js($invoice->transport_mode ?? '1'),
+    transporterId: @js($invoice->transporter_id ?? ''),
+    transporterName: @js($invoice->transporter_name ?? ''),
+}">
+
 <x-ui.page-header :title="$invoice->invoice_no" :description="$invoice->customer->name">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('invoices.index')">Back</x-ui.button>
         <x-ui.button variant="secondary" :href="route('invoices.edit', $invoice)">Edit</x-ui.button>
-        <x-ui.button variant="secondary" :href="route('invoices.preview', $invoice)">Print Preview</x-ui.button>
+        <button type="button" @click="printSettingsModal = true" class="inline-flex items-center px-3.5 py-2 border border-slate-300 shadow-sm text-sm font-semibold rounded-lg text-slate-700 bg-white hover:bg-slate-50 transition">
+            <svg class="w-4 h-4 mr-1.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+            Print
+        </button>
+        <div class="relative inline-block text-left" x-data="{ exportOpen: false }">
+            <button type="button" @click="exportOpen = !exportOpen" @click.away="exportOpen = false" class="inline-flex items-center px-3.5 py-2 border border-slate-300 shadow-sm text-sm font-semibold rounded-lg text-slate-700 bg-white hover:bg-slate-50 transition">
+                <svg class="w-4 h-4 mr-1.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Export
+                <svg class="w-3 h-3 ml-1 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+            </button>
+            <div x-show="exportOpen" class="origin-top-right absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 py-1" style="display: none;">
+                <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'pdf']) }}" class="flex items-center px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-100 font-medium">
+                    <svg class="w-4 h-4 mr-2 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                    PDF Document
+                </a>
+                <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'xlsx']) }}" class="flex items-center px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-100 font-medium">
+                    <svg class="w-4 h-4 mr-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Excel (.xlsx)
+                </a>
+                <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'csv']) }}" class="flex items-center px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-100 font-medium">
+                    <svg class="w-4 h-4 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    CSV File
+                </a>
+            </div>
+        </div>
+        <x-ui.button variant="secondary" :href="route('invoices.preview', $invoice)">Preview</x-ui.button>
         <x-ui.button variant="secondary" :href="route('invoices.e-invoice.document', $invoice)">E-Invoice Doc</x-ui.button>
         <x-ui.button variant="secondary" :href="route('invoices.eway.document', $invoice)">E-Way Bill Doc</x-ui.button>
         <form method="POST" action="{{ route('payment-links.create', $invoice) }}" class="inline">@csrf<x-ui.button type="submit" variant="secondary">Payment Link</x-ui.button></form>
@@ -38,11 +84,21 @@
             <h4 class="text-xs font-bold tracking-wider text-slate-500 mb-2 uppercase">Addresses</h4>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div class="p-3 bg-white rounded-lg border border-slate-200">
-                    <span class="text-xs font-semibold uppercase text-slate-500">Billing Address</span>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold uppercase text-slate-500">Billing Address</span>
+                        @if($invoice->bill_to_place)
+                            <span class="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Place: {{ $invoice->bill_to_place }}</span>
+                        @endif
+                    </div>
                     <div class="mt-1 font-medium text-slate-800 whitespace-pre-line text-xs">{{ $invoice->billing_address ?: ($invoice->customer->address ?: '—') }}</div>
                 </div>
                 <div class="p-3 bg-white rounded-lg border border-slate-200">
-                    <span class="text-xs font-semibold uppercase text-slate-500">Delivery Address</span>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold uppercase text-slate-500">Delivery Address</span>
+                        @if($invoice->ship_to_place)
+                            <span class="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Place: {{ $invoice->ship_to_place }}</span>
+                        @endif
+                    </div>
                     <div class="mt-1 font-medium text-slate-800 whitespace-pre-line text-xs">{{ $invoice->shipping_address ?: ($invoice->billing_address ?: ($invoice->customer->shipping_address ?: ($invoice->customer->address ?: '—'))) }}</div>
                 </div>
             </div>
@@ -82,6 +138,68 @@
                 </div>
             </div>
         </div>
+
+        @if($invoice->consignor_name || $invoice->consignee_name || $invoice->eway_bill_no || $invoice->transporter_name)
+        <div class="p-4 border-t border-slate-100 bg-slate-50/50">
+            <h4 class="text-xs font-bold tracking-wider text-slate-700 uppercase mb-3">Consignor, Consignee &amp; Transport Details</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                {{-- Consignor (From) --}}
+                <div class="p-3 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div class="font-bold text-slate-800 border-b border-slate-100 pb-1 flex items-center justify-between">
+                        <span>Consignor (From - Seller)</span>
+                        @if($invoice->consignor_gstin)
+                            <span class="font-mono text-[10px] text-indigo-700">{{ $invoice->consignor_gstin }}</span>
+                        @endif
+                    </div>
+                    <div class="font-medium text-slate-900">{{ $invoice->consignor_name ?: ($invoice->company?->name ?? '—') }}</div>
+                    <div class="text-slate-600">
+                        {{ $invoice->consignor_address_line_1 }}
+                        @if($invoice->consignor_address_line_2), {{ $invoice->consignor_address_line_2 }}@endif
+                    </div>
+                    <div class="text-slate-600">
+                        {{ $invoice->consignor_city }}@if($invoice->consignor_city && $invoice->consignor_state), @endif{{ $invoice->consignor_state }}@if($invoice->consignor_pincode) - {{ $invoice->consignor_pincode }}@endif
+                    </div>
+                </div>
+
+                {{-- Consignee (To) --}}
+                <div class="p-3 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div class="font-bold text-slate-800 border-b border-slate-100 pb-1 flex items-center justify-between">
+                        <span>Consignee (To - Delivery)</span>
+                        @if($invoice->consignee_gstin)
+                            <span class="font-mono text-[10px] text-emerald-700">{{ $invoice->consignee_gstin }}</span>
+                        @endif
+                    </div>
+                    <div class="font-medium text-slate-900">{{ $invoice->consignee_name ?: ($invoice->customer->name ?? '—') }}</div>
+                    <div class="text-slate-600">
+                        {{ $invoice->consignee_address_line_1 ?: ($invoice->shipping_address ?: '—') }}
+                        @if($invoice->consignee_address_line_2), {{ $invoice->consignee_address_line_2 }}@endif
+                    </div>
+                    <div class="text-slate-600">
+                        {{ $invoice->consignee_city }}@if($invoice->consignee_city && $invoice->consignee_state), @endif{{ $invoice->consignee_state }}@if($invoice->consignee_pincode) - {{ $invoice->consignee_pincode }}@endif
+                    </div>
+                </div>
+
+                {{-- Transport & e-Way Bill --}}
+                <div class="p-3 bg-white rounded-lg border border-slate-200 space-y-1">
+                    <div class="font-bold text-slate-800 border-b border-slate-100 pb-1 flex items-center justify-between">
+                        <span>Transport &amp; e-Way Bill</span>
+                        <span class="font-semibold text-[10px] text-slate-500 uppercase">{{ $invoice->eway_supply_type ?: 'Outward' }}</span>
+                    </div>
+                    <div><span class="text-slate-500">e-Way Bill No:</span> <span class="font-mono font-bold text-indigo-700">{{ $invoice->eway_bill_no ?: ($invoice->eWayBill?->eway_bill_no ?: '—') }}</span></div>
+                    @if($invoice->eway_bill_date || $invoice->eWayBill?->ewb_date)
+                        <div><span class="text-slate-500">Date:</span> <span class="font-medium text-slate-800">{{ ($invoice->eway_bill_date ?: $invoice->eWayBill?->ewb_date)?->format('d/m/Y') }}</span></div>
+                    @endif
+                    <div><span class="text-slate-500">Transporter:</span> <span class="font-medium text-slate-800">{{ $invoice->transporter_name ?: '—' }} @if($invoice->transporter_id)({{ $invoice->transporter_id }})@endif</span></div>
+                    <div><span class="text-slate-500">Mode:</span> <span class="font-medium text-slate-800">{{ $invoice->transport_mode ?: '—' }}</span></div>
+                    @if($invoice->lr_rr_no)
+                        <div><span class="text-slate-500">Doc / LR-RR:</span> <span class="font-medium text-slate-800">{{ $invoice->lr_rr_no }} @if($invoice->lr_rr_date)({{ $invoice->lr_rr_date->format('d/m/Y') }})@endif</span></div>
+                    @endif
+                    <div><span class="text-slate-500">Distance:</span> <span class="font-medium text-slate-800">{{ $invoice->distance_km ? $invoice->distance_km . ' KM' : '—' }}</span></div>
+                    <div><span class="text-slate-500">Vehicle Type:</span> <span class="font-medium text-slate-800">{{ $invoice->vehicle_type === 'O' ? 'Over Dimensional Cargo (ODC)' : 'Regular Cargo (R)' }}</span></div>
+                </div>
+            </div>
+        </div>
+        @endif
     </x-ui.card>
 
     {{-- Summary Card --}}
@@ -124,24 +242,7 @@
 </div>
 
 {{-- E-Invoice & E-Way Bill Compliance Management --}}
-<div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6"
-     x-data="{
-         cancelEInvoiceModal: false,
-         cancelEwayModal: false,
-         generateEwayModal: false,
-         updateVehicleModal: false,
-         cancelReason: '1',
-         cancelRemarks: '',
-         ewayCancelReason: '1',
-         ewayCancelRemarks: '',
-         vehicleNo: @js($invoice->vehicle_no ?? ''),
-         vehicleType: @js($invoice->vehicle_type ?? 'R'),
-         vehicleReason: 'Breakdown / Transshipment',
-         distanceKm: @js($invoice->distance_km ?? 50),
-         transportMode: @js($invoice->transport_mode ?? '1'),
-         transporterId: @js($invoice->transporter_id ?? ''),
-         transporterName: @js($invoice->transporter_name ?? ''),
-     }">
+<div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
 
     {{-- 1. E-Invoice (IRN) Card --}}
     <x-ui.card>
@@ -571,6 +672,73 @@
                     <div class="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
                         <x-ui.button type="button" variant="secondary" @click="updateVehicleModal = false">Cancel</x-ui.button>
                         <x-ui.button type="submit" variant="primary">Update Vehicle</x-ui.button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    {{-- Modal 5: Print Settings & Copies --}}
+    <div x-show="printSettingsModal" class="fixed inset-0 z-50 overflow-y-auto" x-cloak>
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity bg-slate-900/60" @click="printSettingsModal = false"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-md sm:w-full">
+                <form method="GET" action="{{ route('invoices.preview', $invoice) }}" target="_blank">
+                    <div class="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                        <div class="flex items-center gap-2.5">
+                            <div class="p-2 bg-indigo-100 text-indigo-700 rounded-lg">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-slate-900">Print Tax Invoice</h3>
+                                <p class="text-[11px] text-slate-500 font-mono">{{ $invoice->invoice_no }}</p>
+                            </div>
+                        </div>
+                        <button type="button" @click="printSettingsModal = false" class="text-slate-400 hover:text-slate-600 text-sm">✕</button>
+                    </div>
+
+                    <div class="p-5 space-y-4 text-xs">
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Type of Copy *</label>
+                            <select name="copy_type" x-model="printCopyType" @change="if(printCopyType === 'all') { printCopies = 3; } else { printCopies = 1; }" class="w-full rounded-lg border-slate-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="all">All Copies (Original + Duplicate + Triplicate)</option>
+                                <option value="original">Original for Recipient</option>
+                                <option value="duplicate">Duplicate for Transporter</option>
+                                <option value="triplicate">Triplicate for Supplier</option>
+                                <option value="extra">Extra Copy</option>
+                                <option value="na">Not Applicable (No copy label)</option>
+                            </select>
+                            <p class="mt-1 text-[11px] text-slate-500">Specifies the statutory copy label to render on the invoice heading.</p>
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Number of Copies *</label>
+                            <input type="number" name="copies" x-model.number="printCopies" min="1" max="10" class="w-full rounded-lg border-slate-300 text-xs focus:ring-indigo-500 focus:border-indigo-500" required>
+                            <p class="mt-1 text-[11px] text-slate-500">When printing multiple copies, each copy begins on a separate page with QR and statutory details.</p>
+                        </div>
+
+                        <div class="p-3 bg-indigo-50/70 rounded-lg border border-indigo-100 flex items-start gap-2.5">
+                            <svg class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <div class="text-[11px] text-slate-600 leading-relaxed">
+                                <span class="font-semibold text-slate-800">GST Statutory Rules:</span><br>
+                                • <strong>All Copies:</strong> Generates the 3 statutory copies on separate pages.<br>
+                                • <strong>QR Verification:</strong> Every copy contains the scannable IRP/invoice verification QR code.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                        <button type="button" @click="printSettingsModal = false" class="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50">Cancel</button>
+                        <div class="flex items-center gap-2">
+                            <button type="submit" class="px-3.5 py-2 rounded-lg border border-indigo-300 bg-white text-indigo-700 font-semibold text-xs hover:bg-indigo-50 transition">
+                                Preview
+                            </button>
+                            <button type="submit" name="auto_print" value="1" class="px-3.5 py-2 rounded-lg bg-indigo-600 text-white font-semibold text-xs hover:bg-indigo-700 transition flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                Print Now
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>

@@ -304,10 +304,11 @@ class GstComplianceService
         }
 
         $rawMode = strtolower(trim((string) ($overrides['transport_mode'] ?? $invoice->transport_mode ?? '1')));
-        $transportMode = match ($rawMode) {
-            '2', 'rail' => '2',
-            '3', 'air' => '3',
-            '4', 'ship' => '4',
+        $isNotApplicable = str_contains($rawMode, 'not applicable') || $rawMode === 'na';
+        $transportMode = match (true) {
+            str_contains($rawMode, '2') || str_contains($rawMode, 'rail') => '2',
+            str_contains($rawMode, '3') || str_contains($rawMode, 'air') => '3',
+            str_contains($rawMode, '4') || str_contains($rawMode, 'ship') => '4',
             default => '1',
         };
 
@@ -315,13 +316,15 @@ class GstComplianceService
         $vehicleNo = trim((string) ($overrides['vehicle_no'] ?? $invoice->vehicle_no ?? ''));
         $docNo = trim((string) ($overrides['lr_rr_no'] ?? ($overrides['dispatch_doc_no'] ?? ($invoice->lr_rr_no ?? $invoice->dispatch_doc_no ?? ''))));
 
-        if ($transportMode === '1') { // Road
-            if ($vehicleNo === '' && $transporterId === '') {
-                $missing[] = 'Vehicle Number or Transporter ID (GSTIN)';
-            }
-        } else { // Rail, Air, Ship
-            if ($docNo === '') {
-                $missing[] = 'Transport Document Number (LR / RR / Airway Bill / Bill of Lading)';
+        if (! $isNotApplicable) {
+            if ($transportMode === '1') { // Road
+                if ($vehicleNo === '' && $transporterId === '') {
+                    $missing[] = 'Vehicle Number or Transporter ID (GSTIN)';
+                }
+            } else { // Rail, Air, Ship
+                if ($docNo === '') {
+                    $missing[] = 'Transport Document Number (LR / RR / Airway Bill / Bill of Lading)';
+                }
             }
         }
 

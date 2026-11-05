@@ -335,6 +335,8 @@ class NameCase
         'raw_data',
         // Enum slugs and technical options
         'type',
+        'provider',
+        'channel',
         'party_type',
         'party_type_key',
         'party_role',

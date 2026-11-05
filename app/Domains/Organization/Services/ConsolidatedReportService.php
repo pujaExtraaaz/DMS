@@ -499,5 +499,347 @@ class ConsolidatedReportService
             'count' => $interCompanyTxCount,
         ];
     }
+
+    /**
+     * Compute Expenses Summary for the given company IDs within the date range.
+     *
+     * @param array<int> $companyIds
+     * @return array{total_expenses: float, expense_count: int, breakdown: array<string, array{label: string, amount: float, count: int}>}
+     */
+    public function computeExpensesSummary(array $companyIds, string $fromDate, string $toDate): array
+    {
+        $totalExpenses = 0.0;
+        $expenseCount = 0;
+        $breakdown = [];
+
+        // 1. Freight Bills (direct logistics & transport expenses)
+        if (Schema::hasTable('freight_bills')) {
+            $freightQ = DB::table('freight_bills')
+                ->whereBetween('bill_date', [$fromDate, $toDate])
+                ->where(function ($q) {
+                    $q->whereNull('status')->orWhere('status', '!=', 'cancelled');
+                });
+
+            if (Schema::hasColumn('freight_bills', 'company_id')) {
+                $freightQ->whereIn('company_id', $companyIds);
+            }
+
+            $freightTotal = (float) $freightQ->sum('total_amount');
+            $freightCount = (int) $freightQ->count();
+
+            if ($freightTotal > 0) {
+                $totalExpenses += $freightTotal;
+                $expenseCount += $freightCount;
+                $breakdown['freight'] = [
+                    'label' => 'Freight & Logistics',
+                    'amount' => $freightTotal,
+                    'count' => $freightCount,
+                ];
+            }
+        }
+
+        // 2. Accounting Expense Claims (acct_expense_claims)
+        if (Schema::hasTable('acct_expense_claims')) {
+            $claimQ = DB::table('acct_expense_claims')
+                ->whereIn('company_id', $companyIds)
+                ->whereBetween('claim_date', [$fromDate, $toDate])
+                ->whereNotIn('status', ['rejected', 'cancelled']);
+
+            $claimTotal = (float) $claimQ->sum('amount');
+            $claimCount = (int) $claimQ->count();
+
+            if ($claimTotal > 0) {
+                $totalExpenses += $claimTotal;
+                $expenseCount += $claimCount;
+                $breakdown['acct_claims'] = [
+                    'label' => 'Operating Expense Claims',
+                    'amount' => $claimTotal,
+                    'count' => $claimCount,
+                ];
+            }
+        }
+
+        // 3. HRMS Expense Claims (expense_claims)
+        if (Schema::hasTable('expense_claims') && Schema::hasTable('employees')) {
+            $hrmsClaimQ = DB::table('expense_claims')
+                ->join('employees', 'expense_claims.employee_id', '=', 'employees.id')
+                ->whereIn('employees.company_id', $companyIds)
+                ->whereBetween('expense_claims.claim_date', [$fromDate, $toDate])
+                ->whereNotIn('expense_claims.status', ['rejected', 'cancelled']);
+
+            $hrmsTotal = (float) $hrmsClaimQ->sum('expense_claims.amount');
+            $hrmsCount = (int) $hrmsClaimQ->count();
+
+            if ($hrmsTotal > 0) {
+                $totalExpenses += $hrmsTotal;
+                $expenseCount += $hrmsCount;
+                $breakdown['hrms_claims'] = [
+                    'label' => 'Staff Expense Reimbursements',
+                    'amount' => $hrmsTotal,
+                    'count' => $hrmsCount,
+                ];
+            }
+        }
+
+        // 4. Deal Expenses (deal_expenses)
+        if (Schema::hasTable('deal_expenses')) {
+            $dealQ = DB::table('deal_expenses')
+                ->whereBetween('created_at', [$fromDate . ' 00:00:00', $toDate . ' 23:59:59'])
+                ->where(function ($q) {
+                    $q->whereNull('status')->orWhereNotIn('status', ['rejected', 'cancelled']);
+                });
+
+            if (Schema::hasColumn('deal_expenses', 'company_id')) {
+                $dealQ->whereIn('company_id', $companyIds);
+            }
+
+            $dealTotal = (float) $dealQ->sum('amount');
+            $dealCount = (int) $dealQ->count();
+
+            if ($dealTotal > 0) {
+                $totalExpenses += $dealTotal;
+                $expenseCount += $dealCount;
+                $breakdown['deal_expenses'] = [
+                    'label' => 'Deal & Project Expenses',
+                    'amount' => $dealTotal,
+                    'count' => $dealCount,
+                ];
+            }
+        }
+
+        return [
+            'total_expenses' => $totalExpenses,
+            'expense_count' => $expenseCount,
+            'breakdown' => $breakdown,
+        ];
+    }
+
+    /**
+     * Compute Group-wide or Business-wise Comparison Matrix with Profitability.
+     *
+     * @param Collection<int, Company> $companies
+     * @return array{
+     *     companies: array<int, array>,
+     *     combined: array,
+     *     inter_company: array{volume: float, count: int}
+     * }
+     */
+    public function getComparisonMatrix(Collection $companies, string $fromDate, string $toDate): array
+    {
+        $companyRows = [];
+        $sumGrossSales = 0.0;
+        $sumCreditNotes = 0.0;
+        $sumNetSales = 0.0;
+        $sumPurchases = 0.0;
+        $sumExpenses = 0.0;
+        $sumReceivables = 0.0;
+        $sumPayables = 0.0;
+
+        foreach ($companies as $co) {
+            $sales = $this->computeSalesSummary([$co->id], $fromDate, $toDate);
+            $purchases = $this->computePurchasesSummary([$co->id], $fromDate, $toDate);
+            $expenses = $this->computeExpensesSummary([$co->id], $fromDate, $toDate);
+
+            $grossSales = (float) $sales['total_sales'];
+            $creditNotes = (float) $sales['credit_notes_total'];
+            $netSales = (float) $sales['net_sales'];
+            $purchaseVal = (float) $purchases['total_purchases'];
+            $expenseVal = (float) $expenses['total_expenses'];
+
+            $grossProfit = $netSales - $purchaseVal;
+            $netProfit = $grossProfit - $expenseVal;
+
+            $receivables = (float) $sales['outstanding_amount'];
+            $payables = (float) $purchases['outstanding_amount'];
+
+            $grossMargin = $netSales > 0 ? round(($grossProfit / $netSales) * 100, 2) : 0.0;
+            $netMargin = $netSales > 0 ? round(($netProfit / $netSales) * 100, 2) : 0.0;
+
+            $sumGrossSales += $grossSales;
+            $sumCreditNotes += $creditNotes;
+            $sumNetSales += $netSales;
+            $sumPurchases += $purchaseVal;
+            $sumExpenses += $expenseVal;
+            $sumReceivables += $receivables;
+            $sumPayables += $payables;
+
+            $companyRows[] = [
+                'company_id' => $co->id,
+                'name' => $co->name,
+                'code' => $co->code,
+                'business_type' => $co->business_type,
+                'main_work' => $co->main_work,
+                'gstin' => $co->gstin,
+                'state' => $co->state,
+                'sales' => $grossSales,
+                'credit_notes' => $creditNotes,
+                'net_sales' => $netSales,
+                'purchases' => $purchaseVal,
+                'expenses' => $expenseVal,
+                'gross_profit' => $grossProfit,
+                'gross_margin' => $grossMargin,
+                'net_profit' => $netProfit,
+                'net_margin' => $netMargin,
+                'receivables' => $receivables,
+                'payables' => $payables,
+                'invoices_count' => $sales['total_invoices'],
+                'purchases_count' => $purchases['total_invoices'],
+            ];
+        }
+
+        // Inter-company elimination
+        $interCompany = $this->detectInterCompanyTransactions($companies->pluck('id')->all(), $fromDate, $toDate);
+        $eliminatedAmount = (float) ($interCompany['volume'] ?? 0.0);
+
+        // Combined Net External Positions
+        $combinedGrossSales = max(0.0, $sumGrossSales - $eliminatedAmount);
+        $combinedNetSales = max(0.0, $sumNetSales - $eliminatedAmount);
+        $combinedPurchases = max(0.0, $sumPurchases - $eliminatedAmount);
+        $combinedGrossProfit = $combinedNetSales - $combinedPurchases;
+        $combinedNetProfit = $combinedGrossProfit - $sumExpenses;
+
+        $combinedGrossMargin = $combinedNetSales > 0 ? round(($combinedGrossProfit / $combinedNetSales) * 100, 2) : 0.0;
+        $combinedNetMargin = $combinedNetSales > 0 ? round(($combinedNetProfit / $combinedNetSales) * 100, 2) : 0.0;
+
+        $combinedRow = [
+            'name' => 'Combined Total',
+            'code' => 'ALL',
+            'sales' => $combinedGrossSales,
+            'unadjusted_sales' => $sumGrossSales,
+            'credit_notes' => $sumCreditNotes,
+            'net_sales' => $combinedNetSales,
+            'purchases' => $combinedPurchases,
+            'unadjusted_purchases' => $sumPurchases,
+            'expenses' => $sumExpenses,
+            'gross_profit' => $combinedGrossProfit,
+            'gross_margin' => $combinedGrossMargin,
+            'net_profit' => $combinedNetProfit,
+            'net_margin' => $combinedNetMargin,
+            'receivables' => $sumReceivables,
+            'payables' => $sumPayables,
+            'inter_company_eliminated' => $eliminatedAmount,
+        ];
+
+        return [
+            'companies' => $companyRows,
+            'combined' => $combinedRow,
+            'inter_company' => $interCompany,
+        ];
+    }
+
+    /**
+     * Resolve Filter Dates by Period Type (FY, Monthly, Quarterly, Yearly, Custom).
+     */
+    public function resolveDateRange(\Illuminate\Http\Request $request, array $fyData): array
+    {
+        $periodType = $request->input('period_type', 'current_fy');
+        $currentFy = $fyData['current'];
+        $years = $fyData['years'];
+
+        $today = now();
+        $currentYear = $today->year;
+
+        // Default FY
+        $fromDate = $currentFy['starts_on'] ?: Carbon::create($currentYear, 4, 1)->toDateString();
+        $toDate = $currentFy['ends_on'] ?: Carbon::create($currentYear + 1, 3, 31)->toDateString();
+        $periodLabel = "Current FY ({$currentFy['name']})";
+        $selectedFy = $currentFy['name'];
+
+        switch ($periodType) {
+            case 'prev_fy':
+                $prevFy = collect($years)->where('is_current', false)->first() ?? [
+                    'name' => ($currentYear - 1) . '-' . substr((string) $currentYear, -2),
+                    'starts_on' => Carbon::create($currentYear - 1, 4, 1)->toDateString(),
+                    'ends_on' => Carbon::create($currentYear, 3, 31)->toDateString(),
+                ];
+                $fromDate = $prevFy['starts_on'];
+                $toDate = $prevFy['ends_on'];
+                $periodLabel = "Previous FY ({$prevFy['name']})";
+                $selectedFy = $prevFy['name'];
+                break;
+
+            case 'monthly':
+                $targetMonth = $request->input('month');
+                if ($targetMonth && preg_match('/^\d{4}-\d{2}$/', $targetMonth)) {
+                    $monthCarbon = Carbon::createFromFormat('Y-m', $targetMonth);
+                } else {
+                    $monthCarbon = $today->copy();
+                }
+                $fromDate = $monthCarbon->copy()->startOfMonth()->toDateString();
+                $toDate = $monthCarbon->copy()->endOfMonth()->toDateString();
+                $periodLabel = "Monthly (" . $monthCarbon->format('F Y') . ")";
+                break;
+
+            case 'quarterly':
+                $q = strtoupper((string) $request->input('quarter', ''));
+                if (! in_array($q, ['Q1', 'Q2', 'Q3', 'Q4'], true)) {
+                    // Determine current Indian FY quarter
+                    $m = $today->month;
+                    if ($m >= 4 && $m <= 6) $q = 'Q1';
+                    elseif ($m >= 7 && $m <= 9) $q = 'Q2';
+                    elseif ($m >= 10 && $m <= 12) $q = 'Q3';
+                    else $q = 'Q4';
+                }
+
+                $fyStartYear = $today->month >= 4 ? $today->year : $today->year - 1;
+                switch ($q) {
+                    case 'Q1':
+                        $fromDate = Carbon::create($fyStartYear, 4, 1)->toDateString();
+                        $toDate = Carbon::create($fyStartYear, 6, 30)->toDateString();
+                        $periodLabel = "Quarter 1 (Apr - Jun {$fyStartYear})";
+                        break;
+                    case 'Q2':
+                        $fromDate = Carbon::create($fyStartYear, 7, 1)->toDateString();
+                        $toDate = Carbon::create($fyStartYear, 9, 30)->toDateString();
+                        $periodLabel = "Quarter 2 (Jul - Sep {$fyStartYear})";
+                        break;
+                    case 'Q3':
+                        $fromDate = Carbon::create($fyStartYear, 10, 1)->toDateString();
+                        $toDate = Carbon::create($fyStartYear, 12, 31)->toDateString();
+                        $periodLabel = "Quarter 3 (Oct - Dec {$fyStartYear})";
+                        break;
+                    case 'Q4':
+                        $fromDate = Carbon::create($fyStartYear + 1, 1, 1)->toDateString();
+                        $toDate = Carbon::create($fyStartYear + 1, 3, 31)->toDateString();
+                        $periodLabel = "Quarter 4 (Jan - Mar " . ($fyStartYear + 1) . ")";
+                        break;
+                }
+                break;
+
+            case 'yearly':
+                $fromDate = Carbon::create($today->year, 1, 1)->toDateString();
+                $toDate = Carbon::create($today->year, 12, 31)->toDateString();
+                $periodLabel = "Calendar Year ({$today->year})";
+                break;
+
+            case 'custom':
+            default:
+                if ($request->filled('from_date') && $request->filled('to_date')) {
+                    $fromDate = (string) $request->input('from_date');
+                    $toDate = (string) $request->input('to_date');
+                    $periodType = 'custom';
+                    $periodLabel = Carbon::parse($fromDate)->format('d/m/Y') . ' to ' . Carbon::parse($toDate)->format('d/m/Y');
+                } elseif ($request->filled('financial_year')) {
+                    $fyReq = $request->input('financial_year');
+                    $matched = collect($years)->firstWhere('name', $fyReq);
+                    if ($matched) {
+                        $fromDate = $matched['starts_on'];
+                        $toDate = $matched['ends_on'];
+                        $selectedFy = $matched['name'];
+                        $periodLabel = "FY {$selectedFy}";
+                        $periodType = $selectedFy === $currentFy['name'] ? 'current_fy' : 'prev_fy';
+                    }
+                }
+                break;
+        }
+
+        return [
+            'from_date' => $fromDate,
+            'to_date' => $toDate,
+            'period_type' => $periodType,
+            'period_label' => $periodLabel,
+            'financial_year' => $selectedFy,
+        ];
+    }
 }
 

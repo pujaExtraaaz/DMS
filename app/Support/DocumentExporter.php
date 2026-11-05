@@ -527,15 +527,18 @@ class DocumentExporter
     /**
      * Export Single Sales Tax Invoice
      */
-    public static function exportSalesInvoice(Invoice $invoice, string $format): Response|StreamedResponse
+    public static function exportSalesInvoice(Invoice $invoice, string $format, string $copyType = 'all', int $copies = 1): Response|StreamedResponse
     {
         $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'eInvoice', 'eWayBill']);
         $company = Company::query()->find(auth()->user()?->company_id) ?? Company::query()->first();
         $filename = 'Tax-Invoice-' . $invoice->invoice_no . '.' . ($format === 'excel' ? 'xlsx' : $format);
 
         if ($format === 'pdf') {
-            $invoiceUrl = route('invoice.qr', ['type' => 'sales', 'token' => $invoice->qr_token]);
-            $invoiceQrDataUri = QrCodeRenderer::dataUri($invoiceUrl, 180);
+            $invoiceQrDataUri = $invoice->eInvoice?->getQrDataUri(180);
+            if (blank($invoiceQrDataUri)) {
+                $invoiceUrl = route('invoice.qr', ['type' => 'sales', 'token' => $invoice->qr_token]);
+                $invoiceQrDataUri = QrCodeRenderer::dataUri($invoiceUrl, 180);
+            }
 
             $upiQrDataUri = null;
             if ($company && filled($company->upi_id)) {
@@ -549,28 +552,63 @@ class DocumentExporter
                 $upiQrDataUri = QrCodeRenderer::dataUri($upiUri, 160);
             }
 
+            $copiesList = \App\Http\Controllers\Sales\InvoiceController::resolveCopies($copyType, $copies);
+
             return self::exportPdf('sales.invoices.preview', [
                 'invoice' => $invoice,
                 'company' => $company,
                 'invoiceQrDataUri' => $invoiceQrDataUri,
                 'upiQrDataUri' => $upiQrDataUri,
+                'copyType' => $copyType,
+                'copies' => $copies,
+                'copiesList' => $copiesList,
                 'isPdf' => true,
             ], $filename);
         }
 
-        $headers = ['#', 'Product', 'HSN/SAC', 'Batch No', 'Qty', 'UOM', 'Rate (₹)', 'Discount (₹)', 'Tax (₹)', 'Line Total (₹)'];
+        $headers = [
+            '#',
+            'Product Description',
+            'HSN/SAC',
+            'Batch No',
+            'Qty',
+            'UOM',
+            'Rate (₹)',
+            'Discount (₹)',
+            'Taxable Amount (₹)',
+            'GST Rate (%)',
+            'CGST (₹)',
+            'SGST (₹)',
+            'IGST (₹)',
+            'Total Tax (₹)',
+            'Line Total (₹)',
+        ];
+
+        $isIntra = ($invoice->tax_type === 'intra') || (! $invoice->tax_type && ($invoice->cgst_amount > 0 || $invoice->sgst_amount > 0));
+
         $rows = [];
         $i = 1;
         foreach ($invoice->items as $item) {
+            $taxable = (float) ($item->taxable_amount ?? round((float) $item->line_total - (float) $item->tax_amount, 2));
+            $taxRate = (float) ($item->tax_rate ?? ($item->product?->tax_rate ?? 0));
+            $cgst = $isIntra ? (float) ($item->cgst_amount ?? round($item->tax_amount / 2, 2)) : 0.0;
+            $sgst = $isIntra ? (float) ($item->sgst_amount ?? round($item->tax_amount / 2, 2)) : 0.0;
+            $igst = ! $isIntra ? (float) ($item->igst_amount ?? (float) $item->tax_amount) : 0.0;
+
             $rows[] = [
                 $i++,
-                $item->product?->name ?? '—',
+                $item->product?->name ?? ($item->item_name ?? '—'),
                 $item->hsn_code ?? $item->product?->hsn_code ?? '—',
                 $item->batch_no ?? '—',
                 number_format((float) $item->quantity, 2, '.', ''),
                 $item->uom?->code ?? '—',
-                number_format((float) $item->unit_price, 2, '.', ''),
+                number_format((float) ($item->entered_unit_price ?? $item->unit_price), 2, '.', ''),
                 number_format((float) $item->discount_amount, 2, '.', ''),
+                number_format($taxable, 2, '.', ''),
+                number_format($taxRate, 2, '.', '') . '%',
+                number_format($cgst, 2, '.', ''),
+                number_format($sgst, 2, '.', ''),
+                number_format($igst, 2, '.', ''),
                 number_format((float) $item->tax_amount, 2, '.', ''),
                 number_format((float) $item->line_total, 2, '.', ''),
             ];
@@ -581,25 +619,38 @@ class DocumentExporter
             'Company' => $company?->name ?? config('app.name'),
             'Company GSTIN' => $company?->gstin ?? '—',
             'Customer' => $invoice->customer?->name ?? '—',
+            'Customer Code' => $invoice->customer?->code ?? '—',
             'Customer GSTIN' => $invoice->customer?->gstin ?? '—',
             'Invoice No' => $invoice->invoice_no,
             'Invoice Date' => $invoice->invoice_date?->format('d/m/Y') ?? '—',
             'Due Date' => $invoice->due_date?->format('d/m/Y') ?? '—',
             'Status' => ucfirst($invoice->status),
+            'Salesperson' => $invoice->salesperson?->name ?? '—',
+            'Place of Supply' => $invoice->delivery_state ?: ($invoice->place_of_supply_state ?: '—'),
+            'Place of Buyer' => $invoice->bill_to_place ?: ($invoice->customer?->city ?: '—'),
+            'Place of Delivery' => $invoice->ship_to_place ?: ($invoice->destination ?: ($invoice->customer?->city ?: '—')),
             'Billing Address' => preg_replace('/\s+/', ' ', trim($invoice->billing_address ?: ($invoice->customer?->address ?: '—'))),
             'Delivery Address' => preg_replace('/\s+/', ' ', trim($invoice->shipping_address ?: ($invoice->billing_address ?: ($invoice->customer?->address ?: '—')))),
-            'Delivery Note No' => $invoice->delivery_note_na ? 'Not Applicable' : ($invoice->delivery_note_no ?? '—'),
-            'Dispatch Doc No' => $invoice->dispatch_doc_no ?? '—',
-            'Dispatched Through' => $invoice->dispatched_through ?? ($invoice->transport_mode ?? '—'),
-            'Destination' => $invoice->destination ?? '—',
-            'Carrier / Agent' => $invoice->carrier_name ?? '—',
+            'Transport Mode' => $invoice->transport_mode ?? '—',
+            'Transporter Name' => $invoice->transporter_name ?? '—',
+            'Transporter ID' => $invoice->transporter_id ?? '—',
+            'Motor Vehicle No' => $invoice->vehicle_no ?? '—',
             'LR / RR No' => $invoice->lr_rr_no ?? '—',
             'LR / RR Date' => $invoice->lr_rr_date?->format('d/m/Y') ?? '—',
-            'Motor Vehicle No' => $invoice->vehicle_no ?? '—',
+            'Delivery Note No' => $invoice->delivery_note_na ? 'Not Applicable' : ($invoice->delivery_note_no ?? '—'),
+            'Dispatch Doc No' => $invoice->dispatch_doc_no ?? '—',
+            'Dispatched Through' => $invoice->dispatched_through ?? '—',
+            'Destination' => $invoice->destination ?? '—',
+            'Carrier / Agent' => $invoice->carrier_name ?? '—',
             'Order No' => $invoice->order_no ?? ($invoice->order?->order_no ?? '—'),
             'Payment Terms' => $invoice->payment_terms ?? '—',
             'Other References' => $invoice->other_references ?? ($invoice->reference_no ?? '—'),
             'Terms of Delivery' => $invoice->terms_of_delivery ?? '—',
+            'IRN' => $invoice->eInvoice?->irn ?? '—',
+            'Acknowledgement No' => $invoice->eInvoice?->ack_no ?? '—',
+            'Acknowledgement Date' => $invoice->eInvoice?->ack_date?->format('d/m/Y H:i') ?? '—',
+            'e-Way Bill No' => $invoice->eWayBill?->eway_bill_no ?: ($invoice->eway_bill_no ?: '—'),
+            'e-Way Bill Date' => ($invoice->eWayBill?->ewb_date ?: $invoice->eway_bill_date)?->format('d/m/Y') ?? '—',
         ];
 
         $totals = [
