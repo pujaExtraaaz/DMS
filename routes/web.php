@@ -52,9 +52,15 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware(['auth', 'verified', 'role:super-admin|client-admin'])->group(function () {
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
+    Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
     Route::post('/users/{user}/permissions', [\App\Http\Controllers\UserPermissionController::class, 'update'])
-        ->middleware('role:super-admin|client-admin')
         ->name('users.permissions.update');
+});
+
+Route::middleware(['auth', 'verified', 'role:super-admin'])->group(function () {
+    Route::post('/users', [UserController::class, 'store'])->name('users.store');
+    Route::post('/users/roles', [UserController::class, 'storeRole'])->name('users.roles.store');
+    Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
 });
 require __DIR__.'/auth.php';
 

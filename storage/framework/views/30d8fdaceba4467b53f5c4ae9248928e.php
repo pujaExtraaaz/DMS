@@ -278,7 +278,7 @@
 
     <?php echo \Livewire\Mechanisms\FrontendAssets\FrontendAssets::scripts(); ?>
 
-    <script src="<?php echo e(asset('js/dynamic-tables.js')); ?>?v=20261028" defer></script>
+    <script src="<?php echo e(asset('js/dynamic-tables.js')); ?>?v=20261105" defer></script>
     <script src="<?php echo e(asset('js/title-case.js')); ?>" defer></script>
     <script src="<?php echo e(asset('js/searchable-select.js')); ?>?v=20261028b" defer></script>
     <?php echo $__env->yieldPushContent('scripts'); ?>

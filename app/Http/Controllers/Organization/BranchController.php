@@ -29,7 +29,7 @@ class BranchController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'city']);
+        $this->applySearch($query, $request->input('search'), ['name', 'code', 'state', 'address', 'phone']);
 
         $sortData = $this->applySorting(
             $query,

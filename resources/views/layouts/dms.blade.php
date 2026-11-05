@@ -194,7 +194,7 @@
     </div>
 
     @livewireScripts
-    <script src="{{ asset('js/dynamic-tables.js') }}?v=20261028" defer></script>
+    <script src="{{ asset('js/dynamic-tables.js') }}?v=20261105" defer></script>
     <script src="{{ asset('js/title-case.js') }}" defer></script>
     <script src="{{ asset('js/searchable-select.js') }}?v=20261028b" defer></script>
     @stack('scripts')

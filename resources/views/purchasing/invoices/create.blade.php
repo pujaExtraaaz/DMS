@@ -175,6 +175,20 @@
         </div>
     </x-ui.card>
 
+    @include('purchasing.invoices.partials.dispatch-and-freight', [
+        'receiptNoteNos' => old('receipt_note_nos'),
+        'receiptDocNo' => old('receipt_doc_no'),
+        'dispatchedThrough' => old('dispatched_through'),
+        'carrierName' => old('carrier_name'),
+        'lrNumber' => old('lr_number'),
+        'lrDate' => old('lr_date'),
+        'vehicleNumber' => old('vehicle_number'),
+        'paymentTerms' => old('payment_terms'),
+        'otherReferences' => old('other_references'),
+        'termsOfDelivery' => old('terms_of_delivery'),
+        'freightNotes' => old('freight_notes', $order?->freight_notes ?? ''),
+    ])
+
     <!-- Supplier Billing & Delivery Addresses -->
     <div x-show="supplierId" class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
         <div class="flex items-center justify-between pb-2 border-b border-slate-200">
@@ -232,21 +246,26 @@
 
     <x-ui.card padding="false">
         <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div class="flex items-center gap-3">
-                <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
-                {{-- Price Type Toggle (Tax Exclusive / Tax Inclusive) --}}
-                <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
-                    <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
-                           :class="priceType === 'exclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
-                        <input type="radio" name="price_type" value="exclusive" x-model="priceType" @change="recalc()" class="sr-only">
-                        Tax Exclusive
-                    </label>
-                    <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
-                           :class="priceType === 'inclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
-                        <input type="radio" name="price_type" value="inclusive" x-model="priceType" @change="recalc()" class="sr-only">
-                        Tax Inclusive
-                    </label>
+            <div>
+                <div class="flex items-center gap-3">
+                    <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
+                    <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
+                        <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
+                               :class="priceType === 'exclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
+                            <input type="radio" name="price_type" value="exclusive" :checked="priceType === 'exclusive'" @change="switchPriceType('exclusive')" class="sr-only">
+                            Tax Exclusive
+                        </label>
+                        <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
+                               :class="priceType === 'inclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
+                            <input type="radio" name="price_type" value="inclusive" :checked="priceType === 'inclusive'" @change="switchPriceType('inclusive')" class="sr-only">
+                            Tax Inclusive
+                        </label>
+                    </div>
                 </div>
+                <p class="text-xs text-slate-500 mt-1">
+                    <span x-show="priceType === 'exclusive'">Unit cost is before GST. Tax is added on top, and Purchase Price Incl. GST is calculated from it.</span>
+                    <span x-show="priceType === 'inclusive'" x-cloak class="text-indigo-700 font-medium">Unit cost already includes GST. Tax is taken out of that price and is not added again. Purchase Price Incl. GST matches the unit cost.</span>
+                </p>
             </div>
             <button type="button" @click="addItem()"
                     class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
@@ -264,7 +283,7 @@
                         <th class="p-3 min-w-[120px] w-28 text-right">MRP (₹)</th>
                         <th class="p-3 min-w-[145px] w-36 text-right" title="Actual purchase price paid including GST">Purchase Price Incl. GST (₹)</th>
                         <th class="p-3 min-w-[110px] w-28 text-right" title="Auto: [(MRP − Purchase Price) ÷ MRP] × 100">Disc. %</th>
-                        <th class="p-3 min-w-[130px] w-36 text-right">Unit Cost (₹) *</th>
+                        <th class="p-3 min-w-[150px] w-40 text-right" x-text="priceType === 'inclusive' ? 'Unit Cost Incl. GST (₹) *' : 'Unit Cost Ex. GST (₹) *'"></th>
                         <th class="p-3 min-w-[95px] w-24 text-right">Cgst %</th>
                         <th class="p-3 min-w-[95px] w-24 text-right">Sgst %</th>
                         <th class="p-3 min-w-[100px] w-28 text-center">Tax Rate</th>
@@ -431,10 +450,13 @@
                     <span class="font-medium">Total Tax (CGST + SGST):</span>
                     <span class="font-mono font-semibold text-slate-800 text-sm" x-text="formatCurrency(taxTotal)"></span>
                 </div>
-                <div class="flex items-center justify-between text-slate-600">
-                    <span class="font-medium">Freight / Landed Charge (₹):</span>
-                    <input type="number" step="0.01" min="0" name="freight_charge" x-model.number="freightCharge" @input="recalc()"
-                           class="w-32 min-h-[34px] px-2.5 py-1.5 rounded-md border-gray-300 text-xs font-mono text-right shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                <div class="flex justify-between items-center text-slate-600" x-show="freightApplicable === '1' && freightBase > 0">
+                    <span class="font-medium">Freight:</span>
+                    <span class="font-mono font-semibold text-slate-800 text-sm" x-text="formatCurrency(freightBase)"></span>
+                </div>
+                <div class="flex justify-between items-center text-slate-600" x-show="freightApplicable === '1' && freightTaxAmount > 0">
+                    <span class="font-medium">Freight Tax:</span>
+                    <span class="font-mono font-semibold text-slate-800 text-sm" x-text="formatCurrency(freightTaxAmount)"></span>
                 </div>
                 <div class="flex items-center justify-between text-slate-600">
                     <span class="font-medium">Other Charges (₹):</span>
@@ -509,7 +531,15 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
         expectedDeliveryQuickDays: null,
         dueDatePreview: '',
         dueDateFormattedYmd: '',
-        freightCharge: {{ old('freight_charge', (float)($order?->freight_total ?? 0)) }},
+        freightApplicable: '{{ old('is_freight_applicable', ($order?->is_freight_applicable ?? false) || (float) ($order?->freight_total ?? 0) > 0 ? '1' : '0') }}',
+        freightMode: '{{ old('freight_mode', $order?->freight_mode ?: 'amount') }}',
+        freightPercent: {{ (float) old('freight_percent', $order?->freight_percent ?? 0) }},
+        freightAmount: {{ (float) old('freight_amount', $order?->freight_amount ?? 0) }},
+        freightTaxRate: {{ (float) old('freight_tax_rate', $order?->freight_tax_rate ?? 0) }},
+        freightBase: 0,
+        freightTaxAmount: 0,
+        freightTotal: 0,
+        orderNos: @js(old('order_nos', $order?->po_no ?? '')),
         otherCharges: 0,
         priceType: '{{ old('price_type', 'exclusive') }}',
         roundOff: {{ old('round_off', 0) }},
@@ -568,6 +598,13 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                         line_total: 0
                     };
                 });
+                if (this.priceType === 'inclusive') {
+                    this.items.forEach(row => {
+                        const gross = Number(row.purchase_price_inclusive) || this.grossFromBase(row.unit_cost, this.rowTaxPercent(row));
+                        row.unit_cost = gross;
+                        row.purchase_price_inclusive = gross;
+                    });
+                }
             } else if (!this.items.length) {
                 this.addItem();
             }
@@ -619,13 +656,26 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 : 0;
         },
 
+        grossFromBase(base, taxPercent) {
+            return Number(((Number(base) || 0) * (1 + (Number(taxPercent) || 0) / 100)).toFixed(2));
+        },
+
+        baseFromGross(gross, taxPercent) {
+            const tax = Number(taxPercent) || 0;
+            const amount = Number(gross) || 0;
+            return tax > 0 ? Number((amount * 100 / (100 + tax)).toFixed(2)) : amount;
+        },
+
         onPurchasePriceInclusiveChange(index) {
             const row = this.items[index];
             if (!row) return;
             const tax = this.rowTaxPercent(row);
             const inclusive = Number(row.purchase_price_inclusive) || 0;
-            const factor = 1 + (tax / 100);
-            row.unit_cost = factor > 0 ? Number((inclusive / factor).toFixed(2)) : inclusive;
+            if (this.priceType === 'inclusive') {
+                row.unit_cost = inclusive;
+            } else {
+                row.unit_cost = this.baseFromGross(inclusive, tax);
+            }
             this.syncPurchaseDiscount(index);
             this.recalc();
         },
@@ -635,13 +685,46 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             if (!row) return;
             const tax = this.rowTaxPercent(row);
             const cost = Number(row.unit_cost) || 0;
-            row.purchase_price_inclusive = Number((cost * (1 + tax / 100)).toFixed(2));
+            row.purchase_price_inclusive = this.priceType === 'inclusive'
+                ? cost
+                : this.grossFromBase(cost, tax);
             this.syncPurchaseDiscount(index);
             this.recalc();
         },
 
         onTaxChange(index) {
+            const row = this.items[index];
+            if (!row) return;
+            if (this.priceType === 'inclusive') {
+                row.purchase_price_inclusive = Number(row.unit_cost) || 0;
+                this.syncPurchaseDiscount(index);
+                this.recalc();
+                return;
+            }
             this.onUnitCostChange(index);
+        },
+
+        switchPriceType(next) {
+            const target = next === 'inclusive' ? 'inclusive' : 'exclusive';
+            if (this.priceType === target) {
+                this.recalc();
+                return;
+            }
+            this.items.forEach(row => {
+                const tax = this.rowTaxPercent(row);
+                if (target === 'inclusive') {
+                    const gross = Number(row.purchase_price_inclusive) || this.grossFromBase(row.unit_cost, tax);
+                    row.unit_cost = gross;
+                    row.purchase_price_inclusive = gross;
+                } else {
+                    const gross = Number(row.unit_cost) || Number(row.purchase_price_inclusive) || 0;
+                    row.purchase_price_inclusive = gross;
+                    row.unit_cost = this.baseFromGross(gross, tax);
+                }
+            });
+            this.priceType = target;
+            this.items.forEach((_, idx) => this.syncPurchaseDiscount(idx));
+            this.recalc();
         },
 
         removeItem(index) {
@@ -667,10 +750,15 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             if (p) {
                 row.unit = p.unit || 'PCS';
                 row.tracking_type = p.tracking_type || 'none';
-                row.unit_cost = Number(p.purchase_price) || 0;
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.batch_mrp = Number(p.mrp) || 0;
+                const catalogBase = Number(p.purchase_price) || 0;
+                if (this.priceType === 'inclusive') {
+                    row.unit_cost = this.grossFromBase(catalogBase, this.rowTaxPercent(row));
+                } else {
+                    row.unit_cost = catalogBase;
+                }
                 this.onUnitCostChange(index);
                 return;
             }
@@ -716,7 +804,8 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
 
             this.subtotal = sub;
             this.taxTotal = tax;
-            const beforeRound = sub + tax + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            this.applyFreight(sub);
+            const beforeRound = sub + tax + (Number(this.freightTotal) || 0) + (Number(this.otherCharges) || 0);
             if (!this.isManualRoundOff) {
                 this.roundOff = Math.round((Math.round(beforeRound) - beforeRound) * 100) / 100;
             }
@@ -725,10 +814,46 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
         },
 
         autoRoundOff() {
-            const beforeRound = this.subtotal + this.taxTotal + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            const beforeRound = this.subtotal + this.taxTotal + (Number(this.freightTotal) || 0) + (Number(this.otherCharges) || 0);
             this.roundOff = Math.round((Math.round(beforeRound) - beforeRound) * 100) / 100;
             this.isManualRoundOff = false;
             this.recalc();
+        },
+
+        applyFreight(subtotal) {
+            if (String(this.freightApplicable) !== '1') {
+                this.freightBase = 0;
+                this.freightTaxAmount = 0;
+                this.freightTotal = 0;
+                return;
+            }
+            const base = this.freightMode === 'percent'
+                ? (Number(subtotal) || 0) * (Number(this.freightPercent) || 0) / 100
+                : (Number(this.freightAmount) || 0);
+            const tax = base * (Number(this.freightTaxRate) || 0) / 100;
+            this.freightBase = Math.round(base * 100) / 100;
+            this.freightTaxAmount = Math.round(tax * 100) / 100;
+            this.freightTotal = Math.round((this.freightBase + this.freightTaxAmount) * 100) / 100;
+        },
+
+        clearFreight() {
+            this.freightApplicable = '0';
+            this.freightMode = 'amount';
+            this.freightPercent = 0;
+            this.freightAmount = 0;
+            this.freightTaxRate = 0;
+            this.freightBase = 0;
+            this.freightTaxAmount = 0;
+            this.freightTotal = 0;
+        },
+
+        applyOrderFreight(ord) {
+            const on = !!ord.is_freight_applicable || Number(ord.freight_total) > 0;
+            this.freightApplicable = on ? '1' : '0';
+            this.freightMode = ord.freight_mode === 'percent' ? 'percent' : 'amount';
+            this.freightPercent = Number(ord.freight_percent) || 0;
+            this.freightAmount = Number(ord.freight_amount) || 0;
+            this.freightTaxRate = Number(ord.freight_tax_rate) || 0;
         },
 
         formatCurrency(val) {
@@ -748,7 +873,12 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                     purchaseReceiveDate: this.purchaseReceiveDate,
                     paymentOrderDate: this.paymentOrderDate,
                     creditDays: this.creditDays,
-                    freightCharge: this.freightCharge,
+                    freightApplicable: this.freightApplicable,
+                    freightMode: this.freightMode,
+                    freightPercent: this.freightPercent,
+                    freightAmount: this.freightAmount,
+                    freightTaxRate: this.freightTaxRate,
+                    orderNos: this.orderNos,
                     otherCharges: this.otherCharges,
                     selectedBillingId: this.selectedBillingId,
                     selectedShippingId: this.selectedShippingId,
@@ -790,7 +920,12 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             this.purchaseReceiveDate = draft.purchaseReceiveDate || this.purchaseReceiveDate;
             this.paymentOrderDate = draft.paymentOrderDate || this.paymentOrderDate;
             this.creditDays = draft.creditDays ?? this.creditDays;
-            this.freightCharge = draft.freightCharge ?? this.freightCharge;
+            this.freightApplicable = draft.freightApplicable ?? this.freightApplicable;
+            this.freightMode = draft.freightMode || this.freightMode;
+            this.freightPercent = draft.freightPercent ?? this.freightPercent;
+            this.freightAmount = draft.freightAmount ?? this.freightAmount;
+            this.freightTaxRate = draft.freightTaxRate ?? this.freightTaxRate;
+            this.orderNos = draft.orderNos ?? this.orderNos;
             this.otherCharges = draft.otherCharges ?? this.otherCharges;
             this.selectedBillingId = draft.selectedBillingId || '';
             this.selectedShippingId = draft.selectedShippingId || '';
@@ -821,7 +956,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             if (hadLinkedPo) {
                 this.items = [];
                 this.addItem();
-                this.freightCharge = 0;
+                this.clearFreight();
                 this.linkedPoId = null;
                 this.recalc();
             }
@@ -887,7 +1022,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 if (this.linkedPoId) {
                     this.items = [];
                     this.addItem();
-                    this.freightCharge = 0;
+                    this.clearFreight();
                     this.linkedPoId = null;
                     this.selectedOrderLabel = '';
                     this.recalc();
@@ -915,8 +1050,9 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                     if (ord.receive_date && !this.purchaseReceiveDate) {
                         this.purchaseReceiveDate = ord.receive_date;
                     }
-                    if (ord.freight_total !== undefined) {
-                        this.freightCharge = Number(ord.freight_total) || 0;
+                    this.applyOrderFreight(ord);
+                    if (ord.po_no) {
+                        this.orderNos = ord.po_no;
                     }
 
                     if (ord.billing_address_id && this.partyAddresses.some(a => String(a.id) === String(ord.billing_address_id))) {
@@ -953,6 +1089,13 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                                 line_total: Number(it.line_total) || 0
                             };
                         });
+                        if (this.priceType === 'inclusive') {
+                            this.items.forEach(row => {
+                                const gross = Number(row.purchase_price_inclusive) || this.grossFromBase(row.unit_cost, this.rowTaxPercent(row));
+                                row.unit_cost = gross;
+                                row.purchase_price_inclusive = gross;
+                            });
+                        }
                     }
                     this.items.forEach((_, idx) => this.syncSerials(idx));
                     this.recalc();

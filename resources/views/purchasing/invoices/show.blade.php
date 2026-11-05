@@ -80,6 +80,33 @@
     </div>
 </div>
 
+<div class="mb-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 class="text-sm font-semibold text-slate-800 mb-3">Receipt Details</h3>
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <div><dt class="text-[11px] uppercase text-slate-500">Receipt Note No(s)</dt><dd class="font-medium">{{ $invoice->receipt_note_nos ?: '—' }}</dd></div>
+            <div><dt class="text-[11px] uppercase text-slate-500">Receipt Doc No.</dt><dd class="font-medium">{{ $invoice->receipt_doc_no ?: '—' }}</dd></div>
+            <div><dt class="text-[11px] uppercase text-slate-500">Dispatched Through</dt><dd class="font-medium">{{ $invoice->dispatched_through ?: '—' }}</dd></div>
+            <div><dt class="text-[11px] uppercase text-slate-500">Carrier / Agent</dt><dd class="font-medium">{{ $invoice->carrier_name ?: '—' }}</dd></div>
+            <div><dt class="text-[11px] uppercase text-slate-500">LR / RR No.</dt><dd class="font-medium">{{ $invoice->lr_number ?: '—' }}</dd></div>
+            <div><dt class="text-[11px] uppercase text-slate-500">LR Date</dt><dd class="font-medium">{{ $invoice->lr_date?->format('d M Y') ?? '—' }}</dd></div>
+            <div><dt class="text-[11px] uppercase text-slate-500">Vehicle No.</dt><dd class="font-medium">{{ $invoice->vehicle_number ?: '—' }}</dd></div>
+        </dl>
+    </div>
+    <div class="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 class="text-sm font-semibold text-slate-800 mb-3">Order Details</h3>
+        <dl class="grid grid-cols-1 gap-y-2 text-sm">
+            <div><dt class="text-[11px] uppercase text-slate-500">Order No(s)</dt><dd class="font-medium">{{ $invoice->order_nos ?: ($invoice->purchaseOrder?->po_no ?: '—') }}</dd></div>
+            <div><dt class="text-[11px] uppercase text-slate-500">Mode / Terms of Payment</dt><dd class="font-medium">{{ $invoice->payment_terms ?: '—' }}</dd></div>
+            <div><dt class="text-[11px] uppercase text-slate-500">Other References</dt><dd class="font-medium">{{ $invoice->other_references ?: '—' }}</dd></div>
+            <div><dt class="text-[11px] uppercase text-slate-500">Terms of Delivery</dt><dd class="font-medium">{{ $invoice->terms_of_delivery ?: '—' }}</dd></div>
+            @if($invoice->freight_notes)
+                <div><dt class="text-[11px] uppercase text-slate-500">Freight Notes</dt><dd class="font-medium">{{ $invoice->freight_notes }}</dd></div>
+            @endif
+        </dl>
+    </div>
+</div>
+
 @if($invoice->odAccount)
     <div class="mb-4 bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div class="flex items-center gap-3">
@@ -190,11 +217,25 @@
                     <span class="font-mono font-medium">₹{{ number_format((float) $invoice->tax_amount, 2) }}</span>
                 </div>
             @endif
-            @if((float) ($invoice->freight_charge ?? 0) > 0)
+            @php
+                $freightBaseShown = (float) $invoice->freight_amount > 0
+                    ? (float) $invoice->freight_amount
+                    : (float) $invoice->freight_charge;
+                $freightShown = (float) $invoice->freight_total > 0
+                    ? (float) $invoice->freight_total
+                    : $freightBaseShown;
+            @endphp
+            @if($freightShown > 0)
                 <div class="flex justify-between text-slate-600">
-                    <span>Freight / Landed Charge:</span>
-                    <span class="font-mono font-medium">₹{{ number_format((float) $invoice->freight_charge, 2) }}</span>
+                    <span>Freight{{ $invoice->freight_mode === 'percent' && (float) $invoice->freight_percent > 0 ? ' ('.rtrim(rtrim(number_format((float) $invoice->freight_percent, 2), '0'), '.').'%)' : '' }}:</span>
+                    <span class="font-mono font-medium">₹{{ number_format($freightBaseShown, 2) }}</span>
                 </div>
+                @if((float) ($invoice->freight_tax_amount ?? 0) > 0)
+                    <div class="flex justify-between text-slate-600">
+                        <span>Freight Tax ({{ number_format((float) $invoice->freight_tax_rate, 1) }}%):</span>
+                        <span class="font-mono font-medium">₹{{ number_format((float) $invoice->freight_tax_amount, 2) }}</span>
+                    </div>
+                @endif
             @endif
             @if((float) ($invoice->other_charges ?? 0) > 0)
                 <div class="flex justify-between text-slate-600">

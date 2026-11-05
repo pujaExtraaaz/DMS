@@ -613,8 +613,9 @@ class PurchaseOrderService
                 ? $data['shipping_address']
                 : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $supplier->address));
 
-            $freightCharge = max(0.0, (float) ($data['freight_charge'] ?? 0));
-            $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
+            $commercial = $this->invoiceCommercial($data, $subtotal);
+            $freightCharge = $commercial['freight_charge'];
+            $otherCharges = $commercial['other_charges'];
             $totalBeforeRound = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
             $roundOff = isset($data['round_off']) && $data['round_off'] !== null && $data['round_off'] !== ''
                 ? round((float) $data['round_off'], 2)
@@ -688,12 +689,13 @@ class PurchaseOrderService
                 'other_charges' => $otherCharges,
                 'round_off' => $roundOff,
                 'grand_total' => $grandTotal,
+                'total_amount' => $grandTotal,
                 'rate_override_reason' => $overrideReason,
                 'notes' => $data['notes'] ?? null,
                 'terms_and_conditions' => $data['terms_and_conditions'] ?? null,
                 'freight_allocation_method' => $data['freight_allocation_method'] ?? null,
                 'created_by' => $actor->id,
-            ]);
+            ] + $commercial['attributes']);
 
             foreach ($prepared as $item) {
                 $piItem = PurchaseInvoiceItem::create([
@@ -945,8 +947,9 @@ class PurchaseOrderService
                 ? $data['shipping_address']
                 : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $supplier->address));
 
-            $freightCharge = max(0.0, (float) ($data['freight_charge'] ?? 0));
-            $otherCharges = max(0.0, (float) ($data['other_charges'] ?? 0));
+            $commercial = $this->invoiceCommercial($data, $subtotal);
+            $freightCharge = $commercial['freight_charge'];
+            $otherCharges = $commercial['other_charges'];
             $totalBeforeRound = round($subtotal + $taxAmount + $freightCharge + $otherCharges, 2);
             $roundOff = isset($data['round_off']) && $data['round_off'] !== null && $data['round_off'] !== ''
                 ? round((float) $data['round_off'], 2)
@@ -1024,11 +1027,12 @@ class PurchaseOrderService
                 'other_charges' => $otherCharges,
                 'round_off' => $roundOff,
                 'grand_total' => $grandTotal,
+                'total_amount' => $grandTotal,
                 'rate_override_reason' => $overrideReason,
                 'notes' => $data['notes'] ?? null,
                 'terms_and_conditions' => $data['terms_and_conditions'] ?? $invoice->terms_and_conditions,
                 'freight_allocation_method' => $data['freight_allocation_method'] ?? $invoice->freight_allocation_method,
-            ]);
+            ] + $commercial['attributes']);
 
             // Clean up old items and history
             foreach ($invoice->items as $oldItem) {
@@ -1489,6 +1493,48 @@ class PurchaseOrderService
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{freight_charge: float, other_charges: float, attributes: array<string, mixed>}
+     */
+    protected function invoiceCommercial(array $data, float $subtotal): array
+    {
+        if (! array_key_exists('is_freight_applicable', $data) && (float) ($data['freight_charge'] ?? 0) > 0) {
+            $data['is_freight_applicable'] = true;
+            $data['freight_mode'] = $data['freight_mode'] ?? 'amount';
+            $data['freight_amount'] = $data['freight_amount'] ?? $data['freight_charge'];
+        }
+
+        $freight = $this->freightCharges($data, $subtotal);
+        $blank = fn (string $key) => filled($data[$key] ?? null) ? trim((string) $data[$key]) : null;
+
+        return [
+            'freight_charge' => $freight['freight_total'],
+            'other_charges' => max(0.0, (float) ($data['other_charges'] ?? 0)),
+            'attributes' => [
+                'is_freight_applicable' => $freight['is_freight_applicable'],
+                'freight_mode' => $freight['freight_mode'],
+                'freight_percent' => $freight['freight_percent'],
+                'freight_amount' => $freight['freight_amount'],
+                'freight_tax_rate' => $freight['freight_tax_rate'],
+                'freight_tax_amount' => $freight['freight_tax_amount'],
+                'freight_total' => $freight['freight_total'],
+                'freight_notes' => $freight['freight_notes'],
+                'receipt_note_nos' => $blank('receipt_note_nos'),
+                'receipt_doc_no' => $blank('receipt_doc_no'),
+                'dispatched_through' => $blank('dispatched_through'),
+                'carrier_name' => $blank('carrier_name'),
+                'lr_number' => $blank('lr_number'),
+                'lr_date' => filled($data['lr_date'] ?? null) ? $data['lr_date'] : null,
+                'vehicle_number' => $blank('vehicle_number'),
+                'order_nos' => $blank('order_nos'),
+                'payment_terms' => $blank('payment_terms'),
+                'other_references' => $blank('other_references'),
+                'terms_of_delivery' => $blank('terms_of_delivery'),
+            ],
+        ];
     }
 
     /**

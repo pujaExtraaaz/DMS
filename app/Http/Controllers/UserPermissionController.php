@@ -11,7 +11,26 @@ class UserPermissionController extends Controller
 {
     public function update(Request $request, User $user)
     {
-        $rawPermissions = $request->input('permissions', []);
+        abort_unless($request->user()?->hasAnyRole(['super-admin', 'client-admin']), 403);
+        if (! $request->user()->hasRole('super-admin') && $user->hasRole('super-admin')) {
+            abort(403, 'Only a super admin can change another super admin.');
+        }
+
+        $synced = self::apply($user, $request->input('permissions', []));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Permissions updated successfully.',
+            'permissions' => $synced,
+        ]);
+    }
+
+    /**
+     * @param  array<int, mixed>  $rawPermissions
+     * @return list<string>
+     */
+    public static function apply(User $user, array $rawPermissions): array
+    {
         $permissions = array_values(array_filter($rawPermissions, 'is_string'));
 
         $modules = array_values(DmsPermissionCatalog::uiModules());
@@ -80,10 +99,6 @@ class UserPermissionController extends Controller
 
         $user->syncPermissions($allToSync);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Permissions updated successfully.',
-            'permissions' => $user->getAllPermissions()->pluck('name')->toArray(),
-        ]);
+        return $user->getAllPermissions()->pluck('name')->values()->all();
     }
 }

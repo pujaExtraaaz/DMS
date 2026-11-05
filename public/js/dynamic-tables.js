@@ -77,6 +77,7 @@
             });
 
             if (!res.ok) {
+                window.location.href = targetUrl;
                 return;
             }
 

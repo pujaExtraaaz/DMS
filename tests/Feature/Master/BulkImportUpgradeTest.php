@@ -103,49 +103,90 @@ class BulkImportUpgradeTest extends TestCase
         }
     }
 
-    public function test_products_import_creates_type_brand_category_subcategory_and_fields(): void
+    public function test_products_import_links_existing_masters_and_updates_only_when_changed(): void
     {
+        $brand = Brand::create([
+            'company_id' => $this->company->id,
+            'name' => 'Acme Brand',
+            'is_active' => true,
+        ]);
+        $anutone = Brand::create([
+            'company_id' => $this->company->id,
+            'name' => 'Anutone',
+            'is_active' => true,
+        ]);
+        $category = Category::create([
+            'brand_id' => $brand->id,
+            'name' => 'Scanners',
+            'is_active' => true,
+        ]);
+        $sub = SubCategory::create([
+            'category_id' => $category->id,
+            'name' => 'Handheld',
+            'is_active' => true,
+        ]);
+        $type = ProductType::query()->whereRaw('LOWER(name) = ?', ['hardware'])->first();
+        $this->assertNotNull($type);
+
+        $row = [
+            'name' => 'Imported Scanner',
+            'part_number' => 'PN-SCAN-100',
+            'model' => 'SCN-X',
+            'product_type' => 'Hardware',
+            'brand' => 'Acme Brand',
+            'category' => 'Scanners',
+            'sub_category' => 'Handheld',
+            'uom_code' => 'PCS',
+            'alternate_uom_code' => 'BOX',
+            'conversion_factor' => 10,
+            'supply_type' => 'goods',
+            'hsn_code' => '847160',
+            'tax_rate' => 18,
+            'track_serial' => 1,
+            'track_batch' => 0,
+            'height_cm' => 5,
+            'length_cm' => 20,
+            'width_cm' => 10,
+            'net_weight' => 0.8,
+            'weight_unit' => 'KG',
+            'purchase_price' => 1000,
+            'trade_price' => 1200,
+            'selling_price' => 1500,
+            'mrp' => 1800,
+            'purchase_price_tax_basis' => 'exclusive',
+            'costing_method' => 'avg_cost',
+            'market_valuation_method' => 'avg_price',
+            'min_stock' => 2,
+            'reorder_level' => 5,
+            'specification' => 'USB-C',
+            'warranty' => '12 months',
+            'catalog_link' => 'https://example.com/scanner',
+            'is_active' => 1,
+        ];
+
         $import = new ProductsImport($this->company->id);
         $import->collection(collect([
+            $row,
             [
-                'name' => 'Imported Scanner',
-                'part_number' => 'PN-SCAN-100',
-                'model' => 'SCN-X',
-                'product_type' => 'Hardware',
-                'brand' => 'Acme Brand',
-                'category' => 'Scanners',
-                'sub_category' => 'Handheld',
+                'name' => 'Unknown Masters Item',
+                'part_number' => 'PN-SCAN-200',
                 'uom_code' => 'PCS',
-                'alternate_uom_code' => 'BOX',
-                'conversion_factor' => 10,
-                'supply_type' => 'goods',
-                'hsn_code' => '847160',
-                'tax_rate' => 18,
-                'track_serial' => 1,
-                'track_batch' => 0,
-                'height_cm' => 5,
-                'length_cm' => 20,
-                'width_cm' => 10,
-                'net_weight' => 0.8,
-                'weight_unit' => 'KG',
-                'purchase_price' => 1000,
-                'trade_price' => 1200,
-                'selling_price' => 1500,
-                'mrp' => 1800,
-                'purchase_price_tax_basis' => 'exclusive',
-                'costing_method' => 'avg_cost',
-                'market_valuation_method' => 'avg_price',
-                'min_stock' => 2,
-                'reorder_level' => 5,
-                'specification' => 'USB-C',
-                'warranty' => '12 months',
-                'catalog_link' => 'https://example.com/scanner',
-                'is_active' => 1,
+                'brand' => 'Missing Brand',
+                'category' => 'Missing Category',
+                'sub_category' => 'Missing Sub',
+                'product_type' => 'Missing Type',
+            ],
+            [
+                'name' => 'Anutone Panel',
+                'part_number' => 'PN-ANU-1',
+                'uom_code' => 'PCS',
+                'brand' => 'anutone',
             ],
         ]));
 
         $this->assertSame(0, $import->skipped, json_encode($import->errors));
-        $this->assertSame(1, $import->created);
+        $this->assertSame(3, $import->created);
+        $this->assertSame(0, $import->updated);
 
         $product = Product::query()->where('sku', 'PN-SCAN-100')->first();
         $this->assertNotNull($product);
@@ -154,25 +195,39 @@ class BulkImportUpgradeTest extends TestCase
         $this->assertSame(12, $product->warranty_months);
         $this->assertSame($this->boxUom->id, $product->alternate_uom_id);
         $this->assertEquals(10, (float) $product->conversion_factor);
-
-        $this->assertDatabaseHas('product_types', [
-            'company_id' => $this->company->id,
-            'name' => 'Hardware',
-        ]);
-        $this->assertDatabaseHas('brands', ['name' => 'Acme Brand']);
-        $this->assertDatabaseHas('categories', ['name' => 'Scanners']);
-        $this->assertDatabaseHas('sub_categories', ['name' => 'Handheld']);
-
-        $type = ProductType::query()->where('name', 'Hardware')->first();
-        $brand = Brand::query()->where('name', 'Acme Brand')->first();
-        $category = Category::query()->where('name', 'Scanners')->first();
-        $sub = SubCategory::query()->where('name', 'Handheld')->first();
-
         $this->assertSame($type->id, $product->product_type_id);
         $this->assertSame($brand->id, $product->brand_id);
         $this->assertSame($category->id, $product->category_id);
         $this->assertSame($sub->id, $product->sub_category_id);
-        $this->assertSame($category->id, $sub->category_id);
+
+        $blank = Product::query()->where('sku', 'PN-SCAN-200')->first();
+        $this->assertNotNull($blank);
+        $this->assertNull($blank->brand_id);
+        $this->assertNull($blank->category_id);
+        $this->assertNull($blank->sub_category_id);
+        $this->assertNull($blank->product_type_id);
+        $this->assertDatabaseMissing('brands', ['name' => 'Missing Brand']);
+        $this->assertDatabaseMissing('categories', ['name' => 'Missing Category']);
+        $this->assertSame(2, Brand::query()->count());
+
+        $panel = Product::query()->where('sku', 'PN-ANU-1')->first();
+        $this->assertSame($anutone->id, $panel->brand_id);
+
+        $again = new ProductsImport($this->company->id);
+        $again->collection(collect([$row]));
+        $this->assertSame(0, $again->created);
+        $this->assertSame(0, $again->updated);
+        $this->assertSame(1, $again->skipped);
+        $this->assertSame(1, Product::query()->where('sku', 'PN-SCAN-100')->count());
+
+        $changed = $row;
+        $changed['selling_price'] = 1600;
+        $update = new ProductsImport($this->company->id);
+        $update->collection(collect([$changed]));
+        $this->assertSame(0, $update->created);
+        $this->assertSame(1, $update->updated);
+        $this->assertSame(0, $update->skipped);
+        $this->assertEquals(1600, (float) Product::query()->where('sku', 'PN-SCAN-100')->value('selling_price'));
     }
 
     public function test_parties_import_fills_new_fields_address_and_bank(): void

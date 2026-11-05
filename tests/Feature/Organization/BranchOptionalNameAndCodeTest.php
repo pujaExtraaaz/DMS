@@ -144,12 +144,36 @@ class BranchOptionalNameAndCodeTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->adminUser)
-            ->get(route('organization.branches.index'));
+            ->get('/organization/branches');
 
         $response->assertOk();
         $response->assertSee('Unnamed Branch');
         $response->assertDontSee('>Code</', false);
         $response->assertDontSee('Search Branch Name, Code, City', false);
+        $response->assertSee('Search Branch Name, Code, State', false);
+    }
+
+    public function test_branch_search_filters_by_name_on_enter_query(): void
+    {
+        Branch::create([
+            'company_id' => $this->company->id,
+            'name' => 'Epson Home',
+            'code' => 'EPS-1',
+            'is_active' => true,
+        ]);
+        Branch::create([
+            'company_id' => $this->company->id,
+            'name' => 'Abdul Majid',
+            'code' => 'ABD-1',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->get('/organization/branches?search=Epson');
+
+        $response->assertOk();
+        $response->assertSee('Epson Home');
+        $response->assertDontSee('Abdul Majid');
     }
 
     public function test_blank_values_do_not_break_relationships_and_warehouses(): void

@@ -4,6 +4,7 @@
     </IfModule>
 
     RewriteEngine On
+    RewriteBase /dms/
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .

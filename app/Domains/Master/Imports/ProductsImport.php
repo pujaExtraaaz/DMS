@@ -11,9 +11,10 @@ use App\Domains\Master\Models\ProductUom;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
 use App\Support\CodeGenerator;
+use App\Support\NameCase;
 use App\Support\WarrantyPeriod;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\Importable;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -31,8 +32,10 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
  *   min_stock, reorder_level, specification, warranty, catalog_link, is_active
  *
  * Aliases: sku / part_no / partnumber → part_number; uom → uom_code.
- * Match on SKU (part_number). Missing UOM code → skip. Brand / category /
- * sub_category / product_type auto-created by name when missing.
+ * Match on part number. An existing product is updated only when a value
+ * changed; an identical row is skipped. Missing UOM code → skip.
+ * Brand, category, sub-category and product type are linked only when they
+ * already exist. Unknown names are left blank and are not created.
  */
 class ProductsImport implements ToCollection, WithHeadingRow
 {
@@ -51,17 +54,10 @@ class ProductsImport implements ToCollection, WithHeadingRow
     public function collection(Collection $rows): void
     {
         $uomsByCode = Uom::query()->get()->keyBy(fn ($u) => strtoupper((string) $u->code));
-        $brands = Brand::query()->get()->keyBy(fn ($b) => strtolower((string) $b->name));
-        $categories = Category::query()->get()->keyBy(
-            fn ($c) => strtolower(($c->brand_id ?? '0').'|'.$c->name)
-        );
-        $subCategories = SubCategory::query()->get()->keyBy(
-            fn ($s) => strtolower(($s->category_id ?? '0').'|'.$s->name)
-        );
-        $productTypes = ProductType::query()
-            ->when($this->companyId, fn ($q) => $q->where('company_id', $this->companyId))
-            ->get()
-            ->keyBy(fn ($t) => strtolower((string) $t->name));
+        $brands = Brand::query()->get();
+        $categories = Category::query()->get();
+        $subCategories = SubCategory::query()->get();
+        $productTypes = ProductType::query()->get();
         $companyId = $this->companyId ?? Company::query()->value('id');
 
         foreach ($rows as $index => $row) {
@@ -89,65 +85,10 @@ class ProductsImport implements ToCollection, WithHeadingRow
                 $sku = CodeGenerator::forProduct($companyId);
             }
 
-            $brand = null;
-            if (filled($data['brand'] ?? null)) {
-                $brandName = trim((string) $data['brand']);
-                $brandKey = strtolower($brandName);
-                $brand = $brands[$brandKey] ?? Brand::create([
-                    'company_id' => $companyId,
-                    'name' => $brandName,
-                    'is_active' => true,
-                ]);
-                $brands->put(strtolower($brand->name), $brand);
-            }
-
-            $category = null;
-            if (filled($data['category'] ?? null)) {
-                $categoryName = trim((string) $data['category']);
-                $catKey = strtolower(($brand?->id ?? '0').'|'.$categoryName);
-                $category = $categories[$catKey] ?? null;
-                if (! $category) {
-                    // Fall back to same name under any brand, then create under current brand.
-                    $category = Category::query()
-                        ->when($brand, fn ($q) => $q->where('brand_id', $brand->id))
-                        ->whereRaw('LOWER(name) = ?', [strtolower($categoryName)])
-                        ->first();
-                }
-                if (! $category) {
-                    $category = Category::create([
-                        'brand_id' => $brand?->id,
-                        'name' => $categoryName,
-                        'is_active' => true,
-                    ]);
-                }
-                $categories->put(strtolower(($category->brand_id ?? '0').'|'.$category->name), $category);
-            }
-
-            $subCategory = null;
-            if (filled($data['sub_category'] ?? null) && $category) {
-                $subName = trim((string) $data['sub_category']);
-                $subKey = strtolower($category->id.'|'.$subName);
-                $subCategory = $subCategories[$subKey] ?? SubCategory::firstOrCreate(
-                    ['category_id' => $category->id, 'name' => $subName],
-                    ['is_active' => true]
-                );
-                $subCategories->put(strtolower($subCategory->category_id.'|'.$subCategory->name), $subCategory);
-            }
-
-            $productType = null;
-            if (filled($data['product_type'] ?? null)) {
-                $typeName = trim((string) $data['product_type']);
-                $typeKey = strtolower($typeName);
-                $productType = $productTypes[$typeKey] ?? ProductType::firstOrCreate(
-                    ['company_id' => $companyId, 'name' => $typeName],
-                    [
-                        'code' => strtoupper(Str::slug($typeName, '_')),
-                        'is_active' => true,
-                        'track_serial' => false,
-                    ]
-                );
-                $productTypes->put(strtolower($productType->name), $productType);
-            }
+            $brand = $this->matchBrand($brands, (string) ($data['brand'] ?? ''));
+            $category = $this->matchCategory($categories, $brand, (string) ($data['category'] ?? ''));
+            $subCategory = $this->matchSubCategory($subCategories, $category, (string) ($data['sub_category'] ?? ''));
+            $productType = $this->matchProductType($productTypes, (string) ($data['product_type'] ?? ''));
 
             $altUom = null;
             $altCode = strtoupper(trim((string) ($data['alternate_uom_code'] ?? '')));
@@ -261,14 +202,30 @@ class ProductsImport implements ToCollection, WithHeadingRow
                 'is_active' => $isActive,
             ];
 
-            if ($existing) {
-                $existing->update($payload);
-                $product = $existing;
-                $this->updated++;
-            } else {
-                $payload['serial_no'] = CodeGenerator::forProductSerial();
-                $product = Product::create($payload);
-                $this->created++;
+            try {
+                if ($existing) {
+                    if (! $this->payloadChanged($existing, $payload)) {
+                        $this->skipped++;
+
+                        continue;
+                    }
+                    $existing->update($payload);
+                    $product = $existing;
+                    $this->updated++;
+                } else {
+                    $payload['serial_no'] = CodeGenerator::forProductSerial();
+                    $product = Product::create($payload);
+                    $this->created++;
+                }
+            } catch (QueryException $e) {
+                $this->skipped++;
+                $this->errors[] = [
+                    'row' => $rowNo,
+                    'field' => 'part_number',
+                    'message' => 'Could not save this product because it conflicts with an existing record.',
+                ];
+
+                continue;
             }
 
             ProductUom::updateOrCreate(
@@ -303,6 +260,170 @@ class ProductsImport implements ToCollection, WithHeadingRow
                 );
             }
         }
+    }
+
+    protected function matchBrand(Collection $brands, string $label): ?Brand
+    {
+        $label = trim($label);
+        if ($label === '') {
+            return null;
+        }
+
+        $found = $brands->first(fn (Brand $brand) => $this->namesEqual($this->rawName($brand), $label));
+        if ($found) {
+            return $found;
+        }
+
+        $found = Brand::query()->where('name', NameCase::format($label))->first()
+            ?? Brand::query()->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($label)])->first();
+        if ($found) {
+            $brands->push($found);
+        }
+
+        return $found;
+    }
+
+    protected function matchCategory(Collection $categories, ?Brand $brand, string $label): ?Category
+    {
+        $label = trim($label);
+        if ($label === '') {
+            return null;
+        }
+
+        $named = $categories->filter(fn (Category $category) => $this->namesEqual($this->rawName($category), $label))->values();
+        if ($brand) {
+            $underBrand = $named->first(fn (Category $category) => (int) $category->brand_id === (int) $brand->id);
+            if ($underBrand) {
+                return $underBrand;
+            }
+
+            $unbranded = $named->filter(fn (Category $category) => $category->brand_id === null)->values();
+
+            return $unbranded->count() === 1 ? $unbranded->first() : null;
+        }
+
+        return $named->count() === 1 ? $named->first() : null;
+    }
+
+    protected function matchSubCategory(Collection $subCategories, ?Category $category, string $label): ?SubCategory
+    {
+        $label = trim($label);
+        if ($label === '' || ! $category) {
+            return null;
+        }
+
+        return $subCategories->first(function (SubCategory $subCategory) use ($category, $label) {
+            return (int) $subCategory->category_id === (int) $category->id
+                && $this->namesEqual($this->rawName($subCategory), $label);
+        });
+    }
+
+    protected function matchProductType(Collection $productTypes, string $label): ?ProductType
+    {
+        $label = trim($label);
+        if ($label === '') {
+            return null;
+        }
+
+        $found = $productTypes->first(fn (ProductType $type) => $this->namesEqual($this->rawName($type), $label));
+        if ($found) {
+            return $found;
+        }
+
+        $found = ProductType::query()->where('name', NameCase::format($label))->first()
+            ?? ProductType::query()->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($label)])->first();
+        if ($found) {
+            $productTypes->push($found);
+        }
+
+        return $found;
+    }
+
+    protected function rawName(object $model): string
+    {
+        if (method_exists($model, 'getRawOriginal')) {
+            return trim((string) ($model->getRawOriginal('name') ?? ''));
+        }
+
+        return trim((string) ($model->name ?? ''));
+    }
+
+    protected function namesEqual(string $stored, string $incoming): bool
+    {
+        $stored = trim($stored);
+        $incoming = trim($incoming);
+        if ($stored === '' || $incoming === '') {
+            return false;
+        }
+
+        return strcasecmp($stored, $incoming) === 0
+            || strcasecmp((string) NameCase::format($stored), (string) NameCase::format($incoming)) === 0;
+    }
+
+    protected function payloadChanged(Product $existing, array $payload): bool
+    {
+        foreach ($payload as $key => $incoming) {
+            if ($this->canonical($key, $existing->getAttribute($key)) !== $this->canonical($key, $incoming)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function canonical(string $key, mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+
+        if ($this->isNumericField($key) && is_numeric($value)) {
+            return number_format((float) $value, 4, '.', '');
+        }
+
+        $string = trim((string) $value);
+        if ($string === '') {
+            return null;
+        }
+
+        if (NameCase::isApplicableField($key)) {
+            return NameCase::format($string);
+        }
+
+        return $string;
+    }
+
+    protected function isNumericField(string $key): bool
+    {
+        return str_ends_with($key, '_id')
+            || in_array($key, [
+                'conversion_factor',
+                'tax_rate',
+                'purchase_price',
+                'selling_price',
+                'trade_price',
+                'calculation_mrp',
+                'alt_purchase_price',
+                'alt_trade_price',
+                'alt_selling_price',
+                'alt_calculation_mrp',
+                'height_cm',
+                'length_cm',
+                'width_cm',
+                'net_weight',
+                'min_stock',
+                'reorder_level',
+                'discount_percent',
+                'discount_value',
+                'selling_discount_value',
+                'warranty_months',
+                'sender_warranty_months',
+                'customer_warranty_months',
+            ], true);
     }
 
     protected function isTruthy(mixed $value): bool

@@ -148,6 +148,61 @@ class PurchaseInvoiceFreightAndTotalTest extends TestCase
         $this->assertEquals(1505.00, (float) $payable->debit);
     }
 
+    public function test_purchase_invoice_calculates_percent_freight_and_stores_dispatch_details(): void
+    {
+        $payload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'invoice_date' => now()->toDateString(),
+            'supplier_invoice_number' => 'INV-FRT-PCT',
+            'save_mode' => 'open',
+            'is_freight_applicable' => '1',
+            'freight_mode' => 'percent',
+            'freight_percent' => '2',
+            'freight_tax_rate' => '18',
+            'freight_notes' => 'ABC Transport LR 99881',
+            'round_off' => 0,
+            'receipt_note_nos' => 'RN-12',
+            'receipt_doc_no' => 'RD-44',
+            'dispatched_through' => 'Road',
+            'carrier_name' => 'ABC Transport',
+            'lr_number' => 'LR-99881',
+            'lr_date' => now()->toDateString(),
+            'vehicle_number' => 'CG04AB1234',
+            'order_nos' => 'PO-100',
+            'payment_terms' => '15',
+            'other_references' => 'Ref-1',
+            'terms_of_delivery' => 'Door delivery',
+            'items' => [
+                [
+                    'product_id' => $this->product->id,
+                    'quantity' => 5,
+                    'unit_cost' => 200.00,
+                    'cgst_percent' => 9,
+                    'sgst_percent' => 9,
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)->post(route('purchasing.invoices.store'), $payload);
+        $response->assertSessionHasNoErrors();
+
+        $invoice = PurchaseInvoice::where('supplier_invoice_no', 'INV-FRT-PCT')->first();
+        $this->assertNotNull($invoice);
+        $this->assertTrue((bool) $invoice->is_freight_applicable);
+        $this->assertSame('percent', $invoice->freight_mode);
+        $this->assertEquals(2.0, (float) $invoice->freight_percent);
+        $this->assertEquals(20.0, (float) $invoice->freight_amount);
+        $this->assertEquals(3.6, (float) $invoice->freight_tax_amount);
+        $this->assertEquals(23.6, (float) $invoice->freight_total);
+        $this->assertEquals(1203.6, (float) $invoice->grand_total);
+        $this->assertSame('RN-12', $invoice->receipt_note_nos);
+        $this->assertSame('CG04AB1234', $invoice->vehicle_number);
+        $this->assertSame('15', $invoice->payment_terms);
+        $this->assertSame('Door delivery', $invoice->terms_of_delivery);
+        $this->assertSame('in_transit', $invoice->material_receipt_status);
+    }
+
     public function test_purchase_invoice_show_page_displays_saved_freight_and_charges(): void
     {
         $invoice = PurchaseInvoice::create([
@@ -183,7 +238,7 @@ class PurchaseInvoiceFreightAndTotalTest extends TestCase
         $response = $this->actingAs($this->user)->get(route('purchasing.invoices.show', $invoice));
 
         $response->assertStatus(200);
-        $response->assertSee('Freight / Landed Charge:');
+        $response->assertSee('Freight:');
         $response->assertSee('250.00');
         $response->assertSee('Other Charges:');
         $response->assertSee('75.00');

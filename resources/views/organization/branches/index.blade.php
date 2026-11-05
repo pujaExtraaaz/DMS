@@ -11,7 +11,7 @@
     <x-ui.card>
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search Branch Name, City..."
+            search-placeholder="Search Branch Name, Code, State..."
             :reset-url="route('organization.branches.index')"
         >
             <x-slot name="filters">
