@@ -15,6 +15,11 @@ class BusinessGroup extends Model
     protected $fillable = [
         'name',
         'code',
+        'proprietor_name',
+        'proprietor_relationship',
+        'proprietor_email',
+        'proprietor_phone',
+        'proprietor_pan',
         'parent_company_id',
         'incorporation_date',
         'headquarters',
@@ -35,6 +40,20 @@ class BusinessGroup extends Model
             'is_active' => 'boolean',
             'incorporation_date' => 'date:Y-m-d',
         ];
+    }
+
+    public function getProprietorTitleAttribute(): string
+    {
+        if (filled($this->proprietor_name)) {
+            return $this->proprietor_name;
+        }
+
+        return $this->parentCompany?->legal_name ?: ($this->name ?: 'Vivek Gupta');
+    }
+
+    public function getProprietorRelationAttribute(): string
+    {
+        return $this->proprietor_relationship ?: 'Common ownership and business oversight';
     }
 
     public function parentCompany(): BelongsTo

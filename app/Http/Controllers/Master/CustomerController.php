@@ -119,6 +119,87 @@ class CustomerController extends Controller
         ]);
     }
 
+    /**
+     * Quickly store a delivery/party address for a customer.
+     */
+    public function storeAddress(Request $request, Customer $customer): JsonResponse
+    {
+        $validated = $request->validate([
+            'label' => 'nullable|string|max:100',
+            'name' => 'nullable|string|max:255',
+            'contact_person' => 'nullable|string|max:255',
+            'contact_phone' => 'nullable|string|max:20',
+            'type' => 'nullable|in:billing,delivery,both,shipping,warehouse',
+            'address_line_1' => 'required|string|max:255',
+            'address_line_2' => 'nullable|string|max:255',
+            'city' => 'required|string|max:100',
+            'state' => 'required|string|max:100',
+            'pincode' => 'nullable|string|max:20',
+            'gstin' => 'nullable|string|max:20',
+            'is_default_delivery' => 'nullable|boolean',
+            'is_default_billing' => 'nullable|boolean',
+        ]);
+
+        $type = $validated['type'] ?? 'delivery';
+        $isDefaultDelivery = (bool) ($validated['is_default_delivery'] ?? false);
+        $isDefaultBilling = (bool) ($validated['is_default_billing'] ?? false);
+
+        if ($isDefaultDelivery) {
+            $customer->addresses()->update(['is_default_delivery' => false]);
+        }
+        if ($isDefaultBilling) {
+            $customer->addresses()->update(['is_default_billing' => false, 'is_default' => false]);
+        }
+
+        $addressLines = array_filter([$validated['address_line_1'] ?? null, $validated['address_line_2'] ?? null]);
+        $addressText = implode(', ', $addressLines);
+
+        $address = $customer->addresses()->create([
+            'label' => (!empty($validated['label'])) ? $validated['label'] : 'Delivery Branch',
+            'name' => (!empty($validated['name'])) ? $validated['name'] : $customer->name,
+            'type' => $type,
+            'contact_person' => (!empty($validated['contact_person'])) ? $validated['contact_person'] : ($customer->contact_person ?: $customer->name),
+            'contact_phone' => (!empty($validated['contact_phone'])) ? $validated['contact_phone'] : $customer->phone,
+            'address_line_1' => $validated['address_line_1'],
+            'address_line_2' => $validated['address_line_2'] ?? null,
+            'address' => $addressText,
+            'city' => $validated['city'],
+            'state' => $validated['state'],
+            'pincode' => $validated['pincode'] ?? null,
+            'gstin' => (!empty($validated['gstin'])) ? $validated['gstin'] : $customer->gstin,
+            'is_default_delivery' => $isDefaultDelivery,
+            'is_default_billing' => $isDefaultBilling,
+            'is_default' => $isDefaultBilling,
+            'is_active' => true,
+        ]);
+
+        $formatted = [
+            'id' => $address->id,
+            'label' => $address->label,
+            'name' => $address->name ?? $customer->name,
+            'type' => $address->type,
+            'contact_person' => $address->contact_person ?: ($address->name ?: $customer->name),
+            'contact_phone' => $address->contact_phone ?: $customer->phone,
+            'address_line_1' => $address->address_line_1,
+            'address_line_2' => $address->address_line_2,
+            'city' => $address->city,
+            'state' => $address->state,
+            'pincode' => $address->pincode,
+            'gstin' => $address->gstin,
+            'is_default_billing' => (bool) $address->is_default_billing,
+            'is_default_delivery' => (bool) $address->is_default_delivery,
+            'display_text' => $address->display_text,
+            'full_address' => $address->full_address,
+            'snapshot' => $address->formatSnapshot(),
+        ];
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery address added successfully.',
+            'address' => $formatted,
+        ], 201);
+    }
+
     public function cities(Request $request): JsonResponse
     {
         $state = $request->query('state');

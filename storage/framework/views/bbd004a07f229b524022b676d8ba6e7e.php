@@ -305,8 +305,23 @@ Back <?php echo $__env->renderComponent(); ?>
 <?php $component->withAttributes(['padding' => 'false']); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
-        <div class="p-4 border-b border-slate-200 flex items-center justify-between">
-            <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
+        <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
+                
+                <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
+                    <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
+                           :class="priceType === 'exclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
+                        <input type="radio" name="price_type" value="exclusive" x-model="priceType" @change="recalc()" class="sr-only">
+                        Tax Exclusive
+                    </label>
+                    <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
+                           :class="priceType === 'inclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
+                        <input type="radio" name="price_type" value="inclusive" x-model="priceType" @change="recalc()" class="sr-only">
+                        Tax Inclusive
+                    </label>
+                </div>
+            </div>
             <button type="button" @click="addItem()"
                     class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
                 + Add Item
@@ -469,6 +484,15 @@ Back <?php echo $__env->renderComponent(); ?>
                     <input type="number" step="0.01" min="0" name="other_charges" x-model.number="otherCharges" @input="recalc()"
                            class="w-32 min-h-[34px] px-2.5 py-1.5 rounded-md border-gray-300 text-xs font-mono text-right shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                 </div>
+                <div class="flex items-center justify-between text-slate-600 pt-1 border-t border-dashed border-slate-200">
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-medium">Round Off (₹):</span>
+                        <button type="button" @click="autoRoundOff()" class="text-[10px] text-indigo-600 hover:text-indigo-800 underline" title="Re-calculate automatic round off">Auto</button>
+                    </div>
+                    <input type="number" step="0.01" min="-500" max="500" name="round_off" x-model.number="roundOff" @input="isManualRoundOff = true; recalc()"
+                           placeholder="0.00"
+                           class="w-32 min-h-[34px] px-2.5 py-1.5 rounded-md border-gray-300 text-xs font-mono text-right shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                </div>
                 <div class="flex justify-between items-center font-bold text-base text-slate-900 border-t border-slate-200 pt-3 mt-1">
                     <span>Grand Total:</span>
                     <span class="font-mono text-indigo-700 text-lg" x-text="formatCurrency(grandTotal)"></span>
@@ -629,6 +653,9 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
         dueDateFormattedYmd: '',
         freightCharge: <?php echo e(old('freight_charge', (float)($order?->freight_total ?? 0))); ?>,
         otherCharges: 0,
+        priceType: '<?php echo e(old('price_type', 'exclusive')); ?>',
+        roundOff: <?php echo e(old('round_off', 0)); ?>,
+        isManualRoundOff: <?php echo e(old('round_off') !== null ? 'true' : 'false'); ?>,
         subtotal: 0,
         taxTotal: 0,
         grandTotal: 0,
@@ -740,11 +767,20 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
 
             this.items.forEach(row => {
                 const qty = Number(row.quantity) || 0;
-                const cost = Number(row.unit_cost) || 0;
-                const lineBase = qty * cost;
+                const enteredCost = Number(row.unit_cost) || 0;
                 const taxPercent = (Number(row.cgst_percent) || 0) + (Number(row.sgst_percent) || 0);
-                const lineTax = (lineBase * taxPercent) / 100;
-                row.line_total = lineBase + lineTax;
+
+                let lineBase, lineTax;
+                if (this.priceType === 'inclusive') {
+                    const baseCost = taxPercent > 0 ? (enteredCost * 100 / (100 + taxPercent)) : enteredCost;
+                    lineBase = qty * baseCost;
+                    lineTax = (lineBase * taxPercent) / 100;
+                    row.line_total = qty * enteredCost;
+                } else {
+                    lineBase = qty * enteredCost;
+                    lineTax = (lineBase * taxPercent) / 100;
+                    row.line_total = lineBase + lineTax;
+                }
 
                 sub += lineBase;
                 tax += lineTax;
@@ -752,7 +788,19 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
 
             this.subtotal = sub;
             this.taxTotal = tax;
-            this.grandTotal = sub + tax + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            const beforeRound = sub + tax + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            if (!this.isManualRoundOff) {
+                this.roundOff = Math.round((Math.round(beforeRound) - beforeRound) * 100) / 100;
+            }
+            const r = Number(this.roundOff) || 0;
+            this.grandTotal = Math.max(0, Math.round((beforeRound + r) * 100) / 100);
+        },
+
+        autoRoundOff() {
+            const beforeRound = this.subtotal + this.taxTotal + (Number(this.freightCharge) || 0) + (Number(this.otherCharges) || 0);
+            this.roundOff = Math.round((Math.round(beforeRound) - beforeRound) * 100) / 100;
+            this.isManualRoundOff = false;
+            this.recalc();
         },
 
         formatCurrency(val) {

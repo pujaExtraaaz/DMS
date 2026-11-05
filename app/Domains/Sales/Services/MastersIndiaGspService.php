@@ -63,18 +63,26 @@ class MastersIndiaGspService
     {
         // Eligibility pre-check
         $eligibility = $this->complianceService->evaluateEInvoiceEligibility($invoice);
-        if (! $eligibility['applicable'] && $eligibility['status'] === 'not_applicable') {
-            throw new RuntimeException($eligibility['reason']);
+        if (! $eligibility['eligible']) {
+            throw new RuntimeException($eligibility['reason'] ?? 'Invoice is not eligible for E-Invoicing.');
+        }
+
+        if ($invoice->eInvoice && $invoice->eInvoice->status === 'generated' && filled($invoice->eInvoice->irn)) {
+            throw new RuntimeException('E-Invoice has already been generated with IRN: ' . $invoice->eInvoice->irn);
         }
 
         if (! $this->isConfigured()) {
-            $stub = $this->stubIrn($invoice, 'Masters India credentials not configured; using deterministic stub.');
-            $this->auditLogService->record($invoice, 'einvoice_generated_stub', null, [
-                'irn' => $stub['irn'],
-                'ack_no' => $stub['ack_no'],
-                'status' => 'stub',
-            ]);
-            return $stub;
+            if ((bool) config('services.mastersindia.fallback_to_stub')) {
+                $stub = $this->stubIrn($invoice, 'Masters India credentials not configured; using deterministic stub.');
+                $this->auditLogService->record($invoice, 'einvoice_generated_stub', null, [
+                    'irn' => $stub['irn'],
+                    'ack_no' => $stub['ack_no'],
+                    'status' => 'stub',
+                ]);
+                return $stub;
+            }
+
+            throw new RuntimeException('Government Portal / Masters India GSP credentials are not configured. Please configure MASTERSINDIA_CLIENT_ID, MASTERSINDIA_CLIENT_SECRET, MASTERSINDIA_USERNAME, MASTERSINDIA_PASSWORD, and MASTERSINDIA_GSTIN in your environment.');
         }
 
         try {
@@ -147,18 +155,22 @@ class MastersIndiaGspService
         }
 
         if (! $this->isConfigured()) {
-            $stub = [
-                'irn' => $eInvoice->irn,
-                'cancel_date' => Carbon::now()->toIso8601String(),
-                'status' => 'cancelled',
-                'raw' => ['note' => 'Stub cancellation (no live credentials)'],
-            ];
-            $this->auditLogService->record($invoice, 'einvoice_cancelled_stub', null, [
-                'irn' => $eInvoice->irn,
-                'reason' => $cancelReason,
-                'remarks' => $remarks,
-            ]);
-            return $stub;
+            if ((bool) config('services.mastersindia.fallback_to_stub')) {
+                $stub = [
+                    'irn' => $eInvoice->irn,
+                    'cancel_date' => Carbon::now()->toIso8601String(),
+                    'status' => 'cancelled',
+                    'raw' => ['note' => 'Stub cancellation (no live credentials)'],
+                ];
+                $this->auditLogService->record($invoice, 'einvoice_cancelled_stub', null, [
+                    'irn' => $eInvoice->irn,
+                    'reason' => $cancelReason,
+                    'remarks' => $remarks,
+                ]);
+                return $stub;
+            }
+
+            throw new RuntimeException('Government Portal / Masters India GSP credentials are not configured. Please configure MASTERSINDIA_CLIENT_ID, MASTERSINDIA_CLIENT_SECRET, MASTERSINDIA_USERNAME, MASTERSINDIA_PASSWORD, and MASTERSINDIA_GSTIN in your environment.');
         }
 
         try {
@@ -229,16 +241,29 @@ class MastersIndiaGspService
      */
     public function generateEWayBill(Invoice $invoice, array $extra = []): array
     {
+        $eligibility = $this->complianceService->evaluateEWayBillEligibility($invoice);
+        if (! empty($eligibility['missing_fields'])) {
+            throw new RuntimeException('Cannot generate E-Way Bill: ' . implode(', ', $eligibility['missing_fields']) . ' must be provided.');
+        }
+
+        if ($invoice->eWayBill && $invoice->eWayBill->status === 'generated' && filled($invoice->eWayBill->eway_bill_no)) {
+            throw new RuntimeException('E-Way Bill has already been generated with number: ' . $invoice->eWayBill->eway_bill_no);
+        }
+
         $eInvoice = $invoice->eInvoice;
         $hasActiveIrn = $eInvoice && filled($eInvoice->irn) && $eInvoice->status !== 'cancelled';
 
         if (! $this->isConfigured()) {
-            $stub = $this->stubEwayBill($invoice, 'Masters India credentials not configured; using deterministic stub.');
-            $this->auditLogService->record($invoice, 'eway_bill_generated_stub', null, [
-                'eway_bill_no' => $stub['eway_bill_no'],
-                'status' => 'stub',
-            ]);
-            return $stub;
+            if ((bool) config('services.mastersindia.fallback_to_stub')) {
+                $stub = $this->stubEwayBill($invoice, 'Masters India credentials not configured; using deterministic stub.');
+                $this->auditLogService->record($invoice, 'eway_bill_generated_stub', null, [
+                    'eway_bill_no' => $stub['eway_bill_no'],
+                    'status' => 'stub',
+                ]);
+                return $stub;
+            }
+
+            throw new RuntimeException('Government Portal / Masters India GSP credentials are not configured. Please configure MASTERSINDIA_CLIENT_ID, MASTERSINDIA_CLIENT_SECRET, MASTERSINDIA_USERNAME, MASTERSINDIA_PASSWORD, and MASTERSINDIA_GSTIN in your environment.');
         }
 
         try {
@@ -316,18 +341,22 @@ class MastersIndiaGspService
         }
 
         if (! $this->isConfigured()) {
-            $stub = [
-                'eway_bill_no' => $eWayBill->eway_bill_no,
-                'cancel_date' => Carbon::now()->toIso8601String(),
-                'status' => 'cancelled',
-                'raw' => ['note' => 'Stub cancellation (no live credentials)'],
-            ];
-            $this->auditLogService->record($invoice, 'eway_bill_cancelled_stub', null, [
-                'eway_bill_no' => $eWayBill->eway_bill_no,
-                'reason' => $cancelReason,
-                'remarks' => $remarks,
-            ]);
-            return $stub;
+            if ((bool) config('services.mastersindia.fallback_to_stub')) {
+                $stub = [
+                    'eway_bill_no' => $eWayBill->eway_bill_no,
+                    'cancel_date' => Carbon::now()->toIso8601String(),
+                    'status' => 'cancelled',
+                    'raw' => ['note' => 'Stub cancellation (no live credentials)'],
+                ];
+                $this->auditLogService->record($invoice, 'eway_bill_cancelled_stub', null, [
+                    'eway_bill_no' => $eWayBill->eway_bill_no,
+                    'reason' => $cancelReason,
+                    'remarks' => $remarks,
+                ]);
+                return $stub;
+            }
+
+            throw new RuntimeException('Government Portal / Masters India GSP credentials are not configured. Please configure MASTERSINDIA_CLIENT_ID, MASTERSINDIA_CLIENT_SECRET, MASTERSINDIA_USERNAME, MASTERSINDIA_PASSWORD, and MASTERSINDIA_GSTIN in your environment.');
         }
 
         try {
@@ -501,8 +530,8 @@ class MastersIndiaGspService
                 'LglNm' => substr((string) ($customer?->name ?: 'Customer'), 0, 100),
                 'Pos' => $buyerStateCode,
                 'Addr1' => substr((string) ($invoice->billing_address ?: ($customer?->address ?: 'Customer Address')), 0, 100),
-                'Loc' => substr((string) ($invoice->destination ?: ($customer?->city ?: ($customer?->state ?: 'City'))), 0, 50),
-                'Pin' => (int) ($invoice->shippingAddress?->pincode ?: ($customer?->pincode ?: 400001)),
+                'Loc' => substr((string) ($invoice->bill_to_place ?: ($invoice->destination ?: ($customer?->city ?: ($customer?->state ?: 'City')))), 0, 50),
+                'Pin' => (int) ($invoice->billingAddress?->pincode ?: ($customer?->pincode ?: 400001)),
                 'Stcd' => $buyerStateCode,
             ],
             'ItemList' => $items,
@@ -516,6 +545,25 @@ class MastersIndiaGspService
                 'TotInvVal' => (float) $invoice->grand_total,
             ],
         ];
+
+        if (filled($invoice->shipping_address) || filled($invoice->ship_to_place)) {
+            $shipGstin = (string) ($invoice->shippingAddress?->gstin ?: ($invoice->consignee_gstin ?: $buyerGstin));
+            $shipStateCode = $this->complianceService->resolveStateCode(
+                $invoice->delivery_state ?: ($invoice->shippingAddress?->state ?: ($customer?->state ?: '')),
+                $shipGstin
+            );
+
+            $payload['ShipDtls'] = [
+                'Gstin' => $shipGstin,
+                'LglNm' => substr((string) ($invoice->consignee_name ?: ($customer?->name ?: 'Consignee')), 0, 100),
+                'Addr1' => substr((string) ($invoice->shipping_address ?: ($customer?->address ?: 'Delivery Address')), 0, 100),
+                'Loc' => substr((string) ($invoice->ship_to_place ?: ($invoice->destination ?: ($customer?->city ?: ($customer?->state ?: 'City')))), 0, 50),
+                'Pin' => (int) ($invoice->shippingAddress?->pincode ?: ($customer?->pincode ?: 400001)),
+                'Stcd' => $shipStateCode,
+            ];
+        }
+
+        return $payload;
     }
 
     /**
@@ -528,10 +576,18 @@ class MastersIndiaGspService
         $docNo = $invoice->lr_rr_no ?: ($invoice->dispatch_doc_no ?: ($invoice->reference_no ?: $invoice->invoice_no));
         $docDate = $invoice->lr_rr_date ? $invoice->lr_rr_date->format('d/m/Y') : $invoice->invoice_date->format('d/m/Y');
 
+        $rawMode = strtolower(trim((string) ($invoice->transport_mode ?? '1')));
+        $portalTransMode = match (true) {
+            str_contains($rawMode, '2') || str_contains($rawMode, 'rail') => '2',
+            str_contains($rawMode, '3') || str_contains($rawMode, 'air') => '3',
+            str_contains($rawMode, '4') || str_contains($rawMode, 'ship') => '4',
+            default => '1',
+        };
+
         return [
             'Irn' => $eInv?->irn,
             'Distance' => (int) ($invoice->distance_km ?: 50),
-            'TransMode' => (string) ($invoice->transport_mode ?: '1'),
+            'TransMode' => $portalTransMode,
             'TransId' => $invoice->transporter_id ?: null,
             'TransName' => $invoice->transporter_name ?: null,
             'TransDocNo' => $docNo,
@@ -564,6 +620,14 @@ class MastersIndiaGspService
         $docNo = $invoice->lr_rr_no ?: ($invoice->dispatch_doc_no ?: $invoice->invoice_no);
         $docDate = $invoice->lr_rr_date ? $invoice->lr_rr_date->format('d/m/Y') : $invoice->invoice_date->format('d/m/Y');
 
+        $rawMode = strtolower(trim((string) ($invoice->transport_mode ?? '1')));
+        $portalTransMode = match (true) {
+            str_contains($rawMode, '2') || str_contains($rawMode, 'rail') => '2',
+            str_contains($rawMode, '3') || str_contains($rawMode, 'air') => '3',
+            str_contains($rawMode, '4') || str_contains($rawMode, 'ship') => '4',
+            default => '1',
+        };
+
         return [
             'supplyType' => 'O',
             'subSupplyType' => '1',
@@ -580,7 +644,7 @@ class MastersIndiaGspService
             'toGstin' => $buyerGstin,
             'toTrdName' => $customer?->name,
             'toAddr1' => substr((string) ($invoice->shipping_address ?: ($customer?->address ?: 'Delivery Address')), 0, 100),
-            'toPlace' => $invoice->destination ?: ($customer?->city ?: ($customer?->state ?: 'City')),
+            'toPlace' => $invoice->ship_to_place ?: ($invoice->destination ?: ($customer?->city ?: ($customer?->state ?: 'City'))),
             'toPincode' => (int) ($invoice->shippingAddress?->pincode ?: ($customer?->pincode ?: 400001)),
             'toStateCode' => (int) $toStateCode,
             'actualToStateCode' => (int) $toStateCode,
@@ -589,7 +653,7 @@ class MastersIndiaGspService
             'sgstValue' => (float) $invoice->sgst_amount,
             'igstValue' => (float) $invoice->igst_amount,
             'totInvValue' => (float) $invoice->grand_total,
-            'transMode' => (string) ($invoice->transport_mode ?: '1'),
+            'transMode' => $portalTransMode,
             'transDistance' => (int) ($invoice->distance_km ?: 50),
             'transporterId' => $invoice->transporter_id ?: null,
             'transporterName' => $invoice->transporter_name ?: null,

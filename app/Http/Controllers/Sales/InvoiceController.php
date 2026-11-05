@@ -85,6 +85,19 @@ class InvoiceController extends Controller
         return $salespeople;
     }
 
+    /**
+     * Resolve transporter master records from party master.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, Customer>
+     */
+    public static function getTransporters(): \Illuminate\Database\Eloquent\Collection
+    {
+        return Customer::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+    }
+
     public function index(Request $request): View|Response
     {
         $query = Invoice::query()
@@ -229,6 +242,7 @@ class InvoiceController extends Controller
                 ->where('is_active', true)
                 ->orderBy('name')
                 ->get(),
+            'transporters' => self::getTransporters(),
             'salespersons' => self::getSalespersons(),
 
             'products' => $products,
@@ -381,6 +395,8 @@ class InvoiceController extends Controller
                 'payment_terms' => $order->payment_terms ?? $order->customer?->payment_terms,
                 'terms_of_delivery' => $order->terms_of_delivery,
                 'destination' => $order->shippingAddress?->city ?? $order->billingAddress?->city ?? $order->customer?->city,
+                'bill_to_place' => $order->billingAddress?->city ?? $order->customer?->city,
+                'ship_to_place' => $order->shippingAddress?->city ?? $order->customer?->shipping_city ?? $order->billingAddress?->city ?? $order->customer?->city,
                 'notes' => $order->notes,
                 'billing_address_id' => $order->billing_address_id,
                 'shipping_address_id' => $order->shipping_address_id,
@@ -413,6 +429,8 @@ class InvoiceController extends Controller
             'reference_no' => 'nullable|string|max:255',
             'other_references' => 'nullable|string|max:255',
             'delivery_state' => 'nullable|string|max:100',
+            'bill_to_place' => 'nullable|string|max:100',
+            'ship_to_place' => 'nullable|string|max:100',
             'credit_days' => 'nullable|integer|min:0',
             'due_date' => 'nullable|date',
             'delivery_note_no' => 'nullable|string|max:255',
@@ -440,6 +458,29 @@ class InvoiceController extends Controller
             'transporter_name' => 'nullable|string|max:255',
             'distance_km' => 'nullable|integer|min:0|max:9999',
             'vehicle_type' => 'nullable|in:R,O',
+            'eway_bill_no' => 'nullable|string|max:50',
+            'eway_bill_date' => 'nullable|date',
+            'eway_sub_type' => 'nullable|string|max:50',
+            'eway_doc_type' => 'nullable|string|max:50',
+            'eway_supply_type' => 'nullable|string|max:50',
+            'consignor_name' => 'nullable|string|max:255',
+            'consignor_gstin' => 'nullable|string|max:25',
+            'consignor_state' => 'nullable|string|max:100',
+            'consignor_address_type' => 'nullable|string|max:100',
+            'consignor_address_line_1' => 'nullable|string|max:255',
+            'consignor_address_line_2' => 'nullable|string|max:255',
+            'consignor_pincode' => 'nullable|string|max:20',
+            'consignor_city' => 'nullable|string|max:100',
+            'consignor_actual_state' => 'nullable|string|max:100',
+            'consignee_name' => 'nullable|string|max:255',
+            'consignee_gstin' => 'nullable|string|max:25',
+            'consignee_state' => 'nullable|string|max:100',
+            'consignee_address_type' => 'nullable|string|max:100',
+            'consignee_address_line_1' => 'nullable|string|max:255',
+            'consignee_address_line_2' => 'nullable|string|max:255',
+            'consignee_pincode' => 'nullable|string|max:20',
+            'consignee_city' => 'nullable|string|max:100',
+            'consignee_actual_state' => 'nullable|string|max:100',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.uom_id' => 'required|exists:uoms,id',
@@ -635,7 +676,8 @@ class InvoiceController extends Controller
                     }
 
                     $vehicleNo = trim((string)($validated['motor_vehicle_no'] ?? ($validated['vehicle_no'] ?? ''))) ?: null;
-                    $dispatchedThrough = trim((string)($validated['dispatched_through'] ?? ($validated['transport_mode'] ?? ''))) ?: null;
+                    $transportMode = trim((string)($validated['transport_mode'] ?? ($validated['dispatched_through'] ?? '1 - Road'))) ?: '1 - Road';
+                    $dispatchedThrough = trim((string)($validated['dispatched_through'] ?? $transportMode)) ?: null;
                     $orderNo = trim((string)($validated['order_no'] ?? ($linkedOrder?->order_no ?? ''))) ?: null;
                     $paymentTerms = trim((string)($validated['payment_terms'] ?? ($linkedOrder?->payment_terms ?? ($customer->payment_terms ?? '')))) ?: null;
                     $otherReferences = trim((string)($validated['other_references'] ?? ($validated['reference_no'] ?? ($linkedOrder?->reference_no ?? '')))) ?: null;
@@ -656,7 +698,37 @@ class InvoiceController extends Controller
 
                     $ewayReq = $validated['eway_bill_required'] ?? 'auto';
                     $isOverEway = $adjustedTotal >= GstComplianceService::EWAY_BILL_THRESHOLD;
-                    $initialEwayStatus = ($isOverEway || $ewayReq === 'yes') ? 'pending' : 'not_applicable';
+                    $ewayBillNo = trim((string)($validated['eway_bill_no'] ?? '')) ?: null;
+                    $ewayBillDate = !empty($validated['eway_bill_date']) ? $validated['eway_bill_date'] : null;
+                    $ewaySubType = trim((string)($validated['eway_sub_type'] ?? 'Supply')) ?: 'Supply';
+                    $ewayDocType = trim((string)($validated['eway_doc_type'] ?? 'Tax Invoice')) ?: 'Tax Invoice';
+                    $ewaySupplyType = trim((string)($validated['eway_supply_type'] ?? 'Outward')) ?: 'Outward';
+
+                    $consignorName = trim((string)($validated['consignor_name'] ?? ($company?->name ?? ''))) ?: null;
+                    $consignorGstin = trim((string)($validated['consignor_gstin'] ?? ($company?->gstin ?? ''))) ?: null;
+                    $consignorState = trim((string)($validated['consignor_state'] ?? ($company?->state ?? ''))) ?: null;
+                    $consignorAddressType = trim((string)($validated['consignor_address_type'] ?? 'Principal Place of Business')) ?: 'Principal Place of Business';
+                    $consignorLine1 = trim((string)($validated['consignor_address_line_1'] ?? ($company?->address ?? ''))) ?: null;
+                    $consignorLine2 = trim((string)($validated['consignor_address_line_2'] ?? '')) ?: null;
+                    $consignorPincode = trim((string)($validated['consignor_pincode'] ?? ($company?->pincode ?? ''))) ?: null;
+                    $consignorCity = trim((string)($validated['consignor_city'] ?? '')) ?: null;
+                    $consignorActualState = trim((string)($validated['consignor_actual_state'] ?? ($company?->state ?? ''))) ?: null;
+
+                    $targetConsigneeAddr = $shippingAddress ?? $billingAddress;
+                    $consigneeName = trim((string)($validated['consignee_name'] ?? ($targetConsigneeAddr?->name ?? $customer->name))) ?: null;
+                    $consigneeGstin = trim((string)($validated['consignee_gstin'] ?? ($targetConsigneeAddr?->gstin ?? ($customer->gstin ?? '')))) ?: null;
+                    $consigneeState = trim((string)($validated['consignee_state'] ?? ($targetConsigneeAddr?->state ?? ($customer->shipping_state ?? ($customer->state ?? ''))))) ?: null;
+                    $consigneeAddressType = trim((string)($validated['consignee_address_type'] ?? ($targetConsigneeAddr?->label ?? 'Delivery'))) ?: 'Delivery';
+                    $consigneeLine1 = trim((string)($validated['consignee_address_line_1'] ?? ($targetConsigneeAddr?->address_line_1 ?? ($targetConsigneeAddr?->address ?? ($customer->shipping_address ?? ($customer->address ?? '')))))) ?: null;
+                    $consigneeLine2 = trim((string)($validated['consignee_address_line_2'] ?? ($targetConsigneeAddr?->address_line_2 ?? ''))) ?: null;
+                    $consigneePincode = trim((string)($validated['consignee_pincode'] ?? ($targetConsigneeAddr?->pincode ?? ($customer->shipping_pincode ?? ($customer->pincode ?? ''))))) ?: null;
+                    $consigneeCity = trim((string)($validated['consignee_city'] ?? ($targetConsigneeAddr?->city ?? ($customer->shipping_city ?? ($customer->city ?? ''))))) ?: null;
+                    $consigneeActualState = trim((string)($validated['consignee_actual_state'] ?? ($targetConsigneeAddr?->state ?? ($customer->shipping_state ?? ($customer->state ?? ''))))) ?: null;
+
+                    $billToPlace = trim((string)($validated['bill_to_place'] ?? ($billingAddress?->city ?? ($customer->city ?? '')))) ?: null;
+                    $shipToPlace = trim((string)($validated['ship_to_place'] ?? ($shippingAddress?->city ?? ($customer->shipping_city ?? ($consigneeCity ?? ($billToPlace ?? '')))))) ?: null;
+
+                    $initialEwayStatus = $ewayBillNo ? 'generated' : (($isOverEway || $ewayReq === 'yes') ? 'pending' : 'not_applicable');
 
                     $invoice = Invoice::create([
                         'company_id' => $customer->company_id ?? \App\Domains\Organization\Models\Company::resolveCurrent()?->id,
@@ -695,7 +767,7 @@ class InvoiceController extends Controller
                         'notes' => $validated['notes'] ?? null,
                         'terms_and_conditions' => $validated['terms_and_conditions'] ?? null,
                         'vehicle_no' => $vehicleNo,
-                        'transport_mode' => $dispatchedThrough,
+                        'transport_mode' => $transportMode,
                         'reference_no' => $otherReferences,
                         'delivery_note_no' => $deliveryNoteNo,
                         'delivery_note_na' => $deliveryNoteNa,
@@ -710,14 +782,69 @@ class InvoiceController extends Controller
                         'terms_of_delivery' => $termsOfDelivery,
                         'delivery_state' => $deliveryState,
                         'place_of_supply_state' => $deliveryState,
+                        'bill_to_place' => $billToPlace,
+                        'ship_to_place' => $shipToPlace,
                         'einvoice_status' => $initialEinvoiceStatus,
                         'eway_bill_status' => $initialEwayStatus,
                         'eway_bill_required' => $ewayReq,
+                        'eway_bill_no' => $ewayBillNo,
+                        'eway_bill_date' => $ewayBillDate,
+                        'eway_sub_type' => $ewaySubType,
+                        'eway_doc_type' => $ewayDocType,
+                        'eway_supply_type' => $ewaySupplyType,
+                        'consignor_name' => $consignorName,
+                        'consignor_gstin' => $consignorGstin,
+                        'consignor_state' => $consignorState,
+                        'consignor_address_type' => $consignorAddressType,
+                        'consignor_address_line_1' => $consignorLine1,
+                        'consignor_address_line_2' => $consignorLine2,
+                        'consignor_pincode' => $consignorPincode,
+                        'consignor_city' => $consignorCity,
+                        'consignor_actual_state' => $consignorActualState,
+                        'consignee_name' => $consigneeName,
+                        'consignee_gstin' => $consigneeGstin,
+                        'consignee_state' => $consigneeState,
+                        'consignee_address_type' => $consigneeAddressType,
+                        'consignee_address_line_1' => $consigneeLine1,
+                        'consignee_address_line_2' => $consigneeLine2,
+                        'consignee_pincode' => $consigneePincode,
+                        'consignee_city' => $consigneeCity,
+                        'consignee_actual_state' => $consigneeActualState,
                         'transporter_id' => $validated['transporter_id'] ?? null,
                         'transporter_name' => $validated['transporter_name'] ?? null,
                         'distance_km' => !empty($validated['distance_km']) ? (int) $validated['distance_km'] : null,
                         'vehicle_type' => $validated['vehicle_type'] ?? 'R',
                     ]);
+
+                    if ($ewayBillNo) {
+                        EWayBill::updateOrCreate(
+                            ['invoice_id' => $invoice->id],
+                            [
+                                'status' => 'generated',
+                                'provider' => 'manual',
+                                'eway_bill_no' => $ewayBillNo,
+                                'ewb_date' => $ewayBillDate ?? now(),
+                                'distance_km' => !empty($validated['distance_km']) ? (int) $validated['distance_km'] : null,
+                                'transporter_id' => $validated['transporter_id'] ?? null,
+                                'transporter_name' => $validated['transporter_name'] ?? null,
+                                'vehicle_no' => $vehicleNo,
+                                'vehicle_type' => $validated['vehicle_type'] ?? 'R',
+                                'transport_mode' => match (true) {
+                                    str_contains(strtolower($transportMode), '2') || str_contains(strtolower($transportMode), 'rail') => '2',
+                                    str_contains(strtolower($transportMode), '3') || str_contains(strtolower($transportMode), 'air') => '3',
+                                    str_contains(strtolower($transportMode), '4') || str_contains(strtolower($transportMode), 'ship') => '4',
+                                    str_contains(strtolower($transportMode), 'not applicable') || strtolower($transportMode) === 'na' => 'NA',
+                                    default => '1',
+                                },
+                                'doc_no' => $lrRrNo,
+                                'doc_date' => $lrRrDate,
+                                'from_pincode' => $consignorPincode,
+                                'to_pincode' => $consigneePincode,
+                                'from_state' => $consignorState,
+                                'to_state' => $consigneeState,
+                            ]
+                        );
+                    }
 
                 if ($scheme && $schemeBenefitAmount >= 0) {
                     $this->schemeService->applySchemeToInvoice($invoice, $scheme, $schemeQualifiedValue, $schemeSlab, $schemeBenefitAmount);
@@ -825,6 +952,7 @@ class InvoiceController extends Controller
             'initialOrders' => $initialOrders,
             'company' => $company,
             'customers' => Customer::with('customerType')->where('is_active', true)->orderBy('name')->get(),
+            'transporters' => self::getTransporters(),
             'salespersons' => $salespersons,
             'products' => Product::with(['baseUom', 'productType'])->where('is_active', true)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
@@ -850,6 +978,8 @@ class InvoiceController extends Controller
             'reference_no' => 'nullable|string|max:255',
             'other_references' => 'nullable|string|max:255',
             'delivery_state' => 'nullable|string|max:100',
+            'bill_to_place' => 'nullable|string|max:100',
+            'ship_to_place' => 'nullable|string|max:100',
             'delivery_note_no' => 'nullable|string|max:255',
             'delivery_note_na' => 'nullable|boolean',
             'dispatch_doc_no' => 'nullable|string|max:100',
@@ -869,6 +999,29 @@ class InvoiceController extends Controller
             'transporter_name' => 'nullable|string|max:255',
             'distance_km' => 'nullable|integer|min:0|max:9999',
             'vehicle_type' => 'nullable|in:R,O',
+            'eway_bill_no' => 'nullable|string|max:50',
+            'eway_bill_date' => 'nullable|date',
+            'eway_sub_type' => 'nullable|string|max:50',
+            'eway_doc_type' => 'nullable|string|max:50',
+            'eway_supply_type' => 'nullable|string|max:50',
+            'consignor_name' => 'nullable|string|max:255',
+            'consignor_gstin' => 'nullable|string|max:25',
+            'consignor_state' => 'nullable|string|max:100',
+            'consignor_address_type' => 'nullable|string|max:100',
+            'consignor_address_line_1' => 'nullable|string|max:255',
+            'consignor_address_line_2' => 'nullable|string|max:255',
+            'consignor_pincode' => 'nullable|string|max:20',
+            'consignor_city' => 'nullable|string|max:100',
+            'consignor_actual_state' => 'nullable|string|max:100',
+            'consignee_name' => 'nullable|string|max:255',
+            'consignee_gstin' => 'nullable|string|max:25',
+            'consignee_state' => 'nullable|string|max:100',
+            'consignee_address_type' => 'nullable|string|max:100',
+            'consignee_address_line_1' => 'nullable|string|max:255',
+            'consignee_address_line_2' => 'nullable|string|max:255',
+            'consignee_pincode' => 'nullable|string|max:20',
+            'consignee_city' => 'nullable|string|max:100',
+            'consignee_actual_state' => 'nullable|string|max:100',
         ]);
 
         $deliveryNoteNa = !empty($validated['delivery_note_na']);
@@ -878,14 +1031,43 @@ class InvoiceController extends Controller
         }
 
         $vehicleNo = trim((string)($validated['motor_vehicle_no'] ?? ($validated['vehicle_no'] ?? ''))) ?: null;
-        $dispatchedThrough = trim((string)($validated['dispatched_through'] ?? ($validated['transport_mode'] ?? ''))) ?: null;
+        $rawTransportMode = trim((string)($validated['transport_mode'] ?? ($validated['dispatched_through'] ?? ($invoice->transport_mode ?? '1 - Road'))));
+        $transportMode = $rawTransportMode ?: '1 - Road';
+        $dispatchedThrough = trim((string)($validated['dispatched_through'] ?? $transportMode)) ?: null;
         $otherReferences = trim((string)($validated['other_references'] ?? ($validated['reference_no'] ?? ''))) ?: null;
 
-        $newDeliveryState = $validated['delivery_state'] ?? $invoice->delivery_state;
+        $billingAddress = null;
+        if (!empty($validated['billing_address_id'])) {
+            $billingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $validated['billing_address_id'])
+                ->where('customer_id', $invoice->customer_id)
+                ->first();
+        }
+
+        $shippingAddress = null;
+        if (!empty($validated['shipping_address_id'])) {
+            $shippingAddress = \App\Domains\Master\Models\PartyAddress::where('id', $validated['shipping_address_id'])
+                ->where('customer_id', $invoice->customer_id)
+                ->first();
+        }
+        $shippingSnapshot = $validated['shipping_address'] ?? ($shippingAddress ? $shippingAddress->formatSnapshot() : $invoice->shipping_address);
+
+        $newDeliveryState = $shippingAddress?->state ?? ($validated['delivery_state'] ?? $invoice->delivery_state);
         $company = $invoice->selling_company ?? Company::resolveCurrent() ?? Company::first();
         $sellerState = \App\Domains\Master\Services\GstTaxCalculationService::resolveSellerState($company);
         $newIsIntra = \App\Domains\Master\Services\GstTaxCalculationService::isIntraState($sellerState, $newDeliveryState);
         $newTaxType = $newIsIntra ? 'intra' : 'inter';
+
+        $billToPlace = array_key_exists('bill_to_place', $validated)
+            ? (trim((string)$validated['bill_to_place']) ?: null)
+            : ($invoice->bill_to_place ?: ($billingAddress?->city ?: ($invoice->billingAddress?->city ?: ($invoice->customer?->city ?: null))));
+
+        $shipToPlace = array_key_exists('ship_to_place', $validated)
+            ? (trim((string)$validated['ship_to_place']) ?: null)
+            : ($invoice->ship_to_place ?: ($shippingAddress?->city ?: ($invoice->shippingAddress?->city ?: ($invoice->customer?->shipping_city ?: ($billToPlace ?? null)))));
+
+        $ewayBillNo = array_key_exists('eway_bill_no', $validated) ? (trim((string)$validated['eway_bill_no']) ?: null) : $invoice->eway_bill_no;
+        $ewayBillDate = array_key_exists('eway_bill_date', $validated) ? (!empty($validated['eway_bill_date']) ? $validated['eway_bill_date'] : null) : $invoice->eway_bill_date;
+        $ewayStatus = $ewayBillNo ? 'generated' : $invoice->eway_bill_status;
 
         $invoice->update([
             'salesperson_id' => array_key_exists('salesperson_id', $validated)
@@ -900,7 +1082,7 @@ class InvoiceController extends Controller
             'lr_rr_no' => trim((string)($validated['lr_rr_no'] ?? '')) ?: null,
             'lr_rr_date' => !empty($validated['lr_rr_date']) ? $validated['lr_rr_date'] : null,
             'vehicle_no' => $vehicleNo,
-            'transport_mode' => $dispatchedThrough,
+            'transport_mode' => $transportMode,
             'order_no' => trim((string)($validated['order_no'] ?? '')) ?: null,
             'payment_terms' => trim((string)($validated['payment_terms'] ?? '')) ?: null,
             'other_references' => $otherReferences,
@@ -910,17 +1092,74 @@ class InvoiceController extends Controller
             'terms_and_conditions' => $validated['terms_and_conditions'] ?? $invoice->terms_and_conditions,
             'delivery_state' => $newDeliveryState,
             'place_of_supply_state' => $newDeliveryState,
+            'bill_to_place' => $billToPlace,
+            'ship_to_place' => $shipToPlace,
             'tax_type' => $invoice->tax_type ?: $newTaxType,
             'billing_address_id' => $validated['billing_address_id'] ?? $invoice->billing_address_id,
             'shipping_address_id' => $validated['shipping_address_id'] ?? $invoice->shipping_address_id,
             'billing_address' => $validated['billing_address'] ?? $invoice->billing_address,
-            'shipping_address' => $validated['shipping_address'] ?? $invoice->shipping_address,
+            'shipping_address' => $shippingSnapshot,
             'eway_bill_required' => $validated['eway_bill_required'] ?? $invoice->eway_bill_required ?? 'auto',
+            'eway_bill_no' => $ewayBillNo,
+            'eway_bill_date' => $ewayBillDate,
+            'eway_sub_type' => $validated['eway_sub_type'] ?? $invoice->eway_sub_type ?? 'Supply',
+            'eway_doc_type' => $validated['eway_doc_type'] ?? $invoice->eway_doc_type ?? 'Tax Invoice',
+            'eway_supply_type' => $validated['eway_supply_type'] ?? $invoice->eway_supply_type ?? 'Outward',
+            'consignor_name' => $validated['consignor_name'] ?? $invoice->consignor_name,
+            'consignor_gstin' => $validated['consignor_gstin'] ?? $invoice->consignor_gstin,
+            'consignor_state' => $validated['consignor_state'] ?? $invoice->consignor_state,
+            'consignor_address_type' => $validated['consignor_address_type'] ?? $invoice->consignor_address_type,
+            'consignor_address_line_1' => $validated['consignor_address_line_1'] ?? $invoice->consignor_address_line_1,
+            'consignor_address_line_2' => $validated['consignor_address_line_2'] ?? $invoice->consignor_address_line_2,
+            'consignor_pincode' => $validated['consignor_pincode'] ?? $invoice->consignor_pincode,
+            'consignor_city' => $validated['consignor_city'] ?? $invoice->consignor_city,
+            'consignor_actual_state' => $validated['consignor_actual_state'] ?? $invoice->consignor_actual_state,
+            'consignee_name' => $validated['consignee_name'] ?? $invoice->consignee_name,
+            'consignee_gstin' => $validated['consignee_gstin'] ?? $invoice->consignee_gstin,
+            'consignee_state' => $validated['consignee_state'] ?? $invoice->consignee_state,
+            'consignee_address_type' => $validated['consignee_address_type'] ?? $invoice->consignee_address_type,
+            'consignee_address_line_1' => $validated['consignee_address_line_1'] ?? $invoice->consignee_address_line_1,
+            'consignee_address_line_2' => $validated['consignee_address_line_2'] ?? $invoice->consignee_address_line_2,
+            'consignee_pincode' => $validated['consignee_pincode'] ?? $invoice->consignee_pincode,
+            'consignee_city' => $validated['consignee_city'] ?? $invoice->consignee_city,
+            'consignee_actual_state' => $validated['consignee_actual_state'] ?? $invoice->consignee_actual_state,
+            'eway_bill_status' => $ewayStatus,
             'transporter_id' => $validated['transporter_id'] ?? $invoice->transporter_id,
             'transporter_name' => $validated['transporter_name'] ?? $invoice->transporter_name,
             'distance_km' => array_key_exists('distance_km', $validated) ? (!empty($validated['distance_km']) ? (int) $validated['distance_km'] : null) : $invoice->distance_km,
             'vehicle_type' => $validated['vehicle_type'] ?? $invoice->vehicle_type ?? 'R',
         ]);
+
+        if ($ewayBillNo) {
+            EWayBill::updateOrCreate(
+                ['invoice_id' => $invoice->id],
+                [
+                    'status' => 'generated',
+                    'provider' => 'manual',
+                    'eway_bill_no' => $ewayBillNo,
+                    'ewb_date' => $ewayBillDate ?? now(),
+                    'distance_km' => array_key_exists('distance_km', $validated) ? (!empty($validated['distance_km']) ? (int) $validated['distance_km'] : null) : $invoice->distance_km,
+                    'transporter_id' => $validated['transporter_id'] ?? $invoice->transporter_id,
+                    'transporter_name' => $validated['transporter_name'] ?? $invoice->transporter_name,
+                    'vehicle_no' => $vehicleNo,
+                    'vehicle_type' => $validated['vehicle_type'] ?? $invoice->vehicle_type ?? 'R',
+                    'transport_mode' => match (true) {
+                        str_contains(strtolower($transportMode), '2') || str_contains(strtolower($transportMode), 'rail') => '2',
+                        str_contains(strtolower($transportMode), '3') || str_contains(strtolower($transportMode), 'air') => '3',
+                        str_contains(strtolower($transportMode), '4') || str_contains(strtolower($transportMode), 'ship') => '4',
+                        str_contains(strtolower($transportMode), 'not applicable') || strtolower($transportMode) === 'na' => 'NA',
+                        default => '1',
+                    },
+                    'transport_mode' => $dispatchedThrough,
+                    'doc_no' => trim((string)($validated['lr_rr_no'] ?? '')) ?: $invoice->lr_rr_no,
+                    'doc_date' => !empty($validated['lr_rr_date']) ? $validated['lr_rr_date'] : $invoice->lr_rr_date,
+                    'from_pincode' => $validated['consignor_pincode'] ?? $invoice->consignor_pincode,
+                    'to_pincode' => $validated['consignee_pincode'] ?? $invoice->consignee_pincode,
+                    'from_state' => $validated['consignor_state'] ?? $invoice->consignor_state,
+                    'to_state' => $validated['consignee_state'] ?? $invoice->consignee_state,
+                ]
+            );
+        }
 
         return redirect()->route('invoices.show', $invoice)->with('success', 'Invoice details updated successfully.');
     }
@@ -935,17 +1174,57 @@ class InvoiceController extends Controller
         return view('sales.invoices.show', compact('invoice', 'eInvoiceEligibility', 'eWayBillEligibility'));
     }
 
+    /**
+     * Resolve the ordered list of statutory copy designations.
+     *
+     * @return array<int, string>
+     */
+    public static function resolveCopies(string $copyType = 'all', int $numberOfCopies = 1): array
+    {
+        $normalizedType = strtolower(trim($copyType));
+        $count = max(1, min(20, $numberOfCopies));
+
+        if ($normalizedType === 'all') {
+            $standard = [
+                'Original for Recipient',
+                'Duplicate for Transporter',
+                'Triplicate for Supplier',
+            ];
+            if ($count === 1 || $count === 3) {
+                return $standard;
+            }
+            $sets = max(1, (int) round($count / 3));
+            $copies = [];
+            for ($s = 0; $s < $sets; $s++) {
+                foreach ($standard as $label) {
+                    $copies[] = $label;
+                }
+            }
+            return ! empty($copies) ? $copies : $standard;
+        }
+
+        $label = match ($normalizedType) {
+            'original', 'original for recipient' => 'Original for Recipient',
+            'duplicate', 'duplicate for transporter' => 'Duplicate for Transporter',
+            'triplicate', 'triplicate for supplier' => 'Triplicate for Supplier',
+            'extra', 'extra copy' => 'Extra Copy',
+            'na', 'not applicable', 'none' => '',
+            default => 'Original for Recipient',
+        };
+
+        return array_fill(0, $count, $label);
+    }
+
     public function pdf(Request $request, Invoice $invoice): Response
     {
         $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'eInvoice', 'eWayBill', 'scheme.brand']);
 
         $company = Company::resolveCurrent() ?? Company::query()->first();
 
-        // Prefer the signed QR from Masters India (base64 → PNG QR). Fall back to
+        // Prefer the official signed QR from Masters India / IRP. Fall back to
         // a deterministic invoice QR so the PDF always shows something scannable.
-        if ($invoice->eInvoice?->signed_qr_code) {
-            $invoiceQrDataUri = QrCodeRenderer::dataUri($invoice->eInvoice->signed_qr_code, 180);
-        } else {
+        $invoiceQrDataUri = $invoice->eInvoice?->getQrDataUri(180);
+        if (blank($invoiceQrDataUri)) {
             $invoiceUrl = route('invoice.qr', [
                 'type' => 'sales',
                 'token' => $invoice->qr_token,
@@ -959,11 +1238,19 @@ class InvoiceController extends Controller
             $upiQrDataUri = QrCodeRenderer::dataUri($upiUri, 160);
         }
 
-        $pdf = Pdf::loadView('sales.invoices.pdf', [
+        $copyType = $request->query('copy_type', $request->query('copy', 'all'));
+        $copies = (int) $request->query('copies', ($copyType === 'all' ? 3 : 1));
+        $copiesList = self::resolveCopies($copyType, $copies);
+
+        $pdf = Pdf::loadView('sales.invoices.preview', [
             'invoice' => $invoice,
             'company' => $company,
             'invoiceQrDataUri' => $invoiceQrDataUri,
             'upiQrDataUri' => $upiQrDataUri,
+            'copyType' => $copyType,
+            'copies' => $copies,
+            'copiesList' => $copiesList,
+            'isPdf' => true,
         ])->setPaper('a4');
 
         return $request->boolean('download')
@@ -989,9 +1276,8 @@ class InvoiceController extends Controller
 
         $company = Company::resolveCurrent() ?? Company::query()->first();
 
-        if ($invoice->eInvoice?->signed_qr_code) {
-            $invoiceQrDataUri = QrCodeRenderer::dataUri($invoice->eInvoice->signed_qr_code, 180);
-        } else {
+        $invoiceQrDataUri = $invoice->eInvoice?->getQrDataUri(180);
+        if (blank($invoiceQrDataUri)) {
             $invoiceUrl = route('invoice.qr', [
                 'type' => 'sales',
                 'token' => $invoice->qr_token,
@@ -1021,14 +1307,13 @@ class InvoiceController extends Controller
         ]);
     }
 
-    public function preview(Invoice $invoice): View
+    public function preview(Request $request, Invoice $invoice): View
     {
         $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'eInvoice', 'eWayBill', 'scheme.brand', 'schemeAchievement']);
         $company = Company::resolveCurrent() ?? Company::query()->first();
 
-        if ($invoice->eInvoice?->signed_qr_code) {
-            $invoiceQrDataUri = QrCodeRenderer::dataUri($invoice->eInvoice->signed_qr_code, 180);
-        } else {
+        $invoiceQrDataUri = $invoice->eInvoice?->getQrDataUri(180);
+        if (blank($invoiceQrDataUri)) {
             $invoiceUrl = route('invoice.qr', [
                 'type' => 'sales',
                 'token' => $invoice->qr_token,
@@ -1048,20 +1333,32 @@ class InvoiceController extends Controller
             $upiQrDataUri = QrCodeRenderer::dataUri($upiUri, 160);
         }
 
+        $copyType = $request->query('copy_type', $request->query('copy', 'all'));
+        $copies = (int) $request->query('copies', ($copyType === 'all' ? 3 : 1));
+        $copiesList = self::resolveCopies($copyType, $copies);
+        $autoPrint = $request->boolean('auto_print');
+
         return view('sales.invoices.preview', [
             'invoice' => $invoice,
             'company' => $company,
             'invoiceQrDataUri' => $invoiceQrDataUri,
             'upiQrDataUri' => $upiQrDataUri,
+            'copyType' => $copyType,
+            'copies' => $copies,
+            'copiesList' => $copiesList,
+            'autoPrint' => $autoPrint,
         ]);
     }
 
-    public function export(Invoice $invoice, string $format): Response
+    public function export(Request $request, Invoice $invoice, string $format): Response
     {
         $format = strtolower($format);
         abort_unless(in_array($format, ['pdf', 'xlsx', 'excel', 'csv'], true), 404);
 
-        return DocumentExporter::exportSalesInvoice($invoice, $format);
+        $copyType = $request->query('copy_type', $request->query('copy', 'all'));
+        $copies = (int) $request->query('copies', ($copyType === 'all' ? 3 : 1));
+
+        return DocumentExporter::exportSalesInvoice($invoice, $format, $copyType, $copies);
     }
 
     public function eWayBillDocument(Invoice $invoice): View|RedirectResponse

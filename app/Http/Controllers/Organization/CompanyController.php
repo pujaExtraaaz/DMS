@@ -288,6 +288,7 @@ class CompanyController extends Controller
 
             // Section 1: Company Information
             'company_type' => 'required|string|max:50',
+            'business_type' => 'nullable|string|max:100',
             'incorporation_no' => 'nullable|string|max:50',
             'incorporation_date' => 'nullable|date',
             'cin' => 'nullable|string|max:30',
@@ -325,6 +326,7 @@ class CompanyController extends Controller
 
             // Section 4: Business & Financial
             'nature_of_business' => 'nullable|string|max:255',
+            'main_work' => 'nullable|string',
             'authorized_capital' => 'nullable|numeric|min:0',
             'paid_up_capital' => 'nullable|numeric|min:0',
             'annual_turnover' => 'nullable|numeric|min:0',

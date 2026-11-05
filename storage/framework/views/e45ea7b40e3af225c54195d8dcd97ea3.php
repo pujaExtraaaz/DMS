@@ -83,7 +83,7 @@
     </template>
 </div>
 
-<?php if (! $__env->hasRenderedOnce('783754ef-f398-4166-bdcb-3a7505c16481')): $__env->markAsRenderedOnce('783754ef-f398-4166-bdcb-3a7505c16481'); ?>
+<?php if (! $__env->hasRenderedOnce('326805fe-4534-4333-a7a0-c3d95b072b57')): $__env->markAsRenderedOnce('326805fe-4534-4333-a7a0-c3d95b072b57'); ?>
     <?php $__env->startPush('scripts'); ?>
     <script>
         function quickAddProduct() {

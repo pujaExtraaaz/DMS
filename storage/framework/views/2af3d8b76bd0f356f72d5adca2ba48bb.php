@@ -42,6 +42,21 @@
             hasBooksAside: <?php echo e(books_show_aside() ? 'true' : 'false'); ?>,
             installPrompt: null,
             showInstall: false,
+            tooltipText: '',
+            tooltipTop: 0,
+            tooltipLeft: 0,
+            tooltipVisible: false,
+            showTooltip(el, text) {
+                if (!this.sidebarCollapsed || !text) return;
+                const rect = el.getBoundingClientRect();
+                this.tooltipText = text;
+                this.tooltipTop = rect.top + (rect.height / 2);
+                this.tooltipLeft = rect.right + 12;
+                this.tooltipVisible = true;
+            },
+            hideTooltip() {
+                this.tooltipVisible = false;
+            },
             toggleCollapsed() {
                 this.sidebarAnimate = true;
                 this.booksAsideCollapsed = false;
@@ -278,6 +293,38 @@
 
     <?php echo \Livewire\Mechanisms\FrontendAssets\FrontendAssets::scripts(); ?>
 
+    <script>
+        (function() {
+            function registerGlobalAlpineTooltips() {
+                if (typeof window.Alpine !== 'undefined' && typeof Alpine.data === 'function') {
+                    if (!window.__DMS_ALPINE_TOOLTIPS_REGISTERED__) {
+                        window.__DMS_ALPINE_TOOLTIPS_REGISTERED__ = true;
+                        Alpine.data('tooltip', (defaultText = '') => ({
+                            tooltipVisible: false,
+                            tooltipText: defaultText,
+                            showTooltip(text) {
+                                if (text) this.tooltipText = text;
+                                this.tooltipVisible = true;
+                            },
+                            hideTooltip() {
+                                this.tooltipVisible = false;
+                            },
+                            toggleTooltip(text) {
+                                if (text) this.tooltipText = text;
+                                this.tooltipVisible = !this.tooltipVisible;
+                            }
+                        }));
+                    }
+                }
+            }
+
+            if (typeof window.Alpine !== 'undefined') {
+                registerGlobalAlpineTooltips();
+            } else {
+                document.addEventListener('alpine:init', registerGlobalAlpineTooltips);
+            }
+        })();
+    </script>
     <script src="<?php echo e(asset('js/dynamic-tables.js')); ?>?v=20261028" defer></script>
     <script src="<?php echo e(asset('js/title-case.js')); ?>" defer></script>
     <script src="<?php echo e(asset('js/searchable-select.js')); ?>?v=20261028b" defer></script>
