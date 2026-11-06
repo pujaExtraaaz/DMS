@@ -100,6 +100,10 @@
     ] : null;
 
     $savedDraftJson = $savedDraft ?? null;
+
+    $selectedCustomerId = old('customer_id', $order?->customer_id);
+    $initialCustomer = $selectedCustomerId ? $customers->firstWhere('id', $selectedCustomerId) : null;
+    $initialDeliveryState = old('delivery_state', $orderJson['delivery_state'] ?? ($initialCustomer?->shipping_state ?? ($initialCustomer?->state ?? '')));
 ?>
 
 <?php if (isset($component)) { $__componentOriginal91a231a9270579fa1ae9246bd51fb785 = $component; } ?>
@@ -391,30 +395,28 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
             </div>
 
             
-            <div>
-                <div class="flex items-center justify-between mb-1">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery State</label>
-                    <span class="text-[11px] font-semibold"
-                          :class="isIntraState() ? 'text-indigo-600' : 'text-emerald-600'"
-                          x-text="isIntraState() ? 'Intra-State (CGST + SGST)' : 'Inter-State (IGST)'"></span>
-                </div>
-                <input type="text"
-                       name="delivery_state"
-                       x-model="deliveryState"
-                       @input="recalc()"
-                       placeholder="E.g. Maharashtra"
-                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['delivery_state'];
-$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
-if ($__bag->has($__errorArgs[0])) :
-if (isset($message)) { $__messageOriginal = $message; }
-$message = $__bag->first($__errorArgs[0]); ?>
-                    <p class="text-xs text-rose-600 mt-1"><?php echo e($message); ?></p>
-                <?php unset($message);
-if (isset($__messageOriginal)) { $message = $__messageOriginal; }
-endif;
-unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-            </div>
+            <?php if (isset($component)) { $__componentOriginalf351f69b57026a3c48dd30b15047a61a = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginalf351f69b57026a3c48dd30b15047a61a = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.state-dropdown','data' => ['name' => 'delivery_state','id' => 'delivery_state','label' => 'Delivery State','model' => 'deliveryState','onChange' => 'recalc()','placeholder' => 'Search or select delivery state...']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('ui.state-dropdown'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['name' => 'delivery_state','id' => 'delivery_state','label' => 'Delivery State','model' => 'deliveryState','onChange' => 'recalc()','placeholder' => 'Search or select delivery state...']); ?>
+<?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
+
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginalf351f69b57026a3c48dd30b15047a61a)): ?>
+<?php $attributes = $__attributesOriginalf351f69b57026a3c48dd30b15047a61a; ?>
+<?php unset($__attributesOriginalf351f69b57026a3c48dd30b15047a61a); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginalf351f69b57026a3c48dd30b15047a61a)): ?>
+<?php $component = $__componentOriginalf351f69b57026a3c48dd30b15047a61a; ?>
+<?php unset($__componentOriginalf351f69b57026a3c48dd30b15047a61a); ?>
+<?php endif; ?>
         </div>
      <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>
@@ -2192,7 +2194,8 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         linkedOrderId: initialOrder ? initialOrder.id : null,
 
         invoiceDate: '<?php echo e(old('invoice_date', date('Y-m-d'))); ?>',
-        deliveryState: '<?php echo e(old('delivery_state', '')); ?>',
+        deliveryState: '<?php echo e(old('delivery_state', $initialDeliveryState ?? '')); ?>',
+        isManualState: <?php echo e(old('delivery_state') ? 'true' : 'false'); ?>,
         notes: '<?php echo e(old('notes', '')); ?>',
 
         // Delivery Note Details
@@ -2690,6 +2693,9 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 return;
             }
 
+            // Customer changed: allow new customer's registered billing/shipping state to preselect
+            this.isManualState = false;
+
             const custOpt = document.querySelector(`select[name="customer_id"] option[value="${id}"]`);
             if (custOpt) {
                 if (custOpt.dataset.creditDays && (!this.creditDays || this.creditDays === 0)) {
@@ -2698,18 +2704,25 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                         this.setCreditDays(cDays);
                     }
                 }
-                if (custOpt.dataset.state && !this.deliveryState) {
+                if (custOpt.dataset.state) {
                     this.deliveryState = custOpt.dataset.state;
+                    this.recalc();
                 }
             }
 
             const custData = this.customers.find(c => String(c.id) === String(id));
-            if (custData && custData.salesperson_id && !this.salespersonId) {
-                this.salespersonId = String(custData.salesperson_id);
-                const spSel = document.querySelector('select[name="salesperson_id"]');
-                if (spSel) {
-                    spSel.value = this.salespersonId;
-                    spSel.dispatchEvent(new Event('change', { bubbles: true }));
+            if (custData) {
+                if (custData.salesperson_id && !this.salespersonId) {
+                    this.salespersonId = String(custData.salesperson_id);
+                    const spSel = document.querySelector('select[name="salesperson_id"]');
+                    if (spSel) {
+                        spSel.value = this.salespersonId;
+                        spSel.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                if (custData.state && !this.deliveryState) {
+                    this.deliveryState = custData.state;
+                    this.recalc();
                 }
             }
 

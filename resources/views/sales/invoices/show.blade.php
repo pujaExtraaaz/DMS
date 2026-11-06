@@ -95,9 +95,14 @@
                 <div class="p-3 bg-white rounded-lg border border-slate-200">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-semibold uppercase text-slate-500">Delivery Address</span>
-                        @if($invoice->ship_to_place)
-                            <span class="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Place: {{ $invoice->ship_to_place }}</span>
-                        @endif
+                        <div class="flex items-center gap-1.5">
+                            @if($invoice->delivery_state)
+                                <span class="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded">State: {{ $invoice->delivery_state }}</span>
+                            @endif
+                            @if($invoice->ship_to_place)
+                                <span class="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">Place: {{ $invoice->ship_to_place }}</span>
+                            @endif
+                        </div>
                     </div>
                     <div class="mt-1 font-medium text-slate-800 whitespace-pre-line text-xs">{{ $invoice->shipping_address ?: ($invoice->billing_address ?: ($invoice->customer->shipping_address ?: ($invoice->customer->address ?: '—'))) }}</div>
                 </div>

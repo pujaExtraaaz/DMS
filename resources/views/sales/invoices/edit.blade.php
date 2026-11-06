@@ -36,6 +36,11 @@
           salespersonId: @js(old('salesperson_id', (string)($invoice->salesperson_id ?? ''))),
           invoiceDate: '{{ $invoice->invoice_date?->format('Y-m-d') }}',
           deliveryState: '{{ $invoice->delivery_state }}',
+          companyState: @js(\App\Domains\Master\Services\GstTaxCalculationService::resolveSellerState($company)),
+          isIntraState() {
+              if (!this.companyState || !this.deliveryState) return true;
+              return this.companyState.trim().toLowerCase() === this.deliveryState.trim().toLowerCase();
+          },
           notes: @js($invoice->notes ?? ''),
 
           partyAddresses: @js($initialAddresses),
@@ -432,11 +437,13 @@
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
             </div>
 
-            <div>
-                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Delivery State</label>
-                <input type="text" name="delivery_state" x-model="deliveryState"
-                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-            </div>
+            {{-- Delivery State Searchable Dropdown --}}
+            <x-ui.state-dropdown name="delivery_state"
+                                 id="edit_delivery_state"
+                                 label="Delivery State"
+                                 model="deliveryState"
+                                 :value="$invoice->delivery_state"
+                                 placeholder="Search or select delivery state..." />
         </div>
 
         {{-- Billing & Shipping Address Section --}}

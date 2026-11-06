@@ -259,6 +259,7 @@ class InvoiceController extends Controller
                 ->orderBy('name')
                 ->get(),
 
+            'stateOptions' => \App\Support\IndianStates::options(),
             'sellingTermsAndConditions' => $company?->selling_terms_and_conditions,
         ]);
     }
@@ -598,7 +599,9 @@ class InvoiceController extends Controller
                     ? $validated['shipping_address']
                     : ($shippingAddress ? $shippingAddress->formatSnapshot() : ($billingSnapshot ?: $customer->address));
 
-                $deliveryState = trim((string)($shippingAddress?->state ?? ($validated['delivery_state'] ?? ($customer->shipping_state ?? ($customer->state ?? '')))));
+                $deliveryState = !empty($validated['delivery_state'])
+                    ? trim((string)$validated['delivery_state'])
+                    : trim((string)($shippingAddress?->state ?? ($customer->shipping_state ?? ($customer->state ?? ''))));
                 $company = Company::find($customer->company_id) ?? Company::resolveCurrent() ?? Company::first();
                 $sellerState = \App\Domains\Master\Services\GstTaxCalculationService::resolveSellerState($company);
 
@@ -957,6 +960,7 @@ class InvoiceController extends Controller
             'products' => Product::with(['baseUom', 'productType'])->where('is_active', true)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
             'schemes' => Scheme::with(['brand', 'slabs', 'products'])->where('status', 'active')->orderBy('name')->get(),
+            'stateOptions' => \App\Support\IndianStates::options(),
             'sellingTermsAndConditions' => $company?->selling_terms_and_conditions,
         ]);
     }
@@ -1051,7 +1055,9 @@ class InvoiceController extends Controller
         }
         $shippingSnapshot = $validated['shipping_address'] ?? ($shippingAddress ? $shippingAddress->formatSnapshot() : $invoice->shipping_address);
 
-        $newDeliveryState = $shippingAddress?->state ?? ($validated['delivery_state'] ?? $invoice->delivery_state);
+        $newDeliveryState = !empty($validated['delivery_state'])
+            ? trim((string)$validated['delivery_state'])
+            : trim((string)($shippingAddress?->state ?? $invoice->delivery_state));
         $company = $invoice->selling_company ?? Company::resolveCurrent() ?? Company::first();
         $sellerState = \App\Domains\Master\Services\GstTaxCalculationService::resolveSellerState($company);
         $newIsIntra = \App\Domains\Master\Services\GstTaxCalculationService::isIntraState($sellerState, $newDeliveryState);
@@ -1094,7 +1100,7 @@ class InvoiceController extends Controller
             'place_of_supply_state' => $newDeliveryState,
             'bill_to_place' => $billToPlace,
             'ship_to_place' => $shipToPlace,
-            'tax_type' => $invoice->tax_type ?: $newTaxType,
+            'tax_type' => $newTaxType,
             'billing_address_id' => $validated['billing_address_id'] ?? $invoice->billing_address_id,
             'shipping_address_id' => $validated['shipping_address_id'] ?? $invoice->shipping_address_id,
             'billing_address' => $validated['billing_address'] ?? $invoice->billing_address,

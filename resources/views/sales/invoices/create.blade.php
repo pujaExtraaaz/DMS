@@ -101,6 +101,10 @@
     ] : null;
 
     $savedDraftJson = $savedDraft ?? null;
+
+    $selectedCustomerId = old('customer_id', $order?->customer_id);
+    $initialCustomer = $selectedCustomerId ? $customers->firstWhere('id', $selectedCustomerId) : null;
+    $initialDeliveryState = old('delivery_state', $orderJson['delivery_state'] ?? ($initialCustomer?->shipping_state ?? ($initialCustomer?->state ?? '')));
 @endphp
 
 <x-ui.page-header title="Tax Invoice (Direct Billing)">
@@ -296,24 +300,13 @@
                 @enderror
             </div>
 
-            {{-- Delivery State --}}
-            <div>
-                <div class="flex items-center justify-between mb-1">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Delivery State</label>
-                    <span class="text-[11px] font-semibold"
-                          :class="isIntraState() ? 'text-indigo-600' : 'text-emerald-600'"
-                          x-text="isIntraState() ? 'Intra-State (CGST + SGST)' : 'Inter-State (IGST)'"></span>
-                </div>
-                <input type="text"
-                       name="delivery_state"
-                       x-model="deliveryState"
-                       @input="recalc()"
-                       placeholder="E.g. Maharashtra"
-                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                @error('delivery_state')
-                    <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                @enderror
-            </div>
+            {{-- Delivery State Searchable Dropdown --}}
+            <x-ui.state-dropdown name="delivery_state"
+                                 id="delivery_state"
+                                 label="Delivery State"
+                                 model="deliveryState"
+                                 onChange="recalc()"
+                                 placeholder="Search or select delivery state..." />
         </div>
     </x-ui.card>
 
@@ -1745,7 +1738,8 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         linkedOrderId: initialOrder ? initialOrder.id : null,
 
         invoiceDate: '{{ old('invoice_date', date('Y-m-d')) }}',
-        deliveryState: '{{ old('delivery_state', '') }}',
+        deliveryState: '{{ old('delivery_state', $initialDeliveryState ?? '') }}',
+        isManualState: {{ old('delivery_state') ? 'true' : 'false' }},
         notes: '{{ old('notes', '') }}',
 
         // Delivery Note Details
@@ -2243,6 +2237,9 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 return;
             }
 
+            // Customer changed: allow new customer's registered billing/shipping state to preselect
+            this.isManualState = false;
+
             const custOpt = document.querySelector(`select[name="customer_id"] option[value="${id}"]`);
             if (custOpt) {
                 if (custOpt.dataset.creditDays && (!this.creditDays || this.creditDays === 0)) {
@@ -2251,18 +2248,25 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                         this.setCreditDays(cDays);
                     }
                 }
-                if (custOpt.dataset.state && !this.deliveryState) {
+                if (custOpt.dataset.state) {
                     this.deliveryState = custOpt.dataset.state;
+                    this.recalc();
                 }
             }
 
             const custData = this.customers.find(c => String(c.id) === String(id));
-            if (custData && custData.salesperson_id && !this.salespersonId) {
-                this.salespersonId = String(custData.salesperson_id);
-                const spSel = document.querySelector('select[name="salesperson_id"]');
-                if (spSel) {
-                    spSel.value = this.salespersonId;
-                    spSel.dispatchEvent(new Event('change', { bubbles: true }));
+            if (custData) {
+                if (custData.salesperson_id && !this.salespersonId) {
+                    this.salespersonId = String(custData.salesperson_id);
+                    const spSel = document.querySelector('select[name="salesperson_id"]');
+                    if (spSel) {
+                        spSel.value = this.salespersonId;
+                        spSel.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                if (custData.state && !this.deliveryState) {
+                    this.deliveryState = custData.state;
+                    this.recalc();
                 }
             }
 
