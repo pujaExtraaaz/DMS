@@ -334,24 +334,88 @@ class CustomerController extends Controller
                 }
             })
             ->when($request->filled('target_status'), function ($q) use ($request) {
-                if ($request->target_status === 'assigned') {
-                    $q->whereHas('salesTargets', fn ($tq) => $tq->where('status', 'active'));
-                } elseif ($request->target_status === 'unassigned') {
-                    $q->whereDoesntHave('salesTargets', fn ($tq) => $tq->where('status', 'active'));
+                $status = strtolower(str_replace(' ', '_', (string) $request->target_status));
+                if ($status === 'assigned') {
+                    $q->where(function ($sub) {
+                        $sub->whereNotNull('target_amount')->where('target_amount', '>', 0)
+                            ->orWhereHas('salesTargets');
+                    });
+                } elseif ($status === 'unassigned') {
+                    $q->where(function ($sub) {
+                        $sub->whereNull('target_amount')->orWhere('target_amount', '<=', 0);
+                    })->whereDoesntHave('salesTargets');
+                } elseif ($status === 'achieved') {
+                    $q->whereHas('salesTargets', function ($tq) {
+                        $tq->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', true)->orWhereRaw('achieved_amount >= sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'in_progress') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('status', 'active')
+                            ->where('starts_on', '<=', $today)
+                            ->where('ends_on', '>=', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false)->whereRaw('achieved_amount < sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'period_expired' || $status === 'expired') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('ends_on', '<', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false)->whereRaw('achieved_amount < sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'not_started') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('starts_on', '>', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false));
+                    });
                 }
+            })
+            ->when($request->filled('target_start_date'), function ($q) use ($request) {
+                $q->where(function ($sub) use ($request) {
+                    $sub->where('target_start_date', '>=', $request->target_start_date)
+                        ->orWhereHas('salesTargets', fn ($tq) => $tq->where('starts_on', '>=', $request->target_start_date));
+                });
+            })
+            ->when($request->filled('target_end_date'), function ($q) use ($request) {
+                $q->where(function ($sub) use ($request) {
+                    $sub->where('target_end_date', '<=', $request->target_end_date)
+                        ->orWhereHas('salesTargets', fn ($tq) => $tq->where('ends_on', '<=', $request->target_end_date));
+                });
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'code', 'phone', 'gstin', 'email']);
 
-        if ($export = $this->exportIfRequested($request, $query, 'Parties', 'Parties', ['Name', 'Code', 'Party Type', 'Phone', 'GSTIN', 'Area', 'Status'], fn ($item) => [
-            $item->name,
-            $item->code,
-            $item->party_type_label,
-            $item->phone ?: '',
-            $item->gstin ?: '',
-            $item->area?->name ?? '',
-            $item->is_active ? 'Active' : 'Inactive',
-        ])) {
+        $exportHeaders = [
+            'Party Name', 'Code', 'Party Type', 'Phone', 'GSTIN', 'Area',
+            'Target Amount (₹)', 'Target Period', 'Achieved Sales (₹)', 'Shortfall (₹)', 'Achievement %', 'Remaining Days', 'Target Status', 'Status'
+        ];
+        if ($export = $this->exportIfRequested($request, $query, 'Parties', 'Parties', $exportHeaders, function ($item) {
+            $target = $item->activeSalesTarget() ?? $item->latestSalesTarget();
+            $targetAmount = (float) ($target?->target_amount ?? ($item->target_amount ?? 0));
+            $achieved = (float) ($target?->achievement?->achieved_amount ?? 0);
+            $shortfall = $targetAmount > 0 ? max(0, $targetAmount - $achieved) : 0;
+            $percent = $targetAmount > 0 ? round(($achieved / $targetAmount) * 100, 1) : 0;
+            $period = $target ? ($target->starts_on?->format('d-m-Y') . ' to ' . $target->ends_on?->format('d-m-Y')) : '—';
+            $status = $target ? $target->progress_status : ($targetAmount > 0 ? 'Assigned' : 'Unassigned');
+            $remDays = $target ? $target->remaining_days_label : '—';
+
+            return [
+                $item->name,
+                $item->code,
+                $item->party_type_label,
+                $item->phone ?: '',
+                $item->gstin ?: '',
+                $item->area?->name ?? '',
+                $targetAmount > 0 ? number_format($targetAmount, 2) : '—',
+                $period,
+                $targetAmount > 0 ? number_format($achieved, 2) : '—',
+                $targetAmount > 0 ? number_format($shortfall, 2) : '—',
+                $targetAmount > 0 ? "{$percent}%" : '—',
+                $remDays,
+                $status,
+                $item->is_active ? 'Active' : 'Inactive',
+            ];
+        })) {
             return $export;
         }
 
@@ -371,6 +435,8 @@ class CustomerController extends Controller
             'partyType' => $request->string('party_type'),
             'status' => $request->string('status'),
             'targetStatus' => $request->string('target_status'),
+            'targetStartDate' => $request->string('target_start_date'),
+            'targetEndDate' => $request->string('target_end_date'),
             'areas' => Area::where('is_active', true)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
             'sort' => $sortData['sort'],
@@ -1006,6 +1072,9 @@ class CustomerController extends Controller
             'credit_status' => 'nullable|in:open,hold,blocked,restricted,frozen,active',
             'credit_period_basis' => 'nullable|in:cumulative,invoice_date,inward_date,receipt_date,monthly,quarterly,yearly',
             'interest_rate' => 'nullable|numeric|min:0',
+            'target_amount' => 'nullable|numeric|min:0',
+            'target_start_date' => 'nullable|date',
+            'target_end_date' => 'nullable|date|after_or_equal:target_start_date',
             'is_active' => 'boolean',
             'contacts' => 'nullable|array',
             'contacts.*.name' => 'nullable|string|max:255',
@@ -1290,6 +1359,7 @@ class CustomerController extends Controller
         }
 
         $this->syncGemAuthorizations($request, $customer);
+        $this->syncSalesTarget($request, $customer);
     }
 
     protected function syncAddresses(Request $request, Customer $customer): void
@@ -1480,6 +1550,228 @@ class CustomerController extends Controller
             Storage::disk($document->disk ?: 'public')->delete($document->path);
             $document->delete();
         }
+    }
+
+    protected function syncSalesTarget(Request $request, Customer $customer): void
+    {
+        $targetAmount = $request->input('target_amount');
+        $hasTargetAmount = filled($targetAmount) && (float) $targetAmount > 0;
+
+        $startDate = $request->input('target_start_date');
+        $endDate = $request->input('target_end_date');
+
+        if (! $hasTargetAmount) {
+            if ($request->has('target_amount') && (float) $targetAmount == 0) {
+                $customer->updateQuietly([
+                    'target_amount' => null,
+                    'target_start_date' => null,
+                    'target_end_date' => null,
+                ]);
+            }
+            return;
+        }
+
+        $startDate = $startDate ?: now()->startOfMonth()->toDateString();
+        $endDate = $endDate ?: now()->endOfMonth()->toDateString();
+        $numericAmount = round((float) $targetAmount, 2);
+
+        $customer->updateQuietly([
+            'target_amount' => $numericAmount,
+            'target_start_date' => $startDate,
+            'target_end_date' => $endDate,
+        ]);
+
+        // Find existing target for this customer covering this exact period
+        $target = $customer->salesTargets()
+            ->where('starts_on', $startDate)
+            ->where('ends_on', $endDate)
+            ->first();
+
+        $activeTarget = $customer->activeSalesTarget() ?? $customer->latestSalesTarget();
+
+        if ($target) {
+            $oldValues = $target->toArray();
+            if ((float) $target->target_amount !== $numericAmount || $target->status !== 'active') {
+                $target->update([
+                    'target_amount' => $numericAmount,
+                    'status' => 'active',
+                    'revision_number' => (int) $target->revision_number + 1,
+                    'revision_reason' => 'Target amount revised from Party Master',
+                ]);
+
+                \App\Domains\Target\Models\SalesTargetAudit::create([
+                    'sales_target_id' => $target->id,
+                    'user_id' => auth()->id(),
+                    'action' => 'revised',
+                    'reason' => 'Target amount revised from Party Master',
+                    'old_values' => $oldValues,
+                    'new_values' => $target->fresh()->toArray(),
+                ]);
+            }
+        } elseif ($activeTarget) {
+            // New target period / revised target: preserve historical record!
+            $target = \App\Domains\Target\Models\SalesTarget::create([
+                'name' => "{$customer->name} Target",
+                'target_type' => 'value',
+                'owner_type' => 'party',
+                'customer_id' => $customer->id,
+                'company_id' => $customer->company_id,
+                'branch_id' => $customer->branch_id,
+                'financial_year_id' => \App\Domains\Organization\Models\FinancialYear::current($customer->company_id)?->id,
+                'period_type' => 'custom',
+                'starts_on' => $startDate,
+                'ends_on' => $endDate,
+                'target_amount' => $numericAmount,
+                'status' => 'active',
+                'revision_number' => (int) $activeTarget->revision_number + 1,
+                'revised_from_id' => $activeTarget->id,
+                'revision_reason' => 'Target period revised from Party Master',
+                'created_by' => auth()->id(),
+            ]);
+
+            \App\Domains\Target\Models\SalesTargetAudit::create([
+                'sales_target_id' => $target->id,
+                'user_id' => auth()->id(),
+                'action' => 'revised',
+                'reason' => 'New target period created from Party Master',
+                'old_values' => ['previous_target_id' => $activeTarget->id, 'previous_amount' => $activeTarget->target_amount],
+                'new_values' => $target->toArray(),
+            ]);
+        } else {
+            // Initial target creation
+            $target = \App\Domains\Target\Models\SalesTarget::create([
+                'name' => "{$customer->name} Target",
+                'target_type' => 'value',
+                'owner_type' => 'party',
+                'customer_id' => $customer->id,
+                'company_id' => $customer->company_id,
+                'branch_id' => $customer->branch_id,
+                'financial_year_id' => \App\Domains\Organization\Models\FinancialYear::current($customer->company_id)?->id,
+                'period_type' => 'custom',
+                'starts_on' => $startDate,
+                'ends_on' => $endDate,
+                'target_amount' => $numericAmount,
+                'status' => 'active',
+                'created_by' => auth()->id(),
+            ]);
+
+            \App\Domains\Target\Models\SalesTargetAudit::create([
+                'sales_target_id' => $target->id,
+                'user_id' => auth()->id(),
+                'action' => 'created',
+                'reason' => 'Initial target assigned from Party Master',
+                'new_values' => $target->toArray(),
+            ]);
+        }
+
+        // Calculate achievement immediately from eligible posted invoices
+        app(\App\Domains\Target\Services\SalesTargetCalculationService::class)->calculateTarget($target);
+    }
+
+    public function targetReport(Request $request): View|Response
+    {
+        $query = Customer::query()
+            ->with([
+                'customerType', 'area', 'branch',
+                'salesTargets' => fn ($q) => $q->latest('starts_on')->with('achievement'),
+            ])
+            ->where(function ($q) {
+                $q->whereNotNull('target_amount')->where('target_amount', '>', 0)
+                    ->orWhereHas('salesTargets');
+            })
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = trim($request->search);
+                $q->where(fn ($sq) => $sq->where('name', 'like', "%{$term}%")->orWhere('code', 'like', "%{$term}%"));
+            })
+            ->when($request->filled('target_status'), function ($q) use ($request) {
+                $status = strtolower(str_replace(' ', '_', (string) $request->target_status));
+                if ($status === 'achieved') {
+                    $q->whereHas('salesTargets', function ($tq) {
+                        $tq->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', true)->orWhereRaw('achieved_amount >= sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'in_progress') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('status', 'active')
+                            ->where('starts_on', '<=', $today)
+                            ->where('ends_on', '>=', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false)->whereRaw('achieved_amount < sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'period_expired' || $status === 'expired') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('ends_on', '<', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false)->whereRaw('achieved_amount < sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'not_started') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('starts_on', '>', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false));
+                    });
+                }
+            })
+            ->when($request->filled('start_date'), function ($q) use ($request) {
+                $q->whereHas('salesTargets', fn ($tq) => $tq->where('starts_on', '>=', $request->start_date));
+            })
+            ->when($request->filled('end_date'), function ($q) use ($request) {
+                $q->whereHas('salesTargets', fn ($tq) => $tq->where('ends_on', '<=', $request->end_date));
+            });
+
+        $exportHeaders = [
+            'Party Name',
+            'Code',
+            'Target Amount (₹)',
+            'Achieved Sales (₹)',
+            'Shortfall (₹)',
+            'Achievement %',
+            'Target Period',
+            'Target Status',
+        ];
+
+        if ($export = $this->exportIfRequested($request, $query, 'Party_Wise_Target_Report', 'Party-Wise Target Report', $exportHeaders, function ($item) {
+            $target = $item->activeSalesTarget() ?? $item->latestSalesTarget();
+            $targetAmount = (float) ($target?->target_amount ?? ($item->target_amount ?? 0));
+            $achieved = (float) ($target?->achievement?->achieved_amount ?? 0);
+            $shortfall = $targetAmount > 0 ? max(0, $targetAmount - $achieved) : 0;
+            $percent = $targetAmount > 0 ? round(($achieved / $targetAmount) * 100, 1) : 0;
+            $period = $target ? ($target->starts_on?->format('d-m-Y') . ' to ' . $target->ends_on?->format('d-m-Y')) : '—';
+            $status = $target ? $target->progress_status : 'Not Started';
+
+            return [
+                $item->name,
+                $item->code,
+                number_format($targetAmount, 2),
+                number_format($achieved, 2),
+                number_format($shortfall, 2),
+                "{$percent}%",
+                $period,
+                $status,
+            ];
+        })) {
+            return $export;
+        }
+
+        $items = $query->paginate(20)->withQueryString();
+
+        // Calculate summary statistics
+        $allTargets = \App\Domains\Target\Models\SalesTarget::where('owner_type', 'party')->with('achievement')->get();
+        $totalTargetAssigned = (float) $allTargets->sum('target_amount');
+        $totalAchieved = (float) $allTargets->sum(fn ($t) => (float) ($t->achievement?->achieved_amount ?? 0));
+        $totalShortfall = max(0, $totalTargetAssigned - $totalAchieved);
+        $overallPercent = $totalTargetAssigned > 0 ? round(($totalAchieved / $totalTargetAssigned) * 100, 1) : 0;
+
+        return view('masters.customers.target-report', [
+            'items' => $items,
+            'search' => $request->string('search'),
+            'targetStatus' => $request->string('target_status'),
+            'startDate' => $request->string('start_date'),
+            'endDate' => $request->string('end_date'),
+            'totalTargetAssigned' => $totalTargetAssigned,
+            'totalAchieved' => $totalAchieved,
+            'totalShortfall' => $totalShortfall,
+            'overallPercent' => $overallPercent,
+        ]);
     }
 
     protected function formData(?Customer $customer = null): array

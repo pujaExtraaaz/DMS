@@ -333,6 +333,259 @@
         </x-ui.card>
     </div>
 
+    {{-- Target Performance & Status Tracking Section --}}
+    @php
+        $target = $customer->activeSalesTarget() ?? $customer->latestSalesTarget();
+        $targetAmount = (float) ($target?->target_amount ?? ($customer->target_amount ?? 0));
+        $achievement = $target?->achievement;
+        $achievedAmount = (float) ($achievement?->achieved_amount ?? 0);
+        $shortfall = $targetAmount > 0 ? max(0, $targetAmount - $achievedAmount) : 0;
+        $excess = $targetAmount > 0 ? max(0, $achievedAmount - $targetAmount) : 0;
+        $percent = $targetAmount > 0 ? round(($achievedAmount / $targetAmount) * 100, 1) : 0;
+        $status = $target ? $target->progress_status : ($targetAmount > 0 ? 'Not Started' : 'No Target');
+        $remDays = $target ? $target->remaining_days_label : null;
+
+        $contributingInvoices = collect();
+        $contributingCreditNotes = collect();
+        if ($target) {
+            $startDate = $target->starts_on->toDateString();
+            $endDate = $target->ends_on->toDateString();
+            $contributingInvoices = \App\Domains\Sales\Models\Invoice::where('customer_id', $customer->id)
+                ->whereBetween('invoice_date', [$startDate, $endDate])
+                ->whereNotIn('status', ['cancelled', 'draft', 'void'])
+                ->latest('invoice_date')
+                ->get();
+            $contributingCreditNotes = \App\Domains\Payment\Models\CreditNote::where('customer_id', $customer->id)
+                ->whereBetween('credit_note_date', [$startDate, $endDate])
+                ->where('status', 'posted')
+                ->latest('credit_note_date')
+                ->get();
+        }
+    @endphp
+
+    <x-ui.card title="Target Performance &amp; Status Tracking">
+        <div class="space-y-6">
+            @if($targetAmount > 0)
+                {{-- Top Stat Widgets --}}
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="p-4 rounded-xl border border-slate-200 bg-slate-50">
+                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Assigned Target</span>
+                        <div class="mt-1 text-xl font-bold text-slate-900">₹ {{ number_format($targetAmount, 2) }}</div>
+                        <div class="text-[11px] text-slate-500 mt-0.5">
+                            {{ $target?->starts_on?->format('d M Y') ?? '—' }} to {{ $target?->ends_on?->format('d M Y') ?? '—' }}
+                        </div>
+                    </div>
+
+                    <div class="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60">
+                        <span class="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Total Achieved Sales</span>
+                        <div class="mt-1 text-xl font-bold text-emerald-800">₹ {{ number_format($achievedAmount, 2) }}</div>
+                        <div class="text-[11px] text-emerald-600 mt-0.5">
+                            {{ $contributingInvoices->count() }} invoice(s) net of credit notes
+                        </div>
+                    </div>
+
+                    <div class="p-4 rounded-xl border border-slate-200 {{ $shortfall > 0 ? 'bg-amber-50/60 border-amber-200' : 'bg-slate-50' }}">
+                        <span class="text-xs font-semibold {{ $shortfall > 0 ? 'text-amber-800' : 'text-slate-500' }} uppercase tracking-wider">
+                            Remaining Shortfall
+                        </span>
+                        <div class="mt-1 text-xl font-bold {{ $shortfall > 0 ? 'text-amber-900' : 'text-emerald-700' }}">
+                            ₹ {{ number_format($shortfall, 2) }}
+                        </div>
+                        <div class="text-[11px] {{ $excess > 0 ? 'text-emerald-700 font-semibold' : 'text-slate-500' }} mt-0.5">
+                            @if($excess > 0)
+                                Excess: +₹ {{ number_format($excess, 2) }}
+                            @else
+                                Formula: Target &minus; Achieved
+                            @endif
+                        </div>
+                    </div>
+
+                    <div class="p-4 rounded-xl border border-slate-200 bg-slate-50">
+                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Target Status</span>
+                        <div class="mt-1 flex items-center gap-2">
+                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold
+                                @if($status === 'Achieved') bg-emerald-100 text-emerald-800 border border-emerald-300
+                                @elseif($status === 'In Progress') bg-blue-100 text-blue-800 border border-blue-300
+                                @elseif($status === 'Period Expired') bg-rose-100 text-rose-800 border border-rose-300
+                                @else bg-slate-100 text-slate-700 border border-slate-300 @endif">
+                                <span class="w-2 h-2 rounded-full
+                                    @if($status === 'Achieved') bg-emerald-500
+                                    @elseif($status === 'In Progress') bg-blue-500
+                                    @elseif($status === 'Period Expired') bg-rose-500
+                                    @else bg-slate-400 @endif"></span>
+                                {{ $status }}
+                            </span>
+                        </div>
+                        <div class="text-[11px] text-indigo-700 font-medium mt-1">
+                            {{ $remDays ?: 'Period Active' }}
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Visual Progress Bar --}}
+                <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs space-y-2">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="font-semibold text-slate-700">Progress against assigned target</span>
+                        <span class="font-bold text-slate-900">{{ $percent }}% achieved</span>
+                    </div>
+                    <div class="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-200">
+                        <div class="h-3 rounded-full transition-all duration-500
+                            @if($percent >= 100) bg-emerald-500
+                            @elseif($percent > 0) bg-indigo-600
+                            @else bg-slate-300 @endif"
+                            style="width: {{ min(100, $percent) }}%"></div>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                        <span>Target Period: <strong class="text-slate-700">{{ $target?->starts_on?->format('d-m-Y') }}</strong> to <strong class="text-slate-700">{{ $target?->ends_on?->format('d-m-Y') }}</strong></span>
+                        <span>₹ {{ number_format($achievedAmount, 2) }} of ₹ {{ number_format($targetAmount, 2) }}</span>
+                    </div>
+                </div>
+
+                {{-- Invoice-wise Contributing Breakdown Table --}}
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Contributing Sales Invoices (Invoice-Wise Breakdown)</h4>
+                        <span class="text-xs text-slate-500">{{ $contributingInvoices->count() }} invoice(s)</span>
+                    </div>
+
+                    @if($contributingInvoices->isNotEmpty())
+                        <div class="overflow-x-auto rounded-lg border border-slate-200">
+                            <table class="min-w-full divide-y divide-slate-200 text-left text-xs">
+                                <thead class="bg-slate-50 text-slate-600 uppercase font-semibold">
+                                    <tr>
+                                        <th class="px-4 py-2.5">Invoice #</th>
+                                        <th class="px-4 py-2.5">Invoice Date</th>
+                                        <th class="px-4 py-2.5 text-right">Taxable Amount (₹)</th>
+                                        <th class="px-4 py-2.5 text-right">Tax (₹)</th>
+                                        <th class="px-4 py-2.5 text-right">Total Amount (₹)</th>
+                                        <th class="px-4 py-2.5 text-center">Status</th>
+                                        <th class="px-4 py-2.5 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 bg-white">
+                                    @foreach($contributingInvoices as $inv)
+                                        <tr class="hover:bg-slate-50 transition-colors">
+                                            <td class="px-4 py-2 font-mono font-medium text-indigo-600">
+                                                <a href="{{ route('sales.invoices.show', $inv) }}" class="hover:underline">
+                                                    {{ $inv->invoice_no }}
+                                                </a>
+                                            </td>
+                                            <td class="px-4 py-2 text-slate-600">{{ $inv->invoice_date?->format('d-m-Y') }}</td>
+                                            <td class="px-4 py-2 text-right text-slate-700">₹ {{ number_format($inv->subtotal, 2) }}</td>
+                                            <td class="px-4 py-2 text-right text-slate-500">₹ {{ number_format(($inv->cgst_amount ?? 0) + ($inv->sgst_amount ?? 0) + ($inv->igst_amount ?? 0), 2) }}</td>
+                                            <td class="px-4 py-2 text-right font-bold text-slate-900">₹ {{ number_format($inv->grand_total, 2) }}</td>
+                                            <td class="px-4 py-2 text-center">
+                                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                    {{ ucfirst($inv->status) }}
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-2 text-right">
+                                                <a href="{{ route('sales.invoices.show', $inv) }}" class="text-indigo-600 hover:text-indigo-900 font-medium hover:underline">
+                                                    View
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @else
+                        <div class="rounded-lg border border-dashed border-slate-300 p-4 text-center text-xs text-slate-500">
+                            No posted sales invoices recorded for this party within the active target period ({{ $target?->starts_on?->format('d-m-Y') }} to {{ $target?->ends_on?->format('d-m-Y') }}).
+                        </div>
+                    @endif
+
+                    @if($contributingCreditNotes->isNotEmpty())
+                        <div class="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                            <h5 class="text-xs font-semibold text-rose-700 flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" /></svg>
+                                Deducted Credit Notes &amp; Sales Returns
+                            </h5>
+                            <div class="overflow-x-auto rounded-lg border border-rose-200 bg-rose-50/30">
+                                <table class="min-w-full divide-y divide-rose-100 text-left text-xs">
+                                    <thead class="bg-rose-50 text-rose-800 uppercase font-semibold">
+                                        <tr>
+                                            <th class="px-4 py-2">Credit Note #</th>
+                                            <th class="px-4 py-2">Date</th>
+                                            <th class="px-4 py-2 text-right">Deducted Amount (₹)</th>
+                                            <th class="px-4 py-2 text-center">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-rose-100 bg-white">
+                                        @foreach($contributingCreditNotes as $cn)
+                                            <tr>
+                                                <td class="px-4 py-2 font-mono text-rose-700">{{ $cn->credit_note_no }}</td>
+                                                <td class="px-4 py-2 text-slate-600">{{ $cn->credit_note_date?->format('d-m-Y') }}</td>
+                                                <td class="px-4 py-2 text-right font-bold text-rose-700">&minus; ₹ {{ number_format($cn->grand_total, 2) }}</td>
+                                                <td class="px-4 py-2 text-center text-[10px] text-slate-600">{{ ucfirst($cn->status) }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    @endif
+                </div>
+
+                {{-- Historical Targets (if more than 1) --}}
+                @if($customer->salesTargets->count() > 1)
+                    <div class="pt-4 border-t border-slate-200 space-y-2">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Historical Target Periods</h4>
+                        <div class="overflow-x-auto rounded-lg border border-slate-200">
+                            <table class="min-w-full divide-y divide-slate-200 text-left text-xs">
+                                <thead class="bg-slate-50 text-slate-600 font-semibold">
+                                    <tr>
+                                        <th class="px-4 py-2">Period</th>
+                                        <th class="px-4 py-2 text-right">Target Amount (₹)</th>
+                                        <th class="px-4 py-2 text-right">Achieved (₹)</th>
+                                        <th class="px-4 py-2 text-right">Shortfall (₹)</th>
+                                        <th class="px-4 py-2 text-center">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 bg-white">
+                                    @foreach($customer->salesTargets as $histTarget)
+                                        <tr class="hover:bg-slate-50">
+                                            <td class="px-4 py-2 text-slate-700 font-medium">
+                                                {{ $histTarget->starts_on?->format('d-m-Y') }} to {{ $histTarget->ends_on?->format('d-m-Y') }}
+                                            </td>
+                                            <td class="px-4 py-2 text-right font-semibold text-slate-900">
+                                                ₹ {{ number_format($histTarget->target_amount, 2) }}
+                                            </td>
+                                            <td class="px-4 py-2 text-right font-semibold text-emerald-700">
+                                                ₹ {{ number_format($histTarget->achievement?->achieved_amount ?? 0, 2) }}
+                                            </td>
+                                            <td class="px-4 py-2 text-right text-slate-600">
+                                                ₹ {{ number_format($histTarget->achievement?->pending_amount ?? 0, 2) }}
+                                            </td>
+                                            <td class="px-4 py-2 text-center">
+                                                <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-semibold
+                                                    @if($histTarget->progress_status === 'Achieved') bg-emerald-100 text-emerald-800
+                                                    @elseif($histTarget->progress_status === 'In Progress') bg-blue-100 text-blue-800
+                                                    @elseif($histTarget->progress_status === 'Period Expired') bg-rose-100 text-rose-800
+                                                    @else bg-slate-100 text-slate-700 @endif">
+                                                    {{ $histTarget->progress_status }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                @endif
+            @else
+                <div class="rounded-lg border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500">
+                    No sales target is currently assigned to this party.
+                    @if($can('customers.edit', 'masters.edit', 'masters.manage'))
+                        <a href="{{ route('masters.customers.edit', $customer) }}" class="text-indigo-600 font-semibold hover:underline ml-1">
+                            Assign Target in Edit Party &rarr;
+                        </a>
+                    @endif
+                </div>
+            @endif
+        </div>
+    </x-ui.card>
+
     {{-- 5. Addresses & Locations Section --}}
     <x-ui.card title="Addresses &amp; Locations">
         @if($customer->addresses->isNotEmpty())

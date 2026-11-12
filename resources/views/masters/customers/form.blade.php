@@ -1042,6 +1042,176 @@
             </div>
         </div>
 
+        <!-- Target Management & Status Tracking -->
+        @php
+            $activeTarget = $item->exists ? ($item->activeSalesTarget() ?? $item->latestSalesTarget()) : null;
+            $initialTargetAmount = old('target_amount', $activeTarget?->target_amount ?? ($item->target_amount ?? ''));
+            $initialStartDate = old('target_start_date', $activeTarget?->starts_on?->format('Y-m-d') ?? ($item->target_start_date?->format('Y-m-d') ?? now()->startOfMonth()->format('Y-m-d')));
+            $initialEndDate = old('target_end_date', $activeTarget?->ends_on?->format('Y-m-d') ?? ($item->target_end_date?->format('Y-m-d') ?? now()->endOfMonth()->format('Y-m-d')));
+            $initialAchieved = (float) ($activeTarget?->achievement?->achieved_amount ?? 0);
+            $initialStatus = $activeTarget ? $activeTarget->progress_status : 'Not Started';
+            $initialRemainingDays = $activeTarget ? $activeTarget->remaining_days : null;
+        @endphp
+
+        <div x-data="partyTargetTracker({
+            targetAmount: @js($initialTargetAmount ? (string) $initialTargetAmount : ''),
+            achievedAmount: @js($initialAchieved),
+            startDate: @js($initialStartDate),
+            endDate: @js($initialEndDate),
+            status: @js($initialStatus),
+            remainingDays: @js($initialRemainingDays),
+        })" class="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        Target Management &amp; Status Tracking
+                    </h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Assign sales targets to this party and track real-time achievement from posted sales invoices.</p>
+                </div>
+                <template x-if="numericTarget > 0">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
+                          :class="{
+                              'bg-emerald-100 text-emerald-800': displayStatus === 'Achieved',
+                              'bg-blue-100 text-blue-800': displayStatus === 'In Progress',
+                              'bg-rose-100 text-rose-800': displayStatus === 'Period Expired',
+                              'bg-slate-100 text-slate-700': displayStatus === 'Not Started'
+                          }">
+                        <span class="w-1.5 h-1.5 rounded-full"
+                              :class="{
+                                  'bg-emerald-500': displayStatus === 'Achieved',
+                                  'bg-blue-500': displayStatus === 'In Progress',
+                                  'bg-rose-500': displayStatus === 'Period Expired',
+                                  'bg-slate-400': displayStatus === 'Not Started'
+                              }"></span>
+                        <span x-text="displayStatus"></span>
+                    </span>
+                </template>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- 1. Target Amount -->
+                <div>
+                    <label for="target_amount" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Target Amount (₹)
+                    </label>
+                    <div class="relative rounded-lg shadow-2xs">
+                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <span class="text-slate-500 sm:text-sm">₹</span>
+                        </div>
+                        <input type="number"
+                               name="target_amount"
+                               id="target_amount"
+                               step="0.01"
+                               min="0"
+                               x-model="targetAmount"
+                               placeholder="e.g. 100000"
+                               class="block w-full rounded-lg border-gray-300 pl-7 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1">
+                        <span x-show="numericTarget > 0">Formatted: <span class="font-semibold text-slate-700" x-text="'₹ ' + formatInr(numericTarget)"></span></span>
+                        <span x-show="numericTarget <= 0">Enter target amount in Indian Rupees.</span>
+                    </p>
+                    @error('target_amount') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+
+                <!-- 2. Target Period Start Date -->
+                <div>
+                    <label for="target_start_date" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Target Period – Start Date
+                    </label>
+                    <input type="date"
+                           name="target_start_date"
+                           id="target_start_date"
+                           x-model="startDate"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                    <p class="text-[11px] text-slate-500 mt-1">Date from which assigned target becomes active.</p>
+                    @error('target_start_date') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+
+                <!-- 3. Target Period End Date -->
+                <div>
+                    <label for="target_end_date" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Target Period – End Date
+                    </label>
+                    <input type="date"
+                           name="target_end_date"
+                           id="target_end_date"
+                           x-model="endDate"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                    <p class="text-[11px] text-slate-500 mt-1">Last date on which target is expected to be achieved.</p>
+                    @error('target_end_date') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+            </div>
+
+            <!-- Read-only Computed Section: Achieved Target & Shortfall -->
+            <div x-show="numericTarget > 0" class="pt-3 border-t border-slate-100 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- 4. Achieved Target (Actual Sales) - Read Only -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-slate-700">Achieved Target (Actual Sales)</label>
+                            <span class="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">System Calculated</span>
+                        </div>
+                        <div class="relative rounded-lg shadow-2xs">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                <span class="text-slate-500 sm:text-sm">₹</span>
+                            </div>
+                            <input type="text"
+                                   readonly
+                                   :value="formatInr(achievedAmount)"
+                                   class="block w-full rounded-lg border-gray-200 pl-7 text-sm bg-slate-50 font-semibold text-slate-900 cursor-not-allowed">
+                        </div>
+                        <p class="text-[11px] text-slate-500 mt-1">Automatically computed from eligible posted invoices in this period.</p>
+                    </div>
+
+                    <!-- 5. Shortfall - Read Only -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-slate-700">Shortfall</label>
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                                  :class="shortfall === 0 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-700 bg-amber-50 border-amber-200'"
+                                  x-text="shortfall === 0 ? 'Target Achieved' : 'Pending Amount'"></span>
+                        </div>
+                        <div class="relative rounded-lg shadow-2xs">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                <span class="text-slate-500 sm:text-sm">₹</span>
+                            </div>
+                            <input type="text"
+                                   readonly
+                                   :value="formatInr(shortfall)"
+                                   class="block w-full rounded-lg border-gray-200 pl-7 text-sm bg-slate-50 font-semibold text-slate-900 cursor-not-allowed">
+                        </div>
+                        <p class="text-[11px] mt-1" :class="excess > 0 ? 'text-emerald-600 font-medium' : 'text-slate-500'">
+                            <span x-show="excess > 0">Target exceeded by ₹ <span x-text="formatInr(excess)"></span> (<span x-text="percent"></span>%)!</span>
+                            <span x-show="excess <= 0">Formula: Target Amount (₹ <span x-text="formatInr(numericTarget)"></span>) &minus; Achieved (₹ <span x-text="formatInr(achievedAmount)"></span>).</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Progress Bar & Details -->
+                <div class="rounded-lg bg-slate-50 p-3.5 border border-slate-200 space-y-2">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="font-medium text-slate-700">Achievement Progress</span>
+                        <span class="font-bold text-slate-900" x-text="percent + '% (' + formatInr(achievedAmount) + ' / ' + formatInr(numericTarget) + ')'"></span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                        <div class="h-2.5 rounded-full transition-all duration-500"
+                             :class="{
+                                 'bg-emerald-500': percent >= 100,
+                                 'bg-indigo-600': percent > 0 && percent < 100,
+                                 'bg-slate-300': percent <= 0
+                             }"
+                             :style="'width: ' + Math.min(100, percent) + '%'"></div>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                        <span>Period: <strong class="text-slate-700" x-text="startDate"></strong> to <strong class="text-slate-700" x-text="endDate"></strong></span>
+                        <span x-show="remainingDaysLabel" x-text="remainingDaysLabel" class="font-medium text-indigo-700"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="space-y-3">
             <div class="flex items-center justify-between gap-3">
                 <div>
@@ -1423,6 +1593,74 @@
 
 @push('scripts')
 <script>
+function partyTargetTracker(config) {
+    return {
+        targetAmount: config.targetAmount || '',
+        achievedAmount: parseFloat(config.achievedAmount) || 0,
+        startDate: config.startDate || '',
+        endDate: config.endDate || '',
+        status: config.status || 'Not Started',
+        remainingDays: config.remainingDays,
+
+        get numericTarget() {
+            const val = parseFloat(this.targetAmount);
+            return isNaN(val) ? 0 : val;
+        },
+        get shortfall() {
+            if (this.numericTarget <= 0) return 0;
+            return Math.max(0, this.numericTarget - this.achievedAmount);
+        },
+        get excess() {
+            if (this.numericTarget <= 0) return 0;
+            return Math.max(0, this.achievedAmount - this.numericTarget);
+        },
+        get percent() {
+            if (this.numericTarget <= 0) return 0;
+            return Math.round((this.achievedAmount / this.numericTarget) * 100 * 10) / 10;
+        },
+        get displayStatus() {
+            if (this.numericTarget <= 0) return 'Not Started';
+            if (this.achievedAmount >= this.numericTarget) {
+                return 'Achieved';
+            }
+            const today = new Date().toISOString().slice(0, 10);
+            if (this.endDate && today > this.endDate) {
+                return 'Period Expired';
+            }
+            if (this.startDate && today < this.startDate) {
+                return 'Not Started';
+            }
+            return 'In Progress';
+        },
+        get remainingDaysLabel() {
+            const status = this.displayStatus;
+            if (status === 'Achieved') {
+                return 'Target Achieved!';
+            }
+            if (status === 'Period Expired') {
+                return 'Period Expired';
+            }
+            if (!this.endDate) return '';
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const targetEnd = new Date(this.endDate);
+            targetEnd.setHours(0,0,0,0);
+            const diffTime = targetEnd - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays >= 0) {
+                return diffDays + (diffDays === 1 ? ' day remaining' : ' days remaining');
+            }
+            return 'Period Expired';
+        },
+        formatInr(val) {
+            return Number(val || 0).toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+        }
+    };
+}
+
 function partyFormController() {
     return {
         // Business Group state

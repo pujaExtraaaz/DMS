@@ -15,6 +15,8 @@ use App\Domains\Master\Imports\ProductTypesImport;
 use App\Domains\Master\Imports\SubCategoriesImport;
 use App\Domains\Master\Imports\UomsImport;
 use App\Domains\Master\Imports\WarehousesImport;
+use App\Domains\Master\Models\Uom;
+use App\Domains\Master\Models\UomMapping;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -30,9 +32,15 @@ class BulkImportController extends Controller
 {
     public function index(): View
     {
-        $summary = Session::pull('bulk_import_summary');
+        $summary = session('bulk_import_summary');
+        $allUoms = Uom::query()->where('is_active', true)->orderBy('name')->get();
+        $uomMappings = UomMapping::query()->with('uom')->latest()->get();
 
-        return view('masters.bulk-import.index', ['summary' => $summary]);
+        return view('masters.bulk-import.index', [
+            'summary' => $summary,
+            'allUoms' => $allUoms,
+            'uomMappings' => $uomMappings,
+        ]);
     }
 
     public function template(string $type): StreamedResponse
@@ -169,33 +177,202 @@ class BulkImportController extends Controller
             default => abort(404, 'Unknown import type'),
         };
 
-        $import->import($request->file('file'));
+        // Persist uploaded file so it can be retried if any rows fail
+        $storedPath = $request->file('file')->store('imports/pending', 'local');
+        $fullPath = Storage::disk('local')->path($storedPath);
 
+        $import->import($fullPath);
+
+        $failedCount = property_exists($import, 'failed') ? $import->failed : count($import->errors);
         $summary = [
             'type' => $type,
             'created' => $import->created,
             'updated' => $import->updated,
             'skipped' => $import->skipped,
+            'failed' => $failedCount,
             'errors' => $import->errors,
+            'missing_uoms' => method_exists($import, 'getMissingUoms') ? $import->getMissingUoms() : ($import->missingUoms ?? []),
+            'pending_file' => ! empty($import->errors) ? $storedPath : null,
             'errors_file' => null,
         ];
 
-        if (! empty($import->errors)) {
+        if (empty($import->errors)) {
+            Storage::disk('local')->delete($storedPath);
+        } else {
             $path = 'imports/errors-'.$type.'-'.now()->format('Ymd-His').'.csv';
-            $csv = "row,field,message\n";
+            $csv = "Row Number,Product Identifier,Imported UOM,Field,Reason for Failure\n";
             foreach ($import->errors as $err) {
-                $csv .= sprintf("%d,%s,\"%s\"\n", $err['row'], $err['field'], str_replace('"', '""', $err['message']));
+                $csv .= sprintf(
+                    "%d,\"%s\",\"%s\",\"%s\",\"%s\"\n",
+                    $err['row'] ?? 0,
+                    str_replace('"', '""', (string) ($err['product_identifier'] ?? 'N/A')),
+                    str_replace('"', '""', (string) ($err['imported_uom'] ?? 'N/A')),
+                    str_replace('"', '""', (string) ($err['field'] ?? '')),
+                    str_replace('"', '""', (string) ($err['message'] ?? ''))
+                );
             }
             Storage::disk('local')->put($path, $csv);
             $summary['errors_file'] = $path;
         }
 
-        Session::flash('bulk_import_summary', $summary);
+        session(['bulk_import_summary' => $summary]);
 
         return $this->flashSuccess(
-            sprintf('%s import complete: %d created, %d updated, %d skipped.', ucfirst(str_replace('-', ' ', $type)), $import->created, $import->updated, $import->skipped),
+            sprintf(
+                '%s import complete: %d created, %d updated, %d skipped, %d failed.',
+                ucfirst(str_replace('-', ' ', $type)),
+                $import->created,
+                $import->updated,
+                $import->skipped,
+                $failedCount
+            ),
             'masters.bulk-import.index',
         );
+    }
+
+    public function retry(Request $request): RedirectResponse
+    {
+        $summary = session('bulk_import_summary');
+        if (! $summary || empty($summary['pending_file'])) {
+            return back()->with('error', 'No pending import file available to retry.');
+        }
+
+        $relativePath = $summary['pending_file'];
+        if (! Storage::disk('local')->exists($relativePath)) {
+            return back()->with('error', 'The pending import file was not found.');
+        }
+
+        $fullPath = Storage::disk('local')->path($relativePath);
+        $type = $summary['type'] ?? 'products';
+        $companyId = auth()->user()?->company_id;
+
+        $import = match ($type) {
+            'products' => new ProductsImport($companyId),
+            'price-master' => new PriceMasterImport(),
+            default => new ProductsImport($companyId),
+        };
+
+        $import->import($fullPath);
+
+        $failedCount = property_exists($import, 'failed') ? $import->failed : count($import->errors);
+        $summary['created'] = $import->created;
+        $summary['updated'] = $import->updated;
+        $summary['skipped'] = $import->skipped;
+        $summary['failed'] = $failedCount;
+        $summary['errors'] = $import->errors;
+        $summary['missing_uoms'] = method_exists($import, 'getMissingUoms') ? $import->getMissingUoms() : ($import->missingUoms ?? []);
+
+        if (empty($import->errors)) {
+            Storage::disk('local')->delete($relativePath);
+            $summary['pending_file'] = null;
+            $summary['errors_file'] = null;
+        } else {
+            $path = 'imports/errors-'.$type.'-'.now()->format('Ymd-His').'.csv';
+            $csv = "Row Number,Product Identifier,Imported UOM,Field,Reason for Failure\n";
+            foreach ($import->errors as $err) {
+                $csv .= sprintf(
+                    "%d,\"%s\",\"%s\",\"%s\",\"%s\"\n",
+                    $err['row'] ?? 0,
+                    str_replace('"', '""', (string) ($err['product_identifier'] ?? 'N/A')),
+                    str_replace('"', '""', (string) ($err['imported_uom'] ?? 'N/A')),
+                    str_replace('"', '""', (string) ($err['field'] ?? '')),
+                    str_replace('"', '""', (string) ($err['message'] ?? ''))
+                );
+            }
+            Storage::disk('local')->put($path, $csv);
+            $summary['errors_file'] = $path;
+        }
+
+        session(['bulk_import_summary' => $summary]);
+
+        return back()->with(
+            'status',
+            sprintf('Retry completed: %d created, %d updated, %d skipped, %d failed.', $import->created, $import->updated, $import->skipped, $failedCount)
+        );
+    }
+
+    public function mapUom(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'imported_uom' => 'required|string|max:100',
+            'uom_id' => 'required|exists:uoms,id',
+        ]);
+
+        $importedUom = trim($request->input('imported_uom'));
+        $uom = Uom::findOrFail($request->input('uom_id'));
+
+        UomMapping::updateOrCreate(
+            ['imported_uom' => $importedUom],
+            ['uom_id' => $uom->id]
+        );
+
+        $summary = session('bulk_import_summary');
+        if (is_array($summary) && isset($summary['missing_uoms'][$importedUom])) {
+            unset($summary['missing_uoms'][$importedUom]);
+            session(['bulk_import_summary' => $summary]);
+        }
+
+        return back()->with('status', "UOM '{$importedUom}' successfully mapped to {$uom->name} ({$uom->code}).");
+    }
+
+    public function addUom(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'code' => 'required|string|max:20',
+            'imported_uom' => 'nullable|string|max:100',
+        ]);
+
+        $name = trim($request->input('name'));
+        $code = strtoupper(trim($request->input('code')));
+        $importedUom = trim((string) $request->input('imported_uom'));
+
+        $uom = Uom::query()
+            ->whereRaw('UPPER(code) = ?', [$code])
+            ->orWhereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
+            ->first();
+
+        if (! $uom) {
+            $uom = Uom::create([
+                'name' => $name,
+                'code' => $code,
+                'is_active' => true,
+            ]);
+        }
+
+        if ($importedUom !== '') {
+            UomMapping::updateOrCreate(
+                ['imported_uom' => $importedUom],
+                ['uom_id' => $uom->id]
+            );
+        }
+
+        $summary = session('bulk_import_summary');
+        if (is_array($summary) && $importedUom !== '' && isset($summary['missing_uoms'][$importedUom])) {
+            unset($summary['missing_uoms'][$importedUom]);
+            session(['bulk_import_summary' => $summary]);
+        }
+
+        return back()->with('status', "UOM {$uom->name} ({$uom->code}) successfully added to UOM Master.");
+    }
+
+    public function deleteUomMapping(UomMapping $mapping): RedirectResponse
+    {
+        $imported = $mapping->imported_uom;
+        $mapping->delete();
+
+        return back()->with('status', "UOM mapping for '{$imported}' removed.");
+    }
+
+    public function clearSummary(): RedirectResponse
+    {
+        $summary = session('bulk_import_summary');
+        if ($summary && ! empty($summary['pending_file'])) {
+            Storage::disk('local')->delete($summary['pending_file']);
+        }
+        session()->forget('bulk_import_summary');
+
+        return back()->with('status', 'Import summary dismissed.');
     }
 
     public function errors(string $filename): StreamedResponse

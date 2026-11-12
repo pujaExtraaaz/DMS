@@ -330,9 +330,25 @@ class StockMovementService
 
     private function isPhysicalCount(string $type, ?Model $reference): bool
     {
-        return $type === 'adjustment'
-            && $reference instanceof StockAdjustment
-            && $reference->reason === 'recount';
+        if ($type !== 'adjustment') {
+            return false;
+        }
+
+        $reason = null;
+        if ($reference instanceof StockAdjustment) {
+            $reason = (string) $reference->reason;
+        } elseif ($reference instanceof \App\Domains\Inventory\Models\StockAdjustmentItem) {
+            $reason = (string) ($reference->stockAdjustment?->reason ?? '');
+        }
+
+        return in_array(strtolower(trim((string) $reason)), [
+            'recount',
+            'physical_count',
+            'physical count',
+            'physical',
+            'counting',
+            'cycle_count',
+        ], true);
     }
 
     private function manufactureCost(Product $product): float

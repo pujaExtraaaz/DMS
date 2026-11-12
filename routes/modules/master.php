@@ -53,6 +53,8 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::match(['get', 'post'], 'customers/gst-lookup', [CustomerController::class, 'gstLookup'])->name('customers.gst-lookup');
         Route::match(['get', 'post'], 'customers/ifsc-lookup', [CustomerController::class, 'ifscLookup'])->name('customers.ifsc-lookup');
         Route::post('customers/quick-add', [CustomerController::class, 'quickAdd'])->name('customers.quick-add');
+        Route::get('customers/target-report', [CustomerController::class, 'targetReport'])->name('customers.target-report');
+        Route::get('parties/target-report', [CustomerController::class, 'targetReport'])->name('parties.target-report');
         Route::get('customers/business-groups', [CustomerController::class, 'businessGroups'])->name('customers.business-groups');
         Route::get('customers/{customer}/addresses', [CustomerController::class, 'addresses'])->name('customers.addresses');
         Route::post('customers/{customer}/addresses', [CustomerController::class, 'storeAddress'])->name('customers.addresses.store');
@@ -70,6 +72,11 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         // Bulk import for Products, Parties, and Price Master (AVIT req #22).
         Route::get('bulk-import', [BulkImportController::class, 'index'])->name('bulk-import.index');
         Route::get('bulk-import/template/{type}', [BulkImportController::class, 'template'])->name('bulk-import.template');
+        Route::post('bulk-import/map-uom', [BulkImportController::class, 'mapUom'])->name('bulk-import.map-uom');
+        Route::post('bulk-import/add-uom', [BulkImportController::class, 'addUom'])->name('bulk-import.add-uom');
+        Route::post('bulk-import/retry', [BulkImportController::class, 'retry'])->name('bulk-import.retry');
+        Route::delete('bulk-import/uom-mappings/{mapping}', [BulkImportController::class, 'deleteUomMapping'])->name('bulk-import.delete-uom-mapping');
+        Route::post('bulk-import/clear-summary', [BulkImportController::class, 'clearSummary'])->name('bulk-import.clear-summary');
         Route::post('bulk-import/{type}', [BulkImportController::class, 'upload'])->name('bulk-import.upload');
         Route::get('bulk-import/errors/{filename}', [BulkImportController::class, 'errors'])->name('bulk-import.errors');
     });

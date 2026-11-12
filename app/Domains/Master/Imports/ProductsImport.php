@@ -9,6 +9,8 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\ProductType;
 use App\Domains\Master\Models\ProductUom;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Master\Models\UomMapping;
+use App\Domains\Master\Services\UomLookupService;
 use App\Domains\Organization\Models\Company;
 use App\Support\CodeGenerator;
 use App\Support\NameCase;
@@ -33,7 +35,7 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
  *
  * Aliases: sku / part_no / partnumber → part_number; uom → uom_code.
  * Match on part number. An existing product is updated only when a value
- * changed; an identical row is skipped. Missing UOM code → skip.
+ * changed; an identical row is skipped. Missing UOM code → failed with clear error.
  * Brand, category, sub-category and product type are linked only when they
  * already exist. Unknown names are left blank and are not created.
  */
@@ -49,11 +51,16 @@ class ProductsImport implements ToCollection, WithHeadingRow
 
     public int $skipped = 0;
 
+    public int $failed = 0;
+
+    public array $missingUoms = [];
+
     public function __construct(protected ?int $companyId = null) {}
 
     public function collection(Collection $rows): void
     {
-        $uomsByCode = Uom::query()->get()->keyBy(fn ($u) => strtoupper((string) $u->code));
+        $uoms = Uom::query()->get();
+        $mappings = UomMapping::with('uom')->get();
         $brands = Brand::query()->get();
         $categories = Category::query()->get();
         $subCategories = SubCategory::query()->get();
@@ -64,23 +71,27 @@ class ProductsImport implements ToCollection, WithHeadingRow
             $rowNo = $index + 2;
             $data = collect($row)->mapWithKeys(fn ($v, $k) => [strtolower((string) $k) => $v])->toArray();
 
+            $sku = trim((string) ($data['part_number'] ?? $data['part_no'] ?? $data['partnumber'] ?? $data['sku'] ?? ''));
+            $rawUom = trim((string) ($data['uom_code'] ?? $data['uom'] ?? ''));
+
             $name = trim((string) ($data['name'] ?? ''));
             if ($name === '') {
-                $this->skipped++;
-                $this->errors[] = ['row' => $rowNo, 'field' => 'name', 'message' => 'Name is required'];
+                $this->recordFailure($rowNo, 'name', 'Name is required', $sku ?: 'N/A', $rawUom ?: 'N/A');
                 continue;
             }
             $name = \App\Support\NameCase::format($name);
 
-            $uomCode = strtoupper(trim((string) ($data['uom_code'] ?? $data['uom'] ?? '')));
-            $uom = $uomsByCode[$uomCode] ?? null;
-            if (! $uom) {
-                $this->skipped++;
-                $this->errors[] = ['row' => $rowNo, 'field' => 'uom_code', 'message' => "Unknown UOM code '{$uomCode}'"];
+            if ($rawUom === '') {
+                $this->recordMissingUom($rowNo, '', 'uom_code', $sku ?: $name);
                 continue;
             }
 
-            $sku = trim((string) ($data['part_number'] ?? $data['part_no'] ?? $data['partnumber'] ?? $data['sku'] ?? ''));
+            $uom = UomLookupService::resolve($rawUom, $uoms, $mappings);
+            if (! $uom) {
+                $this->recordMissingUom($rowNo, $rawUom, 'uom_code', $sku ?: $name);
+                continue;
+            }
+
             if ($sku === '') {
                 $sku = CodeGenerator::forProduct($companyId);
             }
@@ -91,12 +102,11 @@ class ProductsImport implements ToCollection, WithHeadingRow
             $productType = $this->matchProductType($productTypes, (string) ($data['product_type'] ?? ''));
 
             $altUom = null;
-            $altCode = strtoupper(trim((string) ($data['alternate_uom_code'] ?? '')));
-            if ($altCode !== '') {
-                $altUom = $uomsByCode[$altCode] ?? null;
+            $rawAltUom = trim((string) ($data['alternate_uom_code'] ?? ''));
+            if ($rawAltUom !== '') {
+                $altUom = UomLookupService::resolve($rawAltUom, $uoms, $mappings);
                 if (! $altUom) {
-                    $this->skipped++;
-                    $this->errors[] = ['row' => $rowNo, 'field' => 'alternate_uom_code', 'message' => "Unknown alternate UOM code '{$altCode}'"];
+                    $this->recordMissingUom($rowNo, $rawAltUom, 'alternate_uom_code', $sku);
                     continue;
                 }
             }
@@ -218,12 +228,13 @@ class ProductsImport implements ToCollection, WithHeadingRow
                     $this->created++;
                 }
             } catch (QueryException $e) {
-                $this->skipped++;
-                $this->errors[] = [
-                    'row' => $rowNo,
-                    'field' => 'part_number',
-                    'message' => 'Could not save this product because it conflicts with an existing record.',
-                ];
+                $this->recordFailure(
+                    $rowNo,
+                    'part_number',
+                    'Could not save this product because it conflicts with an existing record.',
+                    $sku,
+                    $rawUom
+                );
 
                 continue;
             }
@@ -260,6 +271,49 @@ class ProductsImport implements ToCollection, WithHeadingRow
                 );
             }
         }
+    }
+
+    public function getMissingUoms(): array
+    {
+        return $this->missingUoms;
+    }
+
+    protected function recordFailure(int $rowNo, string $field, string $message, ?string $identifier = null, ?string $importedUom = null): void
+    {
+        $this->failed++;
+        $this->errors[] = [
+            'row' => $rowNo,
+            'product_identifier' => $identifier ?: 'N/A',
+            'imported_uom' => $importedUom ?: 'N/A',
+            'field' => $field,
+            'message' => $message,
+        ];
+    }
+
+    protected function recordMissingUom(int $rowNo, string $rawUom, string $field, ?string $identifier = null): void
+    {
+        $rawTrimmed = trim($rawUom);
+        if ($rawTrimmed !== '') {
+            if (! isset($this->missingUoms[$rawTrimmed])) {
+                $this->missingUoms[$rawTrimmed] = [
+                    'imported_uom' => $rawTrimmed,
+                    'count' => 0,
+                    'sample_rows' => [],
+                    'suggested_code' => UomLookupService::suggestCode($rawTrimmed),
+                    'suggested_name' => UomLookupService::suggestName($rawTrimmed),
+                ];
+            }
+            $this->missingUoms[$rawTrimmed]['count']++;
+            if (count($this->missingUoms[$rawTrimmed]['sample_rows']) < 5) {
+                $this->missingUoms[$rawTrimmed]['sample_rows'][] = $rowNo;
+            }
+        }
+
+        $message = $rawTrimmed === ''
+            ? ($field === 'alternate_uom_code' ? 'Alternate UOM code is invalid' : 'UOM is required')
+            : "Unknown UOM '{$rawTrimmed}'. Please map this UOM to an existing record or add it to UOM Master.";
+
+        $this->recordFailure($rowNo, $field, $message, $identifier, $rawTrimmed ?: 'BLANK');
     }
 
     protected function matchBrand(Collection $brands, string $label): ?Brand

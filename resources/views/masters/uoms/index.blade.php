@@ -6,6 +6,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.page-header title="UOMs" description="Manage UOM master data.">
         <x-slot name="actions">
+            <x-ui.button variant="secondary" :href="route('masters.bulk-import.index')">Bulk Import &amp; Mappings</x-ui.button>
             <x-ui.button variant="primary" :href="route('masters.uoms.create')">+ Add UOM</x-ui.button>
         </x-slot>
     </x-ui.page-header>

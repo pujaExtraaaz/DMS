@@ -37,4 +37,9 @@ class Uom extends Model
     {
         return $this->hasMany(PriceMaster::class);
     }
+
+    public function mappings(): HasMany
+    {
+        return $this->hasMany(UomMapping::class);
+    }
 }

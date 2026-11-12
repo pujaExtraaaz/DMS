@@ -4,49 +4,227 @@
 <x-ui.page-header title="Bulk Import" description="Import Setup, Catalog, Products, Parties and Price List from CSV/Excel. Download each template, fill it, then upload in the order shown — the system validates, updates by key, and provides an error report." />
 
 @if(session('status'))
-    <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">{{ session('status') }}</div>
+    <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center justify-between">
+        <div>{{ session('status') }}</div>
+        <button type="button" onclick="this.parentElement.remove()" class="text-emerald-600 hover:text-emerald-900 text-xs font-semibold">&times;</button>
+    </div>
+@endif
+
+@if(session('error'))
+    <div class="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 flex items-center justify-between">
+        <div>{{ session('error') }}</div>
+        <button type="button" onclick="this.parentElement.remove()" class="text-rose-600 hover:text-rose-900 text-xs font-semibold">&times;</button>
+    </div>
 @endif
 
 @if($summary)
-    <x-ui.card class="mb-4" title="Last import result — {{ ucfirst(str_replace('-', ' ', $summary['type'])) }}">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3 text-sm">
-            <div class="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2"><span class="text-xs uppercase text-slate-500">Created</span><div class="text-lg font-semibold text-emerald-700">{{ $summary['created'] }}</div></div>
-            <div class="rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2"><span class="text-xs uppercase text-slate-500">Updated</span><div class="text-lg font-semibold text-indigo-700">{{ $summary['updated'] }}</div></div>
-            <div class="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2"><span class="text-xs uppercase text-slate-500">Skipped</span><div class="text-lg font-semibold text-amber-700">{{ $summary['skipped'] }}</div></div>
-            <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2"><span class="text-xs uppercase text-slate-500">Errors</span><div class="text-lg font-semibold text-red-700">{{ count($summary['errors']) }}</div></div>
+    <x-ui.card class="mb-6 border-slate-300 shadow-sm" title="Last import result — {{ ucfirst(str_replace('-', ' ', $summary['type'])) }}">
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-xs text-slate-500 font-medium">Batch summary metrics</span>
+            <form action="{{ route('masters.bulk-import.clear-summary') }}" method="POST" class="inline">
+                @csrf
+                <button type="submit" class="text-xs text-slate-500 hover:text-slate-800 underline">Dismiss summary</button>
+            </form>
         </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-sm">
+            <div class="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2.5">
+                <span class="text-xs font-medium uppercase tracking-wider text-emerald-700">Created</span>
+                <div class="text-xl font-bold text-emerald-800">{{ $summary['created'] }}</div>
+                <span class="text-[11px] text-emerald-600">New records added</span>
+            </div>
+            <div class="rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-2.5">
+                <span class="text-xs font-medium uppercase tracking-wider text-indigo-700">Updated</span>
+                <div class="text-xl font-bold text-indigo-800">{{ $summary['updated'] }}</div>
+                <span class="text-[11px] text-indigo-600">Existing records modified</span>
+            </div>
+            <div class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+                <span class="text-xs font-medium uppercase tracking-wider text-amber-700">Skipped</span>
+                <div class="text-xl font-bold text-amber-800">{{ $summary['skipped'] }}</div>
+                <span class="text-[11px] text-amber-600">Unchanged records</span>
+            </div>
+            <div class="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2.5">
+                <span class="text-xs font-medium uppercase tracking-wider text-rose-700">Failed</span>
+                <div class="text-xl font-bold text-rose-800">{{ $summary['failed'] ?? count($summary['errors']) }}</div>
+                <span class="text-[11px] text-rose-600">Errors encountered</span>
+            </div>
+        </div>
+
+        @if(! empty($summary['missing_uoms']))
+            <div class="mb-5 rounded-xl border border-amber-300 bg-amber-50/70 p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-amber-200 pb-3 mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-200 text-amber-800 font-bold text-xs">!</span>
+                        <h4 class="text-sm font-semibold text-amber-900">Unresolved UOM Values Detected</h4>
+                        <span class="rounded bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                            {{ count($summary['missing_uoms']) }} missing UOM{{ count($summary['missing_uoms']) > 1 ? 's' : '' }}
+                        </span>
+                    </div>
+                    @if(! empty($summary['pending_file']))
+                        <form action="{{ route('masters.bulk-import.retry') }}" method="POST" class="inline">
+                            @csrf
+                            <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700">
+                                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                Retry Import Now
+                            </button>
+                        </form>
+                    @endif
+                </div>
+
+                <p class="text-xs text-amber-800 mb-3">
+                    The imported rows below contain UOM values that could not be matched automatically. Map them to an existing UOM in your master, or add them as new units. Once mapped or created, click <strong>Retry Import Now</strong> to import the failed rows.
+                </p>
+
+                <div class="space-y-3">
+                    @foreach($summary['missing_uoms'] as $rawUom => $m)
+                        <div class="rounded-lg border border-amber-200 bg-white p-3 shadow-xs">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2 pb-2 border-b border-slate-100">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs text-slate-500">Imported Value:</span>
+                                    <span class="inline-block rounded bg-rose-100 font-mono text-xs font-bold text-rose-800 px-2 py-0.5">
+                                        "{{ $m['imported_uom'] }}"
+                                    </span>
+                                    <span class="text-xs text-slate-500">
+                                        ({{ $m['count'] }} product{{ $m['count'] > 1 ? 's' : '' }} affected)
+                                    </span>
+                                </div>
+                                <div class="text-[11px] text-slate-400">
+                                    Sample rows: {{ implode(', ', $m['sample_rows'] ?? []) }}
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 text-xs">
+                                <!-- Option 1: Map to existing UOM -->
+                                <div class="rounded border border-slate-200 bg-slate-50/70 p-2.5">
+                                    <div class="font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
+                                        <span>Option A: Map to Existing UOM</span>
+                                    </div>
+                                    <form action="{{ route('masters.bulk-import.map-uom') }}" method="POST" class="flex flex-wrap items-center gap-2">
+                                        @csrf
+                                        <input type="hidden" name="imported_uom" value="{{ $m['imported_uom'] }}">
+                                        <select name="uom_id" required class="flex-1 rounded border-slate-300 text-xs py-1 px-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                            <option value="">-- Choose target UOM --</option>
+                                            @foreach($allUoms as $uom)
+                                                <option value="{{ $uom->id }}">{{ $uom->name }} ({{ $uom->code }})</option>
+                                            @endforeach
+                                        </select>
+                                        <button type="submit" class="rounded bg-indigo-600 px-2.5 py-1 font-semibold text-white hover:bg-indigo-700">
+                                            Save Mapping
+                                        </button>
+                                    </form>
+                                </div>
+
+                                <!-- Option 2: Add to UOM Master -->
+                                <div class="rounded border border-slate-200 bg-slate-50/70 p-2.5">
+                                    <div class="font-semibold text-slate-700 mb-1.5 flex items-center gap-1">
+                                        <span>Option B: Add to UOM Master</span>
+                                    </div>
+                                    <form action="{{ route('masters.bulk-import.add-uom') }}" method="POST" class="flex flex-wrap items-center gap-2">
+                                        @csrf
+                                        <input type="hidden" name="imported_uom" value="{{ $m['imported_uom'] }}">
+                                        <input type="text" name="name" value="{{ $m['suggested_name'] ?? '' }}" placeholder="Name (e.g. Job)" required class="w-32 rounded border-slate-300 text-xs py-1 px-2">
+                                        <input type="text" name="code" value="{{ $m['suggested_code'] ?? '' }}" placeholder="Code (e.g. JOB)" required class="w-24 uppercase rounded border-slate-300 text-xs py-1 px-2">
+                                        <button type="submit" class="rounded bg-emerald-600 px-2.5 py-1 font-semibold text-white hover:bg-emerald-700">
+                                            Create in Master
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
         @if(! empty($summary['errors']))
-            @if($summary['errors_file'])
-                <a href="{{ route('masters.bulk-import.errors', ['filename' => basename($summary['errors_file'])]) }}" class="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">
-                    Download error CSV
-                </a>
-            @endif
-            <div class="mt-3 overflow-x-auto max-h-60 border rounded-lg">
-                <table class="min-w-full text-xs">
-                    <thead class="bg-slate-50 sticky top-0">
-                        <tr>
-                            <th class="px-3 py-1.5 text-left">Row</th>
-                            <th class="px-3 py-1.5 text-left">Field</th>
-                            <th class="px-3 py-1.5 text-left">Message</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y">
-                        @foreach($summary['errors'] as $err)
+            <div class="mt-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-700">Failure Details</h4>
+                    <div class="flex items-center gap-2">
+                        @if(! empty($summary['pending_file']))
+                            <form action="{{ route('masters.bulk-import.retry') }}" method="POST" class="inline">
+                                @csrf
+                                <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">
+                                    🔄 Retry Failed Import
+                                </button>
+                            </form>
+                        @endif
+                        @if(! empty($summary['errors_file']))
+                            <a href="{{ route('masters.bulk-import.errors', ['filename' => basename($summary['errors_file'])]) }}" class="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700">
+                                <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                Download Error CSV
+                            </a>
+                        @endif
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto max-h-72 border rounded-lg bg-white">
+                    <table class="min-w-full text-xs">
+                        <thead class="bg-slate-100 sticky top-0 text-slate-700">
                             <tr>
-                                <td class="px-3 py-1.5">{{ $err['row'] }}</td>
-                                <td class="px-3 py-1.5 font-mono text-slate-600">{{ $err['field'] }}</td>
-                                <td class="px-3 py-1.5">{{ $err['message'] }}</td>
+                                <th class="px-3 py-2 text-left font-semibold">Row Number</th>
+                                <th class="px-3 py-2 text-left font-semibold">Product Identifier</th>
+                                <th class="px-3 py-2 text-left font-semibold">Imported UOM</th>
+                                <th class="px-3 py-2 text-left font-semibold">Field</th>
+                                <th class="px-3 py-2 text-left font-semibold">Reason for Failure</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            @foreach($summary['errors'] as $err)
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-3 py-2 font-mono text-slate-700">{{ $err['row'] ?? '-' }}</td>
+                                    <td class="px-3 py-2 font-medium text-slate-800">{{ $err['product_identifier'] ?? 'N/A' }}</td>
+                                    <td class="px-3 py-2 font-mono text-slate-600">
+                                        @if(! empty($err['imported_uom']) && $err['imported_uom'] !== 'N/A')
+                                            <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold text-slate-700">{{ $err['imported_uom'] }}</span>
+                                        @else
+                                            <span class="text-slate-400">-</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-2 font-mono text-slate-500">{{ $err['field'] ?? '-' }}</td>
+                                    <td class="px-3 py-2 text-rose-700">{{ $err['message'] ?? '-' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
             </div>
         @endif
     </x-ui.card>
 @endif
 
+@if($uomMappings->isNotEmpty())
+    <div x-data="{ open: false }" class="mb-6 rounded-xl border border-slate-200 bg-white shadow-xs">
+        <button type="button" @click="open = !open" class="flex w-full items-center justify-between p-4 text-left">
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-slate-800">Saved UOM Mappings ({{ $uomMappings->count() }})</span>
+                <span class="rounded bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700">Auto-resolved during bulk import</span>
+            </div>
+            <span class="text-xs font-semibold text-indigo-600" x-text="open ? 'Hide' : 'Show'">Show</span>
+        </button>
+        <div x-show="open" class="border-t border-slate-100 p-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
+                @foreach($uomMappings as $mapping)
+                    <div class="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
+                        <div>
+                            <span class="font-mono font-bold text-slate-700">"{{ $mapping->imported_uom }}"</span>
+                            <span class="text-slate-400 mx-1">&rarr;</span>
+                            <span class="font-semibold text-indigo-700">{{ $mapping->uom?->name }} ({{ $mapping->uom?->code }})</span>
+                        </div>
+                        <form action="{{ route('masters.bulk-import.delete-uom-mapping', $mapping) }}" method="POST" onsubmit="return confirm('Remove this UOM mapping?');">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="text-rose-600 hover:text-rose-800 font-bold px-1">&times;</button>
+                        </form>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </div>
+@endif
+
 <p class="mb-4 text-xs text-slate-500">
-    Recommended order: Companies → Branches → Warehouses → Financial Years → UOMs → Brands → Categories → Sub Categories → Product Types → Products → Parties → Price List.
+    Recommended order: Companies &rarr; Branches &rarr; Warehouses &rarr; Financial Years &rarr; UOMs &rarr; Brands &rarr; Categories &rarr; Sub Categories &rarr; Product Types &rarr; Products &rarr; Parties &rarr; Price List.
 </p>
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -60,9 +238,9 @@
         'categories' => ['Categories', 'Match on Brand + Name. Import Brands first.'],
         'sub-categories' => ['Sub Categories', 'Match on Brand + Category + Name. Import Categories first.'],
         'product-types' => ['Product Types', 'Match on Company + Name/Code. Sets track_serial and description.'],
-        'products' => ['Products', 'Match on Part Number. An existing product is updated only when something changed, otherwise it is skipped. UOM codes must exist. Brand, category, sub-category and type are left blank when they are not already in masters.'],
+        'products' => ['Products', 'Match on Part Number. Normalizes UOMs (PCS, PCS (PCS-PIECES), PIECES, etc.). An existing product is updated only when something changed, otherwise it is skipped.'],
         'parties' => ['Parties (Customers &amp; Suppliers)', 'Match on Code, else GSTIN, else Name — re-import updates instead of duplicating. Classification, area and route auto-created.'],
-        'price-master' => ['Price List', 'Match on Customer Type + Part Number + UOM + Min Qty. Supports rate_includes_gst.'],
+        'price-master' => ['Price List', 'Match on Customer Type + Part Number + UOM + Min Qty. Supports rate_includes_gst and normalized UOMs.'],
         'leads' => ['CRM Leads', 'Match on Mobile or Email. Maps Contact Name, Company, Title, Mobiles, Address, etc.'],
     ] as $type => [$label, $note])
         <x-ui.card :title="$label">

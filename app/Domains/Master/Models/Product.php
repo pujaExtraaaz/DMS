@@ -60,6 +60,14 @@ class Product extends Model
         'treat_rejections_inward_as_scrap' => 'Treat all rejections inward as scrap',
     ];
 
+    public const DEFAULT_BEHAVIOUR_VALUES = [
+        'ignore_physical_count_diff' => false,
+        'ignore_negative_balances' => false,
+        'treat_sales_as_new_manufacture' => false,
+        'treat_purchases_as_consumed' => true,
+        'treat_rejections_inward_as_scrap' => false,
+    ];
+
     protected $fillable = [
         'company_id',
         'brand_id',

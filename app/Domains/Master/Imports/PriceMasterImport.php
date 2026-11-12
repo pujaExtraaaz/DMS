@@ -6,6 +6,7 @@ use App\Domains\Master\Models\CustomerType;
 use App\Domains\Master\Models\PriceMaster;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Master\Services\UomLookupService;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\Importable;
 use Maatwebsite\Excel\Concerns\ToCollection;
@@ -42,11 +43,11 @@ class PriceMasterImport implements ToCollection, WithHeadingRow
                 continue;
             }
 
-            $uomCode = strtoupper((string) ($data['uom_code'] ?? ''));
-            $uom = $uoms[$uomCode] ?? null;
+            $rawUom = trim((string) ($data['uom_code'] ?? ''));
+            $uom = UomLookupService::resolve($rawUom);
             if (! $uom) {
                 $this->skipped++;
-                $this->errors[] = ['row' => $rowNo, 'field' => 'uom_code', 'message' => "UOM '{$uomCode}' not found"];
+                $this->errors[] = ['row' => $rowNo, 'field' => 'uom_code', 'message' => "Unknown UOM '{$rawUom}'"];
                 continue;
             }
 

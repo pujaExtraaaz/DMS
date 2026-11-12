@@ -751,9 +751,14 @@ class ProductController extends Controller
             ? $request->boolean('provide_behaviour')
             : (bool) ($product?->provide_behaviour ?? false);
         foreach (array_keys(Product::BEHAVIOUR_FLAGS) as $behaviourFlag) {
-            $data[$behaviourFlag] = $data['provide_behaviour'] && $request->exists($behaviourFlag)
-                ? $request->boolean($behaviourFlag)
-                : ($data['provide_behaviour'] ? (bool) ($product?->{$behaviourFlag} ?? false) : false);
+            $defaultVal = Product::DEFAULT_BEHAVIOUR_VALUES[$behaviourFlag] ?? false;
+            if ($request->exists($behaviourFlag)) {
+                $data[$behaviourFlag] = $request->boolean($behaviourFlag);
+            } elseif ($product && $product->exists) {
+                $data[$behaviourFlag] = (bool) $product->{$behaviourFlag};
+            } else {
+                $data[$behaviourFlag] = $defaultVal;
+            }
         }
 
         if ($altNotApplicable) {

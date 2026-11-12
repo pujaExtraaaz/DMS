@@ -141,6 +141,27 @@
                 @endunless
             </dl>
         </x-ui.card>
+
+        <x-ui.card title="Inventory Behaviour">
+            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div class="sm:col-span-2">
+                    <dt class="text-xs font-semibold text-slate-500">Provide Behaviour Options</dt>
+                    <dd class="mt-0.5 font-medium {{ $product->provide_behaviour ? 'text-emerald-700' : 'text-slate-600' }}">
+                        {{ $product->provide_behaviour ? 'Yes (Active)' : 'No (Default Rules Apply)' }}
+                    </dd>
+                </div>
+                @if($product->provide_behaviour)
+                    @foreach(\App\Domains\Master\Models\Product::BEHAVIOUR_FLAGS as $flag => $label)
+                        <div>
+                            <dt class="text-xs font-semibold text-slate-500">{{ $label }}</dt>
+                            <dd class="mt-0.5 font-medium {{ $product->{$flag} ? 'text-indigo-600' : 'text-slate-600' }}">
+                                {{ $product->{$flag} ? 'Yes' : 'No' }}
+                            </dd>
+                        </div>
+                    @endforeach
+                @endif
+            </dl>
+        </x-ui.card>
     </div>
 </div>
 @endsection

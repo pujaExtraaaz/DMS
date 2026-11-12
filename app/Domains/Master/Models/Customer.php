@@ -50,6 +50,9 @@ class Customer extends Model
         'payment_terms',
         'credit_notes',
         'shipping_name',
+        'target_amount',
+        'target_start_date',
+        'target_end_date',
         'is_active',
     ];
 
@@ -163,6 +166,9 @@ class Customer extends Model
             'credit_days' => 'integer',
             'interest_rate' => 'decimal:2',
             'opened_on' => 'date',
+            'target_amount' => 'decimal:2',
+            'target_start_date' => 'date',
+            'target_end_date' => 'date',
             'is_active' => 'boolean',
             'gem_registered' => 'boolean',
             'gem_valid_until' => 'date',
@@ -263,6 +269,21 @@ class Customer extends Model
         return $this->salesTargets()
             ->latest('starts_on')
             ->first();
+    }
+
+    public function getEffectiveSalesTargetAttribute(): ?\App\Domains\Target\Models\SalesTarget
+    {
+        return $this->activeSalesTarget() ?? $this->latestSalesTarget();
+    }
+
+    public function getTargetProgressStatusAttribute(): string
+    {
+        $target = $this->effective_sales_target;
+        if (! $target) {
+            return 'No Target';
+        }
+
+        return $target->progress_status;
     }
 
     public function defaultAddress(): ?PartyAddress
