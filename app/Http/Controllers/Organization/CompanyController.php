@@ -106,7 +106,7 @@ class CompanyController extends Controller
 
     public function show(Request $request, Company $company): View|JsonResponse
     {
-        $company->load(['businessGroup', 'branches', 'warehouses', 'financialYears']);
+        $company->load(['businessGroup', 'branches', 'warehouses', 'financialYears', 'chequeBooks']);
 
         if ($request->wantsJson()) {
             return response()->json([

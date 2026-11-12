@@ -188,6 +188,16 @@ class Company extends Model
         return $this->hasMany(\App\Models\User::class);
     }
 
+    public function chequeBooks(): HasMany
+    {
+        return $this->hasMany(ChequeBook::class);
+    }
+
+    public function chequeBooksForAccount(string $accountNo): HasMany
+    {
+        return $this->chequeBooks()->where('bank_account_no', trim($accountNo))->orderBy('from_numeric');
+    }
+
     public function canBeDeleted(): bool
     {
         return $this->getDeleteBlockReason() === null;

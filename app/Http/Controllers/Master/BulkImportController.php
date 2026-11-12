@@ -154,6 +154,12 @@ class BulkImportController extends Controller
 
     public function upload(Request $request, string $type): RedirectResponse
     {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(300);
+        }
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '300');
+
         $request->validate([
             'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:20480',
         ]);
@@ -232,6 +238,12 @@ class BulkImportController extends Controller
 
     public function retry(Request $request): RedirectResponse
     {
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(300);
+        }
+        @ini_set('memory_limit', '512M');
+        @ini_set('max_execution_time', '300');
+
         $summary = session('bulk_import_summary');
         if (! $summary || empty($summary['pending_file'])) {
             return back()->with('error', 'No pending import file available to retry.');

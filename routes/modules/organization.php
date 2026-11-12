@@ -18,6 +18,11 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::put('company-profile', [CompanyProfileController::class, 'update'])->name('company-profile.update');
     Route::resource('companies', CompanyController::class);
     Route::post('companies/{company}/set-default', [CompanyController::class, 'setDefault'])->name('companies.set-default');
+    Route::get('companies/{company}/cheque-books', [\App\Http\Controllers\Organization\ChequeBookController::class, 'index'])->name('companies.cheque-books.index');
+    Route::post('companies/{company}/cheque-books', [\App\Http\Controllers\Organization\ChequeBookController::class, 'store'])->name('companies.cheque-books.store');
+    Route::put('companies/{company}/cheque-books/{cheque_book}', [\App\Http\Controllers\Organization\ChequeBookController::class, 'update'])->name('companies.cheque-books.update');
+    Route::delete('companies/{company}/cheque-books/{cheque_book}', [\App\Http\Controllers\Organization\ChequeBookController::class, 'destroy'])->name('companies.cheque-books.destroy');
+    Route::post('companies/{company}/cheque-books/{cheque_book}/toggle-status', [\App\Http\Controllers\Organization\ChequeBookController::class, 'toggleStatus'])->name('companies.cheque-books.toggle-status');
     Route::resource('branches', BranchController::class)->except(['show']);
     Route::resource('warehouses', WarehouseController::class)->except(['show']);
     Route::resource('financial-years', FinancialYearController::class)->except(['show']);
