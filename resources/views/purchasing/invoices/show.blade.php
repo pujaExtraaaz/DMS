@@ -176,7 +176,17 @@
 <tbody class="divide-y">
 @foreach($invoice->items as $item)
 <tr>
-<td class="px-3 py-2">{{ $item->product?->name }}</td>
+<td class="px-3 py-2">
+    <div class="font-medium text-slate-900">{{ $item->product?->name }}</div>
+    @php
+        $serials = $item->serialNumbers();
+    @endphp
+    @if(!empty($serials))
+        <div class="text-[11px] text-indigo-700 font-mono mt-0.5">
+            <span class="font-semibold text-indigo-900">S/N:</span> {{ implode(', ', $serials) }}
+        </div>
+    @endif
+</td>
 <td class="px-3 py-2">{{ $item->batch_no ?: '—' }}</td>
 <td class="px-3 py-2 text-right">{{ number_format($item->quantity, 2) }}</td>
 <td class="px-3 py-2 text-right text-emerald-700">{{ number_format((float) $item->received_qty, 2) }}</td>

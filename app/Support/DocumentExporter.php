@@ -434,7 +434,7 @@ class DocumentExporter
      */
     public static function exportPurchaseInvoice(PurchaseInvoice $invoice, string $format): Response|StreamedResponse
     {
-        $invoice->load(['supplier', 'warehouse', 'purchaseOrder', 'items.product', 'items.uom']);
+        $invoice->load(['supplier', 'warehouse', 'purchaseOrder', 'items.product', 'items.uom', 'items.serials']);
         $company = $invoice->company ?? Company::query()->find(auth()->user()?->company_id) ?? Company::query()->first();
         $filename = 'Purchase-Invoice-' . $invoice->invoice_no . '.' . ($format === 'excel' ? 'xlsx' : $format);
 
@@ -450,14 +450,16 @@ class DocumentExporter
             ], $filename);
         }
 
-        $headers = ['#', 'Product', 'Batch No', 'Qty', 'Unit Cost (₹)', 'Tax %', 'CGST %', 'SGST %', 'CGST (₹)', 'SGST (₹)', 'Line Total (₹)'];
+        $headers = ['#', 'Product', 'Batch No', 'Serial Nos', 'Qty', 'Unit Cost (₹)', 'Tax %', 'CGST %', 'SGST %', 'CGST (₹)', 'SGST (₹)', 'Line Total (₹)'];
         $rows = [];
         $i = 1;
         foreach ($invoice->items as $item) {
+            $serials = $item->serialNumbers();
             $rows[] = [
                 $i++,
                 $item->product?->name ?? '—',
                 $item->batch_no ?? '—',
+                ! empty($serials) ? implode(', ', $serials) : '—',
                 number_format((float) $item->quantity, 2, '.', ''),
                 number_format((float) $item->unit_cost, 2, '.', ''),
                 number_format((float) $item->tax_percent, 2, '.', ''),

@@ -62,16 +62,47 @@
 
     $initialBusinessGroupId = old('business_group_id', $item->business_group_id ?? request('selected_group_id', request('business_group_id')));
 
-    $initialContacts = old('contacts', ($item->exists && $item->relationLoaded('contacts'))
-        ? $item->contacts->map(fn ($contact) => [
-            'name' => $contact->name ?? '',
-            'role' => $contact->role ?? '',
-            'phone' => $contact->phone ?? '',
-            'alternate_phone' => $contact->alternate_phone ?? '',
-            'email' => $contact->email ?? '',
-            'is_primary' => (bool) $contact->is_primary,
-        ])->values()->all()
-        : []);
+    $designationOptions = $contactDesignations ?? \App\Support\ContactDesignations::all();
+
+    $oldContacts = old('contacts');
+    if (is_array($oldContacts)) {
+        $initialContacts = collect($oldContacts)->map(function ($row) {
+            $rawRole = (string) ($row['role'] ?? $row['designation'] ?? '');
+            $customRole = (string) ($row['custom_role'] ?? $row['other_designation'] ?? $row['other_role'] ?? '');
+            $resolved = \App\Support\ContactDesignations::resolve($rawRole);
+            if ($rawRole === 'Other' && filled($customRole)) {
+                $resolved['other_designation'] = trim($customRole);
+            }
+
+            return [
+                'name' => $row['name'] ?? '',
+                'role' => $rawRole === 'Other' && filled($customRole) ? trim($customRole) : ($row['role'] ?? $rawRole),
+                'designation' => $row['designation'] ?? $resolved['designation'],
+                'other_designation' => $row['other_designation'] ?? $resolved['other_designation'],
+                'phone' => $row['phone'] ?? '',
+                'alternate_phone' => $row['alternate_phone'] ?? '',
+                'email' => $row['email'] ?? '',
+                'is_primary' => (bool) ($row['is_primary'] ?? false),
+            ];
+        })->values()->all();
+    } elseif ($item->exists && $item->relationLoaded('contacts')) {
+        $initialContacts = $item->contacts->map(function ($contact) {
+            $resolved = \App\Support\ContactDesignations::resolve($contact->role ?? '');
+
+            return [
+                'name' => $contact->name ?? '',
+                'role' => $contact->role ?? '',
+                'designation' => $resolved['designation'],
+                'other_designation' => $resolved['other_designation'],
+                'phone' => $contact->phone ?? '',
+                'alternate_phone' => $contact->alternate_phone ?? '',
+                'email' => $contact->email ?? '',
+                'is_primary' => (bool) $contact->is_primary,
+            ];
+        })->values()->all();
+    } else {
+        $initialContacts = [];
+    }
 
     $savedGemAuthorizations = ($item->exists ? $item->gemAuthorizations()->with('documents')->orderBy('id')->get() : collect());
     $oldGemAuthorizations = old('gem_authorizations');
@@ -1237,14 +1268,98 @@
                     </div>
                     <input type="hidden" :name="`contacts[${idx}][level]`" value="party">
                     <input type="hidden" :name="`contacts[${idx}][is_primary]`" :value="contact.is_primary ? 1 : 0">
-                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-start">
                         <div>
                             <label class="block text-xs font-medium text-slate-700 mb-1">Name *</label>
                             <input type="text" :name="`contacts[${idx}][name]`" x-model="contact.name" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         </div>
-                        <div>
+                        <div class="relative" x-data="dmsContactDesignation(contact, designationOptions)">
                             <label class="block text-xs font-medium text-slate-700 mb-1">Designation</label>
-                            <input type="text" :name="`contacts[${idx}][role]`" x-model="contact.role" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            
+                            {{-- Hidden inputs to pass data to backend --}}
+                            <input type="hidden" :name="`contacts[${idx}][role]`" :value="effectiveRole()">
+                            <input type="hidden" :name="`contacts[${idx}][designation]`" :value="contact.designation || ''">
+                            <input type="hidden" :name="`contacts[${idx}][custom_role]`" :value="contact.other_designation || ''">
+
+                            {{-- Searchable Combobox Trigger --}}
+                            <div class="relative" @click.outside="close()">
+                                <div class="relative flex items-center">
+                                    <input type="text"
+                                           x-model="search"
+                                           @focus="open()"
+                                           @input="open()"
+                                           @keydown="onSearchKeyDown($event)"
+                                           placeholder="Select Designation"
+                                           autocomplete="off"
+                                           class="block w-full rounded-lg border-gray-300 text-sm bg-white focus:border-indigo-500 focus:ring-indigo-500 pr-14 placeholder:text-slate-400">
+                                    
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-1.5 gap-0.5">
+                                        {{-- Clear button --}}
+                                        <button type="button"
+                                                x-show="contact.designation"
+                                                @click.stop="clear()"
+                                                title="Clear Designation"
+                                                class="p-1 text-slate-400 hover:text-rose-500 rounded transition"
+                                                x-cloak>
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        </button>
+                                        
+                                        {{-- Dropdown Toggle Chevron --}}
+                                        <button type="button"
+                                                @click.stop="toggle()"
+                                                tabindex="-1"
+                                                class="p-1 text-slate-400 hover:text-slate-600 rounded transition">
+                                            <svg class="w-3.5 h-3.5 transition-transform duration-200"
+                                                 :class="{ 'rotate-180': isOpen }"
+                                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {{-- Searchable Options Dropdown Menu --}}
+                                <div x-show="isOpen"
+                                     x-ref="optionsMenu"
+                                     x-transition:enter="transition ease-out duration-100"
+                                     x-transition:enter-start="opacity-0 scale-95"
+                                     x-transition:enter-end="opacity-100 scale-100"
+                                     x-transition:leave="transition ease-in duration-75"
+                                     x-transition:leave-start="opacity-100 scale-100"
+                                     x-transition:leave-end="opacity-0 scale-95"
+                                     class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 divide-y divide-slate-100 text-xs"
+                                     style="display: none;">
+                                    <template x-for="(opt, oIdx) in filteredOptions" :key="opt">
+                                        <div @click="select(opt)"
+                                             :data-index="oIdx"
+                                             :class="{
+                                                 'bg-indigo-50 text-indigo-900 font-semibold': contact.designation === opt,
+                                                 'bg-slate-100': highlightedIndex === oIdx && contact.designation !== opt
+                                             }"
+                                             class="px-3 py-2 hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer flex items-center justify-between transition-colors">
+                                            <span x-text="opt"></span>
+                                            <span x-show="contact.designation === opt" class="text-indigo-600 font-bold" x-cloak>✓</span>
+                                        </div>
+                                    </template>
+                                    <div x-show="filteredOptions.length === 0" class="px-3 py-2.5 text-center text-slate-400 italic">
+                                        No matching designations
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Custom Other Designation Input --}}
+                            <div x-show="contact.designation === 'Other'" class="mt-2" x-cloak>
+                                <label class="block text-[11px] font-medium text-amber-700 mb-0.5">Specify Designation *</label>
+                                <input type="text"
+                                       x-ref="customInput"
+                                       x-model="contact.other_designation"
+                                       @input="contact.role = contact.other_designation"
+                                       placeholder="Enter custom designation"
+                                       maxlength="100"
+                                       class="block w-full rounded-lg border-amber-300 bg-amber-50/30 text-xs focus:border-amber-500 focus:ring-amber-500 placeholder:text-slate-400">
+                            </div>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-slate-700 mb-1">Mobile 1</label>
@@ -2316,6 +2431,7 @@ function partyFormController() {
         lastAutoGstin: '',
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
         contacts: {!! json_encode($initialContacts) !!},
+        designationOptions: {!! json_encode($designationOptions) !!},
         addresses: {!! json_encode($initialAddresses) !!},
         gemAuthorizations: {!! json_encode($initialGemAuthorizations) !!},
         brands: {!! json_encode(($brands ?? collect())->map(fn ($brand) => ['id' => (string) $brand->id, 'name' => $brand->name])->values()) !!},
@@ -2343,6 +2459,8 @@ function partyFormController() {
             this.contacts.push({
                 name: '',
                 role: '',
+                designation: '',
+                other_designation: '',
                 phone: '',
                 alternate_phone: '',
                 email: '',
@@ -3035,6 +3153,125 @@ function cityDropdown(addr, stateCities, addressIndex) {
         scrollActiveIntoView() {
             this.$nextTick(() => {
                 const el = this.$refs.optionsList?.querySelector(`[data-index="${this.highlightedIndex}"]`);
+                if (el) {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+    };
+}
+
+function dmsContactDesignation(contact, options) {
+    return {
+        options: Array.isArray(options) ? options : [],
+        isOpen: false,
+        search: '',
+        highlightedIndex: -1,
+        init() {
+            this.syncSearch();
+            this.$watch(() => contact.designation, () => {
+                this.syncSearch();
+            });
+        },
+        syncSearch() {
+            this.search = contact.designation || '';
+        },
+        get filteredOptions() {
+            const list = this.options || [];
+            const q = (this.search || '').trim().toLowerCase();
+            if (!q || (contact.designation && q === contact.designation.trim().toLowerCase())) {
+                return list;
+            }
+            return list.filter(opt => opt.toLowerCase().includes(q));
+        },
+        open() {
+            this.isOpen = true;
+            this.highlightedIndex = -1;
+        },
+        close() {
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+            this.syncSearch();
+        },
+        toggle() {
+            if (this.isOpen) {
+                this.close();
+            } else {
+                this.open();
+            }
+        },
+        select(opt) {
+            contact.designation = opt;
+            this.search = opt;
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+            if (opt === 'Other') {
+                contact.role = (contact.other_designation || '').trim() || 'Other';
+                this.$nextTick(() => {
+                    this.$refs.customInput?.focus();
+                });
+            } else {
+                contact.other_designation = '';
+                contact.role = opt;
+            }
+        },
+        clear() {
+            contact.designation = '';
+            contact.other_designation = '';
+            contact.role = '';
+            this.search = '';
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+        },
+        effectiveRole() {
+            if (contact.designation === 'Other') {
+                const custom = (contact.other_designation || '').trim();
+                return custom !== '' ? custom : 'Other';
+            }
+            return (contact.designation || '').trim();
+        },
+        onSearchKeyDown(event) {
+            const list = this.filteredOptions;
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (!this.isOpen) {
+                    this.open();
+                    return;
+                }
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex + 1) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (!this.isOpen) {
+                    this.open();
+                    return;
+                }
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex - 1 + list.length) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'Enter') {
+                if (this.isOpen) {
+                    event.preventDefault();
+                    if (list.length > 0) {
+                        const target = (this.highlightedIndex >= 0 && this.highlightedIndex < list.length)
+                            ? list[this.highlightedIndex]
+                            : list[0];
+                        this.select(target);
+                    }
+                }
+            } else if (event.key === 'Escape') {
+                if (this.isOpen) {
+                    event.preventDefault();
+                    this.close();
+                }
+            }
+        },
+        scrollActiveIntoView() {
+            this.$nextTick(() => {
+                const el = this.$refs.optionsMenu?.querySelector(`[data-index="${this.highlightedIndex}"]`);
                 if (el) {
                     el.scrollIntoView({ block: 'nearest' });
                 }

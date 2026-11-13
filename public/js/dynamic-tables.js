@@ -194,6 +194,32 @@
             return;
         }
 
+        // Clear party filter button
+        const clearPartyBtn = e.target.closest('[data-clear-party-filter]');
+        if (clearPartyBtn) {
+            e.preventDefault();
+            const container = getContainer(clearPartyBtn);
+            if (container) {
+                const partyInput = container.querySelector('input[name="party_id"]');
+                if (partyInput) partyInput.value = '';
+
+                const searchInput = container.querySelector('[data-dynamic-search]');
+                if (searchInput) {
+                    searchInput.value = '';
+                    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+
+                const url = new URL(window.location.href);
+                url.searchParams.delete('party_id');
+                url.searchParams.delete('search');
+                url.searchParams.delete('q');
+                url.searchParams.delete('page');
+
+                fetchAndSwap(url.toString(), false, container);
+            }
+            return;
+        }
+
         // Pagination links
         const paginationLink = e.target.closest('.pagination a') || e.target.closest('[rel="prev"]') || e.target.closest('[rel="next"]');
         if (paginationLink) {
@@ -212,5 +238,13 @@
             fetchAndSwap(window.location.href, false, container);
         }
     });
+
+    // Expose global controller
+    window.DmsDynamicTables = {
+        getContainer,
+        buildUrlWithParams,
+        fetchAndSwap,
+        runSearch,
+    };
 })();
 

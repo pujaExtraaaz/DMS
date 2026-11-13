@@ -61,6 +61,10 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::get('customers/{customer}/gem-documents/{document}', [CustomerController::class, 'gemDocument'])->name('customers.gem-documents.show');
         Route::get('cities', [CustomerController::class, 'cities'])->name('cities');
         Route::post('cities/quick-store', [CustomerController::class, 'storeCity'])->name('cities.quick-store');
+        // Party / Customer Autocomplete (AVIT req #23)
+        Route::get('parties/autocomplete', [CustomerController::class, 'autocomplete'])->name('parties.autocomplete');
+        Route::get('customers/autocomplete', [CustomerController::class, 'autocomplete'])->name('customers.autocomplete');
+
         Route::resource('customers', CustomerController::class);
         Route::get('parties', [CustomerController::class, 'index'])->name('parties.index');
         Route::delete('parties/{customer}', [CustomerController::class, 'destroy'])->name('parties.destroy');

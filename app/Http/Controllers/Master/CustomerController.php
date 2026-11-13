@@ -309,11 +309,27 @@ class CustomerController extends Controller
 
     public function index(Request $request): View|Response
     {
+        if ($request->wantsJson() && $request->has('autocomplete')) {
+            return $this->autocomplete($request);
+        }
+
+        $selectedPartyId = $request->input('party_id');
+        $selectedParty = null;
+        if ($selectedPartyId) {
+            $selectedParty = Customer::with('area')->find($selectedPartyId);
+        }
+
         $query = Customer::query()
             ->with([
                 'customerType', 'area', 'route', 'salesperson', 'salesManager', 'businessGroup',
                 'salesTargets' => fn ($q) => $q->where('status', 'active')->with('achievement'),
             ])
+            ->when($selectedPartyId, function ($q) use ($selectedPartyId) {
+                $q->where('id', $selectedPartyId);
+            })
+            ->when(! $selectedPartyId && $request->filled('search'), function ($q) use ($request) {
+                $this->applySearch($q, $request->input('search'), ['name', 'code', 'phone', 'gstin', 'email']);
+            })
             ->when($request->filled('party_type'), function ($q) use ($request) {
                 $type = $request->party_type;
                 if ($type === Customer::PARTY_TYPE_SUNDRY_DEBTORS) {
@@ -383,8 +399,6 @@ class CustomerController extends Controller
                 });
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'code', 'phone', 'gstin', 'email']);
-
         $exportHeaders = [
             'Party Name', 'Code', 'Party Type', 'Phone', 'GSTIN', 'Area',
             'Target Amount (₹)', 'Target Period', 'Achieved Sales (₹)', 'Shortfall (₹)', 'Achievement %', 'Remaining Days', 'Target Status', 'Status'
@@ -432,6 +446,8 @@ class CustomerController extends Controller
         return view('masters.customers.index', [
             'items' => $items,
             'search' => $request->string('search'),
+            'selectedPartyId' => $selectedPartyId,
+            'selectedParty' => $selectedParty,
             'partyType' => $request->string('party_type'),
             'status' => $request->string('status'),
             'targetStatus' => $request->string('target_status'),
@@ -442,6 +458,85 @@ class CustomerController extends Controller
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
         ]);
+    }
+
+    /**
+     * Autocomplete search for Parties / Customers listing.
+     * Matches on name, code, phone, gstin, email, trade_name.
+     * Respects currently selected filters (party_type, area_id, customer_type_id, status).
+     */
+    public function autocomplete(Request $request): JsonResponse
+    {
+        $term = trim((string) $request->input('q', $request->input('search', $request->input('query', ''))));
+
+        $query = Customer::query()
+            ->with(['customerType', 'area'])
+            ->when($request->filled('party_type'), function ($q) use ($request) {
+                $type = $request->party_type;
+                if ($type === Customer::PARTY_TYPE_SUNDRY_DEBTORS) {
+                    $q->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_DEBTORS, 'customer', 'dealer']);
+                } elseif ($type === Customer::PARTY_TYPE_SUNDRY_CREDITORS) {
+                    $q->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier']);
+                } else {
+                    $q->where('party_type', $type);
+                }
+            })
+            ->when($request->filled('area_id'), fn ($q) => $q->where('area_id', $request->area_id))
+            ->when($request->filled('customer_type_id'), fn ($q) => $q->where('customer_type_id', $request->customer_type_id))
+            ->when($request->filled('status'), function ($q) use ($request) {
+                if ($request->status === 'active') {
+                    $q->where('is_active', true);
+                } elseif ($request->status === 'inactive') {
+                    $q->where('is_active', false);
+                }
+            });
+
+        // Search party name, trade name, code, phone, gstin, email, and area name/code
+        if ($term !== '') {
+            $query->where(function ($sub) use ($term) {
+                $sub->where('name', 'like', "%{$term}%")
+                    ->orWhere('trade_name', 'like', "%{$term}%")
+                    ->orWhere('code', 'like', "%{$term}%")
+                    ->orWhere('phone', 'like', "%{$term}%")
+                    ->orWhere('gstin', 'like', "%{$term}%")
+                    ->orWhere('email', 'like', "%{$term}%")
+                    ->orWhereHas('area', function ($aq) use ($term) {
+                        $aq->where('name', 'like', "%{$term}%")
+                           ->orWhere('code', 'like', "%{$term}%");
+                    });
+            });
+        }
+
+        $limit = min(25, max(1, (int) $request->input('limit', 10)));
+
+        $parties = $query
+            ->orderBy('name', 'asc')
+            ->limit($limit)
+            ->get();
+
+        $results = $parties->map(function (Customer $party) {
+            return [
+                'id' => $party->id,
+                'name' => $party->name,
+                'code' => $party->code,
+                'party_type' => $party->party_type,
+                'party_type_label' => $party->party_type_label,
+                'party_type_key' => $party->party_type_key,
+                'phone' => $party->phone,
+                'email' => $party->email,
+                'gstin' => $party->gstin,
+                'pan' => $party->pan,
+                'city' => $party->city,
+                'state' => $party->state,
+                'area_name' => $party->area?->name,
+                'category_name' => $party->customerType?->name,
+                'is_active' => (bool) $party->is_active,
+                'view_url' => route('masters.customers.show', $party),
+                'edit_url' => route('masters.customers.edit', $party),
+            ];
+        });
+
+        return response()->json($results);
     }
 
     public function create(Request $request): View|RedirectResponse
@@ -1079,6 +1174,9 @@ class CustomerController extends Controller
             'contacts' => 'nullable|array',
             'contacts.*.name' => 'nullable|string|max:255',
             'contacts.*.role' => 'nullable|string|max:100',
+            'contacts.*.designation' => 'nullable|string|max:100',
+            'contacts.*.custom_role' => 'nullable|string|max:100',
+            'contacts.*.other_designation' => 'nullable|string|max:100',
             'contacts.*.phone' => 'nullable|string|max:20',
             'contacts.*.alternate_phone' => 'nullable|string|max:20',
             'contacts.*.email' => 'nullable|email|max:255',
@@ -1254,17 +1352,32 @@ class CustomerController extends Controller
         // 1. Contacts
         $contacts = collect($request->input('contacts', []))
             ->filter(fn ($row) => filled($row['name'] ?? null))
-            ->map(fn ($row) => [
-                'level' => in_array($row['level'] ?? null, ['party', 'branch', 'site', 'warehouse', 'transporter', 'driver', 'site_incharge'], true) ? $row['level'] : 'party',
-                'name' => $row['name'] ?? null,
-                'role' => $row['role'] ?? null,
-                'phone' => $row['phone'] ?? null,
-                'alternate_phone' => $row['alternate_phone'] ?? null,
-                'email' => $row['email'] ?? null,
-                'location' => $row['location'] ?? null,
-                'is_primary' => (bool) ($row['is_primary'] ?? false),
-                'is_active' => true,
-            ])
+            ->map(function ($row) {
+                $rawRole = trim((string) ($row['role'] ?? $row['designation'] ?? ''));
+                $customRole = trim((string) ($row['custom_role'] ?? $row['other_designation'] ?? $row['other_role'] ?? ''));
+
+                if ($rawRole === 'Other') {
+                    $finalRole = $customRole !== '' ? $customRole : 'Other';
+                } elseif ($rawRole !== '') {
+                    $finalRole = $rawRole;
+                } elseif ($customRole !== '') {
+                    $finalRole = $customRole;
+                } else {
+                    $finalRole = null;
+                }
+
+                return [
+                    'level' => in_array($row['level'] ?? null, ['party', 'branch', 'site', 'warehouse', 'transporter', 'driver', 'site_incharge'], true) ? $row['level'] : 'party',
+                    'name' => $row['name'] ?? null,
+                    'role' => $finalRole,
+                    'phone' => $row['phone'] ?? null,
+                    'alternate_phone' => $row['alternate_phone'] ?? null,
+                    'email' => $row['email'] ?? null,
+                    'location' => $row['location'] ?? null,
+                    'is_primary' => (bool) ($row['is_primary'] ?? false),
+                    'is_active' => true,
+                ];
+            })
             ->values();
 
         $customer->contacts()->delete();
@@ -1837,6 +1950,7 @@ class CustomerController extends Controller
             'states' => IndianStates::allAlphabetical(),
             'stateOptions' => IndianStates::options(),
             'stateCities' => IndianCities::all(),
+            'contactDesignations' => \App\Support\ContactDesignations::all(),
         ];
     }
 }

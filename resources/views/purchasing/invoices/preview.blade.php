@@ -491,23 +491,30 @@
                 @php
                     $productName = $item->product?->name ?? $item->description ?? 'Item';
                     $lineTax = (float) $item->cgst_amount + (float) $item->sgst_amount + (float) $item->igst_amount;
+                    $serialNumbers = $item->serialNumbers();
+                    $batchText = $item->batch_no ?: $item->batch_number;
                 @endphp
                 <tr>
                     <td class="center">{{ $index + 1 }}</td>
                     <td>
                         <div class="bold">{{ $productName }}</div>
-                        @if($item->batch_number)
-                            <div style="font-size: 10px; color: #6b7280;">Batch: {{ $item->batch_number }}</div>
+                        @if($batchText)
+                            <div style="font-size: 10px; color: #6b7280; margin-top: 2px;">Batch: {{ $batchText }}</div>
+                        @endif
+                        @if(!empty($serialNumbers))
+                            <div style="font-size: 10px; color: #4338ca; margin-top: 2px;">
+                                <span class="bold" style="color: #3730a3;">Serial No:</span> {{ implode(', ', $serialNumbers) }}
+                            </div>
                         @endif
                     </td>
-                    <td>{{ $item->hsn_code ?? '-' }}</td>
+                    <td>{{ $item->product?->hsn_code ?? $item->hsn_code ?? '-' }}</td>
                     <td class="right">{{ number_format((float) $item->quantity, 2) }}</td>
-                    <td class="right">{{ number_format((float) $item->unit_price, 2) }}</td>
-                    <td class="right">{{ number_format((float) $item->discount_amount, 2) }}</td>
+                    <td class="right">{{ number_format((float) ($item->unit_cost ?? $item->unit_price), 2) }}</td>
+                    <td class="right">{{ number_format((float) ($item->purchase_discount_percent ?? $item->discount_amount), 2) }}@if($item->purchase_discount_percent)%@endif</td>
                     <td class="right">{{ number_format((float) $item->taxable_amount, 2) }}</td>
-                    <td class="right">{{ number_format((float) $item->gst_rate, 1) }}%</td>
+                    <td class="right">{{ number_format((float) ($item->tax_percent ?? $item->gst_rate), 1) }}%</td>
                     <td class="right">{{ number_format($lineTax, 2) }}</td>
-                    <td class="right bold">{{ number_format((float) $item->total_amount, 2) }}</td>
+                    <td class="right bold">{{ number_format((float) ($item->line_total ?? $item->total_amount), 2) }}</td>
                 </tr>
             @empty
                 <tr>

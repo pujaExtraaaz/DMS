@@ -853,15 +853,6 @@ class ProductController extends Controller
             $data['tracking_type'] = 'none';
         }
 
-        $typeId = $data['product_type_id'] ?? $request->input('product_type_id');
-        if ($typeId && ProductType::query()->whereKey($typeId)->where('track_serial', true)->exists()) {
-            $parts = array_values(array_filter(explode(',', (string) $data['tracking_type']), fn ($part) => $part !== '' && $part !== 'none'));
-            if (! in_array('serial', $parts, true)) {
-                $parts[] = 'serial';
-            }
-            $data['tracking_type'] = implode(',', $parts);
-        }
-
         $data['min_stock'] = $data['min_stock'] ?? 0;
         $data['reorder_level'] = $data['reorder_level'] ?? 0;
         $data['company_id'] = auth()->user()?->company_id ?? Company::defaultCompanyId() ?? Company::query()->value('id');

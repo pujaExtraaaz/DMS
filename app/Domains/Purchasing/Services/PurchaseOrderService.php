@@ -726,7 +726,7 @@ class PurchaseOrderService
 
                 if (! empty($item['serials']) && is_array($item['serials'])) {
                     $prod = Product::find($item['product_id']);
-                    if ($prod) {
+                    if ($prod && $prod->isSerialTracked()) {
                         $this->serialBatchService->assignSerials(
                             $prod,
                             $item['serials'],
@@ -1074,7 +1074,7 @@ class PurchaseOrderService
 
                 if (! empty($item['serials']) && is_array($item['serials'])) {
                     $prod = Product::find($item['product_id']);
-                    if ($prod) {
+                    if ($prod && $prod->isSerialTracked()) {
                         $this->serialBatchService->assignSerials(
                             $prod,
                             $item['serials'],
