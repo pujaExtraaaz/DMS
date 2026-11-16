@@ -481,6 +481,11 @@ class NameCase
             return false;
         }
 
+        // Exclude URLs, routes, paths
+        if ($field === 'url' || str_ends_with($field, '_url') || str_ends_with($field, '_route') || str_ends_with($field, '_path') || str_ends_with($field, '_uri')) {
+            return false;
+        }
+
         // Exclude email & password
         if (str_contains($field, 'email') || str_contains($field, 'password')) {
             return false;

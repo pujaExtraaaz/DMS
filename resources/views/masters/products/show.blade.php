@@ -2,11 +2,14 @@
 @section('title', $product->name)
 
 @section('content')
+@php
+    $effectiveReturnUrl = $returnUrl ?? request('return_url');
+@endphp
 <div class="space-y-6 max-w-6xl mx-auto">
     <x-ui.page-header :title="$product->name" description="View only. This page does not change the product.">
         <x-slot name="actions">
-            <x-ui.button variant="secondary" :href="route('masters.products.index')">Back</x-ui.button>
-            <x-ui.button variant="primary" :href="route('masters.products.edit', $product)">Edit</x-ui.button>
+            <x-ui.button variant="secondary" :href="$effectiveReturnUrl ?: route('masters.products.index')">Back</x-ui.button>
+            <x-ui.button variant="primary" :href="route('masters.products.edit', array_filter(['product' => $product, 'return_url' => $effectiveReturnUrl]))">Edit</x-ui.button>
         </x-slot>
     </x-ui.page-header>
 

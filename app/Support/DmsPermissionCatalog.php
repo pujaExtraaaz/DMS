@@ -28,6 +28,7 @@ class DmsPermissionCatalog
             'stock',
             'purchases',
             'purchase-orders',
+            'receipt-notes',
             'sales',
             'invoices',
             'payments',
@@ -70,6 +71,7 @@ class DmsPermissionCatalog
             'stock',
             'purchases',
             'purchase-orders',
+            'receipt-notes',
             'sales',
             'invoices',
             'payments',
@@ -114,6 +116,10 @@ class DmsPermissionCatalog
             'phone_directory.import',
             'phone_directory.export',
             'phone_directory.manage_departments',
+            'receipt-notes.confirm',
+            'receipt-notes.cancel',
+            'receipt-notes.return',
+            'receipt-notes.export',
         ];
     }
 

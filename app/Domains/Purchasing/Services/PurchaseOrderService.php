@@ -18,6 +18,8 @@ use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseInvoiceItem;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Purchasing\Models\PurchaseOrderItem;
+use App\Domains\Purchasing\Models\ReceiptNote;
+use App\Domains\Purchasing\Models\ReceiptNoteItem;
 use App\Domains\Purchasing\Models\SupplierPayable;
 use App\Domains\Purchasing\Models\VendorPriceHistory;
 use App\Models\User;
@@ -656,6 +658,7 @@ class PurchaseOrderService
                 'company_id' => $companyId,
                 'od_account_id' => $odAccount?->id,
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
+                'receipt_note_id' => $data['receipt_note_id'] ?? null,
                 'purchase_inward_id' => $data['purchase_inward_id'] ?? null,
                 'supplier_id' => $supplierId,
                 'billing_address_id' => $billingAddress?->id,
@@ -697,13 +700,20 @@ class PurchaseOrderService
                 'created_by' => $actor->id,
             ] + $commercial['attributes']);
 
+            $anyReceiptNote = false;
             foreach ($prepared as $item) {
+                $isFromReceiptNote = ! empty($item['receipt_note_item_id']);
+                if ($isFromReceiptNote) {
+                    $anyReceiptNote = true;
+                }
+
                 $piItem = PurchaseInvoiceItem::create([
                     'purchase_invoice_id' => $invoice->id,
+                    'receipt_note_item_id' => $item['receipt_note_item_id'] ?? null,
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
-                    'received_qty' => 0,
+                    'received_qty' => $isFromReceiptNote ? $item['quantity'] : 0,
                     'unit_cost' => $item['unit_cost'],
                     'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
                     'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
@@ -724,7 +734,17 @@ class PurchaseOrderService
                     'expiry_date' => $item['expiry_date'] ?? null,
                 ]);
 
-                if (! empty($item['serials']) && is_array($item['serials'])) {
+                if ($isFromReceiptNote) {
+                    $rnItem = ReceiptNoteItem::find($item['receipt_note_item_id']);
+                    if ($rnItem) {
+                        $rnItem->update([
+                            'invoiced_qty' => (float) $rnItem->invoiced_qty + (float) $item['quantity'],
+                        ]);
+                        app(ReceiptNoteService::class)->syncReceiptNoteStatus($rnItem->receiptNote);
+                    }
+                }
+
+                if (! $isFromReceiptNote && ! empty($item['serials']) && is_array($item['serials'])) {
                     $prod = Product::find($item['product_id']);
                     if ($prod && $prod->isSerialTracked()) {
                         $this->serialBatchService->assignSerials(
@@ -785,6 +805,14 @@ class PurchaseOrderService
                         'created_by' => $actor->id,
                     ]
                 );
+            }
+
+            $allFromRN = collect($prepared)->every(fn ($it) => ! empty($it['receipt_note_item_id']));
+            if ($allFromRN && ! empty($prepared)) {
+                $invoice->update([
+                    'material_receipt_status' => PurchaseInvoice::MATERIAL_RECEIVED,
+                    'actual_material_receipt_date' => $data['invoice_date'] ?? now()->toDateString(),
+                ]);
             }
 
             return $invoice->load(['items.product', 'items.uom', 'supplier', 'odAccount']);
@@ -998,6 +1026,7 @@ class PurchaseOrderService
                 'company_id' => $companyId,
                 'od_account_id' => $odAccount?->id,
                 'purchase_order_id' => $data['purchase_order_id'] ?? null,
+                'receipt_note_id' => $data['receipt_note_id'] ?? null,
                 'purchase_inward_id' => $data['purchase_inward_id'] ?? null,
                 'supplier_id' => $supplierId,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
@@ -1036,7 +1065,11 @@ class PurchaseOrderService
 
             // Clean up old items and history
             foreach ($invoice->items as $oldItem) {
-                ProductSerial::where('source_type', $oldItem->getMorphClass())
+                ProductSerial::where(function ($q) use ($oldItem) {
+                    $q->where('source_type', $oldItem->getMorphClass())
+                        ->orWhere('source_type', 'purchase_invoice_item')
+                        ->orWhere('source_type', PurchaseInvoiceItem::class);
+                })
                     ->where('source_id', $oldItem->id)
                     ->delete();
             }
@@ -1045,13 +1078,20 @@ class PurchaseOrderService
                 ->where('reference_id', $invoice->id)
                 ->delete();
 
+            $anyReceiptNote = false;
             foreach ($prepared as $item) {
+                $isFromReceiptNote = ! empty($item['receipt_note_item_id']);
+                if ($isFromReceiptNote) {
+                    $anyReceiptNote = true;
+                }
+
                 $piItem = PurchaseInvoiceItem::create([
                     'purchase_invoice_id' => $invoice->id,
+                    'receipt_note_item_id' => $item['receipt_note_item_id'] ?? null,
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
-                    'received_qty' => 0,
+                    'received_qty' => $isFromReceiptNote ? $item['quantity'] : 0,
                     'unit_cost' => $item['unit_cost'],
                     'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
                     'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
@@ -1072,7 +1112,17 @@ class PurchaseOrderService
                     'expiry_date' => $item['expiry_date'] ?? null,
                 ]);
 
-                if (! empty($item['serials']) && is_array($item['serials'])) {
+                if ($isFromReceiptNote) {
+                    $rnItem = ReceiptNoteItem::find($item['receipt_note_item_id']);
+                    if ($rnItem) {
+                        $rnItem->update([
+                            'invoiced_qty' => (float) $rnItem->invoiced_qty + (float) $item['quantity'],
+                        ]);
+                        app(ReceiptNoteService::class)->syncReceiptNoteStatus($rnItem->receiptNote);
+                    }
+                }
+
+                if (! $isFromReceiptNote && ! empty($item['serials']) && is_array($item['serials'])) {
                     $prod = Product::find($item['product_id']);
                     if ($prod && $prod->isSerialTracked()) {
                         $this->serialBatchService->assignSerials(
@@ -1190,6 +1240,17 @@ class PurchaseOrderService
             // 4. Disassociate landed costs if any (draft/unposted)
             $invoice->landedCosts()->update(['purchase_invoice_id' => null]);
 
+            // 4b. Revert invoiced qty on linked Receipt Note items
+            foreach ($invoice->items as $oldItem) {
+                if ($oldItem->receipt_note_item_id && $oldItem->receiptNoteItem) {
+                    $rnItem = $oldItem->receiptNoteItem;
+                    $rnItem->update([
+                        'invoiced_qty' => max(0, (float) $rnItem->invoiced_qty - (float) $oldItem->quantity),
+                    ]);
+                    app(ReceiptNoteService::class)->syncReceiptNoteStatus($rnItem->receiptNote);
+                }
+            }
+
             // 5. Delete serials, items and invoice
             foreach ($invoice->items as $oldItem) {
                 \App\Domains\Inventory\Models\ProductSerial::where('source_type', $oldItem->getMorphClass())
@@ -1247,6 +1308,10 @@ class PurchaseOrderService
             $anyReceived = false;
 
             foreach ($invoice->items as $item) {
+                if ($item->receipt_note_item_id) {
+                    continue;
+                }
+
                 $already = (float) $item->received_qty;
                 $ordered = (float) $item->quantity;
                 $remaining = max(0, $ordered - $already);
@@ -1323,9 +1388,13 @@ class PurchaseOrderService
             }
 
             if (! $anyReceived) {
-                throw ValidationException::withMessages([
-                    'items' => 'Enter at least one receive quantity greater than zero.',
-                ]);
+                $totalOrdered = (float) $invoice->items->sum('quantity');
+                $totalReceived = (float) $invoice->items->sum('received_qty');
+                if ($totalReceived + 0.0001 < $totalOrdered) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Enter at least one receive quantity greater than zero.',
+                    ]);
+                }
             }
 
             $invoice->refresh()->load('items');
@@ -1386,6 +1455,17 @@ class PurchaseOrderService
             BankAccountTransaction::where('reference_type', $invoice->getMorphClass())
                 ->where('reference_id', $invoice->id)
                 ->delete();
+
+            // Revert invoiced qty on linked Receipt Note items
+            foreach ($invoice->items as $item) {
+                if ($item->receipt_note_item_id && $item->receiptNoteItem) {
+                    $rnItem = $item->receiptNoteItem;
+                    $rnItem->update([
+                        'invoiced_qty' => max(0, (float) $rnItem->invoiced_qty - (float) $item->quantity),
+                    ]);
+                    app(ReceiptNoteService::class)->syncReceiptNoteStatus($rnItem->receiptNote);
+                }
+            }
 
             $invoice->update([
                 'status' => 'cancelled',
@@ -1465,6 +1545,7 @@ class PurchaseOrderService
             }
 
             $normalized[] = [
+                'receipt_note_item_id' => ! empty($item['receipt_note_item_id']) ? (int) $item['receipt_note_item_id'] : null,
                 'product_id' => (int) $item['product_id'],
                 'uom_id' => (int) $uomId,
                 'quantity' => $qty,
@@ -1480,11 +1561,23 @@ class PurchaseOrderService
                 'serial_no' => filled($item['serial_no'] ?? null) ? trim((string) $item['serial_no']) : null,
                 'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
                 'batch_mrp' => $mrp,
-                'serials' => ! empty($item['serials'])
-                    ? (is_array($item['serials']) ? $item['serials'] : preg_split('/[\s,;]+/', (string) $item['serials'], -1, PREG_SPLIT_NO_EMPTY))
-                    : (! empty($item['serial_numbers'])
-                        ? (is_array($item['serial_numbers']) ? array_values(array_filter($item['serial_numbers'], fn($s) => trim((string)$s) !== '')) : preg_split('/[\s,;]+/', (string) $item['serial_numbers'], -1, PREG_SPLIT_NO_EMPTY))
-                        : []),
+                'serials' => (function () use ($item) {
+                    $prod = Product::find($item['product_id'] ?? null);
+                    if (! $prod || ! $prod->isSerialTracked()) {
+                        return [];
+                    }
+                    if (! empty($item['serials'])) {
+                        return is_array($item['serials'])
+                            ? array_values(array_filter($item['serials'], fn ($s) => trim((string) $s) !== ''))
+                            : preg_split('/[\s,;]+/', (string) $item['serials'], -1, PREG_SPLIT_NO_EMPTY);
+                    }
+                    if (! empty($item['serial_numbers'])) {
+                        return is_array($item['serial_numbers'])
+                            ? array_values(array_filter($item['serial_numbers'], fn ($s) => trim((string) $s) !== ''))
+                            : preg_split('/[\s,;]+/', (string) $item['serial_numbers'], -1, PREG_SPLIT_NO_EMPTY);
+                    }
+                    return [];
+                })(),
             ];
         }
 
@@ -1509,6 +1602,8 @@ class PurchaseOrderService
 
         $freight = $this->freightCharges($data, $subtotal);
         $blank = fn (string $key) => filled($data[$key] ?? null) ? trim((string) $data[$key]) : null;
+        $receiptDocNo = $blank('courier_docket_no') ?? $blank('receipt_doc_no');
+        $dispatchedThrough = $blank('courier_name') ?? $blank('dispatched_through');
 
         return [
             'freight_charge' => $freight['freight_total'],
@@ -1523,8 +1618,8 @@ class PurchaseOrderService
                 'freight_total' => $freight['freight_total'],
                 'freight_notes' => $freight['freight_notes'],
                 'receipt_note_nos' => $blank('receipt_note_nos'),
-                'receipt_doc_no' => $blank('receipt_doc_no'),
-                'dispatched_through' => $blank('dispatched_through'),
+                'receipt_doc_no' => $receiptDocNo,
+                'dispatched_through' => $dispatchedThrough,
                 'carrier_name' => $blank('carrier_name'),
                 'lr_number' => $blank('lr_number'),
                 'lr_date' => filled($data['lr_date'] ?? null) ? $data['lr_date'] : null,

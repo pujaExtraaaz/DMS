@@ -411,7 +411,15 @@ class ProductSerialNumberTrackingTest extends TestCase
         // Untracked product item exists, but does not display any blank serial number label
         $this->assertStringContainsString('Camera Ceiling Mount Kit', $previewContent);
 
-        // 2. Export PDF
+        // 2. Invoice Show Page
+        $showResponse = $this->actingAs($this->user)->get(route('purchasing.invoices.show', $invoice));
+        $showResponse->assertOk();
+        $showContent = $showResponse->getContent();
+        $this->assertStringContainsString('SN-CAM-99001', $showContent);
+        $this->assertStringContainsString('SN-CAM-99002', $showContent);
+        $this->assertStringContainsString('S/N:', $showContent);
+
+        // 3. Export PDF
         $pdfResponse = $this->actingAs($this->user)->get(route('purchasing.invoices.export', [
             'invoice' => $invoice,
             'format' => 'pdf',
@@ -419,7 +427,7 @@ class ProductSerialNumberTrackingTest extends TestCase
         $pdfResponse->assertOk();
         $this->assertSame('application/pdf', $pdfResponse->headers->get('Content-Type'));
 
-        // 3. Export CSV includes Serial Nos column
+        // 4. Export CSV includes Serial Nos column
         $csvResponse = $this->actingAs($this->user)->get(route('purchasing.invoices.export', [
             'invoice' => $invoice,
             'format' => 'csv',
@@ -428,5 +436,332 @@ class ProductSerialNumberTrackingTest extends TestCase
         $csvContent = $csvResponse->streamedContent();
         $this->assertStringContainsString('Serial Nos', $csvContent);
         $this->assertStringContainsString('SN-CAM-99001, SN-CAM-99002', $csvContent);
+    }
+
+    public function test_purchase_invoice_edit_preserves_and_updates_serials(): void
+    {
+        $trackedProd = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Managed Network Switch 24P',
+            'sku' => 'SW-24P-01',
+            'serial_no' => 'MST-SW-24P-01',
+            'base_uom_id' => $this->uom->id,
+            'purchase_price' => 12000.00,
+            'tax_rate' => 18.00,
+            'tracking_type' => 'serial',
+            'is_active' => true,
+        ]);
+
+        $initialSerial = 'SN-SW-ORIGINAL-01';
+
+        $payload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'invoice_date' => now()->toDateString(),
+            'supplier_invoice_number' => 'INV-EDIT-SER-001',
+            'items' => [
+                [
+                    'product_id' => $trackedProd->id,
+                    'quantity' => 1,
+                    'unit_cost' => 12000.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                    'serial_numbers' => [$initialSerial],
+                ],
+            ],
+        ];
+
+        $this->actingAs($this->user)->post(route('purchasing.invoices.store'), $payload);
+        $invoice = PurchaseInvoice::where('supplier_invoice_no', 'INV-EDIT-SER-001')->firstOrFail();
+
+        // 1. Edit view loads previously entered serial numbers
+        $editResponse = $this->actingAs($this->user)->get(route('purchasing.invoices.edit', $invoice));
+        $editResponse->assertOk();
+        $this->assertStringContainsString($initialSerial, $editResponse->getContent());
+
+        // 2. Update with modified serial number
+        $updatedSerial = 'SN-SW-UPDATED-99';
+        $updatePayload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'invoice_date' => now()->toDateString(),
+            'supplier_invoice_number' => 'INV-EDIT-SER-001',
+            'items' => [
+                [
+                    'product_id' => $trackedProd->id,
+                    'quantity' => 1,
+                    'unit_cost' => 12000.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                    'serial_numbers' => [$updatedSerial],
+                ],
+            ],
+        ];
+
+        $updateResponse = $this->actingAs($this->user)->put(route('purchasing.invoices.update', $invoice), $updatePayload);
+        $updateResponse->assertSessionHasNoErrors();
+
+        // 3. Confirm ProductSerial records in database
+        $this->assertDatabaseHas('product_serials', [
+            'product_id' => $trackedProd->id,
+            'serial_number' => $updatedSerial,
+        ]);
+        $this->assertDatabaseMissing('product_serials', [
+            'product_id' => $trackedProd->id,
+            'serial_number' => $initialSerial,
+        ]);
+
+        // 4. Confirm Preview renders updated serial
+        $previewResponse = $this->actingAs($this->user)->get(route('purchasing.invoices.preview', $invoice));
+        $previewResponse->assertOk();
+        $previewContent = $previewResponse->getContent();
+        $this->assertStringContainsString($updatedSerial, $previewContent);
+        $this->assertStringNotContainsString($initialSerial, $previewContent);
+    }
+
+    public function test_ajax_product_details_endpoint_returns_tracking_metadata(): void
+    {
+        $trackedProd = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Tracked Barcode Scanner',
+            'sku' => 'BCS-01',
+            'serial_no' => 'SN-BCS-01',
+            'base_uom_id' => $this->uom->id,
+            'purchase_price' => 3200.00,
+            'tax_rate' => 18.00,
+            'tracking_type' => 'serial',
+            'is_active' => true,
+        ]);
+
+        $untrackedProd = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Scanner Stand',
+            'sku' => 'SCS-01',
+            'serial_no' => 'SN-SCS-01',
+            'base_uom_id' => $this->uom->id,
+            'purchase_price' => 450.00,
+            'tax_rate' => 18.00,
+            'tracking_type' => 'none',
+            'is_active' => true,
+        ]);
+
+        $resTracked = $this->actingAs($this->user)->getJson(route('purchasing.invoices.product-details', $trackedProd));
+        $resTracked->assertOk()
+            ->assertJsonPath('data.id', $trackedProd->id)
+            ->assertJsonPath('data.is_serial_tracked', true)
+            ->assertJsonPath('data.track_serial', true)
+            ->assertJsonPath('data.tracking_type', 'serial');
+
+        $resUntracked = $this->actingAs($this->user)->getJson(route('purchasing.invoices.product-details', $untrackedProd));
+        $resUntracked->assertOk()
+            ->assertJsonPath('data.id', $untrackedProd->id)
+            ->assertJsonPath('data.is_serial_tracked', false)
+            ->assertJsonPath('data.track_serial', false)
+            ->assertJsonPath('data.tracking_type', 'none');
+    }
+
+    public function test_mixed_products_invoice_tracks_serials_independently_per_line(): void
+    {
+        $productA = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Product A (Tracked)',
+            'sku' => 'PROD-A',
+            'serial_no' => 'SN-PROD-A',
+            'base_uom_id' => $this->uom->id,
+            'purchase_price' => 1000.00,
+            'tax_rate' => 18.00,
+            'tracking_type' => 'serial',
+            'is_active' => true,
+        ]);
+
+        $productB = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Product B (Untracked)',
+            'sku' => 'PROD-B',
+            'serial_no' => 'SN-PROD-B',
+            'base_uom_id' => $this->uom->id,
+            'purchase_price' => 200.00,
+            'tax_rate' => 18.00,
+            'tracking_type' => 'none',
+            'is_active' => true,
+        ]);
+
+        $productC = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Product C (Tracked)',
+            'sku' => 'PROD-C',
+            'serial_no' => 'SN-PROD-C',
+            'base_uom_id' => $this->uom->id,
+            'purchase_price' => 3000.00,
+            'tax_rate' => 18.00,
+            'tracking_type' => 'serial',
+            'is_active' => true,
+        ]);
+
+        $payload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'invoice_date' => now()->toDateString(),
+            'supplier_invoice_number' => 'INV-MIXED-001',
+            'items' => [
+                [
+                    'product_id' => $productA->id,
+                    'quantity' => 2,
+                    'unit_cost' => 1000.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                    'serial_numbers' => ['SN-A1', 'SN-A2'],
+                ],
+                [
+                    'product_id' => $productB->id,
+                    'quantity' => 5,
+                    'unit_cost' => 200.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                    // No serial numbers for untracked product
+                ],
+                [
+                    'product_id' => $productC->id,
+                    'quantity' => 3,
+                    'unit_cost' => 3000.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                    'serial_numbers' => ['SN-C1', 'SN-C2', 'SN-C3'],
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)->post(route('purchasing.invoices.store'), $payload);
+        $response->assertSessionHasNoErrors();
+
+        $invoice = PurchaseInvoice::where('supplier_invoice_no', 'INV-MIXED-001')->firstOrFail();
+        $this->assertCount(3, $invoice->items);
+
+        // Product A: 2 serials in DB
+        $this->assertSame(2, ProductSerial::where('product_id', $productA->id)->count());
+        $this->assertEquals(['SN-A1', 'SN-A2'], ProductSerial::where('product_id', $productA->id)->pluck('serial_number')->sort()->values()->all());
+
+        // Product B: 0 serials in DB
+        $this->assertSame(0, ProductSerial::where('product_id', $productB->id)->count());
+
+        // Product C: 3 serials in DB
+        $this->assertSame(3, ProductSerial::where('product_id', $productC->id)->count());
+        $this->assertEquals(['SN-C1', 'SN-C2', 'SN-C3'], ProductSerial::where('product_id', $productC->id)->pluck('serial_number')->sort()->values()->all());
+    }
+
+    public function test_untracked_product_with_stray_serials_is_sanitized_and_creates_no_serials(): void
+    {
+        $untrackedProd = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Untracked Hardware Part',
+            'sku' => 'UHP-01',
+            'serial_no' => 'SN-UHP-01',
+            'base_uom_id' => $this->uom->id,
+            'purchase_price' => 50.00,
+            'tax_rate' => 18.00,
+            'tracking_type' => 'none',
+            'is_active' => true,
+        ]);
+
+        $payload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'invoice_date' => now()->toDateString(),
+            'supplier_invoice_number' => 'INV-STRAY-001',
+            'items' => [
+                [
+                    'product_id' => $untrackedProd->id,
+                    'quantity' => 2,
+                    'unit_cost' => 50.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                    'serial_numbers' => ['STRAY-SN-1', 'STRAY-SN-2'],
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)->post(route('purchasing.invoices.store'), $payload);
+        $response->assertSessionHasNoErrors();
+
+        // Backend must have sanitized it and created 0 ProductSerial records
+        $this->assertSame(0, ProductSerial::where('product_id', $untrackedProd->id)->count());
+    }
+
+    public function test_tracked_product_fails_when_serial_count_does_not_match_quantity(): void
+    {
+        $trackedProd = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'High End Server',
+            'sku' => 'SRV-01',
+            'serial_no' => 'SN-SRV-01',
+            'base_uom_id' => $this->uom->id,
+            'purchase_price' => 50000.00,
+            'tax_rate' => 18.00,
+            'tracking_type' => 'serial',
+            'is_active' => true,
+        ]);
+
+        $payload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'invoice_date' => now()->toDateString(),
+            'supplier_invoice_number' => 'INV-COUNT-MISMATCH',
+            'items' => [
+                [
+                    'product_id' => $trackedProd->id,
+                    'quantity' => 3,
+                    'unit_cost' => 50000.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                    'serial_numbers' => ['SN-SRV-1', 'SN-SRV-2'], // only 2 serials for qty 3!
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)->post(route('purchasing.invoices.store'), $payload);
+        $response->assertSessionHasErrors(['items.0.serial_numbers']);
+    }
+
+    public function test_duplicate_serial_numbers_fail_validation(): void
+    {
+        $trackedProd = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Tracked Tablet',
+            'sku' => 'TAB-01',
+            'serial_no' => 'SN-TAB-01',
+            'base_uom_id' => $this->uom->id,
+            'purchase_price' => 15000.00,
+            'tax_rate' => 18.00,
+            'tracking_type' => 'serial',
+            'is_active' => true,
+        ]);
+
+        $payload = [
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'invoice_date' => now()->toDateString(),
+            'supplier_invoice_number' => 'INV-DUP-SERIAL',
+            'items' => [
+                [
+                    'product_id' => $trackedProd->id,
+                    'quantity' => 2,
+                    'unit_cost' => 15000.00,
+                    'tax_percent' => 18.00,
+                    'cgst_percent' => 9.00,
+                    'sgst_percent' => 9.00,
+                    'serial_numbers' => ['SAME-SN-123', 'SAME-SN-123'], // Duplicate serials in one item!
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->user)->post(route('purchasing.invoices.store'), $payload);
+        $response->assertSessionHasErrors(['items.0.serial_numbers']);
     }
 }

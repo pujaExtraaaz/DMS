@@ -454,7 +454,8 @@ class DocumentExporter
         $rows = [];
         $i = 1;
         foreach ($invoice->items as $item) {
-            $serials = $item->serialNumbers();
+            $isTracked = $item->product ? $item->product->isSerialTracked() : false;
+            $serials = $isTracked ? $item->serialNumbers() : [];
             $rows[] = [
                 $i++,
                 $item->product?->name ?? '—',
@@ -484,6 +485,9 @@ class DocumentExporter
             'Payment Order Date' => $invoice->payment_order_date?->format('d/m/Y') ?? '—',
             'Due Date' => $invoice->due_date?->format('d/m/Y') ?? '—',
             'PO Reference' => $invoice->purchaseOrder?->po_no ?? '—',
+            'Courier / Docket Number' => $invoice->receipt_doc_no ?? '—',
+            'Courier Name' => $invoice->dispatched_through ?? '—',
+            'Motor Vehicle No.' => $invoice->vehicle_number ?? '—',
             'Status' => ucfirst($invoice->status),
             'Billing Address' => preg_replace('/\s+/', ' ', trim($invoice->billing_address ?: ($invoice->supplier?->address ?: '—'))),
             'Delivery Address' => preg_replace('/\s+/', ' ', trim($invoice->shipping_address ?: ($invoice->billing_address ?: ($invoice->supplier?->address ?: '—')))),

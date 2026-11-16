@@ -70,6 +70,7 @@ class Product extends Model
 
     protected $appends = [
         'is_serial_tracked',
+        'track_serial',
     ];
 
     protected $fillable = [
@@ -400,6 +401,23 @@ class Product extends Model
     public function getIsSerialTrackedAttribute(): bool
     {
         return $this->isSerialTracked();
+    }
+
+    public function getTrackSerialAttribute(): bool
+    {
+        return $this->isSerialTracked();
+    }
+
+    public function setTrackSerialAttribute($value): void
+    {
+        $tracks = $this->tracking_types;
+        $isTrue = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool) $value;
+        if ($isTrue && ! in_array('serial', $tracks, true)) {
+            $tracks[] = 'serial';
+        } elseif (! $isTrue) {
+            $tracks = array_values(array_filter($tracks, fn ($t) => $t !== 'serial'));
+        }
+        $this->attributes['tracking_type'] = empty($tracks) ? 'none' : implode(',', $tracks);
     }
 
     public function getTrackingTypesAttribute(): array

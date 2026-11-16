@@ -392,6 +392,27 @@
                         <td class="right">{{ $invoice->grn->grn_number }}</td>
                     </tr>
                 @endif
+
+                @if($invoice->receipt_doc_no)
+                    <tr>
+                        <td class="bold right">Courier / Docket Number:</td>
+                        <td class="right">{{ $invoice->receipt_doc_no }}</td>
+                    </tr>
+                @endif
+
+                @if($invoice->dispatched_through)
+                    <tr>
+                        <td class="bold right">Courier Name:</td>
+                        <td class="right">{{ $invoice->dispatched_through }}</td>
+                    </tr>
+                @endif
+
+                @if($invoice->vehicle_number)
+                    <tr>
+                        <td class="bold right">Motor Vehicle No:</td>
+                        <td class="right">{{ $invoice->vehicle_number }}</td>
+                    </tr>
+                @endif
             </table>
         </div>
     </div>
@@ -491,7 +512,8 @@
                 @php
                     $productName = $item->product?->name ?? $item->description ?? 'Item';
                     $lineTax = (float) $item->cgst_amount + (float) $item->sgst_amount + (float) $item->igst_amount;
-                    $serialNumbers = $item->serialNumbers();
+                    $isSerialTracked = $item->product ? $item->product->isSerialTracked() : false;
+                    $serialNumbers = $isSerialTracked ? $item->serialNumbers() : [];
                     $batchText = $item->batch_no ?: $item->batch_number;
                 @endphp
                 <tr>
@@ -501,7 +523,7 @@
                         @if($batchText)
                             <div style="font-size: 10px; color: #6b7280; margin-top: 2px;">Batch: {{ $batchText }}</div>
                         @endif
-                        @if(!empty($serialNumbers))
+                        @if($isSerialTracked && !empty($serialNumbers))
                             <div style="font-size: 10px; color: #4338ca; margin-top: 2px;">
                                 <span class="bold" style="color: #3730a3;">Serial No:</span> {{ implode(', ', $serialNumbers) }}
                             </div>

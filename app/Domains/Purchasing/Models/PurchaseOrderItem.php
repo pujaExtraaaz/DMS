@@ -6,6 +6,7 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PurchaseOrderItem extends Model
 {
@@ -64,6 +65,11 @@ class PurchaseOrderItem extends Model
     public function uom(): BelongsTo
     {
         return $this->belongsTo(Uom::class);
+    }
+
+    public function receiptNoteItems(): HasMany
+    {
+        return $this->hasMany(ReceiptNoteItem::class);
     }
 
     public function remainingQty(): float

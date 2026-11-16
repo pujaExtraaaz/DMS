@@ -1,13 +1,42 @@
 @extends('layouts.dms')
 @section('title', 'Products')
 @section('content')
+@php
+    $currentListingUrl = request()->getRequestUri();
+@endphp
 <div id="listing-container" data-dynamic-container x-data="productIndex()">
     <x-ui.page-header title="Products">
         <x-slot name="actions">
             <x-ui.export-menu />
-            <x-ui.button variant="primary" :href="route('masters.products.create')">+ Add Product</x-ui.button>
+            <x-ui.button variant="primary" :href="route('masters.products.create', ['return_url' => $currentListingUrl])" data-preserve-state>+ Add Product</x-ui.button>
         </x-slot>
     </x-ui.page-header>
+
+    @if(isset($bannerProduct) && $bannerProduct)
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-start sm:items-center gap-3">
+                <div class="h-9 w-9 shrink-0 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-sm">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-xs font-bold text-emerald-900">Recently Created Product:</span>
+                        <span class="text-xs font-semibold text-emerald-800">{{ $bannerProduct->name }}</span>
+                        @if($bannerProduct->sku)
+                            <span class="font-mono text-[11px] text-emerald-700 bg-emerald-100/60 px-1.5 py-0.5 rounded">Part: {{ $bannerProduct->sku }}</span>
+                        @endif
+                    </div>
+                    <p class="text-[11px] text-emerald-700 mt-0.5">
+                        Product was created successfully. Your previously selected filters and page are preserved below.
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                <x-ui.button variant="secondary" size="sm" :href="route('masters.products.show', ['product' => $bannerProduct, 'return_url' => $currentListingUrl])" data-preserve-state>View</x-ui.button>
+                <x-ui.button variant="secondary" size="sm" :href="route('masters.products.edit', ['product' => $bannerProduct, 'return_url' => $currentListingUrl])" data-preserve-state>Edit</x-ui.button>
+            </div>
+        </div>
+    @endif
 
     <x-ui.card>
         @if(($serialMatches ?? collect())->isNotEmpty())
@@ -125,10 +154,22 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">
                     @forelse($items as $item)
-                        <tr class="hover:bg-slate-50/75 transition-colors">
+                        @php
+                            $isNew = (string) $item->id === (string) ($newProductId ?? request('new_product_id'));
+                            $isUpdated = (string) $item->id === (string) ($updatedProductId ?? request('updated_product_id'));
+                        @endphp
+                        <tr class="{{ $isNew ? 'bg-emerald-50/70 ring-1 ring-emerald-300' : ($isUpdated ? 'bg-indigo-50/70 ring-1 ring-indigo-300' : 'hover:bg-slate-50/75') }} transition-colors"
+                            @if($isNew || $isUpdated) x-init="$nextTick(() => { $el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); })" @endif>
                             <td class="px-4 py-3 font-mono text-xs text-slate-600">{{ $item->serial_no ?: '—' }}</td>
                             <td class="px-4 py-3 font-medium text-slate-900">
-                                <div><a href="{{ route('masters.products.show', $item) }}" class="hover:text-indigo-700 hover:underline">{{ $item->name }}</a></div>
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <a href="{{ route('masters.products.show', ['product' => $item, 'return_url' => $currentListingUrl]) }}" data-preserve-state class="hover:text-indigo-700 hover:underline">{{ $item->name }}</a>
+                                    @if($isNew)
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">New</span>
+                                    @elseif($isUpdated)
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-800">Updated</span>
+                                    @endif
+                                </div>
                                 @if($item->brand || $item->category || $item->subCategory)
                                     <div class="text-[11px] text-slate-400 font-normal mt-0.5">
                                         {{ collect([$item->brand?->name, $item->category?->name, $item->subCategory?->name])->filter()->join(' · ') }}
@@ -143,8 +184,8 @@
                             <td class="px-4 py-3 text-slate-700">{{ $item->warranty ?: 'No warranty' }}</td>
                             <td class="px-4 py-3 text-right whitespace-nowrap">
                                 <div class="flex items-center justify-end gap-1.5">
-                                    <x-ui.button variant="secondary" size="sm" :href="route('masters.products.show', $item)" title="View Product" aria-label="View Product">View</x-ui.button>
-                                    <x-ui.button variant="secondary" size="sm" :href="route('masters.products.edit', $item)" title="Edit Product" aria-label="Edit Product">Edit</x-ui.button>
+                                    <x-ui.button variant="secondary" size="sm" :href="route('masters.products.show', ['product' => $item, 'return_url' => $currentListingUrl])" title="View Product" aria-label="View Product" data-preserve-state>View</x-ui.button>
+                                    <x-ui.button variant="secondary" size="sm" :href="route('masters.products.edit', ['product' => $item, 'return_url' => $currentListingUrl])" title="Edit Product" aria-label="Edit Product" data-preserve-state>Edit</x-ui.button>
                                     <button type="button"
                                             @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}', '{{ addslashes($item->sku) }}', '{{ addslashes($item->serial_no ?: '—') }}')"
                                             :disabled="isDeleting"
@@ -461,6 +502,18 @@ function productIndex() {
                 }
             }
         }
+    }, true);
+
+    // Keep return_url on all state-preserving actions updated with live query string
+    document.addEventListener('click', function(e) {
+        const link = e.target.closest('[data-preserve-state]');
+        if (!link || !link.href) return;
+        try {
+            const u = new URL(link.href, window.location.origin);
+            const livePathAndQuery = window.location.pathname + window.location.search;
+            u.searchParams.set('return_url', livePathAndQuery);
+            link.href = u.toString();
+        } catch (_) {}
     }, true);
 })();
 </script>

@@ -115,6 +115,15 @@ class RolePermissionSeeder extends Seeder
                 'purchase-orders.create',
                 'purchase-orders.edit',
                 'purchase-orders.manage',
+                'receipt-notes.view',
+                'receipt-notes.create',
+                'receipt-notes.edit',
+                'receipt-notes.manage',
+                'receipt-notes.delete',
+                'receipt-notes.confirm',
+                'receipt-notes.cancel',
+                'receipt-notes.return',
+                'receipt-notes.export',
             ],
 
             'accounts' => [

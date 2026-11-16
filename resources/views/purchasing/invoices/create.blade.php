@@ -9,9 +9,22 @@
 </x-ui.page-header>
 
 <form method="POST" action="{{ route('purchasing.invoices.store') }}"
-      x-data="purchaseInvoiceForm(@js($products), @js($order ?? null), @js($initialOrders ?? []), @js($odAccounts ?? []))"
+      x-data="purchaseInvoiceForm(@js($products), @js($order ?? null), @js($initialOrders ?? []), @js($odAccounts ?? []), @js($savedDraft ?? null))"
+      @submit="clearDraftOnSubmit()"
       class="space-y-6">
     @csrf
+
+    <div x-show="draftRestored" x-cloak class="rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-xs text-indigo-900 flex items-center justify-between shadow-2xs">
+        <div class="flex items-center gap-2">
+            <svg class="h-4 w-4 text-indigo-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Your previously entered invoice details and items have been restored.</span>
+        </div>
+        <button type="button" @click="discardDraft()" class="font-semibold text-rose-600 hover:text-rose-800 underline">
+            Discard Draft
+        </button>
+    </div>
 
     <x-ui.card>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -50,16 +63,115 @@
                         Loading...
                     </span>
                 </div>
-                <select name="purchase_order_id"
-                        x-model="purchaseOrderId"
-                        @change="onPurchaseOrderChange()"
-                        :disabled="!supplierId || poLoading"
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
-                    <option value="">Select Purchase Order</option>
-                    <template x-for="po in supplierOrders" :key="po.id">
-                        <option :value="po.id" x-text="po.label" :selected="String(po.id) === String(purchaseOrderId)"></option>
-                    </template>
-                </select>
+                <div class="relative" @click.outside="closePoDropdown()">
+                    <!-- Hidden input submitting selected PO ID -->
+                    <input type="hidden" name="purchase_order_id" :value="purchaseOrderId">
+
+                    <!-- Trigger Button -->
+                    <button type="button"
+                            @click="togglePoDropdown()"
+                            :disabled="!supplierId || poLoading"
+                            class="flex items-center justify-between w-full min-h-[38px] px-3 py-2 text-sm text-left bg-white border border-gray-300 rounded-lg shadow-2xs transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                            :class="{ 'border-indigo-500 ring-2 ring-indigo-500/20': poDropdownOpen }">
+                        <span class="truncate flex-1"
+                              :class="{ 'text-slate-400': !purchaseOrderId, 'text-slate-900 font-medium': purchaseOrderId }"
+                              x-text="!supplierId ? 'Select a supplier first' : (poLoading ? 'Loading purchase orders...' : (selectedOrderDisplay || 'Select Purchase Order'))">
+                        </span>
+                        <div class="flex items-center gap-1.5 ml-2 shrink-0">
+                            <span x-show="purchaseOrderId && !poLoading"
+                                  @click.stop="clearPurchaseOrder()"
+                                  class="p-0.5 text-slate-400 hover:text-rose-600 rounded cursor-pointer transition-colors"
+                                  title="Clear purchase order selection">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </span>
+                            <svg class="w-4 h-4 text-slate-400 transition-transform duration-200"
+                                 :class="{ 'rotate-180 text-indigo-600': poDropdownOpen }"
+                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </button>
+
+                    <!-- Floating Dropdown Popover -->
+                    <div x-show="poDropdownOpen"
+                         x-transition:enter="transition ease-out duration-100"
+                         x-transition:enter-start="opacity-0 scale-95"
+                         x-transition:enter-end="opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-75"
+                         x-transition:leave-start="opacity-100 scale-100"
+                         x-transition:leave-end="opacity-0 scale-95"
+                         class="absolute z-50 left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden"
+                         style="display: none;"
+                         x-cloak>
+
+                        <!-- Search Input Header -->
+                        <div class="p-2 bg-slate-50 border-b border-slate-100">
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                    </svg>
+                                </div>
+                                <input type="text"
+                                       x-ref="poSearchInput"
+                                       x-model="poSearchQuery"
+                                       @keydown.escape.prevent="closePoDropdown()"
+                                       @keydown.arrow-down.prevent="navigatePoOptions(1)"
+                                       @keydown.arrow-up.prevent="navigatePoOptions(-1)"
+                                       @keydown.enter.prevent="selectHighlightedPo()"
+                                       placeholder="Search by PO #, date, product, status..."
+                                       autocomplete="off"
+                                       class="block w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-md shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400">
+                            </div>
+                        </div>
+
+                        <!-- Orders List -->
+                        <div class="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                            <template x-for="(po, idx) in filteredSupplierOrders" :key="po.id">
+                                <div @click="selectPurchaseOrder(po.id)"
+                                     @mouseenter="highlightedPoIndex = idx"
+                                     :class="{
+                                         'bg-indigo-50 border-l-4 border-indigo-600 font-semibold': String(purchaseOrderId) === String(po.id),
+                                         'bg-slate-50': highlightedPoIndex === idx && String(purchaseOrderId) !== String(po.id)
+                                     }"
+                                     class="p-2.5 hover:bg-indigo-50/60 cursor-pointer text-xs flex flex-col gap-1 transition-colors">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-bold text-slate-900" x-text="po.po_no"></span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                                                  :class="{
+                                                      'bg-emerald-100 text-emerald-800': (po.status || '').toLowerCase().includes('approved'),
+                                                      'bg-blue-100 text-blue-800': (po.status || '').toLowerCase().includes('partially'),
+                                                      'bg-purple-100 text-purple-800': (po.status || '').toLowerCase().includes('closed'),
+                                                      'bg-slate-100 text-slate-700': !(po.status || '').toLowerCase().includes('approved') && !(po.status || '').toLowerCase().includes('partially') && !(po.status || '').toLowerCase().includes('closed')
+                                                  }"
+                                                  x-text="po.status"></span>
+                                        </div>
+                                        <div class="font-mono font-semibold text-slate-900 text-xs">
+                                            ₹<span x-text="Number(po.grand_total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center justify-between text-[11px] text-slate-500">
+                                        <span x-text="'Date: ' + (po.po_date || '—')"></span>
+                                        <span class="text-amber-700 font-medium" x-show="po.remaining_qty !== undefined" x-text="'Remaining: ' + po.remaining_qty + '/' + po.total_qty"></span>
+                                    </div>
+                                    <div x-show="po.products_summary || (po.products && po.products.length)" class="text-[10px] text-slate-500 truncate">
+                                        <span class="font-medium text-slate-600">Items:</span>
+                                        <span x-text="po.products_summary || (po.products ? po.products.join(', ') : '')"></span>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Empty / filter feedback inside dropdown -->
+                            <div x-show="supplierOrders.length > 0 && filteredSupplierOrders.length === 0" class="p-4 text-center text-xs text-slate-500 italic">
+                                No purchase orders match "<span class="font-semibold text-slate-700" x-text="poSearchQuery"></span>"
+                            </div>
+                            <div x-show="supplierOrders.length === 0" class="p-4 text-center text-xs text-amber-700 font-medium">
+                                No eligible Purchase Orders found for this supplier
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <p x-show="supplierId && !poLoading && supplierOrders.length === 0" class="mt-1 text-[11px] text-amber-600 font-medium" x-cloak>
                     No eligible purchase orders found for this supplier
                 </p>
@@ -68,6 +180,36 @@
                 </p>
                 <p x-show="selectedOrderLabel && purchaseOrderId" class="mt-1 text-[11px] text-emerald-600 font-medium" x-cloak>
                     Linked to <span x-text="selectedOrderLabel"></span>
+                </p>
+            </div>
+
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider">Receipt Note (Optional)</label>
+                    <span x-show="rnLoading" class="text-[11px] text-indigo-600 animate-pulse font-medium inline-flex items-center gap-1" x-cloak>
+                        <svg class="animate-spin h-3 w-3 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Loading...
+                    </span>
+                </div>
+                <select name="receipt_note_id"
+                        x-model="receiptNoteId"
+                        @change="onReceiptNoteChange()"
+                        :disabled="!supplierId || rnLoading"
+                        data-no-search
+                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
+                    <option value="">Select Receipt Note (if goods already received)</option>
+                    <template x-for="rn in supplierReceiptNotes" :key="rn.id">
+                        <option :value="rn.id" x-text="rn.label" :selected="String(rn.id) === String(receiptNoteId)"></option>
+                    </template>
+                </select>
+                <p x-show="supplierId && !rnLoading && supplierReceiptNotes.length === 0" class="mt-1 text-[11px] text-slate-400" x-cloak>
+                    No pending receipt notes for this supplier
+                </p>
+                <p x-show="selectedRnLabel && receiptNoteId" class="mt-1 text-[11px] text-emerald-600 font-medium" x-cloak>
+                    Material linked to <span x-text="selectedRnLabel"></span> (Inventory already in warehouse)
                 </p>
             </div>
 
@@ -90,14 +232,14 @@
 
             <div>
                 <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Supplier Inv No.</label>
-                <input type="text" name="supplier_invoice_number" value="{{ old('supplier_invoice_number') }}"
+                <input type="text" name="supplier_invoice_number" x-model="supplierInvoiceNumber" value="{{ old('supplier_invoice_number') }}"
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
                        placeholder="E.G. Inv-10023">
             </div>
 
             <div>
                 <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Material Dispatch Date</label>
-                <input type="date" name="material_dispatch_date" value="{{ old('material_dispatch_date') }}"
+                <input type="date" name="material_dispatch_date" x-model="materialDispatchDate" value="{{ old('material_dispatch_date') }}"
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                 <p class="mt-1 text-[10px] text-slate-400">Optional. Material starts as In Transit — stock is not added yet.</p>
             </div>
@@ -176,16 +318,9 @@
     </x-ui.card>
 
     @include('purchasing.invoices.partials.dispatch-and-freight', [
-        'receiptNoteNos' => old('receipt_note_nos'),
         'receiptDocNo' => old('receipt_doc_no'),
         'dispatchedThrough' => old('dispatched_through'),
-        'carrierName' => old('carrier_name'),
-        'lrNumber' => old('lr_number'),
-        'lrDate' => old('lr_date'),
         'vehicleNumber' => old('vehicle_number'),
-        'paymentTerms' => old('payment_terms'),
-        'otherReferences' => old('other_references'),
-        'termsOfDelivery' => old('terms_of_delivery'),
         'freightNotes' => old('freight_notes', $order?->freight_notes ?? ''),
     ])
 
@@ -299,6 +434,7 @@
                                 <div class="flex items-center justify-between gap-2 mb-1">
                                     <span class="text-[11px] font-semibold text-slate-500">Product</span>
                                     <a :href="createProductUrl(i)"
+                                       @click.prevent="saveDraftAndRedirectToProduct(i)"
                                        class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap">
                                         + Create product
                                     </a>
@@ -313,6 +449,7 @@
                                         <option :value="p.id" x-text="p.name"></option>
                                     </template>
                                 </select>
+                                <input type="hidden" :name="`items[${i}][receipt_note_item_id]`" :value="row.receipt_note_item_id || ''">
 
                                     <template x-if="isSerialTracked(row)">
                                         <div class="mt-2">
@@ -491,7 +628,7 @@
                      title="Material still in transit — stock posts only after you confirm receipt">
             Save as Open
         </x-ui.button>
-        <x-ui.button variant="secondary" :href="route('purchasing.invoices.index')">Cancel</x-ui.button>
+        <x-ui.button variant="secondary" :href="route('purchasing.invoices.index')" @click="clearDraft()">Cancel</x-ui.button>
     </div>
     <p class="text-[11px] text-slate-500 -mt-2">
         <span class="font-semibold text-slate-600">Draft</span> = material received, ready to pay (stock posted).
@@ -501,23 +638,30 @@
 
 @push('scripts')
 <script>
-function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) {
+function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, serverDraft) {
     return {
         products: products || [],
         odAccounts: odAccounts || [],
         odAccountId: '',
         onOdAccountChange() {},
+        draftRestored: false,
         supplierId: initialOrder ? initialOrder.supplier_id : '{{ old('supplier_id', request('supplier_id', '')) }}',
         supplierQuery: '',
         supplierOpen: false,
         suppliers: [],
-        supplierId: initialOrder ? initialOrder.supplier_id : '{{ old('supplier_id', '') }}',
         warehouseId: initialOrder ? initialOrder.warehouse_id : '{{ old('warehouse_id', '') }}',
         supplierOrders: initialOrders || [],
         poLoading: false,
+        poDropdownOpen: false,
+        poSearchQuery: '',
+        highlightedPoIndex: -1,
         purchaseOrderId: '{{ old('purchase_order_id', $order?->id ?? '') }}',
         selectedOrderLabel: initialOrder ? (initialOrder.po_no || initialOrder.order_number || '') : '',
         linkedPoId: initialOrder ? initialOrder.id : ({{ old('purchase_order_id') ? (int)old('purchase_order_id') : 'null' }}),
+        supplierReceiptNotes: [],
+        rnLoading: false,
+        receiptNoteId: '{{ old('receipt_note_id', request('receipt_note_id', '')) }}',
+        selectedRnLabel: '',
         partyAddresses: [],
         addressesLoading: false,
         selectedBillingId: initialOrder ? (initialOrder.billing_address_id || '') : '',
@@ -526,6 +670,8 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
         shippingSnapshot: initialOrder ? (initialOrder.shipping_address || '') : '',
         sameAsBilling: !initialOrder || !initialOrder.shipping_address_id || (initialOrder.shipping_address_id === initialOrder.billing_address_id),
         invoiceDate: '{{ old('invoice_date', date('Y-m-d')) }}',
+        supplierInvoiceNumber: @js(old('supplier_invoice_number', '')),
+        materialDispatchDate: @js(old('material_dispatch_date', '')),
         purchaseReceiveDate: '{{ old('purchase_receive_date', $defaultReceiveDate ?? '') }}',
         paymentOrderDate: '{{ old('payment_order_date', $defaultPaymentOrderDate ?? '') }}',
         creditDays: {{ old('credit_days', $order?->credit_days ?? 0) }},
@@ -562,7 +708,8 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 }
             }
             const newProductId = @json(request('new_product_id'));
-            const draft = newProductId ? this.restoreCreateDraft() : null;
+            const returnedFrom = @json(request('returned_from'));
+            const draft = this.restoreCreateDraft(serverDraft);
             const targetRow = draft?.targetRow != null
                 ? parseInt(draft.targetRow, 10) || 0
                 : (parseInt(@json(request('target_row', '0')), 10) || 0);
@@ -572,6 +719,10 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 await this.loadSupplierAddresses(this.supplierId, forceAddressDefault);
                 if (!this.supplierOrders.length) {
                     await this.loadSupplierOrders(this.supplierId, this.purchaseOrderId);
+                }
+                await this.loadSupplierReceiptNotes(this.supplierId, this.receiptNoteId);
+                if (this.receiptNoteId && !draft && (!initialOrder || !initialOrder.items || !initialOrder.items.length)) {
+                    await this.onReceiptNoteChange();
                 }
             }
 
@@ -587,7 +738,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                     const isTracked = p ? (p.is_serial_tracked !== undefined ? Boolean(p.is_serial_tracked) : String(p.tracking_type || '').includes('serial')) : false;
                     return {
                         product_id: it.product_id,
-                        unit: p ? (p.unit || 'PCS') : 'PCS',
+                        unit: p ? (p.unit || p.base_uom?.name || p.base_uom?.code || 'PCS') : 'PCS',
                         tracking_type: p ? (p.tracking_type || 'none') : 'none',
                         is_serial_tracked: isTracked,
                         quantity: Number(it.quantity) || 1,
@@ -614,16 +765,38 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             }
 
             if (newProductId) {
-                while (this.items.length <= targetRow) {
-                    this.addItem();
+                const productObj = this.products.find(p => String(p.id) === String(newProductId));
+                if (productObj && productObj.is_active !== false) {
+                    const alreadyAdded = this.items.some(it => String(it.product_id) === String(newProductId));
+                    if (!alreadyAdded) {
+                        let rowToUse = -1;
+                        if (targetRow >= 0 && targetRow < this.items.length && !this.items[targetRow].product_id) {
+                            rowToUse = targetRow;
+                        } else {
+                            this.addItem();
+                            rowToUse = this.items.length - 1;
+                        }
+
+                        this.items[rowToUse].product_id = String(newProductId);
+                        this.onProductChange(rowToUse);
+                    }
                 }
-                this.items[targetRow].product_id = String(newProductId);
-                this.onProductChange(targetRow);
+            }
+
+            if ((newProductId || returnedFrom) && window.history && window.history.replaceState) {
+                const cleanUrl = window.location.pathname;
+                window.history.replaceState({}, document.title, cleanUrl);
             }
 
             this.syncSupplierLabel();
             this.recalcDueDate();
             this.items.forEach((_, idx) => this.syncSerials(idx));
+            this.recalc();
+
+            try {
+                sessionStorage.setItem('pi_create_draft', JSON.stringify(this.getDraftState(targetRow)));
+            } catch (e) {}
+        },
             this.recalc();
         },
 
@@ -741,29 +914,47 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
 
         isSerialTracked(row) {
             if (!row) return false;
-            let tt = row.tracking_type;
-            let isTracked = row.is_serial_tracked;
+            if (row.is_serial_tracked !== undefined && row.is_serial_tracked !== null) {
+                return Boolean(row.is_serial_tracked);
+            }
             if (row.product_id) {
-                const p = this.products.find(item => item.id == row.product_id);
+                const p = this.products.find(item => String(item.id) === String(row.product_id));
                 if (p) {
                     if (p.is_serial_tracked !== undefined) return Boolean(p.is_serial_tracked);
-                    tt = tt || p.tracking_type;
+                    if (p.track_serial !== undefined) return Boolean(p.track_serial);
+                    if (p.tracking_type) {
+                        return String(p.tracking_type).toLowerCase().includes('serial');
+                    }
                 }
             }
-            if (isTracked !== undefined && isTracked !== null) return Boolean(isTracked);
+            let tt = row.tracking_type;
             if (!tt || tt === 'none') return false;
             if (Array.isArray(tt)) return tt.includes('serial');
             const str = String(tt).toLowerCase();
             return str === 'serial' || str.split(',').map(s => s.trim()).includes('serial');
         },
 
-        onProductChange(index) {
+        async onProductChange(index) {
             const row = this.items[index];
-            const p = this.products.find(item => item.id == row.product_id);
+            if (!row) return;
+
+            const prodId = row.product_id;
+            if (!prodId) {
+                row.tracking_type = 'none';
+                row.is_serial_tracked = false;
+                row.serial_numbers = [];
+                this.syncSerials(index);
+                this.recalc();
+                return;
+            }
+
+            const p = this.products.find(item => String(item.id) === String(prodId));
             if (p) {
-                row.unit = p.unit || 'PCS';
+                row.unit = p.unit || p.base_uom?.name || p.base_uom?.code || 'PCS';
                 row.tracking_type = p.tracking_type || 'none';
-                row.is_serial_tracked = p.is_serial_tracked !== undefined ? Boolean(p.is_serial_tracked) : undefined;
+                row.is_serial_tracked = p.is_serial_tracked !== undefined
+                    ? Boolean(p.is_serial_tracked)
+                    : (p.track_serial !== undefined ? Boolean(p.track_serial) : String(p.tracking_type || '').includes('serial'));
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.batch_mrp = Number(p.mrp) || 0;
@@ -773,12 +964,40 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 } else {
                     row.unit_cost = catalogBase;
                 }
+                if (!row.is_serial_tracked) {
+                    row.serial_numbers = [];
+                }
                 this.syncSerials(index);
                 this.onUnitCostChange(index);
-                return;
             }
-            row.tracking_type = 'none';
-            row.is_serial_tracked = false;
+
+            try {
+                const res = await fetch(`{{ url('/purchasing/invoices/products') }}/${prodId}/details`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json && json.data) {
+                        const dbProd = json.data;
+                        if (String(row.product_id) === String(dbProd.id)) {
+                            row.tracking_type = dbProd.tracking_type || 'none';
+                            row.is_serial_tracked = Boolean(dbProd.is_serial_tracked);
+                            if (!row.is_serial_tracked) {
+                                row.serial_numbers = [];
+                            } else {
+                                this.syncSerials(index);
+                            }
+                            const cached = this.products.find(item => String(item.id) === String(dbProd.id));
+                            if (cached) {
+                                cached.tracking_type = dbProd.tracking_type;
+                                cached.is_serial_tracked = dbProd.is_serial_tracked;
+                                cached.track_serial = dbProd.track_serial;
+                            }
+                        }
+                    }
+                }
+            } catch (err) {}
+
             this.syncSerials(index);
             this.recalc();
         },
@@ -792,8 +1011,10 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             }
             const qty = Math.min(30, Math.max(1, Math.round(Number(row.quantity) || 1)));
             if (!Array.isArray(row.serial_numbers)) row.serial_numbers = [];
-            while (row.serial_numbers.length < qty) row.serial_numbers.push('');
-            while (row.serial_numbers.length > qty && String(row.serial_numbers[row.serial_numbers.length - 1] || '').trim() === '') {
+            while (row.serial_numbers.length < qty) {
+                row.serial_numbers.push('');
+            }
+            while (row.serial_numbers.length > qty) {
                 row.serial_numbers.pop();
             }
         },
@@ -881,36 +1102,53 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             return '₹' + Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         },
 
-        createProductUrl(rowIndex) {
-            try {
-                sessionStorage.setItem('pi_create_draft', JSON.stringify({
-                    supplierId: this.supplierId,
-                    supplierQuery: this.supplierQuery,
-                    warehouseId: this.warehouseId,
-                    purchaseOrderId: this.purchaseOrderId,
-                    selectedOrderLabel: this.selectedOrderLabel,
-                    linkedPoId: this.linkedPoId,
-                    invoiceDate: this.invoiceDate,
-                    purchaseReceiveDate: this.purchaseReceiveDate,
-                    paymentOrderDate: this.paymentOrderDate,
-                    creditDays: this.creditDays,
-                    freightApplicable: this.freightApplicable,
-                    freightMode: this.freightMode,
-                    freightPercent: this.freightPercent,
-                    freightAmount: this.freightAmount,
-                    freightTaxRate: this.freightTaxRate,
-                    orderNos: this.orderNos,
-                    otherCharges: this.otherCharges,
-                    selectedBillingId: this.selectedBillingId,
-                    selectedShippingId: this.selectedShippingId,
-                    billingSnapshot: this.billingSnapshot,
-                    shippingSnapshot: this.shippingSnapshot,
-                    sameAsBilling: this.sameAsBilling,
-                    items: this.items,
-                    targetRow: rowIndex ?? 0,
-                }));
-            } catch (e) {}
+        getDraftState(targetRow = 0) {
+            const getVal = (name) => {
+                const el = document.querySelector(`[name="${name}"]`);
+                return el ? el.value : '';
+            };
 
+            return {
+                supplierId: this.supplierId,
+                supplierQuery: this.supplierQuery,
+                warehouseId: this.warehouseId,
+                purchaseOrderId: this.purchaseOrderId,
+                selectedOrderLabel: this.selectedOrderLabel,
+                linkedPoId: this.linkedPoId,
+                invoiceDate: this.invoiceDate,
+                supplierInvoiceNumber: this.supplierInvoiceNumber || getVal('supplier_invoice_number'),
+                materialDispatchDate: this.materialDispatchDate || getVal('material_dispatch_date'),
+                expectedDeliveryDate: this.expectedDeliveryDate,
+                expectedDeliveryQuickDays: this.expectedDeliveryQuickDays,
+                purchaseReceiveDate: this.purchaseReceiveDate,
+                paymentOrderDate: this.paymentOrderDate,
+                creditDays: this.creditDays,
+                dueDateFormattedYmd: this.dueDateFormattedYmd,
+                freightApplicable: this.freightApplicable,
+                freightMode: this.freightMode,
+                freightPercent: this.freightPercent,
+                freightAmount: this.freightAmount,
+                freightTaxRate: this.freightTaxRate,
+                orderNos: this.orderNos,
+                otherCharges: this.otherCharges,
+                priceType: this.priceType,
+                roundOff: this.roundOff,
+                isManualRoundOff: this.isManualRoundOff,
+                selectedBillingId: this.selectedBillingId,
+                selectedShippingId: this.selectedShippingId,
+                billingSnapshot: this.billingSnapshot,
+                shippingSnapshot: this.shippingSnapshot,
+                sameAsBilling: this.sameAsBilling,
+                receiptDocNo: getVal('receipt_doc_no'),
+                dispatchedThrough: getVal('dispatched_through'),
+                vehicleNumber: getVal('vehicle_number'),
+                freightNotes: getVal('freight_notes'),
+                items: this.items.map(it => ({ ...it })),
+                targetRow: targetRow ?? 0,
+            };
+        },
+
+        createProductUrl(rowIndex) {
             const params = new URLSearchParams({
                 return_to: 'purchasing.invoices.create',
                 target_row: String(rowIndex ?? 0),
@@ -918,18 +1156,51 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             return @json(route('masters.products.create')) + '?' + params.toString();
         },
 
-        restoreCreateDraft() {
+        saveDraftAndRedirectToProduct(rowIndex) {
+            const draft = this.getDraftState(rowIndex);
+            try {
+                sessionStorage.setItem('pi_create_draft', JSON.stringify(draft));
+            } catch (e) {}
+
+            try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                    || document.querySelector('input[name="_token"]')?.value;
+                fetch(@json(route('purchasing.invoices.draft.save')), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken || '',
+                    },
+                    body: JSON.stringify({ draft }),
+                    keepalive: true,
+                }).catch(() => {});
+            } catch (e) {}
+
+            window.location.href = this.createProductUrl(rowIndex);
+        },
+
+        restoreCreateDraft(serverDraft = null) {
             let draft = null;
             try {
                 const raw = sessionStorage.getItem('pi_create_draft');
                 if (raw) {
                     draft = JSON.parse(raw);
-                    sessionStorage.removeItem('pi_create_draft');
                 }
             } catch (e) {
                 draft = null;
             }
+            if (!draft && serverDraft && typeof serverDraft === 'object') {
+                draft = serverDraft;
+            }
             if (!draft) return null;
+
+            const setField = (name, val) => {
+                if (val !== undefined && val !== null && val !== '') {
+                    const el = document.querySelector(`[name="${name}"]`);
+                    if (el) el.value = val;
+                }
+            };
 
             this.supplierId = draft.supplierId || this.supplierId;
             this.supplierQuery = draft.supplierQuery || this.supplierQuery;
@@ -938,6 +1209,16 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             this.selectedOrderLabel = draft.selectedOrderLabel || this.selectedOrderLabel;
             this.linkedPoId = draft.linkedPoId || this.linkedPoId;
             this.invoiceDate = draft.invoiceDate || this.invoiceDate;
+            if (draft.supplierInvoiceNumber !== undefined) {
+                this.supplierInvoiceNumber = draft.supplierInvoiceNumber;
+                setField('supplier_invoice_number', draft.supplierInvoiceNumber);
+            }
+            if (draft.materialDispatchDate !== undefined) {
+                this.materialDispatchDate = draft.materialDispatchDate;
+                setField('material_dispatch_date', draft.materialDispatchDate);
+            }
+            this.expectedDeliveryDate = draft.expectedDeliveryDate || this.expectedDeliveryDate;
+            this.expectedDeliveryQuickDays = draft.expectedDeliveryQuickDays ?? this.expectedDeliveryQuickDays;
             this.purchaseReceiveDate = draft.purchaseReceiveDate || this.purchaseReceiveDate;
             this.paymentOrderDate = draft.paymentOrderDate || this.paymentOrderDate;
             this.creditDays = draft.creditDays ?? this.creditDays;
@@ -948,15 +1229,54 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
             this.freightTaxRate = draft.freightTaxRate ?? this.freightTaxRate;
             this.orderNos = draft.orderNos ?? this.orderNos;
             this.otherCharges = draft.otherCharges ?? this.otherCharges;
+            if (draft.priceType) this.priceType = draft.priceType;
+            this.roundOff = draft.roundOff ?? this.roundOff;
+            this.isManualRoundOff = draft.isManualRoundOff ?? this.isManualRoundOff;
             this.selectedBillingId = draft.selectedBillingId || '';
             this.selectedShippingId = draft.selectedShippingId || '';
             this.billingSnapshot = draft.billingSnapshot || '';
             this.shippingSnapshot = draft.shippingSnapshot || '';
             this.sameAsBilling = draft.sameAsBilling !== false;
+
+            setField('receipt_doc_no', draft.receiptDocNo || draft.courierDocketNo);
+            setField('dispatched_through', draft.dispatchedThrough || draft.courierName);
+            setField('vehicle_number', draft.vehicleNumber);
+            setField('freight_notes', draft.freightNotes);
+
             if (Array.isArray(draft.items) && draft.items.length) {
-                this.items = draft.items;
+                this.items = draft.items.map(it => ({ ...it }));
             }
+            this.draftRestored = true;
             return draft;
+        },
+
+        clearDraft() {
+            try {
+                sessionStorage.removeItem('pi_create_draft');
+            } catch (e) {}
+            try {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+                    || document.querySelector('input[name="_token"]')?.value;
+                fetch(@json(route('purchasing.invoices.draft.clear')), {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken || '',
+                    },
+                    keepalive: true,
+                }).catch(() => {});
+            } catch (e) {}
+            this.draftRestored = false;
+        },
+
+        discardDraft() {
+            this.clearDraft();
+            window.location.href = @json(route('purchasing.invoices.create'));
+        },
+
+        clearDraftOnSubmit() {
+            this.clearDraft();
         },
 
         async onSupplierChange() {
@@ -997,7 +1317,8 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
 
             await Promise.all([
                 this.loadSupplierAddresses(this.supplierId, true),
-                this.loadSupplierOrders(this.supplierId)
+                this.loadSupplierOrders(this.supplierId),
+                this.loadSupplierReceiptNotes(this.supplierId)
             ]);
         },
 
@@ -1035,6 +1356,92 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 this.supplierOrders = [];
             } finally {
                 this.poLoading = false;
+            }
+        },
+
+        get filteredSupplierOrders() {
+            if (!this.poSearchQuery || !this.poSearchQuery.trim()) {
+                return this.supplierOrders || [];
+            }
+            const q = this.poSearchQuery.toLowerCase().trim();
+            return (this.supplierOrders || []).filter(po => {
+                const poNo = (po.po_no || '').toLowerCase();
+                const poDate = (po.po_date || '').toLowerCase();
+                const status = (po.status || '').toLowerCase();
+                const supName = (po.supplier_name || '').toLowerCase();
+                const label = (po.label || '').toLowerCase();
+                const productsSummary = (po.products_summary || '').toLowerCase();
+                const productsMatch = Array.isArray(po.products) && po.products.some(p => p && p.toLowerCase().includes(q));
+                return poNo.includes(q) || poDate.includes(q) || status.includes(q) || supName.includes(q) || label.includes(q) || productsSummary.includes(q) || productsMatch;
+            });
+        },
+
+        get selectedOrderDisplay() {
+            if (!this.purchaseOrderId) return '';
+            const found = (this.supplierOrders || []).find(o => String(o.id) === String(this.purchaseOrderId));
+            if (found) {
+                const dateStr = found.po_date ? ` (${found.po_date})` : '';
+                const amtStr = found.grand_total !== undefined ? ` - ₹${Number(found.grand_total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '';
+                return `${found.po_no}${dateStr}${amtStr}`;
+            }
+            return this.selectedOrderLabel ? this.selectedOrderLabel : `Selected PO #${this.purchaseOrderId}`;
+        },
+
+        togglePoDropdown() {
+            if (!this.supplierId || this.poLoading) return;
+            this.poDropdownOpen = !this.poDropdownOpen;
+            if (this.poDropdownOpen) {
+                this.poSearchQuery = '';
+                this.highlightedPoIndex = -1;
+                this.$nextTick(() => {
+                    if (this.$refs.poSearchInput) {
+                        this.$refs.poSearchInput.focus();
+                    }
+                });
+            }
+        },
+
+        closePoDropdown() {
+            this.poDropdownOpen = false;
+            this.highlightedPoIndex = -1;
+            this.poSearchQuery = '';
+        },
+
+        async selectPurchaseOrder(poId) {
+            if (String(this.purchaseOrderId) === String(poId)) {
+                this.closePoDropdown();
+                return;
+            }
+            this.purchaseOrderId = poId ? String(poId) : '';
+            const found = (this.supplierOrders || []).find(o => String(o.id) === String(poId));
+            this.selectedOrderLabel = found ? found.po_no : '';
+            this.closePoDropdown();
+            await this.onPurchaseOrderChange();
+        },
+
+        async clearPurchaseOrder() {
+            this.purchaseOrderId = '';
+            this.selectedOrderLabel = '';
+            this.closePoDropdown();
+            await this.onPurchaseOrderChange();
+        },
+
+        navigatePoOptions(step) {
+            const list = this.filteredSupplierOrders;
+            if (!list || list.length === 0) return;
+            let next = this.highlightedPoIndex + step;
+            if (next < 0) next = list.length - 1;
+            if (next >= list.length) next = 0;
+            this.highlightedPoIndex = next;
+        },
+
+        selectHighlightedPo() {
+            const list = this.filteredSupplierOrders;
+            if (!list || list.length === 0) return;
+            if (this.highlightedPoIndex >= 0 && this.highlightedPoIndex < list.length) {
+                this.selectPurchaseOrder(list[this.highlightedPoIndex].id);
+            } else if (list.length > 0) {
+                this.selectPurchaseOrder(list[0].id);
             }
         },
 
@@ -1094,10 +1501,14 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                             const tax = cgst + sgst;
                             const mrp = Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0);
                             const inclusive = Number(it.purchase_price_inclusive) || Number((unitCost * (1 + tax / 100)).toFixed(2));
+                            const isTracked = (it.is_serial_tracked !== undefined && it.is_serial_tracked !== null)
+                                ? Boolean(it.is_serial_tracked)
+                                : (p ? Boolean(p.is_serial_tracked || (p.tracking_type && String(p.tracking_type).toLowerCase().includes('serial'))) : false);
                             return {
                                 product_id: it.product_id,
                                 unit: p ? (p.unit || 'PCS') : 'PCS',
-                                tracking_type: p ? (p.tracking_type || 'none') : 'none',
+                                tracking_type: p ? (p.tracking_type || 'none') : (it.tracking_type || 'none'),
+                                is_serial_tracked: isTracked,
                                 quantity: Number(it.quantity) || 1,
                                 unit_cost: unitCost,
                                 purchase_price_inclusive: inclusive,
@@ -1106,7 +1517,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                                 sgst_percent: sgst,
                                 batch_number: it.batch_number || '',
                                 batch_mrp: mrp,
-                                serial_numbers: [''],
+                                serial_numbers: isTracked ? [''] : [],
                                 line_total: Number(it.line_total) || 0
                             };
                         });
@@ -1125,6 +1536,106 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts) 
                 console.error('Failed to load purchase order details:', e);
             } finally {
                 this.poLoading = false;
+            }
+        },
+
+        async loadSupplierReceiptNotes(supId, preselectId = null) {
+            if (!supId) {
+                this.supplierReceiptNotes = [];
+                this.receiptNoteId = '';
+                this.selectedRnLabel = '';
+                return;
+            }
+
+            this.rnLoading = true;
+            try {
+                const res = await fetch(`{{ url('/purchasing/invoices/suppliers') }}/${supId}/receipt-notes`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await res.json();
+                this.supplierReceiptNotes = data.receipt_notes || [];
+
+                if (preselectId) {
+                    const found = this.supplierReceiptNotes.find(rn => String(rn.id) === String(preselectId));
+                    if (found) {
+                        this.receiptNoteId = found.id;
+                        this.selectedRnLabel = found.receipt_note_no;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load supplier receipt notes:', e);
+                this.supplierReceiptNotes = [];
+            } finally {
+                this.rnLoading = false;
+            }
+        },
+
+        async onReceiptNoteChange() {
+            if (!this.receiptNoteId) {
+                this.selectedRnLabel = '';
+                return;
+            }
+
+            this.rnLoading = true;
+            try {
+                const res = await fetch(`{{ url('/purchasing/invoices/receipt-note') }}/${this.receiptNoteId}/data`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                const data = await res.json();
+                if (data.receipt_note) {
+                    const rn = data.receipt_note;
+                    this.selectedRnLabel = rn.receipt_note_no;
+
+                    if (rn.warehouse_id) {
+                        this.warehouseId = rn.warehouse_id;
+                    }
+
+                    if (rn.items && rn.items.length) {
+                        this.items = rn.items.map(it => {
+                            const p = this.products.find(prod => prod.id === it.product_id);
+                            const unitCost = Number(it.unit_cost) || 0;
+                            const cgst = Number(it.cgst_percent) || 0;
+                            const sgst = Number(it.sgst_percent) || 0;
+                            const tax = cgst + sgst;
+                            const mrp = Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0);
+                            const inclusive = Number(it.purchase_price_inclusive) || Number((unitCost * (1 + tax / 100)).toFixed(2));
+                            const isTracked = (it.is_serial_tracked !== undefined && it.is_serial_tracked !== null)
+                                ? Boolean(it.is_serial_tracked)
+                                : (p ? Boolean(p.is_serial_tracked || (p.tracking_type && String(p.tracking_type).toLowerCase().includes('serial'))) : false);
+
+                            const serialsList = Array.isArray(it.serials) && it.serials.length
+                                ? it.serials
+                                : (isTracked ? [''] : []);
+
+                            return {
+                                receipt_note_item_id: it.receipt_note_item_id,
+                                product_id: it.product_id,
+                                unit: p ? (p.unit || 'PCS') : (it.unit || 'PCS'),
+                                tracking_type: p ? (p.tracking_type || 'none') : (it.tracking_type || 'none'),
+                                is_serial_tracked: isTracked,
+                                quantity: Number(it.quantity) || 1,
+                                unit_cost: unitCost,
+                                price_inclusive_tax: inclusive,
+                                purchase_price_inclusive: inclusive,
+                                batch_mrp: mrp,
+                                discount_percent: Number(it.purchase_discount_percent) || 0,
+                                purchase_discount_percent: Number(it.purchase_discount_percent) || 0,
+                                cgst_percent: cgst,
+                                sgst_percent: sgst,
+                                batch_number: it.batch_number || '',
+                                batch_mrp: mrp,
+                                serial_numbers: serialsList,
+                                line_total: Number(it.line_total) || 0
+                            };
+                        });
+                        this.items.forEach((_, idx) => this.syncSerials(idx));
+                        this.recalc();
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load receipt note details:', e);
+            } finally {
+                this.rnLoading = false;
             }
         },
 
