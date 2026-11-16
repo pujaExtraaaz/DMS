@@ -294,11 +294,14 @@
             }
         @endphp
 
-        <div x-data='{ bankAccounts: @json($bankAccounts) }' class="space-y-4">
+        <div x-data='companyBankAccountsController(@json($bankAccounts))' class="space-y-4">
             <div class="flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-700">Banking &amp; Payments</h3>
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-700">Banking &amp; Payments</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Enter IFSC to auto-fill bank and branch.</p>
+                </div>
                 <button type="button"
-                        @click='bankAccounts.push({ bank_name: "", bank_account_no: "", bank_ifsc: "", upi_id: "", swift_code: "", branch: "", bsr_code: "", client_code: "" })'
+                        @click='addAccount()'
                         class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
                     + ADD
                 </button>
@@ -311,7 +314,7 @@
                             <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Bank Account #${index + 1}`"></span>
                             <button type="button"
                                     x-show="bankAccounts.length > 1"
-                                    @click="bankAccounts.splice(index, 1)"
+                                    @click="removeAccount(index)"
                                     class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
                                 Remove
                             </button>
@@ -319,16 +322,36 @@
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">IFSC</label>
+                                <div class="relative">
+                                    <input type="text"
+                                           :name="`bank_accounts[${index}][bank_ifsc]`"
+                                           x-model="account.bank_ifsc"
+                                           maxlength="11"
+                                           @input="account.bank_ifsc = (account.bank_ifsc || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11); onIfscInput(index)"
+                                           @blur="lookupIfsc(index)"
+                                           placeholder="e.g. HDFC0001234"
+                                           class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-10">
+                                    <span x-show="account._ifsc_loading" class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs" x-cloak>
+                                        <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                    </span>
+                                </div>
+                                <p x-show="account._ifsc_message" x-cloak
+                                   class="mt-1 text-[11px]"
+                                   :class="account._ifsc_status === 'ok' ? 'text-emerald-600 font-medium' : (account._ifsc_status === 'error' ? 'text-rose-600 font-medium' : 'text-slate-500')"
+                                   x-text="account._ifsc_message"></p>
+                            </div>
+                            <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">Bank Name</label>
                                 <input type="text" :name="`bank_accounts[${index}][bank_name]`" x-model="account.bank_name" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Bank Account No</label>
-                                <input type="text" :name="`bank_accounts[${index}][bank_account_no]`" x-model="account.bank_account_no" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Branch</label>
+                                <input type="text" :name="`bank_accounts[${index}][branch]`" x-model="account.branch" placeholder="Branch Name / Location" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">IFSC</label>
-                                <input type="text" :name="`bank_accounts[${index}][bank_ifsc]`" x-model="account.bank_ifsc" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Bank Account No</label>
+                                <input type="text" :name="`bank_accounts[${index}][bank_account_no]`" x-model="account.bank_account_no" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">UPI ID (for invoice QR)</label>
@@ -337,10 +360,6 @@
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">SWIFT Code</label>
                                 <input type="text" :name="`bank_accounts[${index}][swift_code]`" x-model="account.swift_code" placeholder="e.g. HDFCINBBXXX" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-slate-700 mb-1">Branch</label>
-                                <input type="text" :name="`bank_accounts[${index}][branch]`" x-model="account.branch" placeholder="Branch Name / Location" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-700 mb-1">BSR Code</label>
@@ -462,4 +481,139 @@
         </div>
     </form>
 </x-ui.card>
+
+@push('scripts')
+<script>
+function companyBankAccountsController(initialAccounts) {
+    return {
+        bankAccounts: (Array.isArray(initialAccounts) && initialAccounts.length) ? initialAccounts.map(b => ({
+            bank_name: b.bank_name || '',
+            bank_account_no: b.bank_account_no || '',
+            bank_ifsc: b.bank_ifsc || '',
+            upi_id: b.upi_id || '',
+            swift_code: b.swift_code || '',
+            branch: b.branch || '',
+            bsr_code: b.bsr_code || '',
+            client_code: b.client_code || '',
+            _ifsc_status: '',
+            _ifsc_message: '',
+            _ifsc_loading: false,
+        })) : [{
+            bank_name: '',
+            bank_account_no: '',
+            bank_ifsc: '',
+            upi_id: '',
+            swift_code: '',
+            branch: '',
+            bsr_code: '',
+            client_code: '',
+            _ifsc_status: '',
+            _ifsc_message: '',
+            _ifsc_loading: false,
+        }],
+        _ifscTimers: {},
+        _ifscLastFetched: {},
+
+        addAccount() {
+            this.bankAccounts.push({
+                bank_name: '',
+                bank_account_no: '',
+                bank_ifsc: '',
+                upi_id: '',
+                swift_code: '',
+                branch: '',
+                bsr_code: '',
+                client_code: '',
+                _ifsc_status: '',
+                _ifsc_message: '',
+                _ifsc_loading: false,
+            });
+        },
+
+        removeAccount(index) {
+            if (this.bankAccounts.length > 1) {
+                this.bankAccounts.splice(index, 1);
+            }
+        },
+
+        onIfscInput(index) {
+            const acc = this.bankAccounts[index];
+            if (!acc) return;
+            acc._ifsc_status = '';
+            acc._ifsc_message = '';
+            if (this._ifscTimers[index]) {
+                clearTimeout(this._ifscTimers[index]);
+            }
+            const ifsc = (acc.bank_ifsc || '').toUpperCase().trim();
+            if (ifsc.length === 11) {
+                this._ifscTimers[index] = setTimeout(() => this.lookupIfsc(index), 500);
+            }
+        },
+
+        async lookupIfsc(index) {
+            const acc = this.bankAccounts[index];
+            if (!acc) return;
+
+            const ifsc = (acc.bank_ifsc || '').toUpperCase().trim();
+            if (ifsc.length === 0) {
+                acc._ifsc_status = '';
+                acc._ifsc_message = '';
+                return;
+            }
+
+            if (ifsc.length !== 11) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'Please enter a valid 11-character IFSC code.';
+                return;
+            }
+
+            // Prevent duplicate API requests for unchanged IFSC
+            if (this._ifscLastFetched[index] === ifsc && acc.bank_name) {
+                return;
+            }
+
+            if (acc._ifsc_loading) {
+                return;
+            }
+
+            acc._ifsc_loading = true;
+            acc._ifsc_status = 'loading';
+            acc._ifsc_message = 'Fetching bank details...';
+
+            try {
+                const response = await fetch(`{{ route('masters.customers.ifsc-lookup') }}?ifsc=${encodeURIComponent(ifsc)}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                });
+                const data = await response.json();
+
+                if (data.success && data.bank) {
+                    acc.bank_name = data.bank.bank_name || acc.bank_name;
+                    acc.branch = data.bank.branch_name || acc.branch;
+                    this._ifscLastFetched[index] = ifsc;
+                    acc._ifsc_status = 'ok';
+                    acc._ifsc_message = data.message || 'Bank and branch details fetched successfully.';
+                } else {
+                    acc._ifsc_status = 'error';
+                    if (data.status_code === 404 || response.status === 404) {
+                        acc._ifsc_message = data.message || 'IFSC code not found. Please verify the code.';
+                    } else if (data.status_code === 422) {
+                        acc._ifsc_message = data.message || 'Please enter a valid 11-character IFSC code.';
+                    } else {
+                        acc._ifsc_message = data.message || 'Unable to fetch bank details. Please enter details manually.';
+                    }
+                }
+            } catch (err) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'Unable to fetch bank details. Please enter details manually.';
+            } finally {
+                acc._ifsc_loading = false;
+            }
+        }
+    };
+}
+</script>
+@endpush
 @endsection

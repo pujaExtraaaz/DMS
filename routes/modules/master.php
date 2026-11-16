@@ -15,7 +15,7 @@ use App\Http\Controllers\Master\UomController;
 use App\Http\Controllers\Master\VehicleController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit')->group(function () {
+Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit|invoices.create|invoices.edit|invoices.view|sales.create|sales.edit|sales.view|organization.view|organization.create|organization.edit|organization.manage')->group(function () {
     Route::post('customer-types/quick-store', [CustomerTypeController::class, 'quickStore'])->name('customer-types.quick-store');
     Route::put('customer-types/{customerType}/quick-update', [CustomerTypeController::class, 'quickUpdate'])->name('customer-types.quick-update');
     Route::delete('customer-types/{customerType}/quick-destroy', [CustomerTypeController::class, 'quickDestroy'])->name('customer-types.quick-destroy');
@@ -39,7 +39,7 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
     Route::resource('drivers', DriverController::class);
     Route::resource('delivery-persons', DeliveryPersonController::class);
 
-    Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit')->group(function () {
+    Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit|invoices.create|invoices.edit|invoices.view|sales.create|sales.edit|sales.view|organization.view|organization.create|organization.edit|organization.manage')->group(function () {
         Route::patch('products/{product}/assign-type', [ProductController::class, 'assignType'])->name('products.assign-type');
         Route::resource('products', ProductController::class);
         Route::get('price-masters/copy-options', [PriceMasterController::class, 'copyOptions'])->name('price-masters.copy-options');
@@ -53,11 +53,18 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::match(['get', 'post'], 'customers/gst-lookup', [CustomerController::class, 'gstLookup'])->name('customers.gst-lookup');
         Route::match(['get', 'post'], 'customers/ifsc-lookup', [CustomerController::class, 'ifscLookup'])->name('customers.ifsc-lookup');
         Route::post('customers/quick-add', [CustomerController::class, 'quickAdd'])->name('customers.quick-add');
+        Route::get('customers/target-report', [CustomerController::class, 'targetReport'])->name('customers.target-report');
+        Route::get('parties/target-report', [CustomerController::class, 'targetReport'])->name('parties.target-report');
         Route::get('customers/business-groups', [CustomerController::class, 'businessGroups'])->name('customers.business-groups');
         Route::get('customers/{customer}/addresses', [CustomerController::class, 'addresses'])->name('customers.addresses');
+        Route::post('customers/{customer}/addresses', [CustomerController::class, 'storeAddress'])->name('customers.addresses.store');
         Route::get('customers/{customer}/gem-documents/{document}', [CustomerController::class, 'gemDocument'])->name('customers.gem-documents.show');
         Route::get('cities', [CustomerController::class, 'cities'])->name('cities');
         Route::post('cities/quick-store', [CustomerController::class, 'storeCity'])->name('cities.quick-store');
+        // Party / Customer Autocomplete (AVIT req #23)
+        Route::get('parties/autocomplete', [CustomerController::class, 'autocomplete'])->name('parties.autocomplete');
+        Route::get('customers/autocomplete', [CustomerController::class, 'autocomplete'])->name('customers.autocomplete');
+
         Route::resource('customers', CustomerController::class);
         Route::get('parties', [CustomerController::class, 'index'])->name('parties.index');
         Route::delete('parties/{customer}', [CustomerController::class, 'destroy'])->name('parties.destroy');
@@ -69,6 +76,11 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         // Bulk import for Products, Parties, and Price Master (AVIT req #22).
         Route::get('bulk-import', [BulkImportController::class, 'index'])->name('bulk-import.index');
         Route::get('bulk-import/template/{type}', [BulkImportController::class, 'template'])->name('bulk-import.template');
+        Route::post('bulk-import/map-uom', [BulkImportController::class, 'mapUom'])->name('bulk-import.map-uom');
+        Route::post('bulk-import/add-uom', [BulkImportController::class, 'addUom'])->name('bulk-import.add-uom');
+        Route::post('bulk-import/retry', [BulkImportController::class, 'retry'])->name('bulk-import.retry');
+        Route::delete('bulk-import/uom-mappings/{mapping}', [BulkImportController::class, 'deleteUomMapping'])->name('bulk-import.delete-uom-mapping');
+        Route::post('bulk-import/clear-summary', [BulkImportController::class, 'clearSummary'])->name('bulk-import.clear-summary');
         Route::post('bulk-import/{type}', [BulkImportController::class, 'upload'])->name('bulk-import.upload');
         Route::get('bulk-import/progress/{id}', [BulkImportController::class, 'progress'])->name('bulk-import.progress');
         Route::post('bulk-import/progress/{id}/cancel', [BulkImportController::class, 'cancel'])->name('bulk-import.cancel');

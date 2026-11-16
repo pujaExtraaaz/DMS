@@ -87,7 +87,7 @@ return [
         'timeout' => (int) env('MASTERSINDIA_TIMEOUT', 30),
         // When true and credentials are missing, service falls back to deterministic dummy IRN/EWB
         // so the flow keeps working in developer environments.
-        'fallback_to_stub' => filter_var(env('MASTERSINDIA_FALLBACK_TO_STUB', true), FILTER_VALIDATE_BOOLEAN),
+        'fallback_to_stub' => filter_var(env('MASTERSINDIA_FALLBACK_TO_STUB', false), FILTER_VALIDATE_BOOLEAN),
     ],
 
     // GSTIN verification & taxpayer lookup service (sandbox, cleartax, mastersindia, or custom)

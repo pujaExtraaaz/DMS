@@ -304,6 +304,11 @@ class BusinessGroupController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:30|unique:business_groups,code' . ($group ? ',' . $group->id : ''),
+            'proprietor_name' => 'nullable|string|max:191',
+            'proprietor_relationship' => 'nullable|string|max:191',
+            'proprietor_email' => 'nullable|email|max:191',
+            'proprietor_phone' => 'nullable|string|max:50',
+            'proprietor_pan' => 'nullable|string|max:20',
             'parent_company_id' => $parentRule,
             'incorporation_date' => 'nullable|date',
             'headquarters' => 'nullable|string|max:255',

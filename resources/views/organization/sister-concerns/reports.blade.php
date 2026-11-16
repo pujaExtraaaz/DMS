@@ -127,6 +127,11 @@
                         <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         <span>Excel</span>
                     </a>
+                    <a href="{{ route('organization.sister-concerns.reports.export', array_merge(request()->query(), ['format' => 'pdf'])) }}"
+                       class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200/60 rounded-xl text-xs font-semibold transition shadow-sm">
+                        <svg class="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                        <span>PDF</span>
+                    </a>
                 </div>
             </div>
         </form>
@@ -155,80 +160,184 @@
 
     {{-- VIEW 1: CONSOLIDATED DASHBOARD & OVERVIEW --}}
     @if($reportType === 'all')
-        {{-- Primary Financial Metric Cards --}}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {{-- Primary Financial Metric Cards (6 KPI Cards) --}}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
             {{-- Combined Sales --}}
-            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden flex flex-col justify-between">
                 <div class="flex items-center justify-between">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Combined Sales</span>
-                    <span class="p-2 rounded-xl bg-purple-50 text-purple-700">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span class="p-1.5 rounded-lg bg-purple-50 text-purple-700">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     </span>
                 </div>
-                <div class="mt-3">
-                    <div class="text-2xl font-black text-slate-900 tracking-tight">₹{{ number_format($salesSummary['total_sales'], 2) }}</div>
-                    <div class="mt-1 flex items-center justify-between text-xs text-slate-500">
-                        <span>{{ $salesSummary['total_invoices'] }} invoices</span>
-                        @if($salesSummary['credit_notes_total'] > 0)
-                            <span class="text-amber-600 font-semibold" title="Net Sales after Credit Notes">Net: ₹{{ number_format($salesSummary['net_sales'], 2) }}</span>
+                <div class="mt-2.5">
+                    <div class="text-lg font-black text-slate-900 tracking-tight font-mono">₹{{ number_format($combined['sales'] ?? $salesSummary['total_sales'], 2) }}</div>
+                    <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>{{ $salesSummary['total_invoices'] }} invs</span>
+                        @if(($combined['credit_notes'] ?? $salesSummary['credit_notes_total']) > 0)
+                            <span class="text-amber-600 font-semibold" title="Net Sales after Credit Notes">Net: ₹{{ number_format($combined['net_sales'] ?? $salesSummary['net_sales'], 2) }}</span>
                         @endif
                     </div>
                 </div>
             </div>
 
             {{-- Combined Purchases --}}
-            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden flex flex-col justify-between">
                 <div class="flex items-center justify-between">
                     <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Combined Purchases</span>
-                    <span class="p-2 rounded-xl bg-indigo-50 text-indigo-700">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                    <span class="p-1.5 rounded-lg bg-indigo-50 text-indigo-700">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
                     </span>
                 </div>
-                <div class="mt-3">
-                    <div class="text-2xl font-black text-slate-900 tracking-tight">₹{{ number_format($purchasesSummary['total_purchases'], 2) }}</div>
-                    <div class="mt-1 flex items-center justify-between text-xs text-slate-500">
-                        <span>{{ $purchasesSummary['total_invoices'] }} purchase orders/invoices</span>
-                        <span class="text-slate-400 font-medium">Tax: ₹{{ number_format($purchasesSummary['tax_amount'], 2) }}</span>
+                <div class="mt-2.5">
+                    <div class="text-lg font-black text-slate-900 tracking-tight font-mono">₹{{ number_format($combined['purchases'] ?? $purchasesSummary['total_purchases'], 2) }}</div>
+                    <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>{{ $purchasesSummary['total_invoices'] }} orders</span>
+                        <span class="text-slate-400">Tax: ₹{{ number_format($purchasesSummary['tax_amount'], 2) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Combined Expenses --}}
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Combined Expenses</span>
+                    <span class="p-1.5 rounded-lg bg-amber-50 text-amber-700">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                    </span>
+                </div>
+                <div class="mt-2.5">
+                    <div class="text-lg font-black text-slate-900 tracking-tight font-mono">₹{{ number_format($combined['expenses'] ?? $expensesSummary['total_expenses'], 2) }}</div>
+                    <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>Direct & OpEx</span>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Combined Profit --}}
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden flex flex-col justify-between">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Combined Profit</span>
+                    <span class="p-1.5 rounded-lg {{ ($combined['net_profit'] ?? 0) >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700' }}">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    </span>
+                </div>
+                <div class="mt-2.5">
+                    <div class="text-lg font-black {{ ($combined['net_profit'] ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-600' }} tracking-tight font-mono">
+                        {{ ($combined['net_profit'] ?? 0) >= 0 ? '+' : '' }}₹{{ number_format($combined['net_profit'] ?? 0, 2) }}
+                    </div>
+                    <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>Net Margin</span>
+                        <span class="font-bold {{ ($combined['net_margin'] ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-600' }}">{{ $combined['net_margin'] ?? 0 }}%</span>
                     </div>
                 </div>
             </div>
 
             {{-- Collections & Outstanding Receivables --}}
-            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden flex flex-col justify-between">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Collections & Receivables</span>
-                    <span class="p-2 rounded-xl bg-emerald-50 text-emerald-700">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Receivables</span>
+                    <span class="p-1.5 rounded-lg bg-cyan-50 text-cyan-700">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     </span>
                 </div>
-                <div class="mt-3">
-                    <div class="text-2xl font-black text-emerald-600 tracking-tight">₹{{ number_format($salesSummary['collected_amount'], 2) }}</div>
-                    <div class="mt-1 flex items-center justify-between text-xs font-semibold">
-                        <span class="text-rose-600">Pending: ₹{{ number_format($salesSummary['outstanding_amount'], 2) }}</span>
-                        <span class="text-slate-400">{{ $salesSummary['collection_percentage'] }}% Rec.</span>
+                <div class="mt-2.5">
+                    <div class="text-lg font-black text-rose-600 tracking-tight font-mono">₹{{ number_format($combined['receivables'] ?? $salesSummary['outstanding_amount'], 2) }}</div>
+                    <div class="mt-1 flex items-center justify-between text-[11px] font-semibold">
+                        <span class="text-emerald-600">Rec: ₹{{ number_format($salesSummary['collected_amount'], 2) }}</span>
                     </div>
                 </div>
             </div>
 
-            {{-- Net Contribution & Inter-Company Elimination --}}
-            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden">
+            {{-- Total Payables --}}
+            <div class="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden flex flex-col justify-between">
                 <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Group Net Position</span>
-                    <span class="p-2 rounded-xl {{ $netContribution >= 0 ? 'bg-teal-50 text-teal-700' : 'bg-rose-50 text-rose-700' }}">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Payables</span>
+                    <span class="p-1.5 rounded-lg bg-orange-50 text-orange-700">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     </span>
                 </div>
-                <div class="mt-3">
-                    <div class="text-2xl font-black {{ $netContribution >= 0 ? 'text-teal-700' : 'text-rose-600' }} tracking-tight">
-                        {{ $netContribution >= 0 ? '+' : '' }}₹{{ number_format($netContribution, 2) }}
-                    </div>
-                    <div class="mt-1 flex items-center justify-between text-xs text-slate-500">
-                        <span>Sales vs Purchases</span>
-                        @if($interCompany['count'] > 0)
-                            <span class="text-purple-700 font-semibold" title="Inter-Company internal transfers excluded from external revenues">Inter-Co: ₹{{ number_format($interCompany['volume'], 2) }}</span>
-                        @endif
+                <div class="mt-2.5">
+                    <div class="text-lg font-black text-orange-700 tracking-tight font-mono">₹{{ number_format($combined['payables'] ?? $purchasesSummary['outstanding_amount'], 2) }}</div>
+                    <div class="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>Vendor Dues</span>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        {{-- Business Comparison Table --}}
+        <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div class="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-900">Sister Concerns Comparison Matrix</h3>
+                    <p class="text-xs text-slate-500">Performance particulars across each business entity</p>
+                </div>
+                @if($interCompany['count'] > 0)
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200">
+                        Eliminated Inter-Company: ₹{{ number_format($interCompany['volume'], 2) }}
+                    </span>
+                @endif
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                            <th class="py-2.5 px-4">Particulars</th>
+                            @foreach($comparisonCompanies as $cc)
+                                <th class="py-2.5 px-3 text-right">
+                                    <div class="font-bold text-slate-900 truncate max-w-[140px] inline-block">{{ $cc['name'] }}</div>
+                                </th>
+                            @endforeach
+                            <th class="py-2.5 px-4 text-right bg-purple-50/60 font-black text-purple-950">Combined Total</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        <tr>
+                            <td class="py-2 px-4 font-bold text-slate-900">Gross Sales</td>
+                            @foreach($comparisonCompanies as $cc)
+                                <td class="py-2 px-3 text-right font-mono text-slate-800">₹{{ number_format($cc['sales'], 2) }}</td>
+                            @endforeach
+                            <td class="py-2 px-4 text-right font-mono font-bold text-purple-900 bg-purple-50/40">₹{{ number_format($combined['sales'], 2) }}</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-4 font-bold text-slate-900">Purchases</td>
+                            @foreach($comparisonCompanies as $cc)
+                                <td class="py-2 px-3 text-right font-mono text-slate-800">₹{{ number_format($cc['purchases'], 2) }}</td>
+                            @endforeach
+                            <td class="py-2 px-4 text-right font-mono font-bold text-indigo-900 bg-purple-50/40">₹{{ number_format($combined['purchases'], 2) }}</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 px-4 font-bold text-slate-900">Expenses</td>
+                            @foreach($comparisonCompanies as $cc)
+                                <td class="py-2 px-3 text-right font-mono text-slate-800">₹{{ number_format($cc['expenses'], 2) }}</td>
+                            @endforeach
+                            <td class="py-2 px-4 text-right font-mono font-bold text-amber-900 bg-purple-50/40">₹{{ number_format($combined['expenses'], 2) }}</td>
+                        </tr>
+                        <tr class="bg-slate-50/40">
+                            <td class="py-2 px-4 font-bold text-slate-900">Gross Profit</td>
+                            @foreach($comparisonCompanies as $cc)
+                                <td class="py-2 px-3 text-right font-mono font-bold {{ $cc['gross_profit'] >= 0 ? 'text-teal-700' : 'text-rose-600' }}">
+                                    {{ $cc['gross_profit'] >= 0 ? '+' : '' }}₹{{ number_format($cc['gross_profit'], 2) }}
+                                </td>
+                            @endforeach
+                            <td class="py-2 px-4 text-right font-mono font-black {{ $combined['gross_profit'] >= 0 ? 'text-teal-800' : 'text-rose-600' }} bg-purple-50/60">
+                                {{ $combined['gross_profit'] >= 0 ? '+' : '' }}₹{{ number_format($combined['gross_profit'], 2) }}
+                            </td>
+                        </tr>
+                        <tr class="bg-emerald-50/20 font-bold">
+                            <td class="py-2.5 px-4 font-black text-slate-900">Net Profit</td>
+                            @foreach($comparisonCompanies as $cc)
+                                <td class="py-2.5 px-3 text-right font-mono font-black {{ $cc['net_profit'] >= 0 ? 'text-emerald-700' : 'text-rose-600' }}">
+                                    {{ $cc['net_profit'] >= 0 ? '+' : '' }}₹{{ number_format($cc['net_profit'], 2) }}
+                                </td>
+                            @endforeach
+                            <td class="py-2.5 px-4 text-right font-mono font-black {{ $combined['net_profit'] >= 0 ? 'text-emerald-800' : 'text-rose-700' }} bg-purple-100/50">
+                                {{ $combined['net_profit'] >= 0 ? '+' : '' }}₹{{ number_format($combined['net_profit'], 2) }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 

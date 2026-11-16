@@ -4,7 +4,6 @@ namespace App\Domains\Master\Observers;
 
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\ProductPriceHistory;
-use Carbon\CarbonImmutable;
 
 /**
  * Records a snapshot of pricing whenever any of the master price fields
@@ -12,6 +11,8 @@ use Carbon\CarbonImmutable;
  */
 class ProductPriceObserver
 {
+    public static bool $disabled = false;
+
     protected array $watchedColumns = [
         'selling_price',
         'trade_price',
@@ -19,8 +20,32 @@ class ProductPriceObserver
         'calculation_mrp',
     ];
 
+    protected static ?string $cachedToday = null;
+
+    protected static ?string $cachedYesterday = null;
+
+    public static function clearDateCache(): void
+    {
+        self::$cachedToday = null;
+        self::$cachedYesterday = null;
+    }
+
+    protected function getToday(): string
+    {
+        return self::$cachedToday ??= date('Y-m-d');
+    }
+
+    protected function getYesterday(): string
+    {
+        return self::$cachedYesterday ??= date('Y-m-d', strtotime('-1 day'));
+    }
+
     public function saved(Product $product): void
     {
+        if (self::$disabled) {
+            return;
+        }
+
         // Skip if nothing tracked changed AND a history row already exists — avoids duplicates on unrelated updates.
         if ($product->wasRecentlyCreated) {
             $this->write($product, 'create', 'created');
@@ -37,7 +62,7 @@ class ProductPriceObserver
             ->where('product_id', $product->id)
             ->where('uom_id', $product->base_uom_id)
             ->whereNull('effective_to')
-            ->update(['effective_to' => CarbonImmutable::yesterday()->toDateString()]);
+            ->update(['effective_to' => $this->getYesterday()]);
 
         $this->write($product, 'update', 'auto-updated on save');
     }
@@ -51,7 +76,7 @@ class ProductPriceObserver
             'selling_price' => $product->selling_price,
             'purchase_price' => $product->purchase_price,
             'mrp' => $product->calculation_mrp,
-            'effective_from' => CarbonImmutable::now()->toDateString(),
+            'effective_from' => $this->getToday(),
             'effective_to' => null,
             'change_reason' => $reason,
             'source' => $source,

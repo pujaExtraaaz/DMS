@@ -45,6 +45,7 @@ class DmsPermissionCatalog
             'od',
             'hrms',
             'crm',
+            'phone_directory',
             'tally',
             'reports',
         ];
@@ -84,6 +85,7 @@ class DmsPermissionCatalog
             'od',
             'hrms',
             'crm',
+            'phone_directory',
         ];
     }
 
@@ -108,6 +110,10 @@ class DmsPermissionCatalog
             'quotations.view-profit',
             'cheques.unfreeze',
             'accounting.view',
+            'phone_directory.archive',
+            'phone_directory.import',
+            'phone_directory.export',
+            'phone_directory.manage_departments',
         ];
     }
 
@@ -149,6 +155,7 @@ class DmsPermissionCatalog
             'OD Banking' => 'od',
             'HRMS' => 'hrms',
             'CRM' => 'crm',
+            'Phone Directory' => 'phone_directory',
             'Accounting / Tally' => 'tally',
             'Reports' => 'reports',
         ];

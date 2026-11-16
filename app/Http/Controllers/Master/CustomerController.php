@@ -119,6 +119,87 @@ class CustomerController extends Controller
         ]);
     }
 
+    /**
+     * Quickly store a delivery/party address for a customer.
+     */
+    public function storeAddress(Request $request, Customer $customer): JsonResponse
+    {
+        $validated = $request->validate([
+            'label' => 'nullable|string|max:100',
+            'name' => 'nullable|string|max:255',
+            'contact_person' => 'nullable|string|max:255',
+            'contact_phone' => 'nullable|string|max:20',
+            'type' => 'nullable|in:billing,delivery,both,shipping,warehouse',
+            'address_line_1' => 'required|string|max:255',
+            'address_line_2' => 'nullable|string|max:255',
+            'city' => 'required|string|max:100',
+            'state' => 'required|string|max:100',
+            'pincode' => 'nullable|string|max:20',
+            'gstin' => 'nullable|string|max:20',
+            'is_default_delivery' => 'nullable|boolean',
+            'is_default_billing' => 'nullable|boolean',
+        ]);
+
+        $type = $validated['type'] ?? 'delivery';
+        $isDefaultDelivery = (bool) ($validated['is_default_delivery'] ?? false);
+        $isDefaultBilling = (bool) ($validated['is_default_billing'] ?? false);
+
+        if ($isDefaultDelivery) {
+            $customer->addresses()->update(['is_default_delivery' => false]);
+        }
+        if ($isDefaultBilling) {
+            $customer->addresses()->update(['is_default_billing' => false, 'is_default' => false]);
+        }
+
+        $addressLines = array_filter([$validated['address_line_1'] ?? null, $validated['address_line_2'] ?? null]);
+        $addressText = implode(', ', $addressLines);
+
+        $address = $customer->addresses()->create([
+            'label' => (!empty($validated['label'])) ? $validated['label'] : 'Delivery Branch',
+            'name' => (!empty($validated['name'])) ? $validated['name'] : $customer->name,
+            'type' => $type,
+            'contact_person' => (!empty($validated['contact_person'])) ? $validated['contact_person'] : ($customer->contact_person ?: $customer->name),
+            'contact_phone' => (!empty($validated['contact_phone'])) ? $validated['contact_phone'] : $customer->phone,
+            'address_line_1' => $validated['address_line_1'],
+            'address_line_2' => $validated['address_line_2'] ?? null,
+            'address' => $addressText,
+            'city' => $validated['city'],
+            'state' => $validated['state'],
+            'pincode' => $validated['pincode'] ?? null,
+            'gstin' => (!empty($validated['gstin'])) ? $validated['gstin'] : $customer->gstin,
+            'is_default_delivery' => $isDefaultDelivery,
+            'is_default_billing' => $isDefaultBilling,
+            'is_default' => $isDefaultBilling,
+            'is_active' => true,
+        ]);
+
+        $formatted = [
+            'id' => $address->id,
+            'label' => $address->label,
+            'name' => $address->name ?? $customer->name,
+            'type' => $address->type,
+            'contact_person' => $address->contact_person ?: ($address->name ?: $customer->name),
+            'contact_phone' => $address->contact_phone ?: $customer->phone,
+            'address_line_1' => $address->address_line_1,
+            'address_line_2' => $address->address_line_2,
+            'city' => $address->city,
+            'state' => $address->state,
+            'pincode' => $address->pincode,
+            'gstin' => $address->gstin,
+            'is_default_billing' => (bool) $address->is_default_billing,
+            'is_default_delivery' => (bool) $address->is_default_delivery,
+            'display_text' => $address->display_text,
+            'full_address' => $address->full_address,
+            'snapshot' => $address->formatSnapshot(),
+        ];
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery address added successfully.',
+            'address' => $formatted,
+        ], 201);
+    }
+
     public function cities(Request $request): JsonResponse
     {
         $state = $request->query('state');
@@ -228,11 +309,27 @@ class CustomerController extends Controller
 
     public function index(Request $request): View|Response
     {
+        if ($request->wantsJson() && $request->has('autocomplete')) {
+            return $this->autocomplete($request);
+        }
+
+        $selectedPartyId = $request->input('party_id');
+        $selectedParty = null;
+        if ($selectedPartyId) {
+            $selectedParty = Customer::with('area')->find($selectedPartyId);
+        }
+
         $query = Customer::query()
             ->with([
                 'customerType', 'area', 'route', 'salesperson', 'salesManager', 'businessGroup',
                 'salesTargets' => fn ($q) => $q->where('status', 'active')->with('achievement'),
             ])
+            ->when($selectedPartyId, function ($q) use ($selectedPartyId) {
+                $q->where('id', $selectedPartyId);
+            })
+            ->when(! $selectedPartyId && $request->filled('search'), function ($q) use ($request) {
+                $this->applySearch($q, $request->input('search'), ['name', 'code', 'phone', 'gstin', 'email']);
+            })
             ->when($request->filled('party_type'), function ($q) use ($request) {
                 $type = $request->party_type;
                 if ($type === Customer::PARTY_TYPE_SUNDRY_DEBTORS) {
@@ -253,24 +350,86 @@ class CustomerController extends Controller
                 }
             })
             ->when($request->filled('target_status'), function ($q) use ($request) {
-                if ($request->target_status === 'assigned') {
-                    $q->whereHas('salesTargets', fn ($tq) => $tq->where('status', 'active'));
-                } elseif ($request->target_status === 'unassigned') {
-                    $q->whereDoesntHave('salesTargets', fn ($tq) => $tq->where('status', 'active'));
+                $status = strtolower(str_replace(' ', '_', (string) $request->target_status));
+                if ($status === 'assigned') {
+                    $q->where(function ($sub) {
+                        $sub->whereNotNull('target_amount')->where('target_amount', '>', 0)
+                            ->orWhereHas('salesTargets');
+                    });
+                } elseif ($status === 'unassigned') {
+                    $q->where(function ($sub) {
+                        $sub->whereNull('target_amount')->orWhere('target_amount', '<=', 0);
+                    })->whereDoesntHave('salesTargets');
+                } elseif ($status === 'achieved') {
+                    $q->whereHas('salesTargets', function ($tq) {
+                        $tq->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', true)->orWhereRaw('achieved_amount >= sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'in_progress') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('status', 'active')
+                            ->where('starts_on', '<=', $today)
+                            ->where('ends_on', '>=', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false)->whereRaw('achieved_amount < sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'period_expired' || $status === 'expired') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('ends_on', '<', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false)->whereRaw('achieved_amount < sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'not_started') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('starts_on', '>', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false));
+                    });
                 }
+            })
+            ->when($request->filled('target_start_date'), function ($q) use ($request) {
+                $q->where(function ($sub) use ($request) {
+                    $sub->where('target_start_date', '>=', $request->target_start_date)
+                        ->orWhereHas('salesTargets', fn ($tq) => $tq->where('starts_on', '>=', $request->target_start_date));
+                });
+            })
+            ->when($request->filled('target_end_date'), function ($q) use ($request) {
+                $q->where(function ($sub) use ($request) {
+                    $sub->where('target_end_date', '<=', $request->target_end_date)
+                        ->orWhereHas('salesTargets', fn ($tq) => $tq->where('ends_on', '<=', $request->target_end_date));
+                });
             });
 
-        $this->applySearch($query, $request->input('search'), ['name', 'code', 'phone', 'gstin', 'email']);
+        $exportHeaders = [
+            'Party Name', 'Code', 'Party Type', 'Phone', 'GSTIN', 'Area',
+            'Target Amount (₹)', 'Target Period', 'Achieved Sales (₹)', 'Shortfall (₹)', 'Achievement %', 'Remaining Days', 'Target Status', 'Status'
+        ];
+        if ($export = $this->exportIfRequested($request, $query, 'Parties', 'Parties', $exportHeaders, function ($item) {
+            $target = $item->activeSalesTarget() ?? $item->latestSalesTarget();
+            $targetAmount = (float) ($target?->target_amount ?? ($item->target_amount ?? 0));
+            $achieved = (float) ($target?->achievement?->achieved_amount ?? 0);
+            $shortfall = $targetAmount > 0 ? max(0, $targetAmount - $achieved) : 0;
+            $percent = $targetAmount > 0 ? round(($achieved / $targetAmount) * 100, 1) : 0;
+            $period = $target ? ($target->starts_on?->format('d-m-Y') . ' to ' . $target->ends_on?->format('d-m-Y')) : '—';
+            $status = $target ? $target->progress_status : ($targetAmount > 0 ? 'Assigned' : 'Unassigned');
+            $remDays = $target ? $target->remaining_days_label : '—';
 
-        if ($export = $this->exportIfRequested($request, $query, 'Parties', 'Parties', ['Name', 'Code', 'Party Type', 'Phone', 'GSTIN', 'Area', 'Status'], fn ($item) => [
-            $item->name,
-            $item->code,
-            $item->party_type_label,
-            $item->phone ?: '',
-            $item->gstin ?: '',
-            $item->area?->name ?? '',
-            $item->is_active ? 'Active' : 'Inactive',
-        ])) {
+            return [
+                $item->name,
+                $item->code,
+                $item->party_type_label,
+                $item->phone ?: '',
+                $item->gstin ?: '',
+                $item->area?->name ?? '',
+                $targetAmount > 0 ? number_format($targetAmount, 2) : '—',
+                $period,
+                $targetAmount > 0 ? number_format($achieved, 2) : '—',
+                $targetAmount > 0 ? number_format($shortfall, 2) : '—',
+                $targetAmount > 0 ? "{$percent}%" : '—',
+                $remDays,
+                $status,
+                $item->is_active ? 'Active' : 'Inactive',
+            ];
+        })) {
             return $export;
         }
 
@@ -287,14 +446,97 @@ class CustomerController extends Controller
         return view('masters.customers.index', [
             'items' => $items,
             'search' => $request->string('search'),
+            'selectedPartyId' => $selectedPartyId,
+            'selectedParty' => $selectedParty,
             'partyType' => $request->string('party_type'),
             'status' => $request->string('status'),
             'targetStatus' => $request->string('target_status'),
+            'targetStartDate' => $request->string('target_start_date'),
+            'targetEndDate' => $request->string('target_end_date'),
             'areas' => Area::where('is_active', true)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
         ]);
+    }
+
+    /**
+     * Autocomplete search for Parties / Customers listing.
+     * Matches on name, code, phone, gstin, email, trade_name.
+     * Respects currently selected filters (party_type, area_id, customer_type_id, status).
+     */
+    public function autocomplete(Request $request): JsonResponse
+    {
+        $term = trim((string) $request->input('q', $request->input('search', $request->input('query', ''))));
+
+        $query = Customer::query()
+            ->with(['customerType', 'area'])
+            ->when($request->filled('party_type'), function ($q) use ($request) {
+                $type = $request->party_type;
+                if ($type === Customer::PARTY_TYPE_SUNDRY_DEBTORS) {
+                    $q->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_DEBTORS, 'customer', 'dealer']);
+                } elseif ($type === Customer::PARTY_TYPE_SUNDRY_CREDITORS) {
+                    $q->whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier']);
+                } else {
+                    $q->where('party_type', $type);
+                }
+            })
+            ->when($request->filled('area_id'), fn ($q) => $q->where('area_id', $request->area_id))
+            ->when($request->filled('customer_type_id'), fn ($q) => $q->where('customer_type_id', $request->customer_type_id))
+            ->when($request->filled('status'), function ($q) use ($request) {
+                if ($request->status === 'active') {
+                    $q->where('is_active', true);
+                } elseif ($request->status === 'inactive') {
+                    $q->where('is_active', false);
+                }
+            });
+
+        // Search party name, trade name, code, phone, gstin, email, and area name/code
+        if ($term !== '') {
+            $query->where(function ($sub) use ($term) {
+                $sub->where('name', 'like', "%{$term}%")
+                    ->orWhere('trade_name', 'like', "%{$term}%")
+                    ->orWhere('code', 'like', "%{$term}%")
+                    ->orWhere('phone', 'like', "%{$term}%")
+                    ->orWhere('gstin', 'like', "%{$term}%")
+                    ->orWhere('email', 'like', "%{$term}%")
+                    ->orWhereHas('area', function ($aq) use ($term) {
+                        $aq->where('name', 'like', "%{$term}%")
+                           ->orWhere('code', 'like', "%{$term}%");
+                    });
+            });
+        }
+
+        $limit = min(25, max(1, (int) $request->input('limit', 10)));
+
+        $parties = $query
+            ->orderBy('name', 'asc')
+            ->limit($limit)
+            ->get();
+
+        $results = $parties->map(function (Customer $party) {
+            return [
+                'id' => $party->id,
+                'name' => $party->name,
+                'code' => $party->code,
+                'party_type' => $party->party_type,
+                'party_type_label' => $party->party_type_label,
+                'party_type_key' => $party->party_type_key,
+                'phone' => $party->phone,
+                'email' => $party->email,
+                'gstin' => $party->gstin,
+                'pan' => $party->pan,
+                'city' => $party->city,
+                'state' => $party->state,
+                'area_name' => $party->area?->name,
+                'category_name' => $party->customerType?->name,
+                'is_active' => (bool) $party->is_active,
+                'view_url' => route('masters.customers.show', $party),
+                'edit_url' => route('masters.customers.edit', $party),
+            ];
+        });
+
+        return response()->json($results);
     }
 
     public function create(Request $request): View|RedirectResponse
@@ -925,10 +1167,16 @@ class CustomerController extends Controller
             'credit_status' => 'nullable|in:open,hold,blocked,restricted,frozen,active',
             'credit_period_basis' => 'nullable|in:cumulative,invoice_date,inward_date,receipt_date,monthly,quarterly,yearly',
             'interest_rate' => 'nullable|numeric|min:0',
+            'target_amount' => 'nullable|numeric|min:0',
+            'target_start_date' => 'nullable|date',
+            'target_end_date' => 'nullable|date|after_or_equal:target_start_date',
             'is_active' => 'boolean',
             'contacts' => 'nullable|array',
             'contacts.*.name' => 'nullable|string|max:255',
             'contacts.*.role' => 'nullable|string|max:100',
+            'contacts.*.designation' => 'nullable|string|max:100',
+            'contacts.*.custom_role' => 'nullable|string|max:100',
+            'contacts.*.other_designation' => 'nullable|string|max:100',
             'contacts.*.phone' => 'nullable|string|max:20',
             'contacts.*.alternate_phone' => 'nullable|string|max:20',
             'contacts.*.email' => 'nullable|email|max:255',
@@ -1104,17 +1352,32 @@ class CustomerController extends Controller
         // 1. Contacts
         $contacts = collect($request->input('contacts', []))
             ->filter(fn ($row) => filled($row['name'] ?? null))
-            ->map(fn ($row) => [
-                'level' => in_array($row['level'] ?? null, ['party', 'branch', 'site', 'warehouse', 'transporter', 'driver', 'site_incharge'], true) ? $row['level'] : 'party',
-                'name' => $row['name'] ?? null,
-                'role' => $row['role'] ?? null,
-                'phone' => $row['phone'] ?? null,
-                'alternate_phone' => $row['alternate_phone'] ?? null,
-                'email' => $row['email'] ?? null,
-                'location' => $row['location'] ?? null,
-                'is_primary' => (bool) ($row['is_primary'] ?? false),
-                'is_active' => true,
-            ])
+            ->map(function ($row) {
+                $rawRole = trim((string) ($row['role'] ?? $row['designation'] ?? ''));
+                $customRole = trim((string) ($row['custom_role'] ?? $row['other_designation'] ?? $row['other_role'] ?? ''));
+
+                if ($rawRole === 'Other') {
+                    $finalRole = $customRole !== '' ? $customRole : 'Other';
+                } elseif ($rawRole !== '') {
+                    $finalRole = $rawRole;
+                } elseif ($customRole !== '') {
+                    $finalRole = $customRole;
+                } else {
+                    $finalRole = null;
+                }
+
+                return [
+                    'level' => in_array($row['level'] ?? null, ['party', 'branch', 'site', 'warehouse', 'transporter', 'driver', 'site_incharge'], true) ? $row['level'] : 'party',
+                    'name' => $row['name'] ?? null,
+                    'role' => $finalRole,
+                    'phone' => $row['phone'] ?? null,
+                    'alternate_phone' => $row['alternate_phone'] ?? null,
+                    'email' => $row['email'] ?? null,
+                    'location' => $row['location'] ?? null,
+                    'is_primary' => (bool) ($row['is_primary'] ?? false),
+                    'is_active' => true,
+                ];
+            })
             ->values();
 
         $customer->contacts()->delete();
@@ -1209,6 +1472,7 @@ class CustomerController extends Controller
         }
 
         $this->syncGemAuthorizations($request, $customer);
+        $this->syncSalesTarget($request, $customer);
     }
 
     protected function syncAddresses(Request $request, Customer $customer): void
@@ -1401,6 +1665,228 @@ class CustomerController extends Controller
         }
     }
 
+    protected function syncSalesTarget(Request $request, Customer $customer): void
+    {
+        $targetAmount = $request->input('target_amount');
+        $hasTargetAmount = filled($targetAmount) && (float) $targetAmount > 0;
+
+        $startDate = $request->input('target_start_date');
+        $endDate = $request->input('target_end_date');
+
+        if (! $hasTargetAmount) {
+            if ($request->has('target_amount') && (float) $targetAmount == 0) {
+                $customer->updateQuietly([
+                    'target_amount' => null,
+                    'target_start_date' => null,
+                    'target_end_date' => null,
+                ]);
+            }
+            return;
+        }
+
+        $startDate = $startDate ?: now()->startOfMonth()->toDateString();
+        $endDate = $endDate ?: now()->endOfMonth()->toDateString();
+        $numericAmount = round((float) $targetAmount, 2);
+
+        $customer->updateQuietly([
+            'target_amount' => $numericAmount,
+            'target_start_date' => $startDate,
+            'target_end_date' => $endDate,
+        ]);
+
+        // Find existing target for this customer covering this exact period
+        $target = $customer->salesTargets()
+            ->where('starts_on', $startDate)
+            ->where('ends_on', $endDate)
+            ->first();
+
+        $activeTarget = $customer->activeSalesTarget() ?? $customer->latestSalesTarget();
+
+        if ($target) {
+            $oldValues = $target->toArray();
+            if ((float) $target->target_amount !== $numericAmount || $target->status !== 'active') {
+                $target->update([
+                    'target_amount' => $numericAmount,
+                    'status' => 'active',
+                    'revision_number' => (int) $target->revision_number + 1,
+                    'revision_reason' => 'Target amount revised from Party Master',
+                ]);
+
+                \App\Domains\Target\Models\SalesTargetAudit::create([
+                    'sales_target_id' => $target->id,
+                    'user_id' => auth()->id(),
+                    'action' => 'revised',
+                    'reason' => 'Target amount revised from Party Master',
+                    'old_values' => $oldValues,
+                    'new_values' => $target->fresh()->toArray(),
+                ]);
+            }
+        } elseif ($activeTarget) {
+            // New target period / revised target: preserve historical record!
+            $target = \App\Domains\Target\Models\SalesTarget::create([
+                'name' => "{$customer->name} Target",
+                'target_type' => 'value',
+                'owner_type' => 'party',
+                'customer_id' => $customer->id,
+                'company_id' => $customer->company_id,
+                'branch_id' => $customer->branch_id,
+                'financial_year_id' => \App\Domains\Organization\Models\FinancialYear::current($customer->company_id)?->id,
+                'period_type' => 'custom',
+                'starts_on' => $startDate,
+                'ends_on' => $endDate,
+                'target_amount' => $numericAmount,
+                'status' => 'active',
+                'revision_number' => (int) $activeTarget->revision_number + 1,
+                'revised_from_id' => $activeTarget->id,
+                'revision_reason' => 'Target period revised from Party Master',
+                'created_by' => auth()->id(),
+            ]);
+
+            \App\Domains\Target\Models\SalesTargetAudit::create([
+                'sales_target_id' => $target->id,
+                'user_id' => auth()->id(),
+                'action' => 'revised',
+                'reason' => 'New target period created from Party Master',
+                'old_values' => ['previous_target_id' => $activeTarget->id, 'previous_amount' => $activeTarget->target_amount],
+                'new_values' => $target->toArray(),
+            ]);
+        } else {
+            // Initial target creation
+            $target = \App\Domains\Target\Models\SalesTarget::create([
+                'name' => "{$customer->name} Target",
+                'target_type' => 'value',
+                'owner_type' => 'party',
+                'customer_id' => $customer->id,
+                'company_id' => $customer->company_id,
+                'branch_id' => $customer->branch_id,
+                'financial_year_id' => \App\Domains\Organization\Models\FinancialYear::current($customer->company_id)?->id,
+                'period_type' => 'custom',
+                'starts_on' => $startDate,
+                'ends_on' => $endDate,
+                'target_amount' => $numericAmount,
+                'status' => 'active',
+                'created_by' => auth()->id(),
+            ]);
+
+            \App\Domains\Target\Models\SalesTargetAudit::create([
+                'sales_target_id' => $target->id,
+                'user_id' => auth()->id(),
+                'action' => 'created',
+                'reason' => 'Initial target assigned from Party Master',
+                'new_values' => $target->toArray(),
+            ]);
+        }
+
+        // Calculate achievement immediately from eligible posted invoices
+        app(\App\Domains\Target\Services\SalesTargetCalculationService::class)->calculateTarget($target);
+    }
+
+    public function targetReport(Request $request): View|Response
+    {
+        $query = Customer::query()
+            ->with([
+                'customerType', 'area', 'branch',
+                'salesTargets' => fn ($q) => $q->latest('starts_on')->with('achievement'),
+            ])
+            ->where(function ($q) {
+                $q->whereNotNull('target_amount')->where('target_amount', '>', 0)
+                    ->orWhereHas('salesTargets');
+            })
+            ->when($request->filled('search'), function ($q) use ($request) {
+                $term = trim($request->search);
+                $q->where(fn ($sq) => $sq->where('name', 'like', "%{$term}%")->orWhere('code', 'like', "%{$term}%"));
+            })
+            ->when($request->filled('target_status'), function ($q) use ($request) {
+                $status = strtolower(str_replace(' ', '_', (string) $request->target_status));
+                if ($status === 'achieved') {
+                    $q->whereHas('salesTargets', function ($tq) {
+                        $tq->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', true)->orWhereRaw('achieved_amount >= sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'in_progress') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('status', 'active')
+                            ->where('starts_on', '<=', $today)
+                            ->where('ends_on', '>=', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false)->whereRaw('achieved_amount < sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'period_expired' || $status === 'expired') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('ends_on', '<', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false)->whereRaw('achieved_amount < sales_targets.target_amount'));
+                    });
+                } elseif ($status === 'not_started') {
+                    $today = now()->toDateString();
+                    $q->whereHas('salesTargets', function ($tq) use ($today) {
+                        $tq->where('starts_on', '>', $today)
+                            ->whereHas('achievement', fn ($aq) => $aq->where('is_achieved', false));
+                    });
+                }
+            })
+            ->when($request->filled('start_date'), function ($q) use ($request) {
+                $q->whereHas('salesTargets', fn ($tq) => $tq->where('starts_on', '>=', $request->start_date));
+            })
+            ->when($request->filled('end_date'), function ($q) use ($request) {
+                $q->whereHas('salesTargets', fn ($tq) => $tq->where('ends_on', '<=', $request->end_date));
+            });
+
+        $exportHeaders = [
+            'Party Name',
+            'Code',
+            'Target Amount (₹)',
+            'Achieved Sales (₹)',
+            'Shortfall (₹)',
+            'Achievement %',
+            'Target Period',
+            'Target Status',
+        ];
+
+        if ($export = $this->exportIfRequested($request, $query, 'Party_Wise_Target_Report', 'Party-Wise Target Report', $exportHeaders, function ($item) {
+            $target = $item->activeSalesTarget() ?? $item->latestSalesTarget();
+            $targetAmount = (float) ($target?->target_amount ?? ($item->target_amount ?? 0));
+            $achieved = (float) ($target?->achievement?->achieved_amount ?? 0);
+            $shortfall = $targetAmount > 0 ? max(0, $targetAmount - $achieved) : 0;
+            $percent = $targetAmount > 0 ? round(($achieved / $targetAmount) * 100, 1) : 0;
+            $period = $target ? ($target->starts_on?->format('d-m-Y') . ' to ' . $target->ends_on?->format('d-m-Y')) : '—';
+            $status = $target ? $target->progress_status : 'Not Started';
+
+            return [
+                $item->name,
+                $item->code,
+                number_format($targetAmount, 2),
+                number_format($achieved, 2),
+                number_format($shortfall, 2),
+                "{$percent}%",
+                $period,
+                $status,
+            ];
+        })) {
+            return $export;
+        }
+
+        $items = $query->paginate(20)->withQueryString();
+
+        // Calculate summary statistics
+        $allTargets = \App\Domains\Target\Models\SalesTarget::where('owner_type', 'party')->with('achievement')->get();
+        $totalTargetAssigned = (float) $allTargets->sum('target_amount');
+        $totalAchieved = (float) $allTargets->sum(fn ($t) => (float) ($t->achievement?->achieved_amount ?? 0));
+        $totalShortfall = max(0, $totalTargetAssigned - $totalAchieved);
+        $overallPercent = $totalTargetAssigned > 0 ? round(($totalAchieved / $totalTargetAssigned) * 100, 1) : 0;
+
+        return view('masters.customers.target-report', [
+            'items' => $items,
+            'search' => $request->string('search'),
+            'targetStatus' => $request->string('target_status'),
+            'startDate' => $request->string('start_date'),
+            'endDate' => $request->string('end_date'),
+            'totalTargetAssigned' => $totalTargetAssigned,
+            'totalAchieved' => $totalAchieved,
+            'totalShortfall' => $totalShortfall,
+            'overallPercent' => $overallPercent,
+        ]);
+    }
+
     protected function formData(?Customer $customer = null): array
     {
         $allUsers = User::orderBy('name')->get();
@@ -1464,6 +1950,7 @@ class CustomerController extends Controller
             'states' => IndianStates::allAlphabetical(),
             'stateOptions' => IndianStates::options(),
             'stateCities' => IndianCities::all(),
+            'contactDesignations' => \App\Support\ContactDesignations::all(),
         ];
     }
 }

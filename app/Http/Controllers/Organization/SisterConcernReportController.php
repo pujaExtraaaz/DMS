@@ -80,7 +80,13 @@ class SisterConcernReportController extends Controller
 
         $salesSummary = $this->reportService->computeSalesSummary($companyIds, $fromDate, $toDate);
         $purchasesSummary = $this->reportService->computePurchasesSummary($companyIds, $fromDate, $toDate);
+        $expensesSummary = $this->reportService->computeExpensesSummary($companyIds, $fromDate, $toDate);
         $interCompany = $this->reportService->detectInterCompanyTransactions($companyIds, $fromDate, $toDate);
+
+        // Comparison Matrix & Profitability
+        $comparison = $this->reportService->getComparisonMatrix($targetCompanies, $fromDate, $toDate);
+        $comparisonCompanies = $comparison['companies'];
+        $combined = $comparison['combined'];
 
         // Net Group Position
         $netContribution = $salesSummary['net_sales'] - $purchasesSummary['total_purchases'];
@@ -156,6 +162,10 @@ class SisterConcernReportController extends Controller
             'reportType' => $reportType,
             'salesSummary' => $salesSummary,
             'purchasesSummary' => $purchasesSummary,
+            'expensesSummary' => $expensesSummary,
+            'comparison' => $comparison,
+            'combined' => $combined,
+            'comparisonCompanies' => $comparisonCompanies,
             'interCompany' => $interCompany,
             'netContribution' => $netContribution,
             'salesByCompany' => $salesByCompany,
@@ -198,12 +208,79 @@ class SisterConcernReportController extends Controller
 
         $fromDate = $request->input('from_date', now()->startOfYear()->toDateString());
         $toDate = $request->input('to_date', now()->endOfYear()->toDateString());
-        $reportType = $request->input('report_type', 'sales');
+        $reportType = $request->input('report_type', 'all');
         $search = $request->string('search');
         $status = $request->input('status');
-        $format = $request->input('format', 'csv');
+        $format = strtolower((string) $request->input('format', 'csv'));
 
-        $ext = $format === 'excel' ? 'csv' : 'csv'; // Compatible CSV opened directly in Excel
+        $groupName = $selectedGroup?->name ? strtolower(str_replace(' ', '-', $selectedGroup->name)) : 'group';
+        $proprietorName = $selectedGroup?->proprietor_title ?: 'Mr. Vivek Gupta';
+        $meta = [
+            'Proprietor' => $proprietorName,
+            'Business Group' => $selectedGroup?->name ?: 'All Groups',
+            'Period' => "{$fromDate} to {$toDate}",
+            'Scope' => $selectedCompanyId ? ($targetCompanies->first()?->name ?? 'Single Company') : 'All Sister Concerns (Consolidated)',
+        ];
+
+        // 1. Comparison / Consolidated Financial Performance Export
+        if ($reportType === 'all' || $reportType === 'comparison') {
+            $headers = [
+                'Particulars / Business',
+                'Business Type',
+                'Main Work',
+                'Gross Sales (₹)',
+                'Net Sales (₹)',
+                'Purchases (₹)',
+                'Expenses (₹)',
+                'Gross Profit (₹)',
+                'Net Profit (₹)',
+                'Receivables (₹)',
+                'Payables (₹)',
+            ];
+
+            $matrix = $this->reportService->getComparisonMatrix($targetCompanies, $fromDate, $toDate);
+            $rows = [];
+
+            foreach ($matrix['companies'] as $coRow) {
+                $rows[] = [
+                    $coRow['name'] . ' (' . $coRow['code'] . ')',
+                    $coRow['business_type'],
+                    $coRow['main_work'],
+                    number_format($coRow['sales'], 2, '.', ''),
+                    number_format($coRow['net_sales'], 2, '.', ''),
+                    number_format($coRow['purchases'], 2, '.', ''),
+                    number_format($coRow['expenses'], 2, '.', ''),
+                    number_format($coRow['gross_profit'], 2, '.', ''),
+                    number_format($coRow['net_profit'], 2, '.', ''),
+                    number_format($coRow['receivables'], 2, '.', ''),
+                    number_format($coRow['payables'], 2, '.', ''),
+                ];
+            }
+
+            // Append Combined Row
+            $comb = $matrix['combined'];
+            $rows[] = [
+                'COMBINED TOTAL (Adjusted for Inter-Company)',
+                'Group Total',
+                'Consolidated Performance',
+                number_format($comb['sales'], 2, '.', ''),
+                number_format($comb['net_sales'], 2, '.', ''),
+                number_format($comb['purchases'], 2, '.', ''),
+                number_format($comb['expenses'], 2, '.', ''),
+                number_format($comb['gross_profit'], 2, '.', ''),
+                number_format($comb['net_profit'], 2, '.', ''),
+                number_format($comb['receivables'], 2, '.', ''),
+                number_format($comb['payables'], 2, '.', ''),
+            ];
+
+            $basename = 'sister-concerns-consolidated-' . $groupName . '-' . $fromDate . '-to-' . $toDate;
+
+            if ($format === 'pdf' || $format === 'excel' || $format === 'xlsx') {
+                return \App\Support\DocumentExporter::exportTabular($basename, 'Sister Concerns Consolidated Performance', $headers, $rows, $format);
+            }
+
+            return ReportExporter::csv($basename . '.csv', $headers, $rows);
+        }
 
         if ($reportType === 'purchases') {
             $headers = [
@@ -249,11 +326,18 @@ class SisterConcernReportController extends Controller
                     number_format($outstanding, 2, '.', ''),
                     strtoupper($pi->status),
                 ];
-            });
+            })->all();
 
-            $filename = 'consolidated-purchases-' . ($selectedGroup?->name ? strtolower(str_replace(' ', '-', $selectedGroup->name)) . '-' : '') . $fromDate . '-to-' . $toDate . '.' . $ext;
+            $basename = 'consolidated-purchases-' . $groupName . '-' . $fromDate . '-to-' . $toDate;
 
-            return ReportExporter::csv($filename, $headers, $rows);
+            if ($format === 'pdf') {
+                return ReportExporter::pdf($basename . '.pdf', 'Consolidated Purchases Report', $headers, $rows, $meta);
+            }
+            if ($format === 'excel' || $format === 'xlsx') {
+                return \App\Support\DocumentExporter::exportTabular('xlsx', $basename, 'Consolidated Purchases Report', $headers, $rows);
+            }
+
+            return ReportExporter::csv($basename . '.csv', $headers, $rows);
         }
 
         // Default to Consolidated Sales
@@ -297,11 +381,18 @@ class SisterConcernReportController extends Controller
                 number_format($outstanding, 2, '.', ''),
                 strtoupper($inv->status),
             ];
-        });
+        })->all();
 
-        $filename = 'consolidated-sales-' . ($selectedGroup?->name ? strtolower(str_replace(' ', '-', $selectedGroup->name)) . '-' : '') . $fromDate . '-to-' . $toDate . '.' . $ext;
+        $basename = 'consolidated-sales-' . $groupName . '-' . $fromDate . '-to-' . $toDate;
 
-        return ReportExporter::csv($filename, $headers, $rows);
+        if ($format === 'pdf') {
+            return ReportExporter::pdf($basename . '.pdf', 'Consolidated Sales Report', $headers, $rows, $meta);
+        }
+        if ($format === 'excel' || $format === 'xlsx') {
+            return \App\Support\DocumentExporter::exportTabular('xlsx', $basename, 'Consolidated Sales Report', $headers, $rows);
+        }
+
+        return ReportExporter::csv($basename . '.csv', $headers, $rows);
     }
 }
 

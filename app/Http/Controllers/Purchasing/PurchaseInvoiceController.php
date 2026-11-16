@@ -868,6 +868,8 @@ class PurchaseInvoiceController extends Controller
     {
         $invoice->load([
             'items.product',
+            'items.uom',
+            'items.serials',
             'supplier',
             'warehouse',
             'purchaseOrder',
@@ -908,23 +910,24 @@ class PurchaseInvoiceController extends Controller
      */
     protected function assertTrackedSerials(array $items): void
     {
-        $products = Product::with('productType:id,track_serial')->whereIn('id', collect($items)->pluck('product_id')->filter())->get()->keyBy('id');
+        $products = Product::whereIn('id', collect($items)->pluck('product_id')->filter())->get()->keyBy('id');
         $errors = [];
 
         foreach ($items as $index => $item) {
             $product = $products->get($item['product_id'] ?? null);
-            if (! $product?->productType?->track_serial && ! $product?->isSerialTracked()) {
+            if (! $product?->isSerialTracked()) {
                 continue;
             }
 
             $needed = min(30, max(1, (int) round((float) ($item['quantity'] ?? 1))));
-            $entered = collect($item['serial_numbers'] ?? [])
+            $serials = collect($item['serial_numbers'] ?? [])
                 ->map(fn ($serial) => trim((string) $serial))
-                ->filter()
-                ->count();
+                ->filter();
 
-            if ($entered < $needed) {
+            if ($serials->count() < $needed) {
                 $errors["items.{$index}.serial_numbers"] = ($product->name ?: 'This product').' needs '.$needed.' serial number'.($needed === 1 ? '' : 's').'.';
+            } elseif ($serials->unique()->count() < $serials->count()) {
+                $errors["items.{$index}.serial_numbers"] = 'Duplicate serial numbers entered for '.($product->name ?: 'this product').'.';
             }
         }
 
@@ -935,15 +938,8 @@ class PurchaseInvoiceController extends Controller
 
     protected function invoiceProducts()
     {
-        return Product::with('productType:id,track_serial')
-            ->where('is_active', true)
+        return Product::where('is_active', true)
             ->orderBy('name')
-            ->get()
-            ->each(function (Product $product) {
-                if ($product->productType?->track_serial && ! $product->isSerialTracked()) {
-                    $current = (string) ($product->tracking_type ?: 'none');
-                    $product->tracking_type = $current === 'none' || $current === '' ? 'serial' : $current.',serial';
-                }
-            });
+            ->get();
     }
 }

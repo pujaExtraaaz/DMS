@@ -11,6 +11,9 @@
         'account_type' => 'current',
         'ifsc_code' => '',
         'is_primary' => true,
+        '_ifsc_status' => '',
+        '_ifsc_message' => '',
+        '_ifsc_loading' => false,
     ];
     $initialBankAccounts = old('bank_accounts', ($item->exists && $item->relationLoaded('bankAccounts') && $item->bankAccounts->isNotEmpty()) 
         ? $item->bankAccounts->map(fn ($b) => [
@@ -22,6 +25,9 @@
             'account_type' => $b->account_type ?? 'current',
             'ifsc_code' => $b->ifsc_code ?? '',
             'is_primary' => (bool) ($b->is_primary),
+            '_ifsc_status' => '',
+            '_ifsc_message' => '',
+            '_ifsc_loading' => false,
         ])->toArray() 
         : [$defaultBankAccount]);
 
@@ -62,16 +68,47 @@
 
     $initialBusinessGroupId = old('business_group_id', $item->business_group_id ?? request('selected_group_id', request('business_group_id')));
 
-    $initialContacts = old('contacts', ($item->exists && $item->relationLoaded('contacts'))
-        ? $item->contacts->map(fn ($contact) => [
-            'name' => $contact->name ?? '',
-            'role' => $contact->role ?? '',
-            'phone' => $contact->phone ?? '',
-            'alternate_phone' => $contact->alternate_phone ?? '',
-            'email' => $contact->email ?? '',
-            'is_primary' => (bool) $contact->is_primary,
-        ])->values()->all()
-        : []);
+    $designationOptions = $contactDesignations ?? \App\Support\ContactDesignations::all();
+
+    $oldContacts = old('contacts');
+    if (is_array($oldContacts)) {
+        $initialContacts = collect($oldContacts)->map(function ($row) {
+            $rawRole = (string) ($row['role'] ?? $row['designation'] ?? '');
+            $customRole = (string) ($row['custom_role'] ?? $row['other_designation'] ?? $row['other_role'] ?? '');
+            $resolved = \App\Support\ContactDesignations::resolve($rawRole);
+            if ($rawRole === 'Other' && filled($customRole)) {
+                $resolved['other_designation'] = trim($customRole);
+            }
+
+            return [
+                'name' => $row['name'] ?? '',
+                'role' => $rawRole === 'Other' && filled($customRole) ? trim($customRole) : ($row['role'] ?? $rawRole),
+                'designation' => $row['designation'] ?? $resolved['designation'],
+                'other_designation' => $row['other_designation'] ?? $resolved['other_designation'],
+                'phone' => $row['phone'] ?? '',
+                'alternate_phone' => $row['alternate_phone'] ?? '',
+                'email' => $row['email'] ?? '',
+                'is_primary' => (bool) ($row['is_primary'] ?? false),
+            ];
+        })->values()->all();
+    } elseif ($item->exists && $item->relationLoaded('contacts')) {
+        $initialContacts = $item->contacts->map(function ($contact) {
+            $resolved = \App\Support\ContactDesignations::resolve($contact->role ?? '');
+
+            return [
+                'name' => $contact->name ?? '',
+                'role' => $contact->role ?? '',
+                'designation' => $resolved['designation'],
+                'other_designation' => $resolved['other_designation'],
+                'phone' => $contact->phone ?? '',
+                'alternate_phone' => $contact->alternate_phone ?? '',
+                'email' => $contact->email ?? '',
+                'is_primary' => (bool) $contact->is_primary,
+            ];
+        })->values()->all();
+    } else {
+        $initialContacts = [];
+    }
 
     $savedGemAuthorizations = ($item->exists ? $item->gemAuthorizations()->with('documents')->orderBy('id')->get() : collect());
     $oldGemAuthorizations = old('gem_authorizations');
@@ -1042,6 +1079,176 @@
             </div>
         </div>
 
+        <!-- Target Management & Status Tracking -->
+        @php
+            $activeTarget = $item->exists ? ($item->activeSalesTarget() ?? $item->latestSalesTarget()) : null;
+            $initialTargetAmount = old('target_amount', $activeTarget?->target_amount ?? ($item->target_amount ?? ''));
+            $initialStartDate = old('target_start_date', $activeTarget?->starts_on?->format('Y-m-d') ?? ($item->target_start_date?->format('Y-m-d') ?? now()->startOfMonth()->format('Y-m-d')));
+            $initialEndDate = old('target_end_date', $activeTarget?->ends_on?->format('Y-m-d') ?? ($item->target_end_date?->format('Y-m-d') ?? now()->endOfMonth()->format('Y-m-d')));
+            $initialAchieved = (float) ($activeTarget?->achievement?->achieved_amount ?? 0);
+            $initialStatus = $activeTarget ? $activeTarget->progress_status : 'Not Started';
+            $initialRemainingDays = $activeTarget ? $activeTarget->remaining_days : null;
+        @endphp
+
+        <div x-data="partyTargetTracker({
+            targetAmount: @js($initialTargetAmount ? (string) $initialTargetAmount : ''),
+            achievedAmount: @js($initialAchieved),
+            startDate: @js($initialStartDate),
+            endDate: @js($initialEndDate),
+            status: @js($initialStatus),
+            remainingDays: @js($initialRemainingDays),
+        })" class="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        Target Management &amp; Status Tracking
+                    </h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Assign sales targets to this party and track real-time achievement from posted sales invoices.</p>
+                </div>
+                <template x-if="numericTarget > 0">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
+                          :class="{
+                              'bg-emerald-100 text-emerald-800': displayStatus === 'Achieved',
+                              'bg-blue-100 text-blue-800': displayStatus === 'In Progress',
+                              'bg-rose-100 text-rose-800': displayStatus === 'Period Expired',
+                              'bg-slate-100 text-slate-700': displayStatus === 'Not Started'
+                          }">
+                        <span class="w-1.5 h-1.5 rounded-full"
+                              :class="{
+                                  'bg-emerald-500': displayStatus === 'Achieved',
+                                  'bg-blue-500': displayStatus === 'In Progress',
+                                  'bg-rose-500': displayStatus === 'Period Expired',
+                                  'bg-slate-400': displayStatus === 'Not Started'
+                              }"></span>
+                        <span x-text="displayStatus"></span>
+                    </span>
+                </template>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- 1. Target Amount -->
+                <div>
+                    <label for="target_amount" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Target Amount (₹)
+                    </label>
+                    <div class="relative rounded-lg shadow-2xs">
+                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <span class="text-slate-500 sm:text-sm">₹</span>
+                        </div>
+                        <input type="number"
+                               name="target_amount"
+                               id="target_amount"
+                               step="0.01"
+                               min="0"
+                               x-model="targetAmount"
+                               placeholder="e.g. 100000"
+                               class="block w-full rounded-lg border-gray-300 pl-7 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1">
+                        <span x-show="numericTarget > 0">Formatted: <span class="font-semibold text-slate-700" x-text="'₹ ' + formatInr(numericTarget)"></span></span>
+                        <span x-show="numericTarget <= 0">Enter target amount in Indian Rupees.</span>
+                    </p>
+                    @error('target_amount') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+
+                <!-- 2. Target Period Start Date -->
+                <div>
+                    <label for="target_start_date" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Target Period – Start Date
+                    </label>
+                    <input type="date"
+                           name="target_start_date"
+                           id="target_start_date"
+                           x-model="startDate"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                    <p class="text-[11px] text-slate-500 mt-1">Date from which assigned target becomes active.</p>
+                    @error('target_start_date') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+
+                <!-- 3. Target Period End Date -->
+                <div>
+                    <label for="target_end_date" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Target Period – End Date
+                    </label>
+                    <input type="date"
+                           name="target_end_date"
+                           id="target_end_date"
+                           x-model="endDate"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                    <p class="text-[11px] text-slate-500 mt-1">Last date on which target is expected to be achieved.</p>
+                    @error('target_end_date') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+            </div>
+
+            <!-- Read-only Computed Section: Achieved Target & Shortfall -->
+            <div x-show="numericTarget > 0" class="pt-3 border-t border-slate-100 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- 4. Achieved Target (Actual Sales) - Read Only -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-slate-700">Achieved Target (Actual Sales)</label>
+                            <span class="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">System Calculated</span>
+                        </div>
+                        <div class="relative rounded-lg shadow-2xs">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                <span class="text-slate-500 sm:text-sm">₹</span>
+                            </div>
+                            <input type="text"
+                                   readonly
+                                   :value="formatInr(achievedAmount)"
+                                   class="block w-full rounded-lg border-gray-200 pl-7 text-sm bg-slate-50 font-semibold text-slate-900 cursor-not-allowed">
+                        </div>
+                        <p class="text-[11px] text-slate-500 mt-1">Automatically computed from eligible posted invoices in this period.</p>
+                    </div>
+
+                    <!-- 5. Shortfall - Read Only -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-slate-700">Shortfall</label>
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                                  :class="shortfall === 0 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-700 bg-amber-50 border-amber-200'"
+                                  x-text="shortfall === 0 ? 'Target Achieved' : 'Pending Amount'"></span>
+                        </div>
+                        <div class="relative rounded-lg shadow-2xs">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                <span class="text-slate-500 sm:text-sm">₹</span>
+                            </div>
+                            <input type="text"
+                                   readonly
+                                   :value="formatInr(shortfall)"
+                                   class="block w-full rounded-lg border-gray-200 pl-7 text-sm bg-slate-50 font-semibold text-slate-900 cursor-not-allowed">
+                        </div>
+                        <p class="text-[11px] mt-1" :class="excess > 0 ? 'text-emerald-600 font-medium' : 'text-slate-500'">
+                            <span x-show="excess > 0">Target exceeded by ₹ <span x-text="formatInr(excess)"></span> (<span x-text="percent"></span>%)!</span>
+                            <span x-show="excess <= 0">Formula: Target Amount (₹ <span x-text="formatInr(numericTarget)"></span>) &minus; Achieved (₹ <span x-text="formatInr(achievedAmount)"></span>).</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Progress Bar & Details -->
+                <div class="rounded-lg bg-slate-50 p-3.5 border border-slate-200 space-y-2">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="font-medium text-slate-700">Achievement Progress</span>
+                        <span class="font-bold text-slate-900" x-text="percent + '% (' + formatInr(achievedAmount) + ' / ' + formatInr(numericTarget) + ')'"></span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                        <div class="h-2.5 rounded-full transition-all duration-500"
+                             :class="{
+                                 'bg-emerald-500': percent >= 100,
+                                 'bg-indigo-600': percent > 0 && percent < 100,
+                                 'bg-slate-300': percent <= 0
+                             }"
+                             :style="'width: ' + Math.min(100, percent) + '%'"></div>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                        <span>Period: <strong class="text-slate-700" x-text="startDate"></strong> to <strong class="text-slate-700" x-text="endDate"></strong></span>
+                        <span x-show="remainingDaysLabel" x-text="remainingDaysLabel" class="font-medium text-indigo-700"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="space-y-3">
             <div class="flex items-center justify-between gap-3">
                 <div>
@@ -1067,14 +1274,98 @@
                     </div>
                     <input type="hidden" :name="`contacts[${idx}][level]`" value="party">
                     <input type="hidden" :name="`contacts[${idx}][is_primary]`" :value="contact.is_primary ? 1 : 0">
-                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-start">
                         <div>
                             <label class="block text-xs font-medium text-slate-700 mb-1">Name *</label>
                             <input type="text" :name="`contacts[${idx}][name]`" x-model="contact.name" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         </div>
-                        <div>
+                        <div class="relative" x-data="dmsContactDesignation(contact, designationOptions)">
                             <label class="block text-xs font-medium text-slate-700 mb-1">Designation</label>
-                            <input type="text" :name="`contacts[${idx}][role]`" x-model="contact.role" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            
+                            {{-- Hidden inputs to pass data to backend --}}
+                            <input type="hidden" :name="`contacts[${idx}][role]`" :value="effectiveRole()">
+                            <input type="hidden" :name="`contacts[${idx}][designation]`" :value="contact.designation || ''">
+                            <input type="hidden" :name="`contacts[${idx}][custom_role]`" :value="contact.other_designation || ''">
+
+                            {{-- Searchable Combobox Trigger --}}
+                            <div class="relative" @click.outside="close()">
+                                <div class="relative flex items-center">
+                                    <input type="text"
+                                           x-model="search"
+                                           @focus="open()"
+                                           @input="open()"
+                                           @keydown="onSearchKeyDown($event)"
+                                           placeholder="Select Designation"
+                                           autocomplete="off"
+                                           class="block w-full rounded-lg border-gray-300 text-sm bg-white focus:border-indigo-500 focus:ring-indigo-500 pr-14 placeholder:text-slate-400">
+                                    
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-1.5 gap-0.5">
+                                        {{-- Clear button --}}
+                                        <button type="button"
+                                                x-show="contact.designation"
+                                                @click.stop="clear()"
+                                                title="Clear Designation"
+                                                class="p-1 text-slate-400 hover:text-rose-500 rounded transition"
+                                                x-cloak>
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                            </svg>
+                                        </button>
+                                        
+                                        {{-- Dropdown Toggle Chevron --}}
+                                        <button type="button"
+                                                @click.stop="toggle()"
+                                                tabindex="-1"
+                                                class="p-1 text-slate-400 hover:text-slate-600 rounded transition">
+                                            <svg class="w-3.5 h-3.5 transition-transform duration-200"
+                                                 :class="{ 'rotate-180': isOpen }"
+                                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {{-- Searchable Options Dropdown Menu --}}
+                                <div x-show="isOpen"
+                                     x-ref="optionsMenu"
+                                     x-transition:enter="transition ease-out duration-100"
+                                     x-transition:enter-start="opacity-0 scale-95"
+                                     x-transition:enter-end="opacity-100 scale-100"
+                                     x-transition:leave="transition ease-in duration-75"
+                                     x-transition:leave-start="opacity-100 scale-100"
+                                     x-transition:leave-end="opacity-0 scale-95"
+                                     class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 divide-y divide-slate-100 text-xs"
+                                     style="display: none;">
+                                    <template x-for="(opt, oIdx) in filteredOptions" :key="opt">
+                                        <div @click="select(opt)"
+                                             :data-index="oIdx"
+                                             :class="{
+                                                 'bg-indigo-50 text-indigo-900 font-semibold': contact.designation === opt,
+                                                 'bg-slate-100': highlightedIndex === oIdx && contact.designation !== opt
+                                             }"
+                                             class="px-3 py-2 hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer flex items-center justify-between transition-colors">
+                                            <span x-text="opt"></span>
+                                            <span x-show="contact.designation === opt" class="text-indigo-600 font-bold" x-cloak>✓</span>
+                                        </div>
+                                    </template>
+                                    <div x-show="filteredOptions.length === 0" class="px-3 py-2.5 text-center text-slate-400 italic">
+                                        No matching designations
+                                    </div>
+                                </div>
+                            </div>
+
+                            {{-- Custom Other Designation Input --}}
+                            <div x-show="contact.designation === 'Other'" class="mt-2" x-cloak>
+                                <label class="block text-[11px] font-medium text-amber-700 mb-0.5">Specify Designation *</label>
+                                <input type="text"
+                                       x-ref="customInput"
+                                       x-model="contact.other_designation"
+                                       @input="contact.role = contact.other_designation"
+                                       placeholder="Enter custom designation"
+                                       maxlength="100"
+                                       class="block w-full rounded-lg border-amber-300 bg-amber-50/30 text-xs focus:border-amber-500 focus:ring-amber-500 placeholder:text-slate-400">
+                            </div>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-slate-700 mb-1">Mobile 1</label>
@@ -1139,11 +1430,13 @@
                                            @blur="lookupIfsc(idx)"
                                            placeholder="e.g. HDFC0001234"
                                            class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-10">
-                                    <span x-show="acc._ifsc_loading" class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs" x-cloak>…</span>
+                                    <span x-show="acc._ifsc_loading" class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs" x-cloak>
+                                        <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                    </span>
                                 </div>
                                 <p x-show="acc._ifsc_message" x-cloak
                                    class="mt-1 text-[11px]"
-                                   :class="acc._ifsc_status === 'ok' ? 'text-emerald-600' : (acc._ifsc_status === 'error' ? 'text-rose-600' : 'text-slate-500')"
+                                   :class="acc._ifsc_status === 'ok' ? 'text-emerald-600 font-medium' : (acc._ifsc_status === 'error' ? 'text-rose-600 font-medium' : 'text-slate-500')"
                                    x-text="acc._ifsc_message"></p>
                             </div>
                             <div>
@@ -1423,6 +1716,74 @@
 
 @push('scripts')
 <script>
+function partyTargetTracker(config) {
+    return {
+        targetAmount: config.targetAmount || '',
+        achievedAmount: parseFloat(config.achievedAmount) || 0,
+        startDate: config.startDate || '',
+        endDate: config.endDate || '',
+        status: config.status || 'Not Started',
+        remainingDays: config.remainingDays,
+
+        get numericTarget() {
+            const val = parseFloat(this.targetAmount);
+            return isNaN(val) ? 0 : val;
+        },
+        get shortfall() {
+            if (this.numericTarget <= 0) return 0;
+            return Math.max(0, this.numericTarget - this.achievedAmount);
+        },
+        get excess() {
+            if (this.numericTarget <= 0) return 0;
+            return Math.max(0, this.achievedAmount - this.numericTarget);
+        },
+        get percent() {
+            if (this.numericTarget <= 0) return 0;
+            return Math.round((this.achievedAmount / this.numericTarget) * 100 * 10) / 10;
+        },
+        get displayStatus() {
+            if (this.numericTarget <= 0) return 'Not Started';
+            if (this.achievedAmount >= this.numericTarget) {
+                return 'Achieved';
+            }
+            const today = new Date().toISOString().slice(0, 10);
+            if (this.endDate && today > this.endDate) {
+                return 'Period Expired';
+            }
+            if (this.startDate && today < this.startDate) {
+                return 'Not Started';
+            }
+            return 'In Progress';
+        },
+        get remainingDaysLabel() {
+            const status = this.displayStatus;
+            if (status === 'Achieved') {
+                return 'Target Achieved!';
+            }
+            if (status === 'Period Expired') {
+                return 'Period Expired';
+            }
+            if (!this.endDate) return '';
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const targetEnd = new Date(this.endDate);
+            targetEnd.setHours(0,0,0,0);
+            const diffTime = targetEnd - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays >= 0) {
+                return diffDays + (diffDays === 1 ? ' day remaining' : ' days remaining');
+            }
+            return 'Period Expired';
+        },
+        formatInr(val) {
+            return Number(val || 0).toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+        }
+    };
+}
+
 function partyFormController() {
     return {
         // Business Group state
@@ -2078,6 +2439,7 @@ function partyFormController() {
         lastAutoGstin: '',
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
         contacts: {!! json_encode($initialContacts) !!},
+        designationOptions: {!! json_encode($designationOptions) !!},
         addresses: {!! json_encode($initialAddresses) !!},
         gemAuthorizations: {!! json_encode($initialGemAuthorizations) !!},
         brands: {!! json_encode(($brands ?? collect())->map(fn ($brand) => ['id' => (string) $brand->id, 'name' => $brand->name])->values()) !!},
@@ -2105,6 +2467,8 @@ function partyFormController() {
             this.contacts.push({
                 name: '',
                 role: '',
+                designation: '',
+                other_designation: '',
                 phone: '',
                 alternate_phone: '',
                 email: '',
@@ -2291,7 +2655,10 @@ function partyFormController() {
                 account_number: '',
                 account_type: 'current',
                 ifsc_code: '',
-                is_primary: !hasPrimary
+                is_primary: !hasPrimary,
+                _ifsc_status: '',
+                _ifsc_message: '',
+                _ifsc_loading: false,
             });
         },
 
@@ -2308,6 +2675,86 @@ function partyFormController() {
             this.bankAccounts.forEach((acc, i) => {
                 acc.is_primary = (i === index);
             });
+        },
+
+        onIfscInput(idx) {
+            const acc = this.bankAccounts[idx];
+            if (!acc) return;
+            acc._ifsc_status = '';
+            acc._ifsc_message = '';
+            if (this._ifscTimers[idx]) {
+                clearTimeout(this._ifscTimers[idx]);
+            }
+            const ifsc = (acc.ifsc_code || '').toUpperCase().trim();
+            if (ifsc.length === 11) {
+                this._ifscTimers[idx] = setTimeout(() => this.lookupIfsc(idx), 500);
+            }
+        },
+
+        async lookupIfsc(idx) {
+            const acc = this.bankAccounts[idx];
+            if (!acc) return;
+
+            const ifsc = (acc.ifsc_code || '').toUpperCase().trim();
+            if (ifsc.length === 0) {
+                acc._ifsc_status = '';
+                acc._ifsc_message = '';
+                return;
+            }
+
+            if (ifsc.length !== 11) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'Please enter a valid 11-character IFSC code.';
+                return;
+            }
+
+            // Prevent duplicate API requests for unchanged IFSC
+            if (this._ifscLastFetched[idx] === ifsc && acc.bank_name) {
+                return;
+            }
+
+            if (acc._ifsc_loading) {
+                return;
+            }
+
+            acc._ifsc_loading = true;
+            acc._ifsc_status = 'loading';
+            acc._ifsc_message = 'Fetching bank details...';
+
+            try {
+                const response = await fetch(`{{ route('masters.customers.ifsc-lookup') }}?ifsc=${encodeURIComponent(ifsc)}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                });
+                const data = await response.json();
+
+                if (data.success && data.bank) {
+                    acc.bank_name = data.bank.bank_name || acc.bank_name;
+                    acc.branch_name = data.bank.branch_name || acc.branch_name;
+                    if (!acc.account_holder_name || !String(acc.account_holder_name).trim()) {
+                        acc.account_holder_name = (this.form.name || '').trim();
+                    }
+                    this._ifscLastFetched[idx] = ifsc;
+                    acc._ifsc_status = 'ok';
+                    acc._ifsc_message = data.message || 'Bank and branch details fetched successfully.';
+                } else {
+                    acc._ifsc_status = 'error';
+                    if (data.status_code === 404 || response.status === 404) {
+                        acc._ifsc_message = data.message || 'IFSC code not found. Please verify the code.';
+                    } else if (data.status_code === 422) {
+                        acc._ifsc_message = data.message || 'Please enter a valid 11-character IFSC code.';
+                    } else {
+                        acc._ifsc_message = data.message || 'Unable to fetch bank details. Please enter details manually.';
+                    }
+                }
+            } catch (err) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'Unable to fetch bank details. Please enter details manually.';
+            } finally {
+                acc._ifsc_loading = false;
+            }
         },
 
         applyExtractedGstinFields(extracted = null, gstin = '') {
@@ -2797,6 +3244,125 @@ function cityDropdown(addr, stateCities, addressIndex) {
         scrollActiveIntoView() {
             this.$nextTick(() => {
                 const el = this.$refs.optionsList?.querySelector(`[data-index="${this.highlightedIndex}"]`);
+                if (el) {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+    };
+}
+
+function dmsContactDesignation(contact, options) {
+    return {
+        options: Array.isArray(options) ? options : [],
+        isOpen: false,
+        search: '',
+        highlightedIndex: -1,
+        init() {
+            this.syncSearch();
+            this.$watch(() => contact.designation, () => {
+                this.syncSearch();
+            });
+        },
+        syncSearch() {
+            this.search = contact.designation || '';
+        },
+        get filteredOptions() {
+            const list = this.options || [];
+            const q = (this.search || '').trim().toLowerCase();
+            if (!q || (contact.designation && q === contact.designation.trim().toLowerCase())) {
+                return list;
+            }
+            return list.filter(opt => opt.toLowerCase().includes(q));
+        },
+        open() {
+            this.isOpen = true;
+            this.highlightedIndex = -1;
+        },
+        close() {
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+            this.syncSearch();
+        },
+        toggle() {
+            if (this.isOpen) {
+                this.close();
+            } else {
+                this.open();
+            }
+        },
+        select(opt) {
+            contact.designation = opt;
+            this.search = opt;
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+            if (opt === 'Other') {
+                contact.role = (contact.other_designation || '').trim() || 'Other';
+                this.$nextTick(() => {
+                    this.$refs.customInput?.focus();
+                });
+            } else {
+                contact.other_designation = '';
+                contact.role = opt;
+            }
+        },
+        clear() {
+            contact.designation = '';
+            contact.other_designation = '';
+            contact.role = '';
+            this.search = '';
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+        },
+        effectiveRole() {
+            if (contact.designation === 'Other') {
+                const custom = (contact.other_designation || '').trim();
+                return custom !== '' ? custom : 'Other';
+            }
+            return (contact.designation || '').trim();
+        },
+        onSearchKeyDown(event) {
+            const list = this.filteredOptions;
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (!this.isOpen) {
+                    this.open();
+                    return;
+                }
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex + 1) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (!this.isOpen) {
+                    this.open();
+                    return;
+                }
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex - 1 + list.length) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'Enter') {
+                if (this.isOpen) {
+                    event.preventDefault();
+                    if (list.length > 0) {
+                        const target = (this.highlightedIndex >= 0 && this.highlightedIndex < list.length)
+                            ? list[this.highlightedIndex]
+                            : list[0];
+                        this.select(target);
+                    }
+                }
+            } else if (event.key === 'Escape') {
+                if (this.isOpen) {
+                    event.preventDefault();
+                    this.close();
+                }
+            }
+        },
+        scrollActiveIntoView() {
+            this.$nextTick(() => {
+                const el = this.$refs.optionsMenu?.querySelector(`[data-index="${this.highlightedIndex}"]`);
                 if (el) {
                     el.scrollIntoView({ block: 'nearest' });
                 }

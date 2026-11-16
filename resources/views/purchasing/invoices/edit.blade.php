@@ -319,20 +319,22 @@
                                     </template>
                                 </select>
 
-                                    <div class="mt-2">
-                                        <label class="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                                            Serial number
-                                            <span x-show="isSerialTracked(row)" x-cloak class="text-[10px] font-bold uppercase text-amber-700">Required</span>
-                                        </label>
-                                        <template x-for="(sNo, sIdx) in (row.serial_numbers || [])" :key="'serial-' + i + '-' + sIdx">
-                                            <input type="text"
-                                                   :name="`items[${i}][serial_numbers][${sIdx}]`"
-                                                   x-model="row.serial_numbers[sIdx]"
-                                                   :placeholder="(row.serial_numbers.length > 1) ? ('Serial ' + (sIdx + 1)) : 'Serial number'"
-                                                   :required="isSerialTracked(row)"
-                                                   class="mb-1 block w-full rounded-md border-gray-300 px-2.5 py-2 text-xs font-mono text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-                                        </template>
-                                    </div>
+                                    <template x-if="isSerialTracked(row)">
+                                        <div class="mt-2">
+                                            <label class="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                                                Serial number
+                                                <span class="text-[10px] font-bold uppercase text-amber-700">Required</span>
+                                            </label>
+                                            <template x-for="(sNo, sIdx) in (row.serial_numbers || [])" :key="'serial-' + i + '-' + sIdx">
+                                                <input type="text"
+                                                       :name="`items[${i}][serial_numbers][${sIdx}]`"
+                                                       x-model="row.serial_numbers[sIdx]"
+                                                       :placeholder="(row.serial_numbers.length > 1) ? ('Serial ' + (sIdx + 1)) : 'Serial number'"
+                                                       required
+                                                       class="mb-1 block w-full rounded-md border-gray-300 px-2.5 py-2 text-xs font-mono text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                            </template>
+                                        </div>
+                                    </template>
                             </td>
 
                             <td class="p-3 align-top min-w-[70px] w-20 text-center text-xs font-semibold text-slate-600 pt-5"
@@ -583,10 +585,12 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                     const unitCost = this.priceType === 'inclusive'
                         ? (entered || inclusive || storedBase)
                         : storedBase;
+                    const isTracked = p ? (p.is_serial_tracked !== undefined ? Boolean(p.is_serial_tracked) : String(p.tracking_type || '').includes('serial')) : false;
                     return {
                         product_id: it.product_id,
                         unit: it.unit || (p ? (p.unit || 'PCS') : 'PCS'),
                         tracking_type: p ? (p.tracking_type || 'none') : 'none',
+                        is_serial_tracked: isTracked,
                         quantity: Number(it.quantity) || 1,
                         unit_cost: unitCost,
                         purchase_price_inclusive: this.priceType === 'inclusive' ? unitCost : inclusive,
@@ -595,7 +599,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                         sgst_percent: sgst,
                         batch_number: it.batch_number || it.batch_no || '',
                         batch_mrp: mrp,
-                        serial_numbers: (it.serial_numbers && it.serial_numbers.length) ? it.serial_numbers : [''],
+                        serial_numbers: isTracked && Array.isArray(it.serial_numbers) && it.serial_numbers.length ? it.serial_numbers : (isTracked ? [''] : []),
                         line_total: Number(it.line_total) || 0
                     };
                 });
@@ -611,6 +615,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                 product_id: '',
                 unit: '-',
                 tracking_type: 'none',
+                is_serial_tracked: false,
                 quantity: 1,
                 unit_cost: 0,
                 purchase_price_inclusive: 0,
@@ -619,7 +624,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                 sgst_percent: 0,
                 batch_number: '',
                 batch_mrp: 0,
-                serial_numbers: [''],
+                serial_numbers: [],
                 line_total: 0
             });
             this.recalc();
@@ -633,13 +638,21 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         },
 
         isSerialTracked(row) {
-            if (!row || !row.tracking_type) return false;
-            const tt = row.tracking_type;
-            if (Array.isArray(tt)) {
-                return tt.includes('serial');
+            if (!row) return false;
+            let tt = row.tracking_type;
+            let isTracked = row.is_serial_tracked;
+            if (row.product_id) {
+                const p = this.products.find(item => item.id == row.product_id);
+                if (p) {
+                    if (p.is_serial_tracked !== undefined) return Boolean(p.is_serial_tracked);
+                    tt = tt || p.tracking_type;
+                }
             }
+            if (isTracked !== undefined && isTracked !== null) return Boolean(isTracked);
+            if (!tt || tt === 'none') return false;
+            if (Array.isArray(tt)) return tt.includes('serial');
             const str = String(tt).toLowerCase();
-            return str === 'serial' || str === 'all' || str.includes('serial');
+            return str === 'serial' || str.split(',').map(s => s.trim()).includes('serial');
         },
 
         rowTaxPercent(row) {
@@ -733,6 +746,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
             if (p) {
                 row.unit = p.unit || 'PCS';
                 row.tracking_type = p.tracking_type || 'none';
+                row.is_serial_tracked = p.is_serial_tracked !== undefined ? Boolean(p.is_serial_tracked) : undefined;
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.batch_mrp = Number(p.mrp) || 0;
@@ -742,9 +756,12 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                 } else {
                     row.unit_cost = catalogBase;
                 }
+                this.syncSerials(index);
                 this.onUnitCostChange(index);
                 return;
             }
+            row.tracking_type = 'none';
+            row.is_serial_tracked = false;
             this.syncSerials(index);
             this.recalc();
         },
@@ -752,6 +769,10 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         syncSerials(index) {
             const row = this.items[index];
             if (!row) return;
+            if (!this.isSerialTracked(row)) {
+                row.serial_numbers = [];
+                return;
+            }
             const qty = Math.min(30, Math.max(1, Math.round(Number(row.quantity) || 1)));
             if (!Array.isArray(row.serial_numbers)) row.serial_numbers = [];
             while (row.serial_numbers.length < qty) row.serial_numbers.push('');

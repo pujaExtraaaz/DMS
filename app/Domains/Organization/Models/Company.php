@@ -48,6 +48,7 @@ class Company extends Model
         'due_date_basis',
         'logo_path',
         'company_type',
+        'business_type',
         'incorporation_no',
         'incorporation_date',
         'logo_emoji',
@@ -55,6 +56,7 @@ class Company extends Model
         'city',
         'country',
         'nature_of_business',
+        'main_work',
         'authorized_capital',
         'paid_up_capital',
         'annual_turnover',
@@ -116,6 +118,18 @@ class Company extends Model
         $this->attributes['msme_registration_no'] = $value;
     }
 
+    public function getMainWorkAttribute(): string
+    {
+        return $this->attributes['main_work']
+            ?: ($this->attributes['nature_of_business'] ?? 'Trading and Services');
+    }
+
+    public function getBusinessTypeAttribute(): string
+    {
+        return $this->attributes['business_type']
+            ?: ($this->attributes['company_type'] ?? 'Existing Business');
+    }
+
     protected function casts(): array
     {
         return [
@@ -172,6 +186,16 @@ class Company extends Model
     public function users(): HasMany
     {
         return $this->hasMany(\App\Models\User::class);
+    }
+
+    public function chequeBooks(): HasMany
+    {
+        return $this->hasMany(ChequeBook::class);
+    }
+
+    public function chequeBooksForAccount(string $accountNo): HasMany
+    {
+        return $this->chequeBooks()->where('bank_account_no', trim($accountNo))->orderBy('from_numeric');
     }
 
     public function canBeDeleted(): bool

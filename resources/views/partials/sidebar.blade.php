@@ -94,9 +94,18 @@
                 this.tooltipTop = rect.top + (rect.height / 2);
                 this.tooltipLeft = rect.right + 12;
                 this.tooltipVisible = true;
+                if (this.$root) {
+                    this.$root.tooltipText = text;
+                    this.$root.tooltipTop = this.tooltipTop;
+                    this.$root.tooltipLeft = this.tooltipLeft;
+                    this.$root.tooltipVisible = true;
+                }
             },
             hideTooltip() {
                 this.tooltipVisible = false;
+                if (this.$root) {
+                    this.$root.tooltipVisible = false;
+                }
             },
             startCustomizing() {
                 this.customizing = true;

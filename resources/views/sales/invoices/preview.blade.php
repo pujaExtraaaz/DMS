@@ -84,6 +84,46 @@
             background: #047857;
         }
 
+        .toolbar-divider {
+            width: 1px;
+            height: 20px;
+            background: #e2e8f0;
+            margin: 0 4px;
+        }
+
+        .toolbar-meta {
+            font-size: 11px;
+            color: #475569;
+        }
+
+        .meta-label {
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .copy-selector {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn-copy {
+            padding: 4px 8px !important;
+            font-size: 11px !important;
+            border-radius: 4px !important;
+            background: #f8fafc !important;
+            border: 1px solid #cbd5e1 !important;
+            color: #475569 !important;
+            cursor: pointer;
+        }
+
+        .btn-copy.active {
+            background: #e0e7ff !important;
+            border-color: #6366f1 !important;
+            color: #3730a3 !important;
+            font-weight: 700 !important;
+        }
+
         .doc-wrapper {
             max-width: 960px;
             margin: 0 auto 32px;
@@ -320,15 +360,21 @@
                 margin: 0 !important;
                 font-size: 9.5pt !important;
             }
-            .toolbar, .no-print {
+            .toolbar, .no-print, #configureModal {
                 display: none !important;
             }
             .doc-wrapper {
                 max-width: 100% !important;
                 margin: 0 !important;
-                padding: 0 !important;
+                padding: 12px 16px !important;
                 border: none !important;
                 box-shadow: none !important;
+                page-break-after: always !important;
+                break-after: page !important;
+            }
+            .doc-wrapper:last-child {
+                page-break-after: auto !important;
+                break-after: auto !important;
             }
             .items-table th {
                 background: #f1f5f9 !important;
@@ -355,49 +401,115 @@
     $amountWords = \App\Support\DocumentExporter::numberToIndianWords($invoice->grand_total);
     $billingAddr = $invoice->billing_address ?: ($customer?->address ?: '—');
     $deliveryAddr = $invoice->shipping_address ?: ($invoice->billing_address ?: ($customer?->shipping_address ?: ($customer?->address ?: '—')));
+    $copyType = $copyType ?? request('copy_type', request('copy', 'all'));
+    $copies = (int) ($copies ?? request('copies', ($copyType === 'all' ? 3 : 1)));
+    $copiesList = $copiesList ?? \App\Http\Controllers\Sales\InvoiceController::resolveCopies($copyType, $copies);
+    $autoPrint = $autoPrint ?? request()->boolean('auto_print');
 @endphp
 
 @if(empty($isPdf))
 <div class="toolbar no-print">
     <div class="toolbar-left">
-        <a href="{{ route('invoices.show', $invoice) }}">
+        <a href="{{ route('invoices.show', $invoice) }}" title="Return to Invoice Details">
             <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-            Back to Invoice
+            Back
         </a>
-        <a href="{{ route('invoices.index') }}">
-            Tax Invoices
-        </a>
+        <div class="toolbar-divider"></div>
+        <form method="GET" action="{{ route('invoices.preview', $invoice) }}" class="copy-selector" id="printSettingsForm">
+            <span class="meta-label">Type of Copy:</span>
+            <select name="copy_type" id="selectCopyType" onchange="document.getElementById('printSettingsForm').submit()" style="padding: 4px 8px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
+                <option value="all" {{ ($copyType ?? 'all') === 'all' ? 'selected' : '' }}>All Copies (Original, Duplicate, Triplicate)</option>
+                <option value="original" {{ ($copyType ?? '') === 'original' ? 'selected' : '' }}>Original for Recipient</option>
+                <option value="duplicate" {{ ($copyType ?? '') === 'duplicate' ? 'selected' : '' }}>Duplicate for Transporter</option>
+                <option value="triplicate" {{ ($copyType ?? '') === 'triplicate' ? 'selected' : '' }}>Triplicate for Supplier</option>
+                <option value="extra" {{ ($copyType ?? '') === 'extra' ? 'selected' : '' }}>Extra Copy</option>
+                <option value="na" {{ ($copyType ?? '') === 'na' ? 'selected' : '' }}>Not Applicable (No copy mark)</option>
+            </select>
+
+            <span class="meta-label" style="margin-left: 6px;">Copies:</span>
+            <input type="number" name="copies" id="inputCopies" value="{{ $copies ?? 1 }}" min="1" max="10" style="width: 50px; padding: 4px 6px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px; text-align: center;">
+
+            <button type="submit" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155; font-weight: 600; cursor: pointer;">Apply</button>
+        </form>
+        <div class="toolbar-divider"></div>
+        <button type="button" onclick="openConfigureModal()" style="padding: 4px 8px; font-size: 11px; border-radius: 4px; background: #f8fafc; border: 1px solid #cbd5e1; color: #475569; cursor: pointer;">
+            ⚙ Configure
+        </button>
+        <div class="toolbar-divider"></div>
+        <div class="toolbar-meta">
+            <span class="meta-label">Template:</span> Standard GST Tax Invoice
+            <span class="meta-label" style="margin-left: 8px;">Format:</span> A4 Portrait
+        </div>
     </div>
 
     <div class="toolbar-right">
-        <button class="btn-primary" onclick="window.print()">
+        <button class="btn-primary" onclick="window.print()" title="Print selected copies">
             <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
             Print
         </button>
-        <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'pdf']) }}" class="btn-primary">
+        <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'pdf', 'copy_type' => $copyType ?? 'all', 'copies' => $copies ?? 1]) }}" class="btn-primary" title="Export as PDF document">
             <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             PDF
         </a>
-        <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'xlsx']) }}" class="btn-success">
+        <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'xlsx']) }}" class="btn-success" title="Export as Excel spreadsheet">
             <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Excel (.xlsx)
+            Excel
         </a>
-        <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'csv']) }}">
+        <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'csv']) }}" title="Export as CSV tabular data">
             <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
             CSV
         </a>
     </div>
 </div>
+
+<!-- Quick Configure Modal -->
+<div id="configureModal" style="display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6); z-index: 9999; align-items: center; justify-content: center;">
+    <div style="background: #ffffff; border-radius: 12px; width: 100%; max-width: 440px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); overflow: hidden;">
+        <div style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc;">
+            <div style="font-weight: 700; font-size: 13px; color: #0f172a;">Print Configuration Options</div>
+            <button type="button" onclick="closeConfigureModal()" style="background: none; border: none; font-size: 16px; cursor: pointer; color: #64748b;">✕</button>
+        </div>
+        <div style="padding: 18px 20px; font-size: 11.5px; color: #334155; line-height: 1.6;">
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; font-weight: 600; color: #475569; margin-bottom: 3px;">Template Name</label>
+                <div style="padding: 6px 10px; background: #f1f5f9; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600;">Standard GST Tax Invoice & e-Invoice</div>
+            </div>
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; font-weight: 600; color: #475569; margin-bottom: 3px;">Invoice Title</label>
+                <div style="padding: 6px 10px; background: #f1f5f9; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600;">TAX INVOICE (Under Sec 31 CGST Act)</div>
+            </div>
+            <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label style="display: block; font-weight: 600; color: #475569; margin-bottom: 3px;">Paper Size</label>
+                    <div style="padding: 6px 10px; background: #f1f5f9; border-radius: 6px; border: 1px solid #cbd5e1;">A4 (210 x 297 mm)</div>
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; font-weight: 600; color: #475569; margin-bottom: 3px;">Layout</label>
+                    <div style="padding: 6px 10px; background: #f1f5f9; border-radius: 6px; border: 1px solid #cbd5e1;">Portrait</div>
+                </div>
+            </div>
+            <div style="background: #eff6ff; padding: 10px; border-radius: 6px; border: 1px solid #bfdbfe; font-size: 10.5px; color: #1e40af;">
+                <strong>Statutory Copies:</strong> When printing 'All Copies', 3 independent pages (Original, Duplicate, Triplicate) are printed consecutively with scannable QR verification.
+            </div>
+        </div>
+        <div style="padding: 12px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: right;">
+            <button type="button" onclick="closeConfigureModal()" style="padding: 6px 14px; background: #4f46e5; color: #fff; font-weight: 600; font-size: 11px; border: none; border-radius: 6px; cursor: pointer;">Done</button>
+        </div>
+    </div>
+</div>
 @endif
 
-<div class="doc-wrapper">
+@foreach($copiesList as $copyIdx => $copyDesignation)
+<div class="doc-wrapper invoice-copy-page">
     <!-- Header Top / Copy Mark -->
     <div class="header-top">
         <div style="display: table-cell; vertical-align: middle; color: #64748b; font-size: 9px;">
-            Tax Scheme: GST &nbsp;|&nbsp; Original For Recipient
+            Tax Scheme: GST @if(filled($copyDesignation)) &nbsp;|&nbsp; <span>{{ $copyDesignation }}</span> @endif
         </div>
         <div style="display: table-cell; text-align: right; vertical-align: middle;">
-            <span class="badge-recipient">Original For Recipient</span>
+            @if(filled($copyDesignation))
+                <span class="badge-recipient">{{ $copyDesignation }}</span>
+            @endif
         </div>
     </div>
 
@@ -437,7 +549,20 @@
         </div>
 
         <div class="header-cell header-right">
-            <div class="doc-title">TAX INVOICE</div>
+            <div style="display: flex; justify-content: flex-end; align-items: flex-start; gap: 12px; margin-bottom: 4px;">
+                @if(!empty($invoiceQrDataUri))
+                    <div style="text-align: center; border: 1px solid #cbd5e1; padding: 3px; border-radius: 4px; background: #fff;">
+                        <img src="{{ $invoiceQrDataUri }}" alt="Signed QR Code" width="80" height="80" style="display: block;">
+                        <div style="font-size: 7.5px; font-weight: 700; color: #475569; margin-top: 2px; text-transform: uppercase;">
+                            {{ $invoice->eInvoice?->irn ? 'Signed e-Invoice QR' : 'Verify QR' }}
+                        </div>
+                    </div>
+                @endif
+                <div>
+                    <div class="doc-title">TAX INVOICE</div>
+                    <div style="font-size: 8.5px; color: #64748b; font-weight: 600;">(Under Section 31 of CGST Act)</div>
+                </div>
+            </div>
             <table class="meta-table">
                 <tr>
                     <td class="font-bold text-right" style="width: 50%;">Invoice No:</td>
@@ -482,10 +607,16 @@
                     <td class="text-right">{{ $invoice->dispatch_doc_no }}</td>
                 </tr>
                 @endif
-                @if($invoice->dispatched_through || $invoice->transport_mode)
+                @if($invoice->transport_mode && $invoice->transport_mode !== 'Not Applicable')
+                <tr>
+                    <td class="font-bold text-right">Transport Mode:</td>
+                    <td class="text-right">{{ $invoice->transport_mode }}</td>
+                </tr>
+                @endif
+                @if($invoice->dispatched_through)
                 <tr>
                     <td class="font-bold text-right">Dispatched Through:</td>
-                    <td class="text-right">{{ $invoice->dispatched_through ?: $invoice->transport_mode }}</td>
+                    <td class="text-right">{{ $invoice->dispatched_through }}</td>
                 </tr>
                 @endif
                 @if($invoice->destination)
@@ -536,10 +667,16 @@
                 </tr>
                 @endif
                 @endif
-                @if($invoice->eWayBill?->eway_bill_no)
+                @if($invoice->eway_bill_no || $invoice->eWayBill?->eway_bill_no)
                 <tr>
                     <td class="font-bold text-right">E-Way Bill:</td>
-                    <td class="text-right font-mono font-bold">{{ $invoice->eWayBill->eway_bill_no }}</td>
+                    <td class="text-right font-mono font-bold">{{ $invoice->eway_bill_no ?: $invoice->eWayBill?->eway_bill_no }} @if($invoice->eway_bill_date || $invoice->eWayBill?->ewb_date)<span style="font-size: 9px; font-weight: normal; color: #64748b;">({{ ($invoice->eway_bill_date ?: $invoice->eWayBill?->ewb_date)?->format('d/m/Y') }})</span>@endif</td>
+                </tr>
+                @endif
+                @if($invoice->transporter_name)
+                <tr>
+                    <td class="font-bold text-right">Transporter:</td>
+                    <td class="text-right">{{ $invoice->transporter_name }} @if($invoice->transporter_id)<span style="font-size: 9px; color: #64748b;">({{ $invoice->transporter_id }})</span>@endif</td>
                 </tr>
                 @endif
             </table>
@@ -569,15 +706,27 @@
             <div style="margin-top: 6px;">
                 <div class="box-title" style="margin-bottom: 2px;">Billing Address:</div>
                 <div style="white-space: pre-line;">{{ $billingAddr }}</div>
+                @if($invoice->bill_to_place || $customer?->city)
+                    <div style="margin-top: 2px; font-size: 9px; color: #475569;"><strong>Place of Buyer:</strong> {{ $invoice->bill_to_place ?: ($customer?->city ?: '—') }}</div>
+                @endif
+                @if($invoice->place_of_supply_state ?: $customer?->state)
+                    <div style="margin-top: 2px; font-size: 9px; color: #475569;"><strong>State:</strong> {{ $invoice->place_of_supply_state ?: $customer?->state }}</div>
+                @endif
             </div>
         </div>
 
         <div class="party-col">
-            <div class="box-title">Shipped / Delivered To</div>
-            <div class="party-name">{{ $customer?->name }}</div>
+            <div class="box-title">Shipped / Delivered To (Consignee)</div>
+            <div class="party-name">{{ $invoice->consignee_name ?: $customer?->name }}</div>
+            @if($invoice->consignee_gstin || $customer?->gstin)
+                <div><strong>GSTIN:</strong> {{ $invoice->consignee_gstin ?: $customer->gstin }}</div>
+            @endif
             <div style="margin-top: 4px;">
                 <div class="box-title" style="margin-bottom: 2px;">Delivery Address:</div>
                 <div style="white-space: pre-line;">{{ $deliveryAddr }}</div>
+                @if($invoice->ship_to_place || $invoice->destination || $customer?->city)
+                    <div style="margin-top: 2px; font-size: 9px; color: #475569;"><strong>Place of Delivery:</strong> {{ $invoice->ship_to_place ?: ($invoice->destination ?: ($customer?->city ?: '—')) }}</div>
+                @endif
             </div>
             @if($invoice->delivery_state)
                 <div style="margin-top: 4px;"><strong>Place of Supply (State):</strong> {{ $invoice->delivery_state }}</div>
@@ -678,6 +827,28 @@
                 </div>
             @endif
 
+            @if($invoice->eInvoice?->irn || $invoice->eWayBill?->eway_bill_no || $invoice->eway_bill_no)
+                <div class="info-card" style="border-left: 3px solid #4f46e5; background: #f8fafc;">
+                    <div class="box-title" style="color: #4f46e5;">Government GST Portal Details</div>
+                    @if($invoice->eInvoice?->irn)
+                        <div style="font-size: 9px;"><strong>IRN:</strong> <span class="font-mono" style="font-size: 8px; word-break: break-all;">{{ $invoice->eInvoice->irn }}</span></div>
+                        <div style="font-size: 9px; margin-top: 1px;"><strong>Ack No:</strong> {{ $invoice->eInvoice->ack_no }} &nbsp;|&nbsp; <strong>Ack Date:</strong> {{ $invoice->eInvoice->ack_date?->format('d/m/Y H:i') ?? '—' }} &nbsp;|&nbsp; <strong style="color: #059669;">Status: Active / Generated</strong></div>
+                    @endif
+                    @if($invoice->eWayBill?->eway_bill_no || $invoice->eway_bill_no)
+                        <div style="font-size: 9px; margin-top: 3px;">
+                            <strong>e-Way Bill No:</strong> <span class="font-mono font-bold">{{ $invoice->eWayBill?->eway_bill_no ?: $invoice->eway_bill_no }}</span>
+                            @if($invoice->eWayBill?->ewb_date || $invoice->eway_bill_date)
+                                &nbsp;|&nbsp; <strong>Gen Date:</strong> {{ ($invoice->eWayBill?->ewb_date ?: $invoice->eway_bill_date)?->format('d/m/Y') }}
+                            @endif
+                            @if($invoice->eWayBill?->valid_upto)
+                                &nbsp;|&nbsp; <strong>Valid Upto:</strong> {{ $invoice->eWayBill->valid_upto->format('d/m/Y') }}
+                            @endif
+                            &nbsp;|&nbsp; <strong style="color: #059669;">Status: Active / Generated</strong>
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             <!-- QR Codes (Invoice QR & UPI QR) -->
             <div class="qr-section">
                 @if(!empty($invoiceQrDataUri))
@@ -770,7 +941,26 @@
         </div>
     </div>
 </div>
+@endforeach
 
+<script>
+function openConfigureModal() {
+    var m = document.getElementById('configureModal');
+    if (m) m.style.display = 'flex';
+}
+function closeConfigureModal() {
+    var m = document.getElementById('configureModal');
+    if (m) m.style.display = 'none';
+}
+
+@if(!empty($autoPrint))
+window.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        window.print();
+    }, 400);
+});
+@endif
+</script>
 </body>
 </html>
 

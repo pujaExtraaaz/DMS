@@ -60,6 +60,18 @@ class Product extends Model
         'treat_rejections_inward_as_scrap' => 'Treat all rejections inward as scrap',
     ];
 
+    public const DEFAULT_BEHAVIOUR_VALUES = [
+        'ignore_physical_count_diff' => false,
+        'ignore_negative_balances' => false,
+        'treat_sales_as_new_manufacture' => false,
+        'treat_purchases_as_consumed' => true,
+        'treat_rejections_inward_as_scrap' => false,
+    ];
+
+    protected $appends = [
+        'is_serial_tracked',
+    ];
+
     protected $fillable = [
         'company_id',
         'brand_id',
@@ -377,22 +389,17 @@ class Product extends Model
 
     public function isSerialTracked(): bool
     {
-        if (is_array($this->tracking_type)) {
-            return in_array('serial', $this->tracking_type, true);
-        }
-
-        return in_array('serial', explode(',', (string) $this->tracking_type), true)
-            || $this->tracking_type === 'serial';
+        return in_array('serial', $this->tracking_types, true);
     }
 
     public function isBatchTracked(): bool
     {
-        if (is_array($this->tracking_type)) {
-            return in_array('batch', $this->tracking_type, true);
-        }
+        return in_array('batch', $this->tracking_types, true);
+    }
 
-        return in_array('batch', explode(',', (string) $this->tracking_type), true)
-            || $this->tracking_type === 'batch';
+    public function getIsSerialTrackedAttribute(): bool
+    {
+        return $this->isSerialTracked();
     }
 
     public function getTrackingTypesAttribute(): array

@@ -751,9 +751,14 @@ class ProductController extends Controller
             ? $request->boolean('provide_behaviour')
             : (bool) ($product?->provide_behaviour ?? false);
         foreach (array_keys(Product::BEHAVIOUR_FLAGS) as $behaviourFlag) {
-            $data[$behaviourFlag] = $data['provide_behaviour'] && $request->exists($behaviourFlag)
-                ? $request->boolean($behaviourFlag)
-                : ($data['provide_behaviour'] ? (bool) ($product?->{$behaviourFlag} ?? false) : false);
+            $defaultVal = Product::DEFAULT_BEHAVIOUR_VALUES[$behaviourFlag] ?? false;
+            if ($request->exists($behaviourFlag)) {
+                $data[$behaviourFlag] = $request->boolean($behaviourFlag);
+            } elseif ($product && $product->exists) {
+                $data[$behaviourFlag] = (bool) $product->{$behaviourFlag};
+            } else {
+                $data[$behaviourFlag] = $defaultVal;
+            }
         }
 
         if ($altNotApplicable) {
@@ -846,15 +851,6 @@ class ProductController extends Controller
             $data['tracking_type'] = $trackingType;
         } else {
             $data['tracking_type'] = 'none';
-        }
-
-        $typeId = $data['product_type_id'] ?? $request->input('product_type_id');
-        if ($typeId && ProductType::query()->whereKey($typeId)->where('track_serial', true)->exists()) {
-            $parts = array_values(array_filter(explode(',', (string) $data['tracking_type']), fn ($part) => $part !== '' && $part !== 'none'));
-            if (! in_array('serial', $parts, true)) {
-                $parts[] = 'serial';
-            }
-            $data['tracking_type'] = implode(',', $parts);
         }
 
         $data['min_stock'] = $data['min_stock'] ?? 0;

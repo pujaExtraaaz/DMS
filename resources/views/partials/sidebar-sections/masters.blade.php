@@ -80,6 +80,11 @@
             @if($can('customers.view', 'masters.view'))
                 <a href="{{ route('masters.customers.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.customers.*', 'masters.parties.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Parties</span></a>
             @endif
+            @if($can('phone_directory.view', 'phone-directory.view'))
+                <a href="{{ route('phone-directory.index') }}" class="{{ $itemClass }} {{ $linkClass(['phone-directory.*']) }}" title="Phone Directory">
+                    <span x-show="!$root.sidebarCollapsed" x-cloak>Phone Directory</span>
+                </a>
+            @endif
             @if($can('price-master.view', 'masters.view'))
                 <a href="{{ route('masters.price-masters.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.price-masters.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Price List</span></a>
             @endif

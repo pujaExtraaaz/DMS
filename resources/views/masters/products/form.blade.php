@@ -64,10 +64,13 @@
     $costingMethods = \App\Domains\Master\Models\Product::COSTING_METHODS;
     $marketMethods = \App\Domains\Master\Models\Product::MARKET_VALUATION_METHODS;
     $behaviourLabels = \App\Domains\Master\Models\Product::BEHAVIOUR_FLAGS;
+    $behaviourDefaultsMap = \App\Domains\Master\Models\Product::DEFAULT_BEHAVIOUR_VALUES;
     $provideBehaviour = (string) old('provide_behaviour', ($item->provide_behaviour ?? false) ? '1' : '0') === '1' ? '1' : '0';
     $behaviourDefaults = [];
-    foreach (array_keys($behaviourLabels) as $behaviourField) {
-        $behaviourDefaults[$behaviourField] = (string) old($behaviourField, ($item->{$behaviourField} ?? false) ? '1' : '0') === '1' ? '1' : '0';
+    foreach ($behaviourLabels as $behaviourField => $label) {
+        $fallback = $behaviourDefaultsMap[$behaviourField] ?? false;
+        $currentVal = $item->exists ? (bool) ($item->{$behaviourField} ?? false) : $fallback;
+        $behaviourDefaults[$behaviourField] = (string) old($behaviourField, $currentVal ? '1' : '0') === '1' ? '1' : '0';
     }
 @endphp
 
@@ -1196,47 +1199,56 @@
                 </div>
             </div>
 
-            <div class="rounded-xl border border-slate-200 p-4 space-y-3">
+            <div class="rounded-xl border border-slate-200 p-4 space-y-4 bg-white shadow-2xs">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                        <p class="text-sm font-semibold text-slate-800">Provide behaviour options</p>
-                        <p class="text-xs text-slate-500">Turn this on to apply the stock rules below.</p>
+                        <label for="provide_behaviour" class="text-sm font-semibold text-slate-800">Provide Behaviour Options</label>
+                        <p class="text-xs text-slate-500">Enable to configure dynamic inventory and stock movement behaviour rules.</p>
                     </div>
-                    <div class="flex items-center gap-4 text-sm">
-                        <label class="inline-flex items-center gap-1.5">
-                            <input type="radio" name="provide_behaviour" value="1" x-model="provideBehaviour" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                            Yes
-                        </label>
-                        <label class="inline-flex items-center gap-1.5">
-                            <input type="radio" name="provide_behaviour" value="0" x-model="provideBehaviour" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                            No
-                        </label>
+                    <div class="flex-shrink-0">
+                        <select id="provide_behaviour"
+                                name="provide_behaviour"
+                                x-model="provideBehaviour"
+                                class="block w-28 rounded-lg border-gray-300 text-sm font-medium text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 bg-white py-1.5 px-3 shadow-2xs">
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
                     </div>
                 </div>
 
-                <div x-show="provideBehaviour === '1'" x-cloak class="space-y-2 pt-1">
+                <div x-show="provideBehaviour === '1'" x-cloak class="space-y-3 pt-3 border-t border-slate-200">
+                    <div class="flex items-center justify-between pb-1">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Behaviour Settings</h4>
+                        <span class="text-[11px] text-slate-500">5 dynamic rules configurable</span>
+                    </div>
+
                     @foreach($behaviourLabels as $field => $label)
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-                            <span class="text-sm text-slate-800">{{ $label }}</span>
-                            <div class="flex items-center gap-4 text-sm">
-                                <label class="inline-flex items-center gap-1.5">
-                                    <input type="radio" name="{{ $field }}" value="1" x-model="flags.{{ $field }}" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                                    Yes
-                                </label>
-                                <label class="inline-flex items-center gap-1.5">
-                                    <input type="radio" name="{{ $field }}" value="0" x-model="flags.{{ $field }}" class="border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                                    No
-                                </label>
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-2.5 transition hover:bg-slate-50">
+                            <div class="pr-3">
+                                <label for="behaviour_{{ $field }}" class="text-sm font-medium text-slate-800">{{ $label }}</label>
+                                @if($field === 'treat_purchases_as_consumed')
+                                    <p class="text-[11px] text-slate-500 mt-0.5">Purchases of this item are received and immediately consumed, so on-hand stock does not increase.</p>
+                                @elseif($field === 'treat_sales_as_new_manufacture')
+                                    <p class="text-[11px] text-slate-500 mt-0.5">Each sale manufactures the sold quantity first, so existing stock stays unchanged.</p>
+                                @elseif($field === 'treat_rejections_inward_as_scrap')
+                                    <p class="text-[11px] text-slate-500 mt-0.5">Goods received back are scrapped and do not increase saleable stock.</p>
+                                @elseif($field === 'ignore_physical_count_diff')
+                                    <p class="text-[11px] text-slate-500 mt-0.5">A physical recount does not change the book quantity.</p>
+                                @elseif($field === 'ignore_negative_balances')
+                                    <p class="text-[11px] text-slate-500 mt-0.5">Stock may go below zero, and that negative quantity is left out of valuation.</p>
+                                @endif
+                            </div>
+                            <div class="flex-shrink-0">
+                                <select id="behaviour_{{ $field }}"
+                                        name="{{ $field }}"
+                                        x-model="flags.{{ $field }}"
+                                        class="block w-28 rounded-lg border-gray-300 text-sm font-medium text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 bg-white py-1.5 px-3 shadow-2xs">
+                                    <option value="0">No</option>
+                                    <option value="1">Yes</option>
+                                </select>
                             </div>
                         </div>
                     @endforeach
-                    <div class="text-[11px] text-slate-600 space-y-1 pt-1">
-                        <p x-show="flags.treat_purchases_as_consumed === '1'">Purchases of this item are received and immediately consumed, so on-hand stock does not increase.</p>
-                        <p x-show="flags.treat_sales_as_new_manufacture === '1'">Each sale manufactures the sold quantity first, so existing stock stays unchanged.</p>
-                        <p x-show="flags.treat_rejections_inward_as_scrap === '1'">Goods received back are scrapped and do not increase saleable stock.</p>
-                        <p x-show="flags.ignore_physical_count_diff === '1'">A physical recount does not change the book quantity.</p>
-                        <p x-show="flags.ignore_negative_balances === '1'">Stock may go below zero, and that negative quantity is left out of valuation.</p>
-                    </div>
                 </div>
             </div>
         </div>
