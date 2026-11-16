@@ -80,6 +80,11 @@
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('customers.view', 'masters.view')): ?>
                 <a href="<?php echo e(route('masters.customers.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['masters.customers.*', 'masters.parties.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Parties</span></a>
             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('phone_directory.view', 'phone-directory.view')): ?>
+                <a href="<?php echo e(route('phone-directory.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['phone-directory.*'])); ?>" title="Phone Directory">
+                    <span x-show="!$root.sidebarCollapsed" x-cloak>Phone Directory</span>
+                </a>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('price-master.view', 'masters.view')): ?>
                 <a href="<?php echo e(route('masters.price-masters.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['masters.price-masters.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Price List</span></a>
             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>

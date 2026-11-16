@@ -1,10 +1,10 @@
-<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('hrms.view', 'hrms.manage', 'crm.view', 'crm.manage', 'tally.view', 'tally.manage')): ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('hrms.view', 'hrms.manage', 'crm.view', 'crm.manage', 'tally.view', 'tally.manage', 'phone_directory.view', 'phone-directory.view')): ?>
     <?php
         $sNum = $num();
-        $sectionActive = $is('hrms.*') || $is('crm.*') || $is('tally.*');
-        $primaryRoute = $can('hrms.view', 'hrms.manage')
-            ? route('hrms.employees.index')
-            : route('crm.leads.index');
+        $sectionActive = $is('hrms.*') || $is('crm.*') || $is('tally.*') || $is('phone-directory.*');
+        $primaryRoute = $can('phone_directory.view', 'phone-directory.view')
+            ? route('phone-directory.index')
+            : ($can('hrms.view', 'hrms.manage') ? route('hrms.employees.index') : route('crm.leads.index'));
     ?>
     <div
         data-sidebar-section="hr_crm"
@@ -84,6 +84,14 @@
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('crm.view', 'crm.manage')): ?>
                 <a href="<?php echo e(route('crm.leads.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['crm.leads.index', 'crm.leads.show', 'crm.leads.edit', 'crm.leads.create', 'crm.leads.bulk-upload*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Leads (CRM)</span></a>
                 <a href="<?php echo e(route('crm.leads.segments.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['crm.leads.segments.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Lead Segments</span></a>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('phone_directory.view', 'phone-directory.view', 'phone_directory.manage')): ?>
+                <a href="<?php echo e(route('phone-directory.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['phone-directory.*'])); ?>" title="Phone Directory">
+                    <svg class="h-4 w-4 shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                    </svg>
+                    <span x-show="!$root.sidebarCollapsed" x-cloak>Phone Directory</span>
+                </a>
             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
         </div>
     </div>

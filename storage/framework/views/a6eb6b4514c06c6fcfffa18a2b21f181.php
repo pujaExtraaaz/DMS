@@ -10,6 +10,9 @@
         'account_type' => 'current',
         'ifsc_code' => '',
         'is_primary' => true,
+        '_ifsc_status' => '',
+        '_ifsc_message' => '',
+        '_ifsc_loading' => false,
     ];
     $initialBankAccounts = old('bank_accounts', ($item->exists && $item->relationLoaded('bankAccounts') && $item->bankAccounts->isNotEmpty()) 
         ? $item->bankAccounts->map(fn ($b) => [
@@ -21,6 +24,9 @@
             'account_type' => $b->account_type ?? 'current',
             'ifsc_code' => $b->ifsc_code ?? '',
             'is_primary' => (bool) ($b->is_primary),
+            '_ifsc_status' => '',
+            '_ifsc_message' => '',
+            '_ifsc_loading' => false,
         ])->toArray() 
         : [$defaultBankAccount]);
 
@@ -1687,11 +1693,13 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
                                            @blur="lookupIfsc(idx)"
                                            placeholder="e.g. HDFC0001234"
                                            class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-10">
-                                    <span x-show="acc._ifsc_loading" class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs" x-cloak>…</span>
+                                    <span x-show="acc._ifsc_loading" class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs" x-cloak>
+                                        <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                    </span>
                                 </div>
                                 <p x-show="acc._ifsc_message" x-cloak
                                    class="mt-1 text-[11px]"
-                                   :class="acc._ifsc_status === 'ok' ? 'text-emerald-600' : (acc._ifsc_status === 'error' ? 'text-rose-600' : 'text-slate-500')"
+                                   :class="acc._ifsc_status === 'ok' ? 'text-emerald-600 font-medium' : (acc._ifsc_status === 'error' ? 'text-rose-600 font-medium' : 'text-slate-500')"
                                    x-text="acc._ifsc_message"></p>
                             </div>
                             <div>
@@ -2960,7 +2968,10 @@ function partyFormController() {
                 account_number: '',
                 account_type: 'current',
                 ifsc_code: '',
-                is_primary: !hasPrimary
+                is_primary: !hasPrimary,
+                _ifsc_status: '',
+                _ifsc_message: '',
+                _ifsc_loading: false,
             });
         },
 
@@ -2977,6 +2988,86 @@ function partyFormController() {
             this.bankAccounts.forEach((acc, i) => {
                 acc.is_primary = (i === index);
             });
+        },
+
+        onIfscInput(idx) {
+            const acc = this.bankAccounts[idx];
+            if (!acc) return;
+            acc._ifsc_status = '';
+            acc._ifsc_message = '';
+            if (this._ifscTimers[idx]) {
+                clearTimeout(this._ifscTimers[idx]);
+            }
+            const ifsc = (acc.ifsc_code || '').toUpperCase().trim();
+            if (ifsc.length === 11) {
+                this._ifscTimers[idx] = setTimeout(() => this.lookupIfsc(idx), 500);
+            }
+        },
+
+        async lookupIfsc(idx) {
+            const acc = this.bankAccounts[idx];
+            if (!acc) return;
+
+            const ifsc = (acc.ifsc_code || '').toUpperCase().trim();
+            if (ifsc.length === 0) {
+                acc._ifsc_status = '';
+                acc._ifsc_message = '';
+                return;
+            }
+
+            if (ifsc.length !== 11) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'Please enter a valid 11-character IFSC code.';
+                return;
+            }
+
+            // Prevent duplicate API requests for unchanged IFSC
+            if (this._ifscLastFetched[idx] === ifsc && acc.bank_name) {
+                return;
+            }
+
+            if (acc._ifsc_loading) {
+                return;
+            }
+
+            acc._ifsc_loading = true;
+            acc._ifsc_status = 'loading';
+            acc._ifsc_message = 'Fetching bank details...';
+
+            try {
+                const response = await fetch(`<?php echo e(route('masters.customers.ifsc-lookup')); ?>?ifsc=${encodeURIComponent(ifsc)}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                });
+                const data = await response.json();
+
+                if (data.success && data.bank) {
+                    acc.bank_name = data.bank.bank_name || acc.bank_name;
+                    acc.branch_name = data.bank.branch_name || acc.branch_name;
+                    if (!acc.account_holder_name || !String(acc.account_holder_name).trim()) {
+                        acc.account_holder_name = (this.form.name || '').trim();
+                    }
+                    this._ifscLastFetched[idx] = ifsc;
+                    acc._ifsc_status = 'ok';
+                    acc._ifsc_message = data.message || 'Bank and branch details fetched successfully.';
+                } else {
+                    acc._ifsc_status = 'error';
+                    if (data.status_code === 404 || response.status === 404) {
+                        acc._ifsc_message = data.message || 'IFSC code not found. Please verify the code.';
+                    } else if (data.status_code === 422) {
+                        acc._ifsc_message = data.message || 'Please enter a valid 11-character IFSC code.';
+                    } else {
+                        acc._ifsc_message = data.message || 'Unable to fetch bank details. Please enter details manually.';
+                    }
+                }
+            } catch (err) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'Unable to fetch bank details. Please enter details manually.';
+            } finally {
+                acc._ifsc_loading = false;
+            }
         },
 
         applyExtractedGstinFields(extracted = null, gstin = '') {

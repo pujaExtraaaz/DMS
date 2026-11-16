@@ -63,7 +63,7 @@ class IfscLookupService
             return [
                 'success' => false,
                 'status_code' => 422,
-                'message' => 'Invalid IFSC format. Expected pattern: ABCD0123456 (4 letters, 0, then 6 alphanumeric).',
+                'message' => 'Please enter a valid 11-character IFSC code.',
             ];
         }
 
@@ -80,7 +80,7 @@ class IfscLookupService
             return [
                 'success' => false,
                 'status_code' => 504,
-                'message' => 'IFSC lookup timed out. Please try again or enter bank details manually.',
+                'message' => 'Unable to fetch bank details. Please enter details manually.',
             ];
         } catch (\Throwable $e) {
             Log::warning('IFSC lookup failed for '.$ifsc.': '.$e->getMessage());
@@ -89,9 +89,7 @@ class IfscLookupService
             return [
                 'success' => false,
                 'status_code' => 502,
-                'message' => $e->getMessage() !== ''
-                    ? $e->getMessage()
-                    : 'Unable to look up this IFSC. Please enter bank details manually.',
+                'message' => 'Unable to fetch bank details. Please enter details manually.',
             ];
         }
 
@@ -120,7 +118,7 @@ class IfscLookupService
             return [
                 'success' => false,
                 'status_code' => 404,
-                'message' => "IFSC {$ifsc} was not found. Please verify the code.",
+                'message' => 'IFSC code not found. Please verify the code.',
             ];
         }
 
@@ -142,14 +140,14 @@ class IfscLookupService
             return [
                 'success' => false,
                 'status_code' => 404,
-                'message' => "IFSC {$ifsc} was not found or returned no bank details.",
+                'message' => 'IFSC code not found. Please verify the code.',
             ];
         }
 
         return [
             'success' => true,
             'status_code' => 200,
-            'message' => 'Bank details fetched from IFSC.',
+            'message' => 'Bank and branch details fetched successfully.',
             'bank' => [
                 'ifsc' => $ifsc,
                 'bank_name' => $bankName,

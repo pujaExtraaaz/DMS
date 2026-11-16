@@ -15,7 +15,7 @@ use App\Http\Controllers\Master\UomController;
 use App\Http\Controllers\Master\VehicleController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit|invoices.create|invoices.edit|invoices.view|sales.create|sales.edit|sales.view')->group(function () {
+Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit|invoices.create|invoices.edit|invoices.view|sales.create|sales.edit|sales.view|organization.view|organization.create|organization.edit|organization.manage')->group(function () {
     Route::post('customer-types/quick-store', [CustomerTypeController::class, 'quickStore'])->name('customer-types.quick-store');
     Route::put('customer-types/{customerType}/quick-update', [CustomerTypeController::class, 'quickUpdate'])->name('customer-types.quick-update');
     Route::delete('customer-types/{customerType}/quick-destroy', [CustomerTypeController::class, 'quickDestroy'])->name('customer-types.quick-destroy');
@@ -39,7 +39,7 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
     Route::resource('drivers', DriverController::class);
     Route::resource('delivery-persons', DeliveryPersonController::class);
 
-    Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit|invoices.create|invoices.edit|invoices.view|sales.create|sales.edit|sales.view')->group(function () {
+    Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit|invoices.create|invoices.edit|invoices.view|sales.create|sales.edit|sales.view|organization.view|organization.create|organization.edit|organization.manage')->group(function () {
         Route::patch('products/{product}/assign-type', [ProductController::class, 'assignType'])->name('products.assign-type');
         Route::resource('products', ProductController::class);
         Route::get('price-masters/copy-options', [PriceMasterController::class, 'copyOptions'])->name('price-masters.copy-options');
