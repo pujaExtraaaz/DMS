@@ -230,6 +230,96 @@ class BulkImportUpgradeTest extends TestCase
         $this->assertEquals(1600, (float) Product::query()->where('sku', 'PN-SCAN-100')->value('selling_price'));
     }
 
+    public function test_products_import_assigns_distinct_part_numbers_when_the_sheet_leaves_them_blank(): void
+    {
+        $import = new ProductsImport($this->company->id);
+        $import->collection(collect([
+            ['name' => 'First Blank', 'uom_code' => 'PCS', 'brand' => 'Missing Brand'],
+            ['name' => 'Second Blank', 'uom_code' => 'PCS'],
+        ]));
+
+        $this->assertSame(0, $import->skipped, json_encode($import->errors));
+        $this->assertSame(2, $import->created);
+        $this->assertSame(0, Brand::query()->count());
+
+        $skus = Product::query()->orderBy('id')->pluck('sku')->all();
+        $this->assertCount(2, $skus);
+        $this->assertNotSame($skus[0], $skus[1]);
+        $prefix = 'PROD-'.$this->company->id.'-';
+        $this->assertStringStartsWith($prefix, $skus[0]);
+        $this->assertStringStartsWith($prefix, $skus[1]);
+    }
+
+    public function test_products_reimport_without_part_number_updates_instead_of_duplicating(): void
+    {
+        $row = ['name' => 'Repeat Speaker', 'uom_code' => 'PCS', 'model' => 'SP-1', 'selling_price' => 100];
+
+        $first = new ProductsImport($this->company->id, 'progress-test-12345678');
+        $first->collection(collect([$row]));
+        $this->assertSame(1, $first->created);
+        $this->assertSame(1, Product::query()->where('name', 'Repeat Speaker')->count());
+
+        $again = new ProductsImport($this->company->id);
+        $again->collection(collect([$row]));
+        $this->assertSame(0, $again->created);
+        $this->assertSame(0, $again->updated);
+        $this->assertSame(1, $again->skipped);
+        $this->assertSame(1, Product::query()->where('name', 'Repeat Speaker')->count());
+
+        $changed = $row;
+        $changed['selling_price'] = 180;
+        $update = new ProductsImport($this->company->id);
+        $update->collection(collect([$changed]));
+        $this->assertSame(0, $update->created);
+        $this->assertSame(1, $update->updated);
+        $this->assertSame(1, Product::query()->where('name', 'Repeat Speaker')->count());
+        $this->assertEquals(180, (float) Product::query()->where('name', 'Repeat Speaker')->value('selling_price'));
+
+        $this->assertTrue(\Illuminate\Support\Facades\Storage::disk('local')->exists('imports/progress/progress-test-12345678.json'));
+    }
+
+    public function test_products_import_uses_existing_uom_and_creates_a_missing_one(): void
+    {
+        $before = Uom::query()->count();
+
+        $import = new ProductsImport($this->company->id);
+        $import->collection(collect([
+            ['name' => 'Known Unit Item', 'part_number' => 'PN-UOM-1', 'uom_code' => 'PCS (PCS-PIECES)'],
+            ['name' => 'New Unit Item', 'part_number' => 'PN-UOM-2', 'uom_code' => 'DRUM'],
+            ['name' => 'New Unit Again', 'part_number' => 'PN-UOM-3', 'uom_code' => 'drum'],
+        ]));
+
+        $this->assertSame(0, $import->skipped, json_encode($import->errors));
+        $this->assertSame(3, $import->created);
+        $this->assertSame($before + 1, Uom::query()->count());
+
+        $known = Product::query()->where('sku', 'PN-UOM-1')->first();
+        $this->assertSame($this->uom->id, $known->base_uom_id);
+
+        $drum = Uom::query()->whereRaw('UPPER(code) = ?', ['DRUM'])->first();
+        $this->assertNotNull($drum);
+        $created = Product::query()->where('sku', 'PN-UOM-2')->first();
+        $again = Product::query()->where('sku', 'PN-UOM-3')->first();
+        $this->assertSame($drum->id, $created->base_uom_id);
+        $this->assertSame($drum->id, $again->base_uom_id);
+    }
+
+    public function test_products_import_stops_when_cancel_is_requested(): void
+    {
+        \Illuminate\Support\Facades\Storage::disk('local')->put('imports/progress/progress-cancel-12345678.cancel', '1');
+
+        $import = new ProductsImport($this->company->id, 'progress-cancel-12345678');
+
+        try {
+            $import->collection(collect([
+                ['name' => 'Should Not Save', 'uom_code' => 'PCS', 'part_number' => 'PN-CANCEL-1'],
+            ]));
+            $this->fail('Import should have stopped.');
+        } catch (\App\Domains\Master\Imports\ImportCancelledException) {
+            $this->assertSame(0, Product::query()->where('sku', 'PN-CANCEL-1')->count());
+        }
+    }
+
     public function test_parties_import_fills_new_fields_address_and_bank(): void
     {
         $this->actingAs($this->user);

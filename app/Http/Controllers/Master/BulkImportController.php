@@ -8,6 +8,7 @@ use App\Domains\Master\Imports\BrandsImport;
 use App\Domains\Master\Imports\CategoriesImport;
 use App\Domains\Master\Imports\CompaniesImport;
 use App\Domains\Master\Imports\FinancialYearsImport;
+use App\Domains\Master\Imports\ImportCancelledException;
 use App\Domains\Master\Imports\PartiesImport;
 use App\Domains\Master\Imports\PriceMasterImport;
 use App\Domains\Master\Imports\ProductsImport;
@@ -16,6 +17,7 @@ use App\Domains\Master\Imports\SubCategoriesImport;
 use App\Domains\Master\Imports\UomsImport;
 use App\Domains\Master\Imports\WarehousesImport;
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Session;
@@ -144,13 +146,14 @@ class BulkImportController extends Controller
         }, "template-{$type}.csv", ['Content-Type' => 'text/csv']);
     }
 
-    public function upload(Request $request, string $type): RedirectResponse
+    public function upload(Request $request, string $type): RedirectResponse|JsonResponse
     {
         $request->validate([
             'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:20480',
         ]);
 
         $companyId = auth()->user()?->company_id;
+        $progressId = $this->progressId($request);
 
         $import = match ($type) {
             'companies' => new CompaniesImport(),
@@ -162,14 +165,26 @@ class BulkImportController extends Controller
             'categories' => new CategoriesImport($companyId),
             'sub-categories' => new SubCategoriesImport($companyId),
             'product-types' => new ProductTypesImport($companyId),
-            'products' => new ProductsImport($companyId),
+            'products' => new ProductsImport($companyId, $progressId),
             'parties' => new PartiesImport($companyId),
             'price-master' => new PriceMasterImport(),
             'leads' => new LeadsImport($companyId),
             default => abort(404, 'Unknown import type'),
         };
 
-        $import->import($request->file('file'));
+        set_time_limit(0);
+        if ($progressId) {
+            Storage::disk('local')->delete('imports/progress/'.$progressId.'.cancel');
+            $request->session()->save();
+        }
+        try {
+            $import->import($request->file('file'));
+        } catch (ImportCancelledException) {
+            return response()->json([
+                'cancelled' => true,
+                'message' => 'Import cancelled. Nothing was saved.',
+            ]);
+        }
 
         $summary = [
             'type' => $type,
@@ -192,10 +207,56 @@ class BulkImportController extends Controller
 
         Session::flash('bulk_import_summary', $summary);
 
+        if ($progressId) {
+            return response()->json($summary);
+        }
+
         return $this->flashSuccess(
             sprintf('%s import complete: %d created, %d updated, %d skipped.', ucfirst(str_replace('-', ' ', $type)), $import->created, $import->updated, $import->skipped),
             'masters.bulk-import.index',
         );
+    }
+
+    public function progress(string $id)
+    {
+        abort_unless($this->validProgressId($id), 404);
+        $path = 'imports/progress/'.$id.'.json';
+        if (! Storage::disk('local')->exists($path)) {
+            return response()->json([
+                'processed' => 0,
+                'total' => 0,
+                'percent' => 0,
+                'status' => 'reading',
+                'created' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+            ]);
+        }
+
+        $data = json_decode((string) Storage::disk('local')->get($path), true);
+
+        return response()->json(is_array($data) ? $data : ['percent' => 0, 'status' => 'reading']);
+    }
+
+    public function cancel(string $id): JsonResponse
+    {
+        abort_unless($this->validProgressId($id), 404);
+        Storage::disk('local')->put('imports/progress/'.$id.'.cancel', '1');
+        clearstatcache(true, Storage::disk('local')->path('imports/progress/'.$id.'.cancel'));
+
+        return response()->json(['cancelled' => true]);
+    }
+
+    protected function progressId(Request $request): ?string
+    {
+        $id = (string) $request->input('progress_id', '');
+
+        return $this->validProgressId($id) ? $id : null;
+    }
+
+    protected function validProgressId(string $id): bool
+    {
+        return (bool) preg_match('/^[A-Za-z0-9\-]{8,80}$/', $id);
     }
 
     public function errors(string $filename): StreamedResponse

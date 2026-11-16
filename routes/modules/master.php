@@ -70,6 +70,8 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::get('bulk-import', [BulkImportController::class, 'index'])->name('bulk-import.index');
         Route::get('bulk-import/template/{type}', [BulkImportController::class, 'template'])->name('bulk-import.template');
         Route::post('bulk-import/{type}', [BulkImportController::class, 'upload'])->name('bulk-import.upload');
+        Route::get('bulk-import/progress/{id}', [BulkImportController::class, 'progress'])->name('bulk-import.progress');
+        Route::post('bulk-import/progress/{id}/cancel', [BulkImportController::class, 'cancel'])->name('bulk-import.cancel');
         Route::get('bulk-import/errors/{filename}', [BulkImportController::class, 'errors'])->name('bulk-import.errors');
     });
 });
