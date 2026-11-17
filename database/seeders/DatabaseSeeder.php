@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             UnlinkExternalUsersSeeder::class,
             PhoneDirectoryPermissionSeeder::class,
             PhoneDirectorySeeder::class,
+            PurchasePrerequisitesSeeder::class,
             // AvitDigitalDemoSeeder::class,
             // AvitBooksDemoSeeder::class,
         ]);

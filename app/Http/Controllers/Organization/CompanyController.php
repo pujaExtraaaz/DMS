@@ -81,7 +81,15 @@ class CompanyController extends Controller
     {
         $data = $this->validated($request);
 
+        if (empty($data['is_default']) && ! Company::query()->where('is_default', true)->exists()) {
+            $data['is_default'] = true;
+        }
+
         $company = Company::create($data);
+
+        if (! empty($data['is_default'])) {
+            Company::query()->whereKeyNot($company->id)->update(['is_default' => false]);
+        }
 
         if ($company->business_group_id) {
             $company->businessGroup?->companies()->syncWithoutDetaching([$company->id]);
@@ -154,6 +162,10 @@ class CompanyController extends Controller
         }
 
         $company->update($data);
+
+        if (! empty($data['is_default'])) {
+            Company::query()->whereKeyNot($company->id)->update(['is_default' => false]);
+        }
 
         if ($company->business_group_id) {
             $company->businessGroup?->companies()->syncWithoutDetaching([$company->id]);

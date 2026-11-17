@@ -20,6 +20,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use App\Support\DocumentExporter;
@@ -251,6 +252,8 @@ class PurchaseInvoiceController extends Controller
             'items' => 'required|array|min:1',
             'items.*.receipt_note_item_id' => 'nullable|exists:receipt_note_items,id',
             'items.*.product_id' => 'required|exists:products,id',
+            'items.*.uom_id' => 'nullable|exists:uoms,id',
+            'items.*.purchase_order_item_id' => 'nullable|exists:purchase_order_items,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
@@ -585,7 +588,7 @@ class PurchaseInvoiceController extends Controller
         $invoiceItems = $invoice->items->map(function ($it) {
             $unitCost = (float) $it->unit_cost;
             $taxPercent = (float) $it->tax_percent;
-            $batchMrp = (float) ($it->batch_mrp ?? ($it->product?->mrp ?? 0));
+            $batchMrp = (float) ($it->batch_mrp ?? ($it->product?->catalogMrp() ?? 0));
             $purchasePriceInclusive = $it->purchase_price_inclusive !== null
                 ? (float) $it->purchase_price_inclusive
                 : round($unitCost * (1 + ($taxPercent / 100)), 4);
@@ -595,7 +598,8 @@ class PurchaseInvoiceController extends Controller
 
             return [
                 'product_id' => $it->product_id,
-                'unit' => $it->product?->unit ?? ($it->uom?->code ?? 'PCS'),
+                'uom_id' => $it->uom_id ?? $it->product?->base_uom_id,
+                'unit' => $it->uom?->code ?? ($it->product?->unit ?? 'PCS'),
                 'tracking_type' => $it->product?->tracking_type ?? 'none',
                 'quantity' => (float) $it->quantity,
                 'unit_cost' => $unitCost,
@@ -681,6 +685,8 @@ class PurchaseInvoiceController extends Controller
             'items' => 'required|array|min:1',
             'items.*.receipt_note_item_id' => 'nullable|exists:receipt_note_items,id',
             'items.*.product_id' => 'required|exists:products,id',
+            'items.*.uom_id' => 'nullable|exists:uoms,id',
+            'items.*.purchase_order_item_id' => 'nullable|exists:purchase_order_items,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
@@ -930,23 +936,38 @@ class PurchaseInvoiceController extends Controller
             ], 422);
         }
 
-        $order->load(['items.product', 'supplier', 'warehouse', 'inwards', 'billingAddress', 'shippingAddress']);
+        $order->load(['items.product.baseUom', 'items.uom', 'supplier', 'warehouse', 'inwards', 'billingAddress', 'shippingAddress']);
         $latestInwardDate = $order->inwards->sortByDesc('inward_date')->first()?->inward_date?->toDateString();
 
-        $invoicedByProduct = DB::table('purchase_invoice_items')
+        $invoicedQuery = DB::table('purchase_invoice_items')
             ->join('purchase_invoices', 'purchase_invoice_items.purchase_invoice_id', '=', 'purchase_invoices.id')
             ->where('purchase_invoices.purchase_order_id', $order->id)
-            ->where('purchase_invoices.status', '!=', 'cancelled')
+            ->where('purchase_invoices.status', '!=', 'cancelled');
+
+        $hasPoItemLink = Schema::hasColumn('purchase_invoice_items', 'purchase_order_item_id');
+        $invoicedByPoItem = $hasPoItemLink
+            ? (clone $invoicedQuery)
+                ->whereNotNull('purchase_invoice_items.purchase_order_item_id')
+                ->select('purchase_invoice_items.purchase_order_item_id', DB::raw('SUM(purchase_invoice_items.quantity) as invoiced_qty'))
+                ->groupBy('purchase_invoice_items.purchase_order_item_id')
+                ->pluck('invoiced_qty', 'purchase_order_item_id')
+            : collect();
+
+        $invoicedByProduct = (clone $invoicedQuery)
+            ->when($hasPoItemLink, fn ($q) => $q->whereNull('purchase_invoice_items.purchase_order_item_id'))
             ->select('purchase_invoice_items.product_id', DB::raw('SUM(purchase_invoice_items.quantity) as invoiced_qty'))
             ->groupBy('purchase_invoice_items.product_id')
             ->pluck('invoiced_qty', 'product_id');
 
-        $items = $order->items->map(function ($item) use ($invoicedByProduct) {
-            $alreadyInvoiced = (float) ($invoicedByProduct[$item->product_id] ?? 0);
+        $items = $order->items->map(function ($item) use ($invoicedByPoItem, $invoicedByProduct, $hasPoItemLink) {
+            $alreadyInvoiced = $hasPoItemLink ? (float) ($invoicedByPoItem[$item->id] ?? 0) : 0;
+            if ($alreadyInvoiced <= 0) {
+                $alreadyInvoiced = (float) ($invoicedByProduct[$item->product_id] ?? 0);
+            }
             $remaining = max(0, (float) $item->quantity - $alreadyInvoiced);
             $unitCost = (float) ($item->unit_cost ?? $item->unit_price ?? 0);
             $taxPercent = (float) (($item->cgst_percent ?? 0) + ($item->sgst_percent ?? 0));
-            $batchMrp = (float) ($item->mrp ?? $item->product?->mrp ?? 0);
+            $batchMrp = (float) ($item->mrp ?? $item->product?->catalogMrp() ?? 0);
             $purchasePriceInclusive = $item->purchase_price_inclusive !== null
                 ? (float) $item->purchase_price_inclusive
                 : round($unitCost * (1 + ($taxPercent / 100)), 4);
@@ -956,8 +977,10 @@ class PurchaseInvoiceController extends Controller
 
             return [
                 'product_id' => $item->product_id,
+                'purchase_order_item_id' => $item->id,
                 'product_name' => $item->product?->name ?? 'Item',
-                'unit' => $item->product?->unit ?? 'PCS',
+                'uom_id' => $item->uom_id ?? $item->product?->base_uom_id,
+                'unit' => $item->uom?->code ?? ($item->product?->unit ?? 'PCS'),
                 'tracking_type' => $item->product?->tracking_type ?? 'none',
                 'is_serial_tracked' => $item->product?->isSerialTracked() ?? false,
                 'track_serial' => $item->product?->isSerialTracked() ?? false,
@@ -1058,7 +1081,7 @@ class PurchaseInvoiceController extends Controller
             $taxPercent = (float) ($product?->tax_rate ?? 18);
             $unitCost = (float) $item->unit_cost;
             $purchasePriceInclusive = round($unitCost * (1 + ($taxPercent / 100)), 4);
-            $batchMrp = (float) ($product?->mrp ?? 0);
+            $batchMrp = (float) ($product?->catalogMrp() ?? 0);
             $purchaseDiscountPercent = $batchMrp > 0 ? round((($batchMrp - $purchasePriceInclusive) / $batchMrp) * 100, 2) : 0;
 
             $serials = $item->serials->pluck('serial_number')->all();
@@ -1067,7 +1090,8 @@ class PurchaseInvoiceController extends Controller
                 'receipt_note_item_id' => $item->id,
                 'product_id' => $item->product_id,
                 'product_name' => $product?->name ?? 'Product',
-                'unit' => $item->uom?->short_name ?? $product?->unit ?? 'PCS',
+                'uom_id' => $item->uom_id ?? $product?->base_uom_id,
+                'unit' => $item->uom?->code ?? ($item->uom?->short_name ?? ($product?->unit ?? 'PCS')),
                 'tracking_type' => $product?->tracking_type ?? 'none',
                 'is_serial_tracked' => $product?->isSerialTracked() ?? false,
                 'track_serial' => $product?->isSerialTracked() ?? false,
@@ -1116,6 +1140,7 @@ class PurchaseInvoiceController extends Controller
             'supplier',
             'warehouse',
             'purchaseOrder',
+            'purchaseInward',
         ]);
 
         $company = \App\Domains\Organization\Models\Company::resolveCurrent()
@@ -1158,9 +1183,11 @@ class PurchaseInvoiceController extends Controller
                 'id' => $product->id,
                 'name' => $product->name,
                 'sku' => $product->sku,
-                'unit' => $product->unit ?? ($product->baseUom?->name ?? ($product->baseUom?->code ?? 'PCS')),
+                'unit' => $product->unit,
+                'base_uom_id' => $product->base_uom_id,
+                'uom_id' => $product->base_uom_id,
                 'tax_rate' => (float) ($product->tax_rate ?? 0),
-                'mrp' => (float) ($product->mrp ?? ($product->calculation_mrp ?? 0)),
+                'mrp' => $product->catalogMrp(),
                 'purchase_price' => (float) ($product->purchase_price ?? 0),
                 'tracking_type' => $product->tracking_type ?? 'none',
                 'tracking_types' => $product->tracking_types,
@@ -1217,6 +1244,28 @@ class PurchaseInvoiceController extends Controller
         return Product::with(['baseUom', 'productType'])
             ->where('is_active', true)
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->map(function (Product $product) {
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'brand_id' => $product->brand_id,
+                    'tax_rate' => (float) ($product->tax_rate ?? 0),
+                    'purchase_price' => (float) ($product->purchase_price ?? 0),
+                    'mrp' => $product->catalogMrp(),
+                    'calculation_mrp' => (float) ($product->calculation_mrp ?? 0),
+                    'base_uom_id' => $product->base_uom_id,
+                    'uom_id' => $product->base_uom_id,
+                    'unit' => $product->unit,
+                    'tracking_type' => $product->tracking_type ?? 'none',
+                    'is_serial_tracked' => $product->isSerialTracked(),
+                    'track_serial' => $product->isSerialTracked(),
+                    'base_uom' => $product->baseUom
+                        ? ['id' => $product->baseUom->id, 'code' => $product->baseUom->code, 'name' => $product->baseUom->name]
+                        : null,
+                ];
+            })
+            ->values();
     }
 }

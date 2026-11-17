@@ -5,13 +5,20 @@ namespace App\Http\Controllers\Organization;
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\Warehouse;
+use App\Domains\Organization\Models\WarehouseType;
 use App\Http\Controllers\Controller;
+use App\Support\IndianCities;
+use App\Support\IndianStates;
+use App\Support\NameCase;
+use App\Support\Traits\SortableAndSearchable;
+use App\Support\WorldCountries;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-
-use App\Support\Traits\SortableAndSearchable;
 
 class WarehouseController extends Controller
 {
@@ -29,7 +36,7 @@ class WarehouseController extends Controller
                 }
             });
 
-        $this->applySearch($query, $request->input('search'), ['name']);
+        $this->applySearch($query, $request->input('search'), ['name', 'code', 'city', 'state', 'warehouse_type', 'contact_person']);
 
         $sortData = $this->applySorting(
             $query,
@@ -56,31 +63,47 @@ class WarehouseController extends Controller
     {
         $defaultCompanyId = auth()->user()?->company_id ?? Company::defaultCompanyId();
 
-        return view('organization.warehouses.form', [
-            'item' => new Warehouse(['company_id' => $defaultCompanyId]),
-            'companies' => Company::where('is_active', true)->orderBy('name')->get(),
-            'branches' => Branch::where('is_active', true)->orderBy('name')->get(),
-        ]);
+        return view('organization.warehouses.form', $this->formData(new Warehouse([
+            'company_id' => $defaultCompanyId,
+            'country' => 'India',
+            'is_active' => true,
+            'is_default' => false,
+        ])));
     }
 
     public function store(Request $request): RedirectResponse
     {
-        Warehouse::create($this->validated($request));
+        $data = $this->validated($request);
+        $warehouse = Warehouse::create($data);
+        if (! empty($data['is_default'])) {
+            $this->clearOtherDefaults($warehouse);
+        }
+
         return $this->flashSuccess('Warehouse created successfully.', 'organization.warehouses.index');
+    }
+
+    public function show(Warehouse $warehouse): View
+    {
+        $warehouse->load(['company', 'branch']);
+
+        return view('organization.warehouses.show', [
+            'item' => $warehouse,
+        ]);
     }
 
     public function edit(Warehouse $warehouse): View
     {
-        return view('organization.warehouses.form', [
-            'item' => $warehouse,
-            'companies' => Company::where('is_active', true)->orderBy('name')->get(),
-            'branches' => Branch::where('is_active', true)->orderBy('name')->get(),
-        ]);
+        return view('organization.warehouses.form', $this->formData($warehouse));
     }
 
     public function update(Request $request, Warehouse $warehouse): RedirectResponse
     {
-        $warehouse->update($this->validated($request, $warehouse));
+        $data = $this->validated($request, $warehouse);
+        $warehouse->update($data);
+        if (! empty($data['is_default'])) {
+            $this->clearOtherDefaults($warehouse);
+        }
+
         return $this->flashSuccess('Warehouse updated successfully.', 'organization.warehouses.index');
     }
 
@@ -88,7 +111,6 @@ class WarehouseController extends Controller
     {
         $user = $request->user();
 
-        // Check user permissions before deleting
         if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) && ! $user->can('organization.manage') && ! $user->can('organization.edit')) {
             if ($request->wantsJson()) {
                 return response()->json([
@@ -100,7 +122,6 @@ class WarehouseController extends Controller
             return back()->with('error', 'Unauthorized to delete warehouse.');
         }
 
-        // Prevent deleting a warehouse if it belongs to another company or unauthorized tenant
         if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && (int) $warehouse->company_id !== (int) $user->company_id) {
             if ($request->wantsJson()) {
                 return response()->json([
@@ -112,9 +133,17 @@ class WarehouseController extends Controller
             return back()->with('error', 'Unauthorized: This warehouse belongs to another company.');
         }
 
+        if ($reason = $warehouse->getDeleteBlockReason()) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => $reason], 422);
+            }
+
+            return back()->with('error', $reason);
+        }
+
         $warehouseName = $warehouse->getRawOriginal('name') ?: $warehouse->name;
 
-        \Illuminate\Support\Facades\DB::transaction(function () use ($warehouse) {
+        DB::transaction(function () use ($warehouse) {
             $warehouse->is_default = false;
             $warehouse->is_active = false;
             $warehouse->save();
@@ -132,19 +161,151 @@ class WarehouseController extends Controller
             ->with('success', "Warehouse '{$warehouseName}' deleted successfully.");
     }
 
+    public function storeWarehouseType(Request $request): JsonResponse
+    {
+        $rawName = trim((string) $request->input('name', ''));
+        $name = NameCase::format($rawName) ?? '';
+
+        if ($name === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Warehouse type name is required.',
+                'errors' => ['name' => ['Warehouse type name is required.']],
+            ], 422);
+        }
+
+        if (mb_strlen($name) > 100) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Warehouse type name cannot exceed 100 characters.',
+                'errors' => ['name' => ['Warehouse type name cannot exceed 100 characters.']],
+            ], 422);
+        }
+
+        $existing = WarehouseType::query()
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Warehouse type already exists.',
+                'item' => ['id' => $existing->id, 'name' => $existing->name],
+            ]);
+        }
+
+        $type = WarehouseType::create([
+            'name' => $name,
+            'is_active' => true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Warehouse type created.',
+            'item' => ['id' => $type->id, 'name' => $type->name],
+        ], 201);
+    }
+
+    protected function formData(Warehouse $item): array
+    {
+        $warehouseTypes = collect(Warehouse::DEFAULT_WAREHOUSE_TYPES)
+            ->map(fn ($name) => $name)
+            ->values();
+
+        if (Schema::hasTable('warehouse_types')) {
+            $dbTypes = WarehouseType::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->pluck('name');
+            $warehouseTypes = $warehouseTypes
+                ->concat($dbTypes)
+                ->unique(fn ($name) => mb_strtolower((string) $name))
+                ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+                ->values();
+        }
+
+        return [
+            'item' => $item,
+            'companies' => Company::where('is_active', true)->orderBy('name')->get(),
+            'branches' => Branch::where('is_active', true)->orderBy('name')->get(['id', 'company_id', 'name']),
+            'warehouseTypes' => $warehouseTypes,
+            'states' => IndianStates::namesAlphabetical(),
+            'stateCities' => IndianCities::all(),
+            'countries' => WorldCountries::all(),
+            'citiesUrl' => route('organization.branches.cities'),
+            'cityStoreUrl' => route('organization.branches.cities.quick-store'),
+            'warehouseTypeStoreUrl' => route('organization.warehouses.warehouse-types.quick-store'),
+        ];
+    }
+
     protected function validated(Request $request, ?Warehouse $warehouse = null): array
     {
+        $companyId = $request->integer('company_id') ?: null;
+        $stateNames = IndianStates::namesAlphabetical();
+        $countryNames = WorldCountries::all();
+
+        foreach (['name', 'contact_person', 'address', 'address_line_2', 'city', 'warehouse_type'] as $field) {
+            if ($request->filled($field)) {
+                $request->merge([$field => NameCase::format(trim((string) $request->input($field)))]);
+            }
+        }
+        if ($request->filled('state')) {
+            $request->merge(['state' => IndianStates::normalizeName((string) $request->input('state'))]);
+        }
+
         $data = $request->validate([
             'company_id' => 'required|exists:companies,id',
-            'branch_id' => 'required|exists:branches,id',
+            'branch_id' => [
+                'required',
+                'integer',
+                Rule::exists('branches', 'id')->where(fn ($q) => $q->where('company_id', $companyId)),
+            ],
             'name' => 'required|string|max:255',
             'code' => 'nullable|string|max:30',
-            'address' => 'nullable|string',
+            'warehouse_type' => 'nullable|string|max:100',
+            'contact_person' => 'nullable|string|max:255',
+            'contact_phone' => 'nullable|string|max:30',
+            'address' => 'required|string|max:500',
+            'address_line_2' => 'nullable|string|max:255',
+            'state' => ['required', 'string', 'max:100', Rule::in($stateNames)],
+            'city' => [
+                'required',
+                'string',
+                'max:100',
+                function ($attribute, $value, $fail) use ($request) {
+                    $state = IndianStates::normalizeName((string) $request->input('state', ''));
+                    if ($state === '' || $value === null || $value === '') {
+                        return;
+                    }
+                    $cities = IndianCities::getCitiesForState($state);
+                    $ok = collect($cities)->contains(fn ($c) => strcasecmp((string) $c, (string) $value) === 0);
+                    if (! $ok) {
+                        $fail('Selected city does not belong to the selected state.');
+                    }
+                },
+            ],
+            'country' => ['required', 'string', 'max:100', Rule::in($countryNames)],
+            'pincode' => 'nullable|string|max:12',
+            'notes' => 'nullable|string|max:2000',
             'is_default' => 'boolean',
             'is_active' => 'boolean',
+        ], [
+            'branch_id.exists' => 'The selected branch does not belong to the selected company.',
+            'address.required' => 'Address Line 1 is required.',
+            'state.required' => 'State is required.',
+            'city.required' => 'City is required.',
+            'country.required' => 'Country is required.',
         ]);
+
         $data['is_default'] = $request->boolean('is_default');
         $data['is_active'] = $request->boolean('is_active');
+        $data['country'] = $data['country'] ?: 'India';
+        $data['warehouse_type'] = filled($data['warehouse_type'] ?? null) ? trim((string) $data['warehouse_type']) : null;
+        $data['contact_person'] = filled($data['contact_person'] ?? null) ? trim((string) $data['contact_person']) : null;
+        $data['contact_phone'] = filled($data['contact_phone'] ?? null) ? trim((string) $data['contact_phone']) : null;
+        $data['address_line_2'] = filled($data['address_line_2'] ?? null) ? trim((string) $data['address_line_2']) : null;
+        $data['notes'] = filled($data['notes'] ?? null) ? trim((string) $data['notes']) : null;
+
         if (blank($data['code'] ?? null)) {
             if ($warehouse && filled($warehouse->code)) {
                 $data['code'] = $warehouse->code;
@@ -157,6 +318,14 @@ class WarehouseController extends Controller
         }
 
         return $data;
+    }
+
+    protected function clearOtherDefaults(Warehouse $warehouse): void
+    {
+        Warehouse::query()
+            ->where('company_id', $warehouse->company_id)
+            ->whereKeyNot($warehouse->id)
+            ->update(['is_default' => false]);
     }
 
     protected function warehouseCode(string $name, int $branchId, ?int $ignoreId = null): string

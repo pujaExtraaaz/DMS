@@ -386,10 +386,10 @@
                     </tr>
                 @endif
 
-                @if($invoice->grn)
+                @if($invoice->purchaseInward)
                     <tr>
                         <td class="bold right">GRN Ref:</td>
-                        <td class="right">{{ $invoice->grn->grn_number }}</td>
+                        <td class="right">{{ $invoice->purchaseInward->inward_no }}</td>
                     </tr>
                 @endif
 

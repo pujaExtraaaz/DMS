@@ -1,10 +1,14 @@
-@if($can('masters.view', 'products.view', 'customers.view', 'price-master.view'))
+@if($can('masters.view', 'products.view', 'customers.view', 'price-master.view', 'phone_directory.view', 'phone-directory.view', 'phone_directory.manage', 'phone_directory.create'))
     @php
         $sNum = $num();
-        $sectionActive = $is('masters.*');
+        $sectionActive = $is('masters.*') || $is('phone-directory.*');
         $primaryRoute = $can('customers.view', 'masters.view')
             ? route('masters.customers.index')
-            : ($can('products.view', 'masters.view') ? route('masters.products.index') : route('masters.brands.index'));
+            : ($can('products.view', 'masters.view')
+                ? route('masters.products.index')
+                : ($can('phone_directory.view', 'phone-directory.view', 'phone_directory.manage', 'phone_directory.create')
+                    ? route('phone-directory.index')
+                    : route('masters.brands.index')));
     @endphp
     <div
         data-sidebar-section="masters"
@@ -82,6 +86,9 @@
             @endif
             @if($can('price-master.view', 'masters.view'))
                 <a href="{{ route('masters.price-masters.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.price-masters.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Price List</span></a>
+            @endif
+            @if($can('phone_directory.view', 'phone-directory.view', 'phone_directory.manage', 'phone_directory.create'))
+                <a href="{{ route('phone-directory.index') }}" class="{{ $itemClass }} {{ $linkClass(['phone-directory.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Phone Directory</span></a>
             @endif
             @if($can('masters.view', 'products.view', 'customers.view'))
                 <a href="{{ route('masters.bulk-import.index') }}" class="{{ $itemClass }} {{ $linkClass(['masters.bulk-import.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Bulk Import</span></a>

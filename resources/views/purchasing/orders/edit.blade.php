@@ -218,7 +218,7 @@
                 <select name="items[{{ $idx }}][product_id]" class="po-product hidden" onchange="handlePoProductChange(this)">
                     <option value="">Select product</option>
                     @foreach($products as $p)
-                        <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-mrp="{{ $p->mrp ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected(($rowItem['product_id'] ?? null) == $p->id)>{{ $p->name }}</option>
+                        <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-mrp="{{ $p->calculation_mrp ?? $p->mrp ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected(($rowItem['product_id'] ?? null) == $p->id)>{{ $p->name }}</option>
                     @endforeach
                 </select>
                 <div class="relative">
@@ -444,7 +444,7 @@
             'brand_id' => $p->brand_id ? (string)$p->brand_id : '',
             'tax_rate' => (float)($p->tax_rate ?? 0),
             'purchase_price' => (float)($p->purchase_price ?? 0),
-            'mrp' => (float)($p->mrp ?? 0),
+            'mrp' => (float) ($p->calculation_mrp ?? $p->mrp ?? 0),
             'base_uom_id' => $p->base_uom_id ? (string)$p->base_uom_id : '',
         ];
     })->values();
@@ -633,7 +633,8 @@ function handleDropdownFilter(query, selectedIdOverride = null) {
     const q = (query || '').toLowerCase().trim();
 
     currentFilteredProducts = poProductsList.filter(p => {
-        if (selectedBrandId && String(p.brand_id) !== selectedBrandId) {
+        // Include unbranded products so legacy catalog rows remain selectable until backfilled.
+        if (selectedBrandId && p.brand_id && String(p.brand_id) !== selectedBrandId) {
             return false;
         }
         if (!q) return true;
@@ -856,7 +857,7 @@ async function loadBatchesForProduct(productId, row) {
     if (!datalist || !productId) return;
 
     try {
-        const res = await fetch(`{{ url('/inventory/products') }}/${productId}/batches`, {
+        const res = await fetch(`{{ url('/inventory/batches') }}/${productId}?include_zero=1`, {
             headers: { 'Accept': 'application/json' }
         });
         const batches = await res.json();

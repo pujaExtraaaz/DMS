@@ -489,6 +489,17 @@ class PurchaseOrderService
             $igstTotal = 0;
             $prepared = [];
 
+            $supplierForTax = Customer::query()->find($supplierId);
+            $companyForTax = Company::query()->find(
+                $data['company_id']
+                    ?? Warehouse::query()->whereKey($data['warehouse_id'] ?? null)->value('company_id')
+                    ?? $actor->company_id
+                    ?? Company::defaultCompanyId()
+            );
+            $supplierState = strtoupper(trim((string) ($supplierForTax?->state ?? '')));
+            $companyState = strtoupper(trim((string) ($companyForTax?->state ?? '')));
+            $data['is_inter_state'] = $supplierState !== '' && $companyState !== '' && $supplierState !== $companyState;
+
             foreach ($items as $item) {
                 $invoiceDate = $data['invoice_date'];
 
@@ -507,15 +518,17 @@ class PurchaseOrderService
                 $enteredUnitCost = (float) $item['unit_cost'];
                 $taxPercent = (float) ($item['tax_percent'] ?? 0);
 
+                $isInterState = (bool) ($data['is_inter_state'] ?? false);
+
                 $cgstPercent = array_key_exists('cgst_percent', $item)
                     ? (float) $item['cgst_percent']
-                    : ($taxPercent / 2);
+                    : ($isInterState ? 0.0 : ($taxPercent / 2));
 
                 $sgstPercent = array_key_exists('sgst_percent', $item)
                     ? (float) $item['sgst_percent']
-                    : ($taxPercent / 2);
+                    : ($isInterState ? 0.0 : ($taxPercent / 2));
 
-                if (abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
+                if (! $isInterState && abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
                     throw ValidationException::withMessages([
                         'items' => 'CGST % and SGST % must add up to the Total Tax % for every item.',
                     ]);
@@ -534,13 +547,25 @@ class PurchaseOrderService
                     $lineTotal = round($line + $tax, 2);
                 }
 
-                $cgstAmount = round($tax / 2, 2);
-                $sgstAmount = round($tax - $cgstAmount, 2);
+                $igstPercent = 0.0;
+                $igstAmount = 0.0;
+                if ($isInterState) {
+                    $igstPercent = $taxPercent;
+                    $igstAmount = $tax;
+                    $cgstPercent = 0.0;
+                    $sgstPercent = 0.0;
+                    $cgstAmount = 0.0;
+                    $sgstAmount = 0.0;
+                } else {
+                    $cgstAmount = round($tax / 2, 2);
+                    $sgstAmount = round($tax - $cgstAmount, 2);
+                }
 
                 $subtotal += $line;
                 $taxAmount += $tax;
                 $cgstTotal += $cgstAmount;
                 $sgstTotal += $sgstAmount;
+                $igstTotal += $igstAmount;
 
                 $prepared[] = [
                     ...$item,
@@ -551,6 +576,8 @@ class PurchaseOrderService
                     'tax_percent' => $taxPercent,
                     'cgst_percent' => $cgstPercent,
                     'sgst_percent' => $sgstPercent,
+                    'igst_percent' => $igstPercent,
+                    'igst_amount' => $igstAmount,
                     'cgst_amount' => $cgstAmount,
                     'sgst_amount' => $sgstAmount,
                     'line_total' => $lineTotal,
@@ -666,7 +693,7 @@ class PurchaseOrderService
                 'billing_address' => $billingSnapshot,
                 'shipping_address' => $shippingSnapshot,
                 'warehouse_id' => $data['warehouse_id'] ?? null,
-                'invoice_no' => $this->documentNumberService->next('PI'),
+                'invoice_no' => $this->resolvePurchaseInvoiceNumber($data, $companyId),
                 'supplier_invoice_no' => $data['supplier_invoice_no'] ?? $data['supplier_invoice_number'] ?? null,
                 'invoice_date' => $data['invoice_date'],
                 'purchase_receive_date' => $data['purchase_receive_date'] ?? null,
@@ -710,6 +737,7 @@ class PurchaseOrderService
                 $piItem = PurchaseInvoiceItem::create([
                     'purchase_invoice_id' => $invoice->id,
                     'receipt_note_item_id' => $item['receipt_note_item_id'] ?? null,
+                    'purchase_order_item_id' => $item['purchase_order_item_id'] ?? null,
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
@@ -724,8 +752,10 @@ class PurchaseOrderService
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
+                    'igst_percent' => $item['igst_percent'] ?? 0,
                     'cgst_amount' => $item['cgst_amount'],
                     'sgst_amount' => $item['sgst_amount'],
+                    'igst_amount' => $item['igst_amount'] ?? 0,
                     'line_total' => $item['line_total'],
                     'other_vendor_rate' => $item['other_vendor_rate'],
                     'batch_no' => $item['batch_no'] ?? null,
@@ -848,6 +878,18 @@ class PurchaseOrderService
             $igstTotal = 0;
             $prepared = [];
 
+            $supplierForTax = Customer::query()->find($supplierId);
+            $companyForTax = Company::query()->find(
+                $data['company_id']
+                    ?? $invoice->company_id
+                    ?? Warehouse::query()->whereKey($data['warehouse_id'] ?? $invoice->warehouse_id)->value('company_id')
+                    ?? $actor->company_id
+                    ?? Company::defaultCompanyId()
+            );
+            $supplierState = strtoupper(trim((string) ($supplierForTax?->state ?? '')));
+            $companyState = strtoupper(trim((string) ($companyForTax?->state ?? '')));
+            $data['is_inter_state'] = $supplierState !== '' && $companyState !== '' && $supplierState !== $companyState;
+
             foreach ($items as $item) {
                 $invoiceDate = $data['invoice_date'];
 
@@ -866,15 +908,17 @@ class PurchaseOrderService
                 $enteredUnitCost = (float) $item['unit_cost'];
                 $taxPercent = (float) ($item['tax_percent'] ?? 0);
 
+                $isInterState = (bool) ($data['is_inter_state'] ?? false);
+
                 $cgstPercent = array_key_exists('cgst_percent', $item)
                     ? (float) $item['cgst_percent']
-                    : ($taxPercent / 2);
+                    : ($isInterState ? 0.0 : ($taxPercent / 2));
 
                 $sgstPercent = array_key_exists('sgst_percent', $item)
                     ? (float) $item['sgst_percent']
-                    : ($taxPercent / 2);
+                    : ($isInterState ? 0.0 : ($taxPercent / 2));
 
-                if (abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
+                if (! $isInterState && abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
                     throw ValidationException::withMessages([
                         'items' => 'CGST % and SGST % must add up to the Total Tax % for every item.',
                     ]);
@@ -893,13 +937,25 @@ class PurchaseOrderService
                     $lineTotal = round($line + $tax, 2);
                 }
 
-                $cgstAmount = round($tax / 2, 2);
-                $sgstAmount = round($tax - $cgstAmount, 2);
+                $igstPercent = 0.0;
+                $igstAmount = 0.0;
+                if ($isInterState) {
+                    $igstPercent = $taxPercent;
+                    $igstAmount = $tax;
+                    $cgstPercent = 0.0;
+                    $sgstPercent = 0.0;
+                    $cgstAmount = 0.0;
+                    $sgstAmount = 0.0;
+                } else {
+                    $cgstAmount = round($tax / 2, 2);
+                    $sgstAmount = round($tax - $cgstAmount, 2);
+                }
 
                 $subtotal += $line;
                 $taxAmount += $tax;
                 $cgstTotal += $cgstAmount;
                 $sgstTotal += $sgstAmount;
+                $igstTotal += $igstAmount;
 
                 $prepared[] = [
                     ...$item,
@@ -910,6 +966,8 @@ class PurchaseOrderService
                     'tax_percent' => $taxPercent,
                     'cgst_percent' => $cgstPercent,
                     'sgst_percent' => $sgstPercent,
+                    'igst_percent' => $igstPercent,
+                    'igst_amount' => $igstAmount,
                     'cgst_amount' => $cgstAmount,
                     'sgst_amount' => $sgstAmount,
                     'line_total' => $lineTotal,
@@ -1088,6 +1146,7 @@ class PurchaseOrderService
                 $piItem = PurchaseInvoiceItem::create([
                     'purchase_invoice_id' => $invoice->id,
                     'receipt_note_item_id' => $item['receipt_note_item_id'] ?? null,
+                    'purchase_order_item_id' => $item['purchase_order_item_id'] ?? null,
                     'product_id' => $item['product_id'],
                     'uom_id' => $item['uom_id'],
                     'quantity' => $item['quantity'],
@@ -1102,8 +1161,10 @@ class PurchaseOrderService
                     'tax_percent' => $item['tax_percent'],
                     'cgst_percent' => $item['cgst_percent'],
                     'sgst_percent' => $item['sgst_percent'],
+                    'igst_percent' => $item['igst_percent'] ?? 0,
                     'cgst_amount' => $item['cgst_amount'],
                     'sgst_amount' => $item['sgst_amount'],
+                    'igst_amount' => $item['igst_amount'] ?? 0,
                     'line_total' => $item['line_total'],
                     'other_vendor_rate' => $item['other_vendor_rate'],
                     'batch_no' => $item['batch_no'] ?? null,
@@ -1546,6 +1607,7 @@ class PurchaseOrderService
 
             $normalized[] = [
                 'receipt_note_item_id' => ! empty($item['receipt_note_item_id']) ? (int) $item['receipt_note_item_id'] : null,
+                'purchase_order_item_id' => ! empty($item['purchase_order_item_id']) ? (int) $item['purchase_order_item_id'] : null,
                 'product_id' => (int) $item['product_id'],
                 'uom_id' => (int) $uomId,
                 'quantity' => $qty,
@@ -1709,6 +1771,40 @@ class PurchaseOrderService
         }
 
         return $this->documentNumberService->next('PO', $poDate, 4, $companyId);
+    }
+
+    protected function resolvePurchaseInvoiceNumber(array $data, ?int $companyId): string
+    {
+        $series = $this->documentNumberService->resolveSeries('PI', $companyId);
+        $invoiceDate = ! empty($data['invoice_date']) ? \Illuminate\Support\Carbon::parse($data['invoice_date']) : now();
+
+        if ($series && $series->isManual()) {
+            $invoiceNo = strtoupper(trim((string) ($data['invoice_no'] ?? $data['invoice_number'] ?? '')));
+            if ($invoiceNo === '') {
+                throw ValidationException::withMessages([
+                    'invoice_no' => 'Voucher number is required when Purchase Invoice numbering is set to manual.',
+                ]);
+            }
+
+            $exists = PurchaseInvoice::query()
+                ->where('invoice_no', $invoiceNo)
+                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                ->exists();
+
+            if ($exists) {
+                throw ValidationException::withMessages([
+                    'invoice_no' => 'This voucher number already exists.',
+                ]);
+            }
+
+            return $invoiceNo;
+        }
+
+        if ($series) {
+            return $this->documentNumberService->nextFromSeries($series, $invoiceDate, $companyId);
+        }
+
+        return $this->documentNumberService->next('PI', $invoiceDate, 4, $companyId);
     }
 
     /**

@@ -46,6 +46,8 @@
                             Branch Name
                         </x-ui.sortable-th>
                         <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Company</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">City / State</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Default</th>
                         <x-ui.sortable-th column="is_active" :current-sort="$sort ?? request('sort', 'name')" :current-direction="$direction ?? request('direction', 'asc')">
                             Status
                         </x-ui.sortable-th>
@@ -57,6 +59,19 @@
                         <tr class="hover:bg-slate-50/75 transition-colors">
                             <td class="px-4 py-3 font-medium text-slate-900">{{ $item->name }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $item->company?->name ?: '—' }}</td>
+                            <td class="px-4 py-3 text-slate-600">
+                                @php
+                                    $cityState = collect([$item->city, $item->state])->filter()->implode(', ');
+                                @endphp
+                                {{ $cityState !== '' ? $cityState : '—' }}
+                            </td>
+                            <td class="px-4 py-3">
+                                @if($item->is_default)
+                                    <span class="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700">Default</span>
+                                @else
+                                    <span class="text-slate-400">—</span>
+                                @endif
+                            </td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {{ $item->is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
                                     {{ $item->is_active ? 'Active' : 'Inactive' }}
@@ -64,6 +79,7 @@
                             </td>
                             <td class="px-4 py-3 text-right whitespace-nowrap">
                                 <div class="flex items-center justify-end gap-1.5">
+                                    <x-ui.button variant="secondary" size="sm" :href="route('organization.branches.show', $item)" title="View Branch" aria-label="View Branch">View</x-ui.button>
                                     <x-ui.button variant="secondary" size="sm" :href="route('organization.branches.edit', $item)" title="Edit Branch" aria-label="Edit Branch">Edit</x-ui.button>
                                     <button type="button"
                                             @click="promptDelete('{{ $item->id }}', '{{ addslashes($item->name) }}', '{{ addslashes($item->company?->name ?? '—') }}')"
@@ -81,7 +97,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="p-0">
+                            <td colspan="6" class="p-0">
                                 <x-ui.empty-state
                                     title="No matching branches found"
                                     description="Try clearing search or filters to see more results."

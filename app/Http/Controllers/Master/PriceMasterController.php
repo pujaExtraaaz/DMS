@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Master;
 
 use App\Domains\Catalog\Models\Brand;
+use App\Domains\Catalog\Models\Category;
+use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Master\Models\CustomerType;
 use App\Domains\Master\Models\PriceMaster;
 use App\Domains\Master\Models\Product;
@@ -129,38 +131,33 @@ class PriceMasterController extends Controller
             $type = PriceMaster::TYPE_CUSTOMER_TYPE;
         }
 
-        if ($type === PriceMaster::TYPE_BRAND) {
-            $validated = $request->validate([
-                'type' => 'required|in:customer_type,brand',
-                'brand_id' => 'required|exists:brands,id',
-                'name' => 'nullable|string|max:255',
-                'lines' => 'required|array|min:1',
-                'lines.*.product_id' => 'nullable|exists:products,id',
-                'lines.*.uom_id' => 'nullable|exists:uoms,id',
-                'lines.*.dealer_price' => 'nullable|numeric|min:0',
-                'lines.*.dealer_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
-                'lines.*.retail_price' => 'nullable|numeric|min:0',
-                'lines.*.retail_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
-                'lines.*.rate' => 'nullable|numeric|min:0',
-                'lines.*.rate_includes_gst' => 'nullable|boolean',
-                'lines.*.min_qty' => 'nullable|numeric|min:0',
-            ]);
-        } else {
-        $validated = $request->validate([
-                'type' => 'nullable|in:customer_type,brand',
-            'customer_type_id' => 'required|exists:customer_types,id',
-                'name' => 'nullable|string|max:255',
+        $headerRules = [
+            'name' => 'nullable|string|max:255',
+            'company_id' => 'nullable|exists:companies,id',
+            'effective_from' => 'nullable|date',
+            'effective_to' => 'nullable|date|after_or_equal:effective_from',
             'lines' => 'required|array|min:1',
             'lines.*.product_id' => 'nullable|exists:products,id',
             'lines.*.uom_id' => 'nullable|exists:uoms,id',
-                'lines.*.dealer_price' => 'nullable|numeric|min:0',
-                'lines.*.dealer_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
-                'lines.*.retail_price' => 'nullable|numeric|min:0',
-                'lines.*.retail_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
+            'lines.*.dealer_price' => 'nullable|numeric|min:0',
+            'lines.*.dealer_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
+            'lines.*.retail_price' => 'nullable|numeric|min:0',
+            'lines.*.retail_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
             'lines.*.rate' => 'nullable|numeric|min:0',
-                'lines.*.rate_includes_gst' => 'nullable|boolean',
+            'lines.*.rate_includes_gst' => 'nullable|boolean',
             'lines.*.min_qty' => 'nullable|numeric|min:0',
-        ]);
+        ];
+
+        if ($type === PriceMaster::TYPE_BRAND) {
+            $validated = $request->validate(array_merge($headerRules, [
+                'type' => 'required|in:customer_type,brand',
+                'brand_id' => 'required|exists:brands,id',
+            ]));
+        } else {
+            $validated = $request->validate(array_merge($headerRules, [
+                'type' => 'nullable|in:customer_type,brand',
+                'customer_type_id' => 'required|exists:customer_types,id',
+            ]));
         }
 
         $lines = collect($validated['lines'] ?? [])
@@ -261,7 +258,11 @@ class PriceMasterController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($validated, $lines, $products, $type) {
+            DB::transaction(function () use ($validated, $lines, $products, $type, $request) {
+                $companyId = filled($validated['company_id'] ?? null)
+                    ? (int) $validated['company_id']
+                    : ($request->user()?->company_id ?? Company::defaultCompanyId());
+
                 foreach ($lines as $row) {
                     $product = $products->get($row['product_id']);
                     PriceMaster::create(array_merge(
@@ -271,9 +272,12 @@ class PriceMasterController extends Controller
                             'name' => filled($validated['name'] ?? null) ? $validated['name'] : null,
                             'customer_type_id' => $type === PriceMaster::TYPE_CUSTOMER_TYPE ? $validated['customer_type_id'] : null,
                             'brand_id' => $type === PriceMaster::TYPE_BRAND ? $validated['brand_id'] : null,
-                        'product_id' => $row['product_id'],
-                        'uom_id' => $row['uom_id'],
-                        'min_qty' => filled($row['min_qty'] ?? null) ? $row['min_qty'] : null,
+                            'company_id' => $companyId,
+                            'effective_from' => $validated['effective_from'] ?? null,
+                            'effective_to' => $validated['effective_to'] ?? null,
+                            'product_id' => $row['product_id'],
+                            'uom_id' => $row['uom_id'],
+                            'min_qty' => filled($row['min_qty'] ?? null) ? $row['min_qty'] : null,
                         ]
                     ));
                 }
@@ -470,7 +474,12 @@ class PriceMasterController extends Controller
         }
 
         $associatedProducts = $associatedProductsQuery->orderBy('id')->get();
-        $company = $priceMaster->product?->company ?? ($user?->company ?? null);
+        $company = $priceMaster->company
+            ?? $priceMaster->product?->company
+            ?? ($user?->company ?? null);
+        if ($company) {
+            $company->loadMissing([]);
+        }
 
         return view('masters.price-masters.show', [
             'item' => $priceMaster,
@@ -507,196 +516,99 @@ class PriceMasterController extends Controller
             'productUoms.uom:id,name,code',
         ]);
 
-        $mrp = 0.0;
-        if ((float) $product->calculation_mrp > 0) {
-            $mrp = (float) $product->calculation_mrp;
-        } elseif ($product->relationLoaded('productUoms') && ($baseUomPu = $product->productUoms->firstWhere('is_base', true)) && (float) $baseUomPu->mrp > 0) {
-            $mrp = (float) $baseUomPu->mrp;
-        } elseif ((float) ($product->selling_price ?? 0) > 0) {
-            $mrp = (float) $product->selling_price;
-        }
-
-        $productTypeName = $product->productType?->name ?: ($product->product_type ?: null);
-
-        $validUoms = collect();
-        if ($product->baseUom) {
-            $validUoms->push([
-                'id' => (string) $product->baseUom->id,
-                'code' => $product->baseUom->code,
-                'name' => $product->baseUom->name,
-                'is_base' => true,
-                'label' => 'Base UOM',
-            ]);
-        }
-        if ($product->alternateUom && (int) $product->alternate_uom_id !== (int) $product->base_uom_id) {
-            $validUoms->push([
-                'id' => (string) $product->alternateUom->id,
-                'code' => $product->alternateUom->code,
-                'name' => $product->alternateUom->name,
-                'is_base' => false,
-                'label' => 'Alternate UOM',
-            ]);
-        }
-        if ($product->relationLoaded('productUoms')) {
-            foreach ($product->productUoms as $pu) {
-                if ($pu->uom && ! $validUoms->contains('id', (string) $pu->uom->id)) {
-                    $validUoms->push([
-                        'id' => (string) $pu->uom->id,
-                        'code' => $pu->uom->code,
-                        'name' => $pu->uom->name,
-                        'is_base' => (bool) $pu->is_base,
-                        'label' => $pu->label ?: ($pu->is_base ? 'Base UOM' : 'Unit'),
-                    ]);
-                }
-            }
-        }
-
         return response()->json([
             'success' => true,
-            'data' => [
-                'id' => $product->id,
-                'name' => $product->name,
-                'sku' => $product->sku ?: '',
-                'part_number' => $product->sku ?: '',
-                'model' => $product->model ?: '',
-                'series' => $product->series ?: '',
-                'brand_id' => $product->brand_id ? (string) $product->brand_id : '',
-                'brand_name' => $product->brand?->name ?: '',
-                'category_id' => $product->category_id ? (string) $product->category_id : '',
-                'category_name' => $product->category?->name ?: '',
-                'sub_category_id' => $product->sub_category_id ? (string) $product->sub_category_id : '',
-                'sub_category_name' => $product->subCategory?->name ?: '',
-                'product_type_id' => $product->product_type_id ? (string) $product->product_type_id : '',
-                'product_type' => $productTypeName ?: '',
-                'product_type_name' => $productTypeName ?: '',
-                'hsn_code' => $product->hsn_code ?: '',
-                'tax_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
-                'gst_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
-                'mrp' => $mrp > 0 ? $mrp : null,
-                'selling_price' => $product->selling_price !== null ? (float) $product->selling_price : null,
-                'base_uom_id' => $product->base_uom_id ? (string) $product->base_uom_id : '',
-                'base_uom_code' => $product->baseUom?->code ?: '',
-                'base_uom_name' => $product->baseUom?->name ?: '',
-                'uoms' => $validUoms->values()->all(),
-            ],
+            'data' => $this->productPayload($product),
         ]);
     }
 
     public function brandProducts(Request $request, Brand $brand): JsonResponse
     {
-        $user = $request->user() ?? auth()->user();
+        try {
+            $user = $request->user() ?? auth()->user();
 
-        // Multi-tenancy check
-        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && $brand->company_id && (int) $brand->company_id !== (int) $user->company_id) {
+            // Multi-tenancy check
+            if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && $brand->company_id && (int) $brand->company_id !== (int) $user->company_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: Brand belongs to another company.',
+                ], 403);
+            }
+
+            $products = Product::query()
+                ->where('is_active', true)
+                ->where('brand_id', $brand->id)
+                ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->integer('category_id')))
+                ->when($request->filled('sub_category_id'), fn ($q) => $q->where('sub_category_id', $request->integer('sub_category_id')))
+                ->when($user?->company_id && ! $user->hasAnyRole(['super-admin', 'client-admin']), function ($q) use ($user) {
+                    $q->where(function ($sub) use ($user) {
+                        $sub->whereNull('company_id')->orWhere('company_id', $user->company_id);
+                    });
+                })
+                ->with([
+                    'brand:id,name',
+                    'category:id,name',
+                    'subCategory:id,name',
+                    'productType:id,name',
+                    'baseUom:id,name,code',
+                    'alternateUom:id,name,code',
+                    'productUoms.uom:id,name,code',
+                ])
+                ->orderBy('name')
+                ->get();
+
+            $data = $products->map(fn (Product $product) => $this->productPayload($product));
+
+            $categories = Category::query()
+                ->where('is_active', true)
+                ->where(function ($q) use ($brand, $products) {
+                    $q->where('brand_id', $brand->id);
+                    $productCategoryIds = $products->pluck('category_id')->filter()->unique()->values();
+                    if ($productCategoryIds->isNotEmpty()) {
+                        $q->orWhereIn('id', $productCategoryIds);
+                    }
+                })
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($c) => ['id' => (string) $c->id, 'name' => $c->name])
+                ->unique('id')
+                ->values();
+
+            $categoryIds = $categories->pluck('id');
+            $subCategories = $categoryIds->isEmpty()
+                ? collect()
+                : SubCategory::query()
+                    ->where('is_active', true)
+                    ->whereIn('category_id', $categoryIds)
+                    ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->integer('category_id')))
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'category_id'])
+                    ->map(fn ($s) => [
+                        'id' => (string) $s->id,
+                        'name' => $s->name,
+                        'category_id' => (string) $s->category_id,
+                    ])
+                    ->values();
+
+            return response()->json([
+                'success' => true,
+                'brand' => [
+                    'id' => $brand->id,
+                    'name' => $brand->name,
+                ],
+                'categories' => $categories,
+                'sub_categories' => $subCategories,
+                'count' => $data->count(),
+                'data' => $data->values()->all(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Unauthorized: Brand belongs to another company.',
-            ], 403);
+                'message' => 'Could not load brand products: '.$e->getMessage(),
+            ], 500);
         }
-
-        $products = Product::query()
-            ->where('is_active', true)
-            ->where('brand_id', $brand->id)
-            ->when($user?->company_id && ! $user->hasAnyRole(['super-admin', 'client-admin']), function ($q) use ($user) {
-                $q->where(function ($sub) use ($user) {
-                    $sub->whereNull('company_id')->orWhere('company_id', $user->company_id);
-                });
-            })
-            ->with([
-                'brand:id,name',
-                'category:id,name',
-                'subCategory:id,name',
-                'productType:id,name',
-                'baseUom:id,name,code',
-                'alternateUom:id,name,code',
-                'productUoms.uom:id,name,code',
-            ])
-            ->orderBy('name')
-            ->get();
-
-        $data = $products->map(function ($product) {
-            $mrp = 0.0;
-            if ((float) $product->calculation_mrp > 0) {
-                $mrp = (float) $product->calculation_mrp;
-            } elseif ($product->relationLoaded('productUoms') && ($baseUomPu = $product->productUoms->firstWhere('is_base', true)) && (float) $baseUomPu->mrp > 0) {
-                $mrp = (float) $baseUomPu->mrp;
-            } elseif ((float) ($product->selling_price ?? 0) > 0) {
-                $mrp = (float) $product->selling_price;
-            }
-
-            $productTypeName = $product->productType?->name ?: ($product->product_type ?: null);
-
-            $validUoms = collect();
-            if ($product->baseUom) {
-                $validUoms->push([
-                    'id' => (string) $product->baseUom->id,
-                    'code' => $product->baseUom->code,
-                    'name' => $product->baseUom->name,
-                    'is_base' => true,
-                    'label' => 'Base UOM',
-                ]);
-            }
-            if ($product->alternateUom && (int) $product->alternate_uom_id !== (int) $product->base_uom_id) {
-                $validUoms->push([
-                    'id' => (string) $product->alternateUom->id,
-                    'code' => $product->alternateUom->code,
-                    'name' => $product->alternateUom->name,
-                    'is_base' => false,
-                    'label' => 'Alternate UOM',
-                ]);
-            }
-            if ($product->relationLoaded('productUoms')) {
-                foreach ($product->productUoms as $pu) {
-                    if ($pu->uom && ! $validUoms->contains('id', (string) $pu->uom->id)) {
-                        $validUoms->push([
-                            'id' => (string) $pu->uom->id,
-                            'code' => $pu->uom->code,
-                            'name' => $pu->uom->name,
-                            'is_base' => (bool) $pu->is_base,
-                            'label' => $pu->label ?: ($pu->is_base ? 'Base UOM' : 'Unit'),
-                        ]);
-                    }
-                }
-            }
-
-            return [
-                'id' => $product->id,
-                'name' => $product->name,
-                'sku' => $product->sku ?: '',
-                'part_number' => $product->sku ?: '',
-                'model' => $product->model ?: '',
-                'series' => $product->series ?: '',
-                'serial_no' => $product->serial_no ?: '',
-                'brand_id' => $product->brand_id ? (string) $product->brand_id : '',
-                'brand_name' => $product->brand?->name ?: '',
-                'category_id' => $product->category_id ? (string) $product->category_id : '',
-                'category_name' => $product->category?->name ?: '',
-                'sub_category_id' => $product->sub_category_id ? (string) $product->sub_category_id : '',
-                'sub_category_name' => $product->subCategory?->name ?: '',
-                'product_type_id' => $product->product_type_id ? (string) $product->product_type_id : '',
-                'product_type' => $productTypeName ?: '',
-                'product_type_name' => $productTypeName ?: '',
-                'hsn_code' => $product->hsn_code ?: '',
-                'tax_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
-                'gst_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
-                'mrp' => $mrp > 0 ? $mrp : null,
-                'selling_price' => $product->selling_price !== null ? (float) $product->selling_price : null,
-                'base_uom_id' => $product->base_uom_id ? (string) $product->base_uom_id : '',
-                'base_uom_code' => $product->baseUom?->code ?: '',
-                'base_uom_name' => $product->baseUom?->name ?: '',
-                'uoms' => $validUoms->values()->all(),
-            ];
-        });
-
-        return response()->json([
-            'success' => true,
-            'brand' => [
-                'id' => $brand->id,
-                'name' => $brand->name,
-            ],
-            'count' => $data->count(),
-            'data' => $data->values()->all(),
-        ]);
     }
 
     public function edit(Request $request, PriceMaster $priceMaster): View
@@ -757,36 +669,32 @@ class PriceMasterController extends Controller
             $type = PriceMaster::TYPE_CUSTOMER_TYPE;
         }
 
+        $headerRules = [
+            'name' => 'nullable|string|max:255',
+            'company_id' => 'nullable|exists:companies,id',
+            'effective_from' => 'nullable|date',
+            'effective_to' => 'nullable|date|after_or_equal:effective_from',
+            'product_id' => 'required|exists:products,id',
+            'uom_id' => 'required|exists:uoms,id',
+            'dealer_price' => 'nullable|numeric|min:0',
+            'dealer_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
+            'retail_price' => 'nullable|numeric|min:0',
+            'retail_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
+            'rate' => 'nullable|numeric|min:0',
+            'rate_includes_gst' => 'nullable|boolean',
+            'min_qty' => 'nullable|numeric|min:0',
+        ];
+
         if ($type === PriceMaster::TYPE_BRAND) {
-            $validated = $request->validate([
+            $validated = $request->validate(array_merge($headerRules, [
                 'type' => 'nullable|in:customer_type,brand',
                 'brand_id' => 'required|exists:brands,id',
-                'name' => 'nullable|string|max:255',
-                'product_id' => 'required|exists:products,id',
-                'uom_id' => 'required|exists:uoms,id',
-                'dealer_price' => 'nullable|numeric|min:0',
-                'dealer_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
-                'retail_price' => 'nullable|numeric|min:0',
-                'retail_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
-                'rate' => 'nullable|numeric|min:0',
-                'rate_includes_gst' => 'nullable|boolean',
-                'min_qty' => 'nullable|numeric|min:0',
-            ]);
+            ]));
         } else {
-            $validated = $request->validate([
+            $validated = $request->validate(array_merge($headerRules, [
                 'type' => 'nullable|in:customer_type,brand',
                 'customer_type_id' => 'required|exists:customer_types,id',
-                'name' => 'nullable|string|max:255',
-                'product_id' => 'required|exists:products,id',
-                'uom_id' => 'required|exists:uoms,id',
-                'dealer_price' => 'nullable|numeric|min:0',
-                'dealer_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
-                'retail_price' => 'nullable|numeric|min:0',
-                'retail_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
-                'rate' => 'nullable|numeric|min:0',
-                'rate_includes_gst' => 'nullable|boolean',
-                'min_qty' => 'nullable|numeric|min:0',
-            ]);
+            ]));
         }
 
         $hasDealer = filled($validated['dealer_price'] ?? null);
@@ -828,12 +736,19 @@ class PriceMasterController extends Controller
         }
 
         try {
+            $companyId = filled($validated['company_id'] ?? null)
+                ? (int) $validated['company_id']
+                : ($priceMaster->company_id ?: ($user?->company_id ?? Company::defaultCompanyId()));
+
             $priceMaster->update(array_merge(
                 [
                     'type' => $type,
                     'name' => filled($validated['name'] ?? null) ? $validated['name'] : null,
                     'customer_type_id' => $type === PriceMaster::TYPE_CUSTOMER_TYPE ? $validated['customer_type_id'] : null,
                     'brand_id' => $type === PriceMaster::TYPE_BRAND ? $validated['brand_id'] : null,
+                    'company_id' => $companyId,
+                    'effective_from' => $validated['effective_from'] ?? $priceMaster->effective_from,
+                    'effective_to' => $validated['effective_to'] ?? $priceMaster->effective_to,
                     'product_id' => $validated['product_id'],
                     'uom_id' => $validated['uom_id'],
                     'min_qty' => $minQty,
@@ -1001,6 +916,10 @@ class PriceMasterController extends Controller
         return [
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'categories' => Category::where('is_active', true)->orderBy('name')->get(['id', 'name', 'brand_id']),
+            'subCategories' => SubCategory::where('is_active', true)->orderBy('name')->get(['id', 'name', 'category_id']),
+            'companies' => Company::where('is_active', true)->orderBy('name')->get(['id', 'name', 'logo_path', 'gstin', 'address', 'city', 'state', 'pincode', 'phone', 'email']),
+            'defaultCompanyId' => $user?->company_id ?? Company::defaultCompanyId(),
             'products' => Product::where('is_active', true)
                 ->with([
                     'brand:id,name',
@@ -1030,8 +949,91 @@ class PriceMasterController extends Controller
                     'tax_rate',
                     'calculation_mrp',
                     'selling_price',
+                    'trade_price',
+                    'purchase_price',
                 ]),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function productPayload(Product $product): array
+    {
+        $mrp = 0.0;
+        if ((float) $product->calculation_mrp > 0) {
+            $mrp = (float) $product->calculation_mrp;
+        } elseif ($product->relationLoaded('productUoms') && ($baseUomPu = $product->productUoms->firstWhere('is_base', true)) && (float) $baseUomPu->mrp > 0) {
+            $mrp = (float) $baseUomPu->mrp;
+        } elseif ((float) ($product->selling_price ?? 0) > 0) {
+            $mrp = (float) $product->selling_price;
+        }
+
+        $productTypeName = $product->productType?->name ?: ($product->product_type ?: null);
+
+        $validUoms = collect();
+        if ($product->baseUom) {
+            $validUoms->push([
+                'id' => (string) $product->baseUom->id,
+                'code' => $product->baseUom->code,
+                'name' => $product->baseUom->name,
+                'is_base' => true,
+                'label' => 'Base UOM',
+            ]);
+        }
+        if ($product->alternateUom && (int) $product->alternate_uom_id !== (int) $product->base_uom_id) {
+            $validUoms->push([
+                'id' => (string) $product->alternateUom->id,
+                'code' => $product->alternateUom->code,
+                'name' => $product->alternateUom->name,
+                'is_base' => false,
+                'label' => 'Alternate UOM',
+            ]);
+        }
+        if ($product->relationLoaded('productUoms')) {
+            foreach ($product->productUoms as $pu) {
+                if ($pu->uom && ! $validUoms->contains('id', (string) $pu->uom->id)) {
+                    $validUoms->push([
+                        'id' => (string) $pu->uom->id,
+                        'code' => $pu->uom->code,
+                        'name' => $pu->uom->name,
+                        'is_base' => (bool) $pu->is_base,
+                        'label' => $pu->label ?: ($pu->is_base ? 'Base UOM' : 'Unit'),
+                    ]);
+                }
+            }
+        }
+
+        return [
+            'id' => $product->id,
+            'name' => $product->name,
+            'sku' => $product->sku ?: '',
+            'part_number' => $product->sku ?: '',
+            'model' => $product->model ?: '',
+            'series' => $product->series ?: '',
+            'serial_no' => $product->serial_no ?: '',
+            'brand_id' => $product->brand_id ? (string) $product->brand_id : '',
+            'brand_name' => $product->brand?->name ?: '',
+            'category_id' => $product->category_id ? (string) $product->category_id : '',
+            'category_name' => $product->category?->name ?: '',
+            'sub_category_id' => $product->sub_category_id ? (string) $product->sub_category_id : '',
+            'sub_category_name' => $product->subCategory?->name ?: '',
+            'product_type_id' => $product->product_type_id ? (string) $product->product_type_id : '',
+            'product_type' => $productTypeName ?: '',
+            'product_type_name' => $productTypeName ?: '',
+            'hsn_code' => $product->hsn_code ?: '',
+            'tax_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
+            'gst_rate' => $product->tax_rate !== null ? (float) $product->tax_rate : 0.0,
+            'mrp' => $mrp > 0 ? $mrp : null,
+            'calculation_mrp' => $product->calculation_mrp !== null ? (float) $product->calculation_mrp : null,
+            'selling_price' => $product->selling_price !== null ? (float) $product->selling_price : null,
+            'trade_price' => $product->trade_price !== null ? (float) $product->trade_price : null,
+            'purchase_price' => $product->purchase_price !== null ? (float) $product->purchase_price : null,
+            'base_uom_id' => $product->base_uom_id ? (string) $product->base_uom_id : '',
+            'base_uom_code' => $product->baseUom?->code ?: '',
+            'base_uom_name' => $product->baseUom?->name ?: '',
+            'uoms' => $validUoms->values()->all(),
         ];
     }
 

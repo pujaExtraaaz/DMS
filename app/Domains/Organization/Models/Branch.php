@@ -13,22 +13,39 @@ class Branch extends Model
 {
     use HasUppercaseNames, SoftDeletes;
 
+    public const DEFAULT_BRANCH_TYPES = [
+        'Head Office',
+        'Warehouse',
+        'Sales Office',
+        'Regional Office',
+    ];
+
     protected $fillable = [
         'company_id',
         'name',
         'code',
+        'branch_type',
         'address',
+        'address_line_2',
+        'city',
         'state',
+        'country',
         'pincode',
         'phone',
+        'alternate_phone',
+        'email',
+        'alternate_email',
         'gstin',
         'is_active',
+        'is_default',
+        'notes',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'is_default' => 'boolean',
             'deleted_at' => 'datetime',
         ];
     }

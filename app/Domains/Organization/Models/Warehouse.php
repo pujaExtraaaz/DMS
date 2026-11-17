@@ -11,14 +11,31 @@ class Warehouse extends Model
 {
     use HasUppercaseNames, SoftDeletes;
 
+    public const DEFAULT_WAREHOUSE_TYPES = [
+        'Main Warehouse',
+        'Transit',
+        'Cold Storage',
+        'Bonded',
+        'Returns',
+    ];
+
     protected $fillable = [
         'company_id',
         'branch_id',
         'name',
         'code',
+        'warehouse_type',
         'address',
+        'address_line_2',
+        'city',
+        'state',
+        'country',
+        'pincode',
+        'contact_person',
+        'contact_phone',
         'is_default',
         'is_active',
+        'notes',
     ];
 
     protected function casts(): array
@@ -72,11 +89,31 @@ class Warehouse extends Model
 
     public function canBeDeleted(): bool
     {
-        return true;
+        return $this->getDeleteBlockReason() === null;
     }
 
     public function getDeleteBlockReason(): ?string
     {
+        if (\Illuminate\Support\Facades\Schema::hasTable('stock_levels')
+            && \Illuminate\Support\Facades\DB::table('stock_levels')->where('warehouse_id', $this->id)->where('quantity', '!=', 0)->exists()) {
+            return 'Cannot delete warehouse because it still holds stock.';
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('purchase_orders')
+            && \Illuminate\Support\Facades\DB::table('purchase_orders')->where('warehouse_id', $this->id)->exists()) {
+            return 'Cannot delete warehouse because purchase orders reference it.';
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('purchase_invoices')
+            && \Illuminate\Support\Facades\DB::table('purchase_invoices')->where('warehouse_id', $this->id)->exists()) {
+            return 'Cannot delete warehouse because purchase invoices reference it.';
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('stock_movements')
+            && \Illuminate\Support\Facades\DB::table('stock_movements')->where('warehouse_id', $this->id)->exists()) {
+            return 'Cannot delete warehouse because stock movements reference it.';
+        }
+
         return null;
     }
 }

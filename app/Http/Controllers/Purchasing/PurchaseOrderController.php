@@ -502,6 +502,15 @@ class PurchaseOrderController extends Controller
 
     public function receiveForm(PurchaseOrder $order): View|RedirectResponse
     {
+        // Prefer invoice material receipt when a purchase invoice already exists to avoid double stock posts.
+        if ($order->invoices()->where('status', '!=', 'cancelled')->exists()) {
+            return $this->flashError(
+                'This purchase order already has purchase invoice(s). Receive material from the invoice instead to avoid double stock posting.',
+                'purchasing.orders.show',
+                ['order' => $order]
+            );
+        }
+
         if (! $order->isReceivable()) {
             return $this->flashError('This purchase order cannot be received.', 'purchasing.orders.show', ['order' => $order]);
         }
@@ -516,6 +525,14 @@ class PurchaseOrderController extends Controller
 
     public function receive(Request $request, PurchaseOrder $order): RedirectResponse
     {
+        if ($order->invoices()->where('status', '!=', 'cancelled')->exists()) {
+            return $this->flashError(
+                'This purchase order already has purchase invoice(s). Receive material from the invoice instead to avoid double stock posting.',
+                'purchasing.orders.show',
+                ['order' => $order]
+            );
+        }
+
         $validated = $request->validate([
             'inward_date' => 'required|date',
             'warehouse_id' => 'nullable|exists:warehouses,id',

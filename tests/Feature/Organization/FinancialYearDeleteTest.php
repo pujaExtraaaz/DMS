@@ -85,9 +85,9 @@ class FinancialYearDeleteTest extends TestCase
     }
 
     /**
-     * Requirement 1: Red Delete button with trash icon appears alongside existing actions for all records (Current, Open, Closed).
+     * Listing shows FY Name / Start / End / View and no Delete action.
      */
-    public function test_delete_button_appears_alongside_existing_actions_for_all_records(): void
+    public function test_index_shows_columns_view_and_hides_delete(): void
     {
         $currentFy = FinancialYear::create([
             'company_id' => $this->activeCompany->id,
@@ -120,27 +120,30 @@ class FinancialYearDeleteTest extends TestCase
             ->get(route('organization.financial-years.index'));
 
         $response->assertOk();
+        $response->assertSee('FY Name');
+        $response->assertSee('Start');
+        $response->assertSee('End');
         $response->assertSee('2026-27 Current');
         $response->assertSee('2027-28 Open');
         $response->assertSee('2025-26 Closed');
+        $response->assertSee('01 Apr 2026');
+        $response->assertSee('31 Mar 2027');
 
-        // Existing buttons remain present
+        $response->assertSee(route('organization.financial-years.show', $currentFy));
         $response->assertSee(route('organization.financial-years.edit', $currentFy));
         $response->assertSee(route('organization.financial-years.edit', $openFy));
         $response->assertSee(route('organization.financial-years.edit', $closedFy));
+        $response->assertSee('View');
         $response->assertSee('Set Current');
         $response->assertSee('Close');
         $response->assertSee('Re-open');
 
-        // Delete buttons with trash icon and data attributes present for all three
-        $response->assertSee('data-delete-financial-year="' . $currentFy->id . '"', false);
-        $response->assertSee('data-delete-financial-year="' . $openFy->id . '"', false);
-        $response->assertSee('data-delete-financial-year="' . $closedFy->id . '"', false);
-        $response->assertSee('Delete Financial Year?');
+        $response->assertDontSee('data-delete-financial-year="', false);
+        $response->assertDontSee('Delete Financial Year?');
     }
 
     /**
-     * Requirement 2: Confirmation dialog elements and warning text are rendered.
+     * Delete confirmation dialog is no longer rendered on the index.
      */
     public function test_confirmation_dialog_elements_rendered_in_view(): void
     {
@@ -148,10 +151,8 @@ class FinancialYearDeleteTest extends TestCase
             ->get(route('organization.financial-years.index'));
 
         $response->assertOk();
-        $response->assertSee('Delete Financial Year?');
-        $response->assertSee('Deleting this financial year may affect accounting records associated with this period. Please confirm that you want to continue.');
-        $response->assertSee('Delete Financial Year');
-        $response->assertSee('Cancel');
+        $response->assertDontSee('Delete Financial Year?');
+        $response->assertDontSee('Deleting this financial year may affect accounting records associated with this period. Please confirm that you want to continue.');
     }
 
     /**

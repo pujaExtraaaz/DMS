@@ -36,7 +36,8 @@ class IndianStates
             '24' => 'Gujarat',
             '26' => 'Dadra and Nagar Haveli and Daman and Diu',
             '27' => 'Maharashtra',
-            '28' => 'Andhra Pradesh (Old)',
+            // Legacy GST code 28 (undivided AP) maps to modern Andhra Pradesh (37).
+            '28' => 'Andhra Pradesh',
             '29' => 'Karnataka',
             '30' => 'Goa',
             '31' => 'Lakshadweep',
@@ -63,8 +64,22 @@ class IndianStates
      */
     public static function allAlphabetical(): array
     {
-        $states = self::all();
+        // Deduplicate by state name (e.g. legacy GST 28 + modern 37 both = Andhra Pradesh).
+        $unique = [];
+        foreach (self::all() as $code => $name) {
+            $key = mb_strtolower(trim($name));
+            if (! isset($unique[$key])) {
+                $unique[$key] = [(string) $code, $name];
+            }
+        }
+
+        $states = [];
+        foreach ($unique as [$code, $name]) {
+            $states[$code] = $name;
+        }
+
         asort($states, SORT_NATURAL | SORT_FLAG_CASE);
+
         return $states;
     }
 
@@ -103,12 +118,38 @@ class IndianStates
         if (! $name) {
             return null;
         }
+
+        $normalized = self::normalizeName($name);
+
+        // Prefer the modern Andhra Pradesh GST code when both 28 and 37 match.
+        if (strcasecmp($normalized, 'Andhra Pradesh') === 0) {
+            return '37';
+        }
+
         foreach (self::all() as $code => $stateName) {
-            if (strcasecmp($stateName, trim($name)) === 0) {
-                return $code;
+            if (strcasecmp($stateName, $normalized) === 0) {
+                return (string) str_pad((string) $code, 2, '0', STR_PAD_LEFT);
             }
         }
+
         return null;
+    }
+
+    /**
+     * Normalize legacy / alternate state labels to canonical names.
+     */
+    public static function normalizeName(?string $name): string
+    {
+        $name = trim((string) $name);
+        if ($name === '') {
+            return '';
+        }
+
+        if (preg_match('/^andhra\s+pradesh(\s*\(old\))?$/i', $name)) {
+            return 'Andhra Pradesh';
+        }
+
+        return $name;
     }
 
     public static function stateFromGstin(?string $gstin): ?string

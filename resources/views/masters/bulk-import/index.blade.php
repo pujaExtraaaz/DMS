@@ -230,9 +230,9 @@
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
     @foreach([
         'companies' => ['Companies', 'Match on Code. Creates/updates company profile fields.'],
-        'branches' => ['Branches', 'Match on Company Code + Branch Code. Company must exist first.'],
-        'warehouses' => ['Warehouses', 'Match on Company + Warehouse Code. Branch must exist first.'],
-        'financial-years' => ['Financial Years', 'Match on Company + date range. Can mark one year as current.'],
+        'branches' => ['Branches', 'Requires company_code, name, branch_type, phone, address, state, city, country. Match on Company Code + Branch Code.'],
+        'warehouses' => ['Warehouses', 'Requires company_code, branch_code, name, address, state, city, country. Branch must exist first.'],
+        'financial-years' => ['Financial Years', 'Requires company_code, name, starts_on, ends_on. No overlapping ranges; one current open year per company.'],
         'uoms' => ['UOMs', 'Match on Code. Required before Products / Price List imports.'],
         'brands' => ['Brands', 'Match on Company + Name. Optional company_code uses your login company when blank.'],
         'categories' => ['Categories', 'Match on Brand + Name. Import Brands first.'],

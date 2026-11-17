@@ -9,9 +9,9 @@ use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class FinancialYearController extends Controller
@@ -70,17 +70,43 @@ class FinancialYearController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
+
         DB::transaction(function () use ($data) {
-            if (!empty($data['is_current'])) {
-                FinancialYear::where('company_id', $data['company_id'])->update(['is_current' => false]);
+            $hasCurrent = FinancialYear::query()
+                ->where('company_id', $data['company_id'])
+                ->where('is_current', true)
+                ->exists();
+
+            // First open FY for a company becomes current automatically.
+            if (! $hasCurrent) {
+                $data['is_current'] = true;
+            } else {
+                $data['is_current'] = false;
             }
+
+            $data['is_closed'] = false;
+            $data['closed_at'] = null;
+            $data['closed_by'] = null;
+
             FinancialYear::create($data);
         });
+
         return $this->flashSuccess('Financial year created successfully.', 'organization.financial-years.index');
+    }
+
+    public function show(FinancialYear $financial_year): View
+    {
+        $financial_year->load(['company', 'closedByUser']);
+
+        return view('organization.financial-years.show', [
+            'item' => $financial_year,
+        ]);
     }
 
     public function edit(FinancialYear $financial_year): View
     {
+        $financial_year->load('closedByUser');
+
         return view('organization.financial-years.form', [
             'item' => $financial_year,
             'companies' => Company::where('is_active', true)->orderBy('name')->get(),
@@ -90,12 +116,12 @@ class FinancialYearController extends Controller
     public function update(Request $request, FinancialYear $financial_year): RedirectResponse
     {
         $data = $this->validated($request, $financial_year);
-        DB::transaction(function () use ($data, $financial_year) {
-            if (!empty($data['is_current'])) {
-                FinancialYear::where('company_id', $data['company_id'])->where('id', '!=', $financial_year->id)->update(['is_current' => false]);
-            }
-            $financial_year->update($data);
-        });
+
+        // Status/current/closed are system-controlled — do not overwrite from form.
+        unset($data['is_current'], $data['is_closed'], $data['closed_at'], $data['closed_by']);
+
+        $financial_year->update($data);
+
         return $this->flashSuccess('Financial year updated successfully.', 'organization.financial-years.index');
     }
 
@@ -103,7 +129,6 @@ class FinancialYearController extends Controller
     {
         $user = $request->user();
 
-        // Check user permissions before deleting
         if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) && ! $user->can('organization.manage') && ! $user->can('organization.edit')) {
             if ($request->wantsJson()) {
                 return response()->json([
@@ -115,7 +140,6 @@ class FinancialYearController extends Controller
             return back()->with('error', 'Unauthorized to delete financial year.');
         }
 
-        // Prevent deleting a financial year if it belongs to another company or unauthorized tenant
         if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && (int) $financial_year->company_id !== (int) $user->company_id) {
             if ($request->wantsJson()) {
                 return response()->json([
@@ -127,7 +151,6 @@ class FinancialYearController extends Controller
             return back()->with('error', 'Unauthorized: This financial year belongs to another company.');
         }
 
-        // Check for protected accounting records or dependency block reasons
         $blockReason = $financial_year->getDeleteBlockReason();
         if ($blockReason) {
             if ($request->wantsJson()) {
@@ -145,7 +168,6 @@ class FinancialYearController extends Controller
         $wasCurrent = $financial_year->is_current;
 
         DB::transaction(function () use ($financial_year, $companyId, $wasCurrent) {
-            // Nullify unused document sequence and stock valuation references
             if (\Illuminate\Support\Facades\Schema::hasTable('document_sequences')) {
                 DB::table('document_sequences')
                     ->where('financial_year_id', $financial_year->id)
@@ -157,7 +179,6 @@ class FinancialYearController extends Controller
                     ->update(['financial_year_id' => null]);
             }
 
-            // If the deleted FY was current, transition current to the most recent open FY (or any recent FY) for the company
             if ($wasCurrent) {
                 $nextCurrent = FinancialYear::where('company_id', $companyId)
                     ->where('id', '!=', $financial_year->id)
@@ -195,11 +216,15 @@ class FinancialYearController extends Controller
 
     public function setCurrent(FinancialYear $financial_year): RedirectResponse
     {
+        if ($financial_year->is_closed) {
+            return back()->with('error', 'Cannot mark a closed financial year as current. Re-open it first.');
+        }
+
         DB::transaction(function () use ($financial_year) {
             FinancialYear::where('company_id', $financial_year->company_id)
                 ->where('id', '!=', $financial_year->id)
                 ->update(['is_current' => false]);
-            $financial_year->update(['is_current' => true, 'is_closed' => false]);
+            $financial_year->update(['is_current' => true]);
         });
 
         Cache::forget('current_fy_pill');
@@ -209,16 +234,52 @@ class FinancialYearController extends Controller
 
     public function close(FinancialYear $financial_year): RedirectResponse
     {
-        $financial_year->update(['is_closed' => true, 'is_current' => false]);
+        $blockReason = $financial_year->getCloseBlockReason();
+        if ($blockReason) {
+            return back()->with('error', $blockReason);
+        }
+
+        $wasCurrent = (bool) $financial_year->is_current;
+
+        DB::transaction(function () use ($financial_year, $wasCurrent) {
+            $financial_year->update([
+                'is_closed' => true,
+                'is_current' => false,
+                'closed_at' => now(),
+                'closed_by' => auth()->id(),
+            ]);
+
+            if ($wasCurrent) {
+                $next = $financial_year->nextYear()
+                    ?? FinancialYear::query()
+                        ->where('company_id', $financial_year->company_id)
+                        ->where('is_closed', false)
+                        ->whereKeyNot($financial_year->id)
+                        ->orderByDesc('starts_on')
+                        ->first();
+
+                if ($next && ! $next->is_closed) {
+                    FinancialYear::query()
+                        ->where('company_id', $financial_year->company_id)
+                        ->whereKeyNot($next->id)
+                        ->update(['is_current' => false]);
+                    $next->update(['is_current' => true]);
+                }
+            }
+        });
 
         Cache::forget('current_fy_pill');
 
-        return $this->flashSuccess("Financial year {$financial_year->name} closed.", 'organization.financial-years.index');
+        return $this->flashSuccess("Financial year {$financial_year->name} closed. New postings are blocked; historical view/print remains available.", 'organization.financial-years.index');
     }
 
     public function reopen(FinancialYear $financial_year): RedirectResponse
     {
-        $financial_year->update(['is_closed' => false]);
+        $financial_year->update([
+            'is_closed' => false,
+            'closed_at' => null,
+            'closed_by' => null,
+        ]);
 
         Cache::forget('current_fy_pill');
 
@@ -229,19 +290,20 @@ class FinancialYearController extends Controller
     {
         $data = $request->validate([
             'company_id' => 'required|exists:companies,id',
-            'name' => 'nullable|string|max:50',
+            'name' => 'required|string|max:50',
             'starts_on' => 'required|date',
             'ends_on' => 'required|date|after:starts_on',
-            'is_closed' => 'boolean',
-            'is_current' => 'boolean',
         ]);
-        $data['is_closed'] = $request->boolean('is_closed');
-        $data['is_current'] = $request->boolean('is_current');
 
-        if (blank($data['name'] ?? null)) {
-            $startYear = Carbon::parse($data['starts_on'])->format('Y');
-            $endYear = Carbon::parse($data['ends_on'])->format('y');
-            $data['name'] = $fy?->name ?: "{$startYear}-{$endYear}";
+        $overlap = FinancialYear::query()
+            ->overlapping($data['company_id'], $data['starts_on'], $data['ends_on'], $fy?->id)
+            ->exists();
+
+        if ($overlap) {
+            throw ValidationException::withMessages([
+                'starts_on' => 'This financial year overlaps another year for the same company.',
+                'ends_on' => 'This financial year overlaps another year for the same company.',
+            ]);
         }
 
         return $data;

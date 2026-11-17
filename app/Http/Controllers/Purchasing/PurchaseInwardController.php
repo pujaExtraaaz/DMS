@@ -16,10 +16,6 @@ class PurchaseInwardController extends Controller
 
     public function index(Request $request): View
     {
-        if (! $request->user()?->hasRole('super-admin')) {
-            abort(404);
-        }
-
         $query = PurchaseInward::query()
             ->with(['supplier', 'warehouse', 'purchaseOrder', 'creator'])
             ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_id', $request->supplier_id))
@@ -69,10 +65,6 @@ class PurchaseInwardController extends Controller
 
     public function show(Request $request, PurchaseInward $inward): View
     {
-        if (! $request->user()?->hasRole('super-admin')) {
-            abort(404);
-        }
-
         $inward->load(['items.product', 'items.uom', 'supplier', 'warehouse', 'purchaseOrder', 'creator']);
 
         return view('purchasing.inwards.show', compact('inward'));

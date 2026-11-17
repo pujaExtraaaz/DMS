@@ -11,7 +11,6 @@ class SidebarManager
     public const DEFAULT_SECTIONS = [
         'setup',
         'masters',
-        'phone_directory',
         'purchasing',
         'inventory',
         'sales_orders',
@@ -29,7 +28,6 @@ class SidebarManager
     public const SECTION_LABELS = [
         'setup' => 'Setup',
         'masters' => 'Masters',
-        'phone_directory' => 'Phone Directory',
         'purchasing' => 'Purchases',
         'inventory' => 'Inventory',
         'sales_orders' => 'Sales & Orders',

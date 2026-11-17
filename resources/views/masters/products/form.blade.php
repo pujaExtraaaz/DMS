@@ -365,7 +365,7 @@
             <!-- Brand (Searchable Dropdown) -->
             <div class="space-y-1 relative" @click.outside="closeBrandDropdown()">
                 <div class="flex items-center justify-between">
-                    <label for="brand_id_search_input" class="block text-sm font-medium text-gray-700">Brand</label>
+                    <label for="brand_id_search_input" class="block text-sm font-medium text-gray-700">Brand <span class="text-red-500">*</span></label>
                     <button type="button" @click="openBrandCreate('product')" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
                 </div>
                 <input type="hidden" name="brand_id" :value="selectedBrandId">
@@ -619,17 +619,9 @@
                 $selectedTracking = array_values(array_filter($selectedTracking, fn($t) => $t !== 'none'));
             @endphp
             <div class="md:col-span-2 space-y-1" x-data="productTrackingManager(@json($selectedTracking))">
-                <input type="hidden" name="track_serial" value="0">
-                <label class="flex items-start gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 cursor-pointer">
-                    <input type="checkbox" name="track_serial" value="1" @checked(in_array('serial', $selectedTracking, true)) class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
-                    <span>
-                        <span class="block text-sm font-semibold text-slate-800">Track serial numbers</span>
-                        <span class="block text-xs text-slate-600">Saved on this product. Purchase invoices then show a serial number box for this item without turning it on again.</span>
-                    </span>
-                </label>
+                <input type="hidden" name="track_serial" :value="selected.includes('serial') ? '1' : '0'">
                 <label class="block text-sm font-medium text-slate-700">Tracking Type</label>
                 <div class="rounded-xl border border-slate-200 p-4 bg-slate-50/50 space-y-3">
-                    <!-- Search input for tracking type -->
                     <div class="relative">
                         <input type="text"
                                x-model="searchQuery"
@@ -982,21 +974,40 @@
                     <span class="text-sm font-semibold text-slate-800">GST / Tax Configuration</span>
                     <p class="text-xs text-slate-500 mt-0.5">Applicable tax rate for domestic sales and purchases.</p>
                 </div>
-                <div class="w-full sm:w-48">
+                <div class="w-full sm:w-56">
                     <label for="tax_rate" class="block text-xs font-semibold text-slate-700 mb-1">GST Rate (%) <span class="text-red-500">*</span></label>
-                    <div class="relative">
-                        <input type="number"
-                               id="tax_rate"
-                               name="tax_rate"
-                               x-model="taxRate"
-                               step="0.01"
-                               min="0"
-                               max="100"
-                               required
-                               placeholder="e.g. 18.00"
-                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8 bg-white">
-                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-slate-400 font-semibold">%</div>
-                    </div>
+                    @php $taxRateOptions = $taxRates ?? collect(); @endphp
+                    @if($taxRateOptions->isNotEmpty())
+                        <select id="tax_rate"
+                                name="tax_rate"
+                                x-model="taxRate"
+                                required
+                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                            <option value="">Select GST rate</option>
+                            @foreach($taxRateOptions as $tr)
+                                <option value="{{ rtrim(rtrim(number_format((float) $tr->rate, 2, '.', ''), '0'), '.') }}"
+                                    @selected((string) old('tax_rate', $item->exists ? $item->tax_rate : '') === (string) $tr->rate
+                                        || (float) old('tax_rate', $item->exists ? $item->tax_rate : -1) === (float) $tr->rate)>
+                                    {{ $tr->name }} ({{ rtrim(rtrim(number_format((float) $tr->rate, 2, '.', ''), '0'), '.') }}%)
+                                </option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-[11px] text-slate-400">Rates from Tax master (also used by Books/Tally sync).</p>
+                    @else
+                        <div class="relative">
+                            <input type="number"
+                                   id="tax_rate"
+                                   name="tax_rate"
+                                   x-model="taxRate"
+                                   step="0.01"
+                                   min="0"
+                                   max="100"
+                                   required
+                                   placeholder="e.g. 18.00"
+                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8 bg-white">
+                            <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-xs text-slate-400 font-semibold">%</div>
+                        </div>
+                    @endif
                 </div>
             </div>
 
@@ -1737,6 +1748,7 @@ function searchableUnitRow(uoms, initialId, onChange) {
 function productTrackingManager(selected) {
     return {
         options: [
+            { value: 'serial', label: 'Track Serial Number' },
             { value: 'batch', label: 'Batch-wise' }
         ],
         selected: selected || [],

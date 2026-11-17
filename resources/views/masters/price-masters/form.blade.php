@@ -69,10 +69,38 @@
             'hsn_code' => $p->hsn_code ?: '',
             'tax_rate' => $p->tax_rate !== null ? (float) $p->tax_rate : 0.0,
             'mrp' => $mrp > 0 ? $mrp : null,
+            'calculation_mrp' => $p->calculation_mrp !== null ? (float) $p->calculation_mrp : null,
             'selling_price' => $p->selling_price !== null ? (float) $p->selling_price : null,
+            'trade_price' => $p->trade_price !== null ? (float) $p->trade_price : null,
+            'purchase_price' => $p->purchase_price !== null ? (float) $p->purchase_price : null,
             'uoms' => $validUoms->values()->all(),
         ];
     })->values();
+
+    $companyOptions = collect($companies ?? [])->map(fn ($c) => [
+        'id' => (string) $c->id,
+        'name' => $c->name,
+        'logo_url' => $c->logo_url,
+        'gstin' => $c->gstin ?: '',
+        'address' => $c->address ?: '',
+        'city' => $c->city ?: '',
+        'state' => $c->state ?: '',
+        'pincode' => $c->pincode ?: '',
+        'phone' => $c->phone ?: '',
+        'email' => $c->email ?: '',
+    ])->values();
+
+    $categoryOptions = collect($categories ?? [])->map(fn ($c) => [
+        'id' => (string) $c->id,
+        'name' => $c->name,
+        'brand_id' => $c->brand_id ? (string) $c->brand_id : '',
+    ])->values();
+
+    $subCategoryOptions = collect($subCategories ?? [])->map(fn ($s) => [
+        'id' => (string) $s->id,
+        'name' => $s->name,
+        'category_id' => $s->category_id ? (string) $s->category_id : '',
+    ])->values();
 
     $gstMode = function ($value): string {
         return in_array((string) $value, ['1', 'true', 'inclusive'], true) ? 'inclusive' : 'exclusive';
@@ -166,8 +194,14 @@
         name: {{ json_encode(old('name', $item->name ?? '')) }},
         customerTypeId: {{ json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) }},
         brandId: {{ json_encode((string) old('brand_id', $item->brand_id ?? '')) }},
+        companyId: {{ json_encode((string) old('company_id', $item->company_id ?? ($defaultCompanyId ?? ''))) }},
+        effectiveFrom: {{ json_encode(old('effective_from', optional($item->effective_from)->format('Y-m-d'))) }},
+        effectiveTo: {{ json_encode(old('effective_to', optional($item->effective_to)->format('Y-m-d'))) }},
         knownTypeNames: {{ json_encode($customerTypes->pluck('name')->map(fn ($n) => mb_strtolower(trim($n)))->values()) }},
         brands: {{ json_encode($brandOptions) }},
+        companies: {{ json_encode($companyOptions) }},
+        categories: {{ json_encode($categoryOptions) }},
+        subCategories: {{ json_encode($subCategoryOptions) }},
         products: {{ json_encode($productOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }},
         uoms: {{ json_encode($uomOptions) }},
         lines: {{ json_encode($initialLines) }},
@@ -250,6 +284,52 @@
                 @error('name')
                     <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
                 @enderror
+            </div>
+
+            {{-- Company + Validity (both Brand Wise & Customer Type Wise) --}}
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <div>
+                    <label for="company_id" class="block text-sm font-medium text-gray-700 mb-1">Company</label>
+                    <select name="company_id" id="company_id" x-model="selectedCompanyId"
+                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Select company</option>
+                        <template x-for="c in companies" :key="c.id">
+                            <option :value="c.id" x-text="c.name" :selected="String(c.id) === String(selectedCompanyId)"></option>
+                        </template>
+                    </select>
+                    <p class="mt-1 text-[11px] text-slate-500">Logo &amp; company details appear on the price list view.</p>
+                    @error('company_id') <p class="mt-1 text-xs text-rose-600">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label for="effective_from" class="block text-sm font-medium text-gray-700 mb-1">Valid From</label>
+                    <input type="date" name="effective_from" id="effective_from" x-model="effectiveFrom"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    @error('effective_from') <p class="mt-1 text-xs text-rose-600">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label for="effective_to" class="block text-sm font-medium text-gray-700 mb-1">Valid To</label>
+                    <input type="date" name="effective_to" id="effective_to" x-model="effectiveTo"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    @error('effective_to') <p class="mt-1 text-xs text-rose-600">{{ $message }}</p> @enderror
+                </div>
+                <div class="md:col-span-3" x-show="selectedCompany" x-cloak>
+                    <div class="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                        <template x-if="selectedCompany?.logo_url">
+                            <img :src="selectedCompany.logo_url" alt="Company logo" class="h-12 w-12 rounded-lg object-contain border border-slate-100 bg-white">
+                        </template>
+                        <template x-if="!selectedCompany?.logo_url">
+                            <div class="h-12 w-12 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-bold"
+                                 x-text="(selectedCompany?.name || 'C').substring(0, 2).toUpperCase()"></div>
+                        </template>
+                        <div class="text-xs text-slate-600 space-y-0.5 min-w-0">
+                            <p class="font-semibold text-slate-900" x-text="selectedCompany?.name"></p>
+                            <p x-show="selectedCompany?.gstin">GSTIN: <span class="font-mono" x-text="selectedCompany?.gstin"></span></p>
+                            <p x-text="[selectedCompany?.address, selectedCompany?.city, selectedCompany?.state, selectedCompany?.pincode].filter(Boolean).join(', ')"></p>
+                            <p x-show="selectedCompany?.phone || selectedCompany?.email"
+                               x-text="[selectedCompany?.phone, selectedCompany?.email].filter(Boolean).join(' · ')"></p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {{-- 2. Customer Type Selector (shown when type === 'customer_type') --}}
@@ -564,7 +644,7 @@
                     <div class="flex items-center justify-between gap-3">
                         <div>
                             <h3 class="text-sm font-semibold text-slate-700">Products</h3>
-                            <p class="text-xs text-slate-500 mt-0.5">The unit fills in from the product. Enter Dealer and/or Retail prices with independent GST settings.</p>
+                            <p class="text-xs text-slate-500 mt-0.5">Filter by Brand / Category / Subcategory. Product master details (MRP, GST, etc.) auto-fill when you select a product.</p>
                         </div>
                         <div class="flex items-center gap-2">
                             <button type="button" @click="openCopyModal()"
@@ -578,6 +658,40 @@
                                     class="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition shrink-0 shadow-xs cursor-pointer">
                                 + Add Product
                             </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-white p-3">
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Brand</label>
+                            <select x-model="ctFilterBrandId" @change="onCtFilterBrandChange()"
+                                    class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="">All Brands</option>
+                                <template x-for="b in brands" :key="b.id">
+                                    <option :value="b.id" x-text="b.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Category</label>
+                            <select x-model="ctFilterCategoryId" @change="onCtFilterCategoryChange()"
+                                    class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="">All Categories</option>
+                                <template x-for="cat in ctCategoryOptions" :key="cat.id">
+                                    <option :value="cat.id" x-text="cat.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Subcategory</label>
+                            <select x-model="ctFilterSubCategoryId"
+                                    :disabled="!ctFilterCategoryId"
+                                    class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-50">
+                                <option value="">All Subcategories</option>
+                                <template x-for="sub in ctSubCategoryOptions" :key="sub.id">
+                                    <option :value="sub.id" x-text="sub.name"></option>
+                                </template>
+                            </select>
                         </div>
                     </div>
 
@@ -891,7 +1005,7 @@
                                             @click="selectAllBrandProducts()"
                                             :disabled="totalBrandProductsCount === 0"
                                             class="px-2.5 py-1 rounded-lg text-xs font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-40 transition cursor-pointer">
-                                        Select All (<span x-text="totalBrandProductsCount"></span>)
+                                        Select All (<span x-text="matchingBrandProductsCount"></span>)
                                     </button>
                                     <button type="button"
                                             @click="deselectAllBrandProducts()"
@@ -910,30 +1024,60 @@
                                 </div>
                             </div>
 
-                            {{-- Search Filter & Pagination Controls --}}
-                            <div class="p-3 bg-white border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
-                                <div class="relative flex-1 max-w-md">
-                                    <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                    </svg>
-                                    <input type="text"
-                                           x-model="brandSearchQuery"
-                                           @input="brandPage = 1"
-                                           placeholder="Search products by name, SKU, model, category..."
-                                           class="block w-full rounded-lg border-gray-300 pl-9 pr-8 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                                    <button type="button" x-show="brandSearchQuery" @click="brandSearchQuery = ''; brandPage = 1"
-                                            class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-xs">&times;</button>
+                            {{-- Brand / Category / Subcategory filters + Search --}}
+                            <div class="p-3 bg-white border-b border-slate-100 space-y-2.5">
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <div>
+                                        <label class="block text-[11px] font-medium text-slate-600 mb-1">Brand</label>
+                                        <input type="text" :value="brands.find(b => String(b.id) === String(selectedBrandId))?.name || '—'" disabled
+                                               class="block w-full rounded-lg border-gray-200 bg-slate-50 text-xs text-slate-700">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-medium text-slate-600 mb-1">Category</label>
+                                        <select x-model="filterCategoryId" @change="onFilterCategoryChange()"
+                                                class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                                            <option value="">All Categories</option>
+                                            <template x-for="cat in brandCategoryOptions" :key="cat.id">
+                                                <option :value="cat.id" x-text="cat.name"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-medium text-slate-600 mb-1">Subcategory</label>
+                                        <select x-model="filterSubCategoryId" @change="brandPage = 1"
+                                                :disabled="!filterCategoryId"
+                                                class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-50">
+                                            <option value="">All Subcategories</option>
+                                            <template x-for="sub in brandSubCategoryOptions" :key="sub.id">
+                                                <option :value="sub.id" x-text="sub.name"></option>
+                                            </template>
+                                        </select>
+                                    </div>
                                 </div>
+                                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+                                    <div class="relative flex-1 max-w-md">
+                                        <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                        </svg>
+                                        <input type="text"
+                                               x-model="brandSearchQuery"
+                                               @input="brandPage = 1"
+                                               placeholder="Search products by name, SKU, model, category..."
+                                               class="block w-full rounded-lg border-gray-300 pl-9 pr-8 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                                        <button type="button" x-show="brandSearchQuery" @click="brandSearchQuery = ''; brandPage = 1"
+                                                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-xs">&times;</button>
+                                    </div>
 
-                                <div class="flex items-center gap-2 self-end sm:self-auto">
-                                    <label class="text-[11px] text-slate-500 whitespace-nowrap">Show:</label>
-                                    <select x-model.number="brandPerPage" @change="brandPage = 1"
-                                            class="rounded-lg border-gray-300 text-xs py-1 pl-2 pr-6 focus:border-indigo-500 focus:ring-indigo-500">
-                                        <option value="10">10 / page</option>
-                                        <option value="25">25 / page</option>
-                                        <option value="50">50 / page</option>
-                                        <option value="1000">All</option>
-                                    </select>
+                                    <div class="flex items-center gap-2 self-end sm:self-auto">
+                                        <label class="text-[11px] text-slate-500 whitespace-nowrap">Show:</label>
+                                        <select x-model.number="brandPerPage" @change="brandPage = 1"
+                                                class="rounded-lg border-gray-300 text-xs py-1 pl-2 pr-6 focus:border-indigo-500 focus:ring-indigo-500">
+                                            <option value="10">10 / page</option>
+                                            <option value="25">25 / page</option>
+                                            <option value="50">50 / page</option>
+                                            <option value="1000">All</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 
@@ -957,8 +1101,8 @@
 
                             {{-- Empty State (Search filter yields 0 matches) --}}
                             <div x-show="!isLoadingBrandProducts && totalBrandProductsCount > 0 && matchingBrandProductsCount === 0" x-cloak class="py-8 text-center text-xs text-slate-500">
-                                <p>No products match your search "<strong x-text="brandSearchQuery"></strong>".</p>
-                                <button type="button" @click="brandSearchQuery = ''; brandPage = 1" class="mt-2 text-indigo-600 hover:underline font-medium">Clear search</button>
+                                <p>No products match the current filters/search.</p>
+                                <button type="button" @click="brandSearchQuery = ''; filterCategoryId = ''; filterSubCategoryId = ''; brandPage = 1" class="mt-2 text-indigo-600 hover:underline font-medium">Clear filters</button>
                             </div>
 
                             {{-- Catalog Table --}}
@@ -1652,7 +1796,13 @@ function priceMasterForm(config) {
         priceListName: String(config.name || ''),
         selectedBrandId: String(config.brandId || ''),
         previousBrandId: String(config.brandId || ''),
+        selectedCompanyId: String(config.companyId || ''),
+        effectiveFrom: String(config.effectiveFrom || ''),
+        effectiveTo: String(config.effectiveTo || ''),
         brands: config.brands || [],
+        companies: config.companies || [],
+        categories: config.categories || [],
+        subCategories: config.subCategories || [],
         products: config.products || [],
         uoms: config.uoms || [],
         lines: (config.lines || []).map((line) => ({
@@ -1690,6 +1840,13 @@ function priceMasterForm(config) {
         editMinQty: config.editMinQty ?? '',
 
         brandProductsList: [],
+        brandCategoryOptions: [],
+        brandSubCategoryOptionsAll: [],
+        filterCategoryId: '',
+        filterSubCategoryId: '',
+        ctFilterBrandId: '',
+        ctFilterCategoryId: '',
+        ctFilterSubCategoryId: '',
         isLoadingBrandProducts: false,
         brandProductsError: '',
         brandSearchQuery: '',
@@ -1716,6 +1873,29 @@ function priceMasterForm(config) {
 
         get selectedCopyCount() {
             return Object.values(this.copySelectedItems).filter(Boolean).length;
+        },
+
+        get selectedCompany() {
+            if (!this.selectedCompanyId) return null;
+            return this.companies.find(c => String(c.id) === String(this.selectedCompanyId)) || null;
+        },
+
+        get brandSubCategoryOptions() {
+            if (!this.filterCategoryId) return this.brandSubCategoryOptionsAll;
+            return this.brandSubCategoryOptionsAll.filter(s => String(s.category_id) === String(this.filterCategoryId));
+        },
+
+        get ctCategoryOptions() {
+            let list = this.categories || [];
+            if (this.ctFilterBrandId) {
+                list = list.filter(c => String(c.brand_id) === String(this.ctFilterBrandId));
+            }
+            return list;
+        },
+
+        get ctSubCategoryOptions() {
+            if (!this.ctFilterCategoryId) return [];
+            return (this.subCategories || []).filter(s => String(s.category_id) === String(this.ctFilterCategoryId));
         },
 
         init() {
@@ -1794,7 +1974,8 @@ function priceMasterForm(config) {
             }
 
             try {
-                const response = await fetch(`/masters/price-masters/products/${productId}/details`, {
+                const detailsUrl = @json(url('/masters/price-masters/products'));
+                const response = await fetch(`${detailsUrl}/${productId}/details`, {
                     headers: {
                         'Accept': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest'
@@ -1813,8 +1994,14 @@ function priceMasterForm(config) {
                         if (line && (!line.uom_id || line.uom_id === '') && fetched.base_uom_id) {
                             line.uom_id = String(fetched.base_uom_id);
                         }
+                        if (line) {
+                            this.applyProductPricingDefaults(line, fetched);
+                        }
                         if (this.isEdit && (!this.editUomId || this.editUomId === '') && fetched.base_uom_id) {
                             this.editUomId = String(fetched.base_uom_id);
+                        }
+                        if (this.isEdit && String(this.editProductId) === String(productId)) {
+                            this.applyEditPricingDefaults(fetched);
                         }
                         return fetched;
                     }
@@ -1878,6 +2065,8 @@ function priceMasterForm(config) {
                     this.lines = [];
                     this.selectedProductIds = [];
                     this.brandSearchQuery = '';
+                    this.filterCategoryId = '';
+                    this.filterSubCategoryId = '';
                     this.brandPage = 1;
                     this.previousBrandId = this.selectedBrandId;
                     this.loadBrandProducts();
@@ -1888,12 +2077,16 @@ function priceMasterForm(config) {
                 this.lines = [];
                 this.selectedProductIds = [];
                 this.brandSearchQuery = '';
+                this.filterCategoryId = '';
+                this.filterSubCategoryId = '';
                 this.brandPage = 1;
                 this.previousBrandId = this.selectedBrandId;
                 if (this.selectedBrandId) {
                     this.loadBrandProducts();
                 } else {
                     this.brandProductsList = [];
+                    this.brandCategoryOptions = [];
+                    this.brandSubCategoryOptionsAll = [];
                 }
             }
         },
@@ -1901,12 +2094,15 @@ function priceMasterForm(config) {
         async loadBrandProducts() {
             if (!this.selectedBrandId) {
                 this.brandProductsList = [];
+                this.brandCategoryOptions = [];
+                this.brandSubCategoryOptionsAll = [];
                 return;
             }
             this.isLoadingBrandProducts = true;
             this.brandProductsError = '';
             try {
-                const response = await fetch(`/masters/price-masters/brands/${this.selectedBrandId}/products`, {
+                const brandProductsBase = @json(url('/masters/price-masters/brands'));
+                const response = await fetch(`${brandProductsBase}/${this.selectedBrandId}/products`, {
                     headers: {
                         'Accept': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest'
@@ -1916,6 +2112,8 @@ function priceMasterForm(config) {
                     const result = await response.json();
                     if (result.success && Array.isArray(result.data)) {
                         this.brandProductsList = result.data;
+                        this.brandCategoryOptions = Array.isArray(result.categories) ? result.categories : [];
+                        this.brandSubCategoryOptionsAll = Array.isArray(result.sub_categories) ? result.sub_categories : [];
                         result.data.forEach(p => {
                             const existingIdx = this.products.findIndex(prod => String(prod.id) === String(p.id));
                             if (existingIdx !== -1) {
@@ -1928,7 +2126,12 @@ function priceMasterForm(config) {
                         this.brandProductsError = result.message || 'Failed to load brand products.';
                     }
                 } else {
-                    this.brandProductsError = 'Server error loading brand products.';
+                    let message = `Server error loading brand products (HTTP ${response.status}).`;
+                    try {
+                        const err = await response.json();
+                        if (err?.message) message = err.message;
+                    } catch (_) {}
+                    this.brandProductsError = message;
                 }
             } catch (e) {
                 console.error('Error loading brand products:', e);
@@ -1938,12 +2141,74 @@ function priceMasterForm(config) {
             }
         },
 
+        applyProductPricingDefaults(line, prod) {
+            if (!line || !prod) return;
+            const dealer = Number(prod.trade_price) > 0 ? prod.trade_price : (Number(prod.selling_price) > 0 ? prod.selling_price : null);
+            const retail = Number(prod.selling_price) > 0 ? prod.selling_price : (Number(prod.mrp) > 0 ? prod.mrp : null);
+            if ((!line.dealer_price || line.dealer_price === '' || Number(line.dealer_price) === 0) && dealer !== null) {
+                line.dealer_price = this.money(dealer);
+            }
+            if ((!line.retail_price || line.retail_price === '' || Number(line.retail_price) === 0) && retail !== null) {
+                line.retail_price = this.money(retail);
+            }
+        },
+
+        applyEditPricingDefaults(prod) {
+            if (!prod || !this.isEdit) return;
+            const dealer = Number(prod.trade_price) > 0 ? prod.trade_price : (Number(prod.selling_price) > 0 ? prod.selling_price : null);
+            const retail = Number(prod.selling_price) > 0 ? prod.selling_price : (Number(prod.mrp) > 0 ? prod.mrp : null);
+            if ((!this.editDealerPrice || this.editDealerPrice === '' || Number(this.editDealerPrice) === 0) && dealer !== null) {
+                this.editDealerPrice = this.money(dealer);
+            }
+            if ((!this.editRetailPrice || this.editRetailPrice === '' || Number(this.editRetailPrice) === 0) && retail !== null) {
+                this.editRetailPrice = this.money(retail);
+            }
+        },
+
+        buildLineFromProduct(prod) {
+            const line = {
+                product_id: String(prod.id),
+                uom_id: prod.base_uom_id ? String(prod.base_uom_id) : '',
+                dealer_price: this.bulkDealerPrice || '',
+                dealer_price_gst_mode: this.bulkDealerGstMode || 'exclusive',
+                retail_price: this.bulkRetailPrice || '',
+                retail_price_gst_mode: this.bulkRetailGstMode || 'exclusive',
+                min_qty: this.bulkMinQty || '',
+                searchQuery: `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`,
+                isOpen: false,
+                isLoadingDetails: false,
+            };
+            this.applyProductPricingDefaults(line, prod);
+            return line;
+        },
+
+        onFilterCategoryChange() {
+            this.filterSubCategoryId = '';
+            this.brandPage = 1;
+        },
+
+        onCtFilterBrandChange() {
+            this.ctFilterCategoryId = '';
+            this.ctFilterSubCategoryId = '';
+        },
+
+        onCtFilterCategoryChange() {
+            this.ctFilterSubCategoryId = '';
+        },
+
         get filteredBrandProducts() {
+            let list = this.brandProductsList;
+            if (this.filterCategoryId) {
+                list = list.filter(p => String(p.category_id) === String(this.filterCategoryId));
+            }
+            if (this.filterSubCategoryId) {
+                list = list.filter(p => String(p.sub_category_id) === String(this.filterSubCategoryId));
+            }
             const q = (this.brandSearchQuery || '').toLowerCase().trim();
             if (!q) {
-                return this.brandProductsList;
+                return list;
             }
-            return this.brandProductsList.filter(p =>
+            return list.filter(p =>
                 (p.name && p.name.toLowerCase().includes(q)) ||
                 (p.sku && String(p.sku).toLowerCase().includes(q)) ||
                 (p.model && String(p.model).toLowerCase().includes(q)) ||
@@ -1990,18 +2255,7 @@ function priceMasterForm(config) {
             const idx = this.selectedProductIds.indexOf(pid);
             if (idx === -1) {
                 this.selectedProductIds.push(pid);
-                this.lines.push({
-                    product_id: pid,
-                    uom_id: prod.base_uom_id ? String(prod.base_uom_id) : '',
-                    dealer_price: this.bulkDealerPrice || '',
-                    dealer_price_gst_mode: this.bulkDealerGstMode || 'exclusive',
-                    retail_price: this.bulkRetailPrice || '',
-                    retail_price_gst_mode: this.bulkRetailGstMode || 'exclusive',
-                    min_qty: this.bulkMinQty || '',
-                    searchQuery: `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`,
-                    isOpen: false,
-                    isLoadingDetails: false,
-                });
+                this.lines.push(this.buildLineFromProduct(prod));
             } else {
                 this.selectedProductIds.splice(idx, 1);
                 this.lines = this.lines.filter(l => String(l.product_id) !== pid);
@@ -2019,40 +2273,18 @@ function priceMasterForm(config) {
                     const pid = String(prod.id);
                     if (!this.selectedProductIds.includes(pid)) {
                         this.selectedProductIds.push(pid);
-                        this.lines.push({
-                            product_id: pid,
-                            uom_id: prod.base_uom_id ? String(prod.base_uom_id) : '',
-                            dealer_price: this.bulkDealerPrice || '',
-                            dealer_price_gst_mode: this.bulkDealerGstMode || 'exclusive',
-                            retail_price: this.bulkRetailPrice || '',
-                            retail_price_gst_mode: this.bulkRetailGstMode || 'exclusive',
-                            min_qty: this.bulkMinQty || '',
-                            searchQuery: `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`,
-                            isOpen: false,
-                            isLoadingDetails: false,
-                        });
+                        this.lines.push(this.buildLineFromProduct(prod));
                     }
                 });
             }
         },
 
         selectAllBrandProducts() {
-            this.brandProductsList.forEach(prod => {
+            this.filteredBrandProducts.forEach(prod => {
                 const pid = String(prod.id);
                 if (!this.selectedProductIds.includes(pid)) {
                     this.selectedProductIds.push(pid);
-                    this.lines.push({
-                        product_id: pid,
-                        uom_id: prod.base_uom_id ? String(prod.base_uom_id) : '',
-                        dealer_price: this.bulkDealerPrice || '',
-                        dealer_price_gst_mode: this.bulkDealerGstMode || 'exclusive',
-                        retail_price: this.bulkRetailPrice || '',
-                        retail_price_gst_mode: this.bulkRetailGstMode || 'exclusive',
-                        min_qty: this.bulkMinQty || '',
-                        searchQuery: `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`,
-                        isOpen: false,
-                        isLoadingDetails: false,
-                    });
+                    this.lines.push(this.buildLineFromProduct(prod));
                 }
             });
         },
@@ -2338,7 +2570,18 @@ function priceMasterForm(config) {
             this.lines.splice(idx, 1);
         },
         filteredProducts(line) {
-            const pool = (this.type === 'brand') ? this.brandProducts : this.products;
+            let pool = (this.type === 'brand') ? this.brandProducts : this.products;
+            if (this.type === 'customer_type') {
+                if (this.ctFilterBrandId) {
+                    pool = pool.filter(p => String(p.brand_id) === String(this.ctFilterBrandId));
+                }
+                if (this.ctFilterCategoryId) {
+                    pool = pool.filter(p => String(p.category_id) === String(this.ctFilterCategoryId));
+                }
+                if (this.ctFilterSubCategoryId) {
+                    pool = pool.filter(p => String(p.sub_category_id) === String(this.ctFilterSubCategoryId));
+                }
+            }
             const q = (line.searchQuery || '').toLowerCase().trim();
             // Selected product keeps the label in the input; show browse list until user types (clears product_id).
             if (!q || line.product_id) {
@@ -2346,7 +2589,9 @@ function priceMasterForm(config) {
             }
             return pool.filter(p =>
                 (p.name && p.name.toLowerCase().includes(q)) ||
-                (p.sku && String(p.sku).toLowerCase().includes(q))
+                (p.sku && String(p.sku).toLowerCase().includes(q)) ||
+                (p.category_name && p.category_name.toLowerCase().includes(q)) ||
+                (p.sub_category_name && p.sub_category_name.toLowerCase().includes(q))
             ).slice(0, 40);
         },
         selectLineProduct(idx, prod) {
@@ -2356,6 +2601,7 @@ function priceMasterForm(config) {
             line.searchQuery = `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`;
             line.isOpen = false;
             line.uom_id = prod.base_uom_id ? String(prod.base_uom_id) : '';
+            this.applyProductPricingDefaults(line, prod);
             this.fetchProductDetails(prod.id, line);
         },
         clearLineProduct(idx) {
@@ -2384,6 +2630,7 @@ function priceMasterForm(config) {
             this.editProductQuery = `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`;
             this.editProductOpen = false;
             this.editUomId = prod.base_uom_id ? String(prod.base_uom_id) : '';
+            this.applyEditPricingDefaults(prod);
             this.fetchProductDetails(prod.id);
         },
         productById(id) {

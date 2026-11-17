@@ -71,6 +71,8 @@ class Product extends Model
     protected $appends = [
         'is_serial_tracked',
         'track_serial',
+        'mrp',
+        'unit',
     ];
 
     protected $fillable = [
@@ -418,6 +420,41 @@ class Product extends Model
             $tracks = array_values(array_filter($tracks, fn ($t) => $t !== 'serial'));
         }
         $this->attributes['tracking_type'] = empty($tracks) ? 'none' : implode(',', $tracks);
+    }
+
+    /**
+     * Catalogue MRP for forms/AJAX. The DB column is calculation_mrp (no products.mrp).
+     */
+    public function getMrpAttribute(): float
+    {
+        $calculationMrp = (float) ($this->attributes['calculation_mrp'] ?? 0);
+        if ($calculationMrp > 0) {
+            return $calculationMrp;
+        }
+
+        if ($this->relationLoaded('productUoms')) {
+            $basePu = $this->productUoms->firstWhere('is_base', true);
+            if ($basePu && (float) ($basePu->mrp ?? 0) > 0) {
+                return (float) $basePu->mrp;
+            }
+        }
+
+        return (float) ($this->attributes['selling_price'] ?? 0);
+    }
+
+    /**
+     * Display unit code for purchase/sales line UIs (base UOM).
+     */
+    public function getUnitAttribute(): string
+    {
+        $uom = $this->relationLoaded('baseUom') ? $this->baseUom : $this->baseUom()->first();
+
+        return $uom?->code ?: ($uom?->name ?: 'PCS');
+    }
+
+    public function catalogMrp(): float
+    {
+        return $this->mrp;
     }
 
     public function getTrackingTypesAttribute(): array

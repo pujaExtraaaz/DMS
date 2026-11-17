@@ -101,10 +101,15 @@ class IndianCities
 
     protected static function normalizeStateName(string $state): string
     {
-        $state = trim($state);
+        $state = \App\Support\IndianStates::normalizeName($state);
+        if ($state === '') {
+            return $state;
+        }
+
         foreach (array_keys(self::baseCities()) as $knownState) {
-            if (strcasecmp($state, $knownState) === 0) {
-                return $knownState;
+            $canonicalKnown = \App\Support\IndianStates::normalizeName($knownState);
+            if (strcasecmp($state, $canonicalKnown) === 0 || strcasecmp($state, $knownState) === 0) {
+                return $canonicalKnown !== '' ? $canonicalKnown : $knownState;
             }
         }
 
@@ -118,7 +123,22 @@ class IndianCities
      */
     protected static function citiesByState(): array
     {
-        $merged = self::baseCities();
+        $merged = [];
+
+        foreach (self::baseCities() as $state => $cities) {
+            $canonical = self::normalizeStateName($state);
+            if (! isset($merged[$canonical])) {
+                $merged[$canonical] = [];
+            }
+            foreach ($cities as $city) {
+                $merged[$canonical][] = $city;
+            }
+        }
+
+        foreach ($merged as $state => $cities) {
+            natcasesort($cities);
+            $merged[$state] = array_values(array_unique($cities));
+        }
 
         if (! Schema::hasTable('custom_cities')) {
             return $merged;

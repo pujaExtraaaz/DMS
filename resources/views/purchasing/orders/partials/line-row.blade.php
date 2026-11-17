@@ -39,7 +39,7 @@
             <select name="items[{{ $idx }}][product_id]" class="po-product hidden">
                 <option value="">Select product</option>
                 @foreach($products as $p)
-                    <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-mrp="{{ $p->mrp ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected((string) $selectedProductId === (string) $p->id)>{{ $p->name }}</option>
+                    <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-mrp="{{ $p->calculation_mrp ?? $p->mrp ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected((string) $selectedProductId === (string) $p->id)>{{ $p->name }}</option>
                 @endforeach
             </select>
             <div class="relative">

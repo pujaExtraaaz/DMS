@@ -10,6 +10,7 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\ProductPriceHistory;
 use App\Domains\Master\Models\ProductType;
 use App\Domains\Master\Models\ProductUom;
+use App\Domains\Master\Models\TaxRate;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
@@ -572,14 +573,68 @@ class ProductController extends Controller
 
     protected function formData(Product $item): array
     {
+        $brands = Brand::where('is_active', true)->orderBy('name')->get();
+        $categories = Category::where('is_active', true)->orderBy('name')->get();
+        $subCategories = SubCategory::where('is_active', true)->orderBy('name')->get();
+        $uoms = Uom::where('is_active', true)->orderBy('name')->get();
+        $companies = Company::where('is_active', true)->orderBy('name')->get();
+        $productTypes = ProductType::where('is_active', true)->orderBy('name')->get();
+
+        // Rehydrate inactive catalog FKs so edit screens keep the selected values visible.
+        if ($item->exists) {
+            if ($item->brand_id && ! $brands->contains('id', $item->brand_id)) {
+                $inactive = Brand::query()->find($item->brand_id);
+                if ($inactive) {
+                    $brands = $brands->prepend($inactive)->unique('id')->values();
+                }
+            }
+            if ($item->category_id && ! $categories->contains('id', $item->category_id)) {
+                $inactive = Category::query()->find($item->category_id);
+                if ($inactive) {
+                    $categories = $categories->prepend($inactive)->unique('id')->values();
+                }
+            }
+            if ($item->sub_category_id && ! $subCategories->contains('id', $item->sub_category_id)) {
+                $inactive = SubCategory::query()->find($item->sub_category_id);
+                if ($inactive) {
+                    $subCategories = $subCategories->prepend($inactive)->unique('id')->values();
+                }
+            }
+            if ($item->base_uom_id && ! $uoms->contains('id', $item->base_uom_id)) {
+                $inactive = Uom::query()->find($item->base_uom_id);
+                if ($inactive) {
+                    $uoms = $uoms->prepend($inactive)->unique('id')->values();
+                }
+            }
+            if ($item->alternate_uom_id && ! $uoms->contains('id', $item->alternate_uom_id)) {
+                $inactive = Uom::query()->find($item->alternate_uom_id);
+                if ($inactive) {
+                    $uoms = $uoms->push($inactive)->unique('id')->values();
+                }
+            }
+            if ($item->company_id && ! $companies->contains('id', $item->company_id)) {
+                $inactive = Company::query()->find($item->company_id);
+                if ($inactive) {
+                    $companies = $companies->prepend($inactive)->unique('id')->values();
+                }
+            }
+            if ($item->product_type_id && ! $productTypes->contains('id', $item->product_type_id)) {
+                $inactive = ProductType::query()->find($item->product_type_id);
+                if ($inactive) {
+                    $productTypes = $productTypes->prepend($inactive)->unique('id')->values();
+                }
+            }
+        }
+
         return [
             'item' => $item,
-            'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
-            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
-            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
-            'subCategories' => SubCategory::where('is_active', true)->orderBy('name')->get(),
-            'companies' => Company::where('is_active', true)->orderBy('name')->get(),
-            'productTypes' => ProductType::where('is_active', true)->orderBy('name')->get(),
+            'uoms' => $uoms,
+            'brands' => $brands,
+            'categories' => $categories,
+            'subCategories' => $subCategories,
+            'companies' => $companies,
+            'productTypes' => $productTypes,
+            'taxRates' => TaxRate::query()->where('is_active', true)->orderBy('rate')->get(['id', 'name', 'rate']),
             'priceHistory' => $item->exists
                 ? ProductPriceHistory::query()->where('product_id', $item->id)->orderByDesc('effective_from')->limit(30)->with('uom', 'creator')->get()
                 : collect(),
@@ -656,7 +711,48 @@ class ProductController extends Controller
             'return_url' => 'nullable|string|max:500',
             'order_id' => 'nullable|integer',
             'target_row' => 'nullable|integer',
-            'name' => 'required|string|max:255',
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                function ($attribute, $value, $fail) use ($product, $request) {
+                    $normalized = mb_strtolower(trim((string) $value));
+                    if ($normalized === '') {
+                        return;
+                    }
+
+                    $query = Product::query()
+                        ->whereRaw('LOWER(TRIM(name)) = ?', [$normalized])
+                        ->when($product, fn ($q) => $q->where('id', '!=', $product->id));
+
+                    // Prefer same company scope when available (company isolation).
+                    $companyId = $request->filled('company_id')
+                        ? $request->integer('company_id')
+                        : ($product?->company_id ?: ($request->user()?->company_id));
+
+                    if ($companyId) {
+                        $query->where(function ($q) use ($companyId) {
+                            $q->where('company_id', $companyId)->orWhereNull('company_id');
+                        });
+                    }
+
+                    // Same brand + same part number (when provided) strengthens the match.
+                    if ($request->filled('brand_id')) {
+                        $brandMatch = (clone $query)
+                            ->where('brand_id', $request->integer('brand_id'))
+                            ->first();
+                        if ($brandMatch) {
+                            $fail('A product with this name already exists under the selected brand. Duplicate product entries are not allowed.');
+
+                            return;
+                        }
+                    }
+
+                    if ($query->exists()) {
+                        $fail('A product with this name already exists. Duplicate product entries are not allowed.');
+                    }
+                },
+            ],
             'sku' => 'required_unless:sku_not_applicable,1|nullable|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
             'serial_no' => [
                 'nullable',
@@ -696,7 +792,7 @@ class ProductController extends Controller
             'base_uom_id' => 'required|exists:uoms,id',
             'alternate_uom_id' => ($altNotApplicable ? 'nullable' : 'required').'|exists:uoms,id|different:base_uom_id',
             'conversion_factor' => ($altNotApplicable ? 'nullable' : 'required').'|numeric|gt:0',
-            'brand_id' => 'nullable|exists:brands,id',
+            'brand_id' => 'required|exists:brands,id',
             'category_id' => 'nullable|exists:categories,id',
             'sub_category_id' => 'nullable|exists:sub_categories,id',
             'tax_rate' => [$request->exists('tax_rate') ? 'required' : 'nullable', 'numeric', 'min:0', 'max:100'],
@@ -753,13 +849,15 @@ class ProductController extends Controller
             'product_uoms.*.mrp' => 'nullable|numeric|min:0',
             'product_uoms.*.is_default_sales' => 'nullable|boolean',
         ], [
+            'brand_id.required' => 'Please select a brand for this product.',
+            'brand_id.exists' => 'Please select a valid brand for this product.',
             'base_uom_id.required' => 'The base UOM field is required.',
             'alternate_uom_id.required' => 'The alternative UOM field is required.',
             'alternate_uom_id.different' => 'The alternative UOM and base UOM must be different.',
             'conversion_factor.required' => 'The conversion quantity is required.',
             'conversion_factor.gt' => 'The conversion quantity must be greater than zero.',
             'sku.required' => 'The part number field is required.',
-            'sku.unique' => 'The part number has already been taken.',
+            'sku.unique' => 'The part number has already been taken. Duplicate product entries are not allowed.',
             'height_cm.required' => 'The height (CM) field is required.',
             'height_cm.gt' => 'The height (CM) must be greater than zero.',
             'length_cm.required' => 'The length (CM) field is required.',
@@ -781,6 +879,8 @@ class ProductController extends Controller
             'width_in' => 'width (Inches)',
             'net_weight' => 'net weight',
         ]);
+
+        $this->assertCatalogHierarchy($data);
 
         $data['is_active'] = $request->boolean('is_active');
         $data['model'] = $data['model'] ?? $data['models'] ?? ($product?->model ?? null);
@@ -1102,5 +1202,46 @@ class ProductController extends Controller
         return str_contains($message, 'products_serial_no_unique')
             || str_contains($message, 'products.serial_no')
             || (str_contains($message, 'Duplicate entry') && str_contains($message, 'serial_no'));
+    }
+
+    /**
+     * Ensure brand → category → sub-category hierarchy is consistent on save.
+     */
+    protected function assertCatalogHierarchy(array $data): void
+    {
+        $errors = [];
+
+        if (! empty($data['category_id'])) {
+            $category = Category::query()->find($data['category_id']);
+            if (! $category) {
+                $errors['category_id'] = 'Selected category was not found.';
+            } elseif (! empty($data['brand_id']) && (int) $category->brand_id !== (int) $data['brand_id']) {
+                $errors['category_id'] = 'Selected category does not belong to the selected brand.';
+            }
+        }
+
+        if (! empty($data['sub_category_id'])) {
+            $sub = SubCategory::query()->find($data['sub_category_id']);
+            if (! $sub) {
+                $errors['sub_category_id'] = 'Selected sub-category was not found.';
+            } else {
+                if (! empty($data['category_id']) && (int) $sub->category_id !== (int) $data['category_id']) {
+                    $errors['sub_category_id'] = 'Selected sub-category does not belong to the selected category.';
+                } elseif (empty($data['category_id'])) {
+                    $errors['category_id'] = 'Category is required when a sub-category is selected.';
+                }
+
+                if (! empty($data['brand_id']) && empty($errors['category_id'])) {
+                    $parentCategory = Category::query()->find($sub->category_id);
+                    if ($parentCategory && (int) $parentCategory->brand_id !== (int) $data['brand_id']) {
+                        $errors['sub_category_id'] = 'Selected sub-category does not belong to the selected brand.';
+                    }
+                }
+            }
+        }
+
+        if ($errors !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages($errors);
+        }
     }
 }

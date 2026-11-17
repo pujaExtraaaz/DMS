@@ -29,12 +29,17 @@
         </x-slot>
     </x-ui.page-header>
 
-    {{-- Summary Card --}}
+    {{-- Summary Card with company logo + validity --}}
     <x-ui.card>
         <div class="flex flex-col sm:flex-row items-start sm:items-center gap-5">
-            <div class="w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-2xl shadow-md shrink-0 text-white {{ $priceMaster->isBrandWise() ? 'bg-gradient-to-br from-purple-600 to-indigo-700' : 'bg-gradient-to-br from-blue-600 to-indigo-700' }}">
-                {{ strtoupper(substr($targetName, 0, 2)) }}
-            </div>
+            @if($company?->logo_url)
+                <img src="{{ $company->logo_url }}" alt="{{ $company->name }} logo"
+                     class="w-16 h-16 rounded-2xl object-contain border border-slate-200 bg-white shadow-md shrink-0 p-1">
+            @else
+                <div class="w-16 h-16 rounded-2xl flex items-center justify-center font-bold text-2xl shadow-md shrink-0 text-white {{ $priceMaster->isBrandWise() ? 'bg-gradient-to-br from-purple-600 to-indigo-700' : 'bg-gradient-to-br from-blue-600 to-indigo-700' }}">
+                    {{ strtoupper(substr($company?->name ?: $targetName, 0, 2)) }}
+                </div>
+            @endif
             <div class="space-y-1.5 flex-1 min-w-0">
                 <div class="flex flex-wrap items-center gap-2.5">
                     <h2 class="text-xl font-bold text-slate-900 truncate">{{ $targetName }}</h2>
@@ -51,9 +56,29 @@
                         <span>Price List Name: <strong class="text-slate-800 font-medium">{{ $priceMaster->name }}</strong></span>
                     @endif
                     <span>Company: <strong class="text-slate-800 font-medium">{{ $company?->name ?: 'Extraaaz DMS' }}</strong></span>
+                    @if($company?->gstin)
+                        <span>GSTIN: <strong class="text-slate-800 font-mono font-medium">{{ $company->gstin }}</strong></span>
+                    @endif
+                    @if($priceMaster->effective_from || $priceMaster->effective_to)
+                        <span>Validity:
+                            <strong class="text-slate-800 font-medium">
+                                {{ $priceMaster->effective_from?->format('d M Y') ?: '—' }}
+                                –
+                                {{ $priceMaster->effective_to?->format('d M Y') ?: '—' }}
+                            </strong>
+                        </span>
+                    @endif
                     <span>Created: <span class="text-slate-700">{{ $priceMaster->created_at?->format('d M Y, h:i A') ?: '—' }}</span></span>
                     <span>Last Updated: <span class="text-slate-700">{{ $priceMaster->updated_at?->format('d M Y, h:i A') ?: '—' }}</span></span>
                 </div>
+                @if($company && ($company->address || $company->city || $company->phone))
+                    <p class="text-xs text-slate-500">
+                        {{ collect([$company->address, $company->city, $company->state, $company->pincode])->filter()->implode(', ') }}
+                        @if($company->phone || $company->email)
+                            · {{ collect([$company->phone, $company->email])->filter()->implode(' · ') }}
+                        @endif
+                    </p>
+                @endif
             </div>
         </div>
     </x-ui.card>

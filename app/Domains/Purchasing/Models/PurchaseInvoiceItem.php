@@ -14,6 +14,7 @@ class PurchaseInvoiceItem extends Model
     protected $fillable = [
         'purchase_invoice_id',
         'receipt_note_item_id',
+        'purchase_order_item_id',
         'product_id',
         'uom_id',
         'quantity',
@@ -76,6 +77,11 @@ class PurchaseInvoiceItem extends Model
     public function receiptNoteItem(): BelongsTo
     {
         return $this->belongsTo(ReceiptNoteItem::class);
+    }
+
+    public function purchaseOrderItem(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseOrderItem::class);
     }
 
     public function product(): BelongsTo

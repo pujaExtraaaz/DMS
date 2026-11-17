@@ -165,14 +165,23 @@ class BrandController extends Controller
 
         $brandName = $brand->name;
 
+        $inUse = Product::where('brand_id', $brand->id)->exists()
+            || Category::where('brand_id', $brand->id)->exists();
+
+        if ($inUse) {
+            $message = "Cannot delete brand '{$brandName}' because products or categories still reference it. Reassign or deactivate them first.";
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 422);
+            }
+
+            return back()->with('error', $message);
+        }
+
         try {
             DB::transaction(function () use ($brand) {
-                // Safely disassociate referencing entities so dependent records (products,
-                // categories, schemes, targets) remain completely intact and functional,
-                // matching the database foreign key nullOnDelete / cascadeOnDelete rules.
-                Product::where('brand_id', $brand->id)->update(['brand_id' => null]);
-                Category::where('brand_id', $brand->id)->update(['brand_id' => null]);
-
                 if (Schema::hasTable('schemes')) {
                     DB::table('schemes')->where('brand_id', $brand->id)->update(['brand_id' => null]);
                 }

@@ -23,9 +23,13 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::put('companies/{company}/cheque-books/{cheque_book}', [\App\Http\Controllers\Organization\ChequeBookController::class, 'update'])->name('companies.cheque-books.update');
     Route::delete('companies/{company}/cheque-books/{cheque_book}', [\App\Http\Controllers\Organization\ChequeBookController::class, 'destroy'])->name('companies.cheque-books.destroy');
     Route::post('companies/{company}/cheque-books/{cheque_book}/toggle-status', [\App\Http\Controllers\Organization\ChequeBookController::class, 'toggleStatus'])->name('companies.cheque-books.toggle-status');
-    Route::resource('branches', BranchController::class)->except(['show']);
-    Route::resource('warehouses', WarehouseController::class)->except(['show']);
-    Route::resource('financial-years', FinancialYearController::class)->except(['show']);
+    Route::get('branches/cities', [BranchController::class, 'cities'])->name('branches.cities');
+    Route::post('branches/cities/quick-store', [BranchController::class, 'storeCity'])->name('branches.cities.quick-store');
+    Route::post('branches/branch-types/quick-store', [BranchController::class, 'storeBranchType'])->name('branches.branch-types.quick-store');
+    Route::resource('branches', BranchController::class);
+    Route::post('warehouses/warehouse-types/quick-store', [WarehouseController::class, 'storeWarehouseType'])->name('warehouses.warehouse-types.quick-store');
+    Route::resource('warehouses', WarehouseController::class);
+    Route::resource('financial-years', FinancialYearController::class);
     Route::post('financial-years/{financial_year}/set-current', [FinancialYearController::class, 'setCurrent'])->name('financial-years.set-current');
     Route::post('financial-years/{financial_year}/close', [FinancialYearController::class, 'close'])->name('financial-years.close');
     Route::post('financial-years/{financial_year}/reopen', [FinancialYearController::class, 'reopen'])->name('financial-years.reopen');

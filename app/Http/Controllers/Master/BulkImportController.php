@@ -52,10 +52,14 @@ class BulkImportController extends Controller
                 'is_active', 'is_default',
             ],
             'branches' => [
-                'company_code', 'code', 'name', 'gstin', 'phone', 'state', 'pincode', 'address', 'is_active',
+                'company_code', 'code', 'name', 'branch_type', 'phone', 'alternate_phone',
+                'email', 'alternate_email', 'address', 'address_line_2', 'state', 'city', 'country',
+                'pincode', 'notes', 'is_default', 'is_active',
             ],
             'warehouses' => [
-                'company_code', 'branch_code', 'code', 'name', 'address', 'is_default', 'is_active',
+                'company_code', 'branch_code', 'code', 'name', 'warehouse_type',
+                'contact_person', 'contact_phone', 'address', 'address_line_2',
+                'state', 'city', 'country', 'pincode', 'notes', 'is_default', 'is_active',
             ],
             'financial-years' => [
                 'company_code', 'name', 'starts_on', 'ends_on', 'is_current', 'is_closed',
@@ -103,13 +107,17 @@ class BulkImportController extends Controller
                 '9999900001', 'info@acme.test', 'https://acme.test', 1, 1,
             ],
             'branches' => [
-                'CMP-01', 'BR-HQ', 'Head Office', '29AABCU9603R1ZM', '9999900002', 'Karnataka', '560001', '#1 Main Road', 1,
+                'CMP-01', 'BR-HQ', 'Head Office', 'Head Office', '9999900002', '',
+                'hq@acme.test', '', '#1 Main Road', 'Near Metro', 'Karnataka', 'Bengaluru', 'India',
+                '560001', 'Primary branch', 1, 1,
             ],
             'warehouses' => [
-                'CMP-01', 'BR-HQ', 'WH-01', 'Main Warehouse', 'Godown Lane', 1, 1,
+                'CMP-01', 'BR-HQ', 'WH-01', 'Main Warehouse', 'Main Warehouse',
+                'Store Manager', '9999900003', 'Godown Lane', 'Unit 2',
+                'Karnataka', 'Bengaluru', 'India', '560002', 'Default stock location', 1, 1,
             ],
             'financial-years' => [
-                'CMP-01', '2026-2027', '2026-04-01', '2027-03-31', 1, 0,
+                'CMP-01', 'FY 2026-27', '2026-04-01', '2027-03-31', 1, 0,
             ],
             'uoms' => ['PCS', 'Pieces', 1],
             'brands' => ['CMP-01', 'Acme', 'Primary OEM brand', 1],

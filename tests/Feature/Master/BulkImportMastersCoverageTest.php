@@ -64,6 +64,20 @@ class BulkImportMastersCoverageTest extends TestCase
 
         $products = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'products'))->streamedContent();
         $this->assertStringContainsString('alt_purchase_price', $products);
+
+        $branchesTpl = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'branches'))->streamedContent();
+        $this->assertStringContainsString('branch_type', $branchesTpl);
+        $this->assertStringContainsString('address_line_2', $branchesTpl);
+        $this->assertStringNotContainsString('gstin', $branchesTpl);
+
+        $warehousesTpl = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'warehouses'))->streamedContent();
+        $this->assertStringContainsString('warehouse_type', $warehousesTpl);
+        $this->assertStringContainsString('contact_person', $warehousesTpl);
+        $this->assertStringContainsString('city', $warehousesTpl);
+
+        $fyTpl = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'financial-years'))->streamedContent();
+        $this->assertStringContainsString('starts_on', $fyTpl);
+        $this->assertStringContainsString('ends_on', $fyTpl);
     }
 
     public function test_setup_and_catalog_imports_happy_path(): void
@@ -87,12 +101,23 @@ class BulkImportMastersCoverageTest extends TestCase
             'company_code' => 'IMP-01',
             'code' => 'BR-01',
             'name' => 'HQ',
+            'branch_type' => 'Head Office',
+            'phone' => '9999900002',
+            'address' => '#1 Main Road',
+            'address_line_2' => 'Near Metro',
             'state' => 'Karnataka',
+            'city' => 'Bengaluru',
+            'country' => 'India',
+            'pincode' => '560001',
+            'email' => 'hq@import.test',
+            'is_default' => 1,
             'is_active' => 1,
         ]]));
         $this->assertSame(0, $branches->skipped, json_encode($branches->errors));
         $branch = Branch::query()->where('code', 'BR-01')->first();
         $this->assertNotNull($branch);
+        $this->assertSame('Head Office', $branch->branch_type);
+        $this->assertSame('Bengaluru', $branch->city);
 
         $warehouses = new WarehousesImport();
         $warehouses->collection(collect([[
@@ -100,16 +125,25 @@ class BulkImportMastersCoverageTest extends TestCase
             'branch_code' => 'BR-01',
             'code' => 'WH-01',
             'name' => 'Main WH',
+            'warehouse_type' => 'Main Warehouse',
+            'contact_person' => 'Store Manager',
+            'contact_phone' => '9999900003',
+            'address' => 'Godown Lane',
+            'address_line_2' => 'Unit 2',
+            'state' => 'Karnataka',
+            'city' => 'Bengaluru',
+            'country' => 'India',
+            'pincode' => '560002',
             'is_default' => 1,
             'is_active' => 1,
         ]]));
         $this->assertSame(0, $warehouses->skipped, json_encode($warehouses->errors));
-        $this->assertDatabaseHas('warehouses', ['code' => 'WH-01']);
+        $this->assertDatabaseHas('warehouses', ['code' => 'WH-01', 'city' => 'Bengaluru']);
 
         $years = new FinancialYearsImport();
         $years->collection(collect([[
             'company_code' => 'IMP-01',
-            'name' => '2026-2027',
+            'name' => 'FY 2026-27',
             'starts_on' => '2026-04-01',
             'ends_on' => '2027-03-31',
             'is_current' => 1,

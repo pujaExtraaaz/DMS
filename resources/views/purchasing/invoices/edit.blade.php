@@ -429,8 +429,10 @@
                                     </template>
                             </td>
 
-                            <td class="p-3 align-top min-w-[70px] w-20 text-center text-xs font-semibold text-slate-600 pt-5"
-                                x-text="row.unit || '—'"></td>
+                            <td class="p-3 align-top min-w-[70px] w-20 text-center text-xs font-semibold text-slate-600 pt-5">
+                                <input type="hidden" :name="`items[${i}][uom_id]`" :value="row.uom_id || ''">
+                                <span x-text="row.unit || '—'"></span>
+                            </td>
 
                             <td class="p-3 align-top min-w-[110px] w-28">
                                 <input type="number"
@@ -708,6 +710,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         addItem() {
             this.items.push({
                 product_id: '',
+                uom_id: '',
                 unit: '-',
                 tracking_type: 'none',
                 is_serial_tracked: false,
@@ -855,14 +858,15 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
 
             const p = this.products.find(item => String(item.id) === String(prodId));
             if (p) {
-                row.unit = p.unit || p.base_uom?.name || p.base_uom?.code || 'PCS';
+                row.uom_id = p.uom_id || p.base_uom_id || p.base_uom?.id || '';
+                row.unit = p.unit || p.base_uom?.code || p.base_uom?.name || 'PCS';
                 row.tracking_type = p.tracking_type || 'none';
                 row.is_serial_tracked = p.is_serial_tracked !== undefined
                     ? Boolean(p.is_serial_tracked)
                     : (p.track_serial !== undefined ? Boolean(p.track_serial) : String(p.tracking_type || '').includes('serial'));
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
-                row.batch_mrp = Number(p.mrp) || 0;
+                row.batch_mrp = Number(p.mrp || p.calculation_mrp) || 0;
                 const catalogBase = Number(p.purchase_price) || 0;
                 if (this.priceType === 'inclusive') {
                     row.unit_cost = this.grossFromBase(catalogBase, this.rowTaxPercent(row));

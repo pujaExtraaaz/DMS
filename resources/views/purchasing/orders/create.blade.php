@@ -70,6 +70,13 @@
                     <option value="{{ $w->id }}" data-address="{{ $wAddress }}" @selected(old('warehouse_id')==$w->id)>{{ $w->name }}</option>
                 @endforeach
             </select>
+            @if($warehouses->isEmpty())
+                <p class="mt-1 text-[11px] text-amber-700">
+                    No warehouses found.
+                    <a href="{{ route('organization.warehouses.create') }}" class="font-semibold underline">Create one in Setup</a>
+                    before receiving goods.
+                </p>
+            @endif
         </div>
         <x-ui.input name="po_date" id="po_date" label="PO Date" type="date" :value="old('po_date', now()->toDateString())" required onchange="recalcPoDueDate(); updateExpectedQuickHighlight()" oninput="recalcPoDueDate(); updateExpectedQuickHighlight()" />
         <div>
@@ -325,7 +332,7 @@
             'brand_id' => $p->brand_id ? (string)$p->brand_id : '',
             'tax_rate' => (float)($p->tax_rate ?? 0),
             'purchase_price' => (float)($p->purchase_price ?? 0),
-            'mrp' => (float)($p->mrp ?? 0),
+            'mrp' => (float) ($p->calculation_mrp ?? $p->mrp ?? 0),
             'base_uom_id' => $p->base_uom_id ? (string)$p->base_uom_id : '',
         ];
     })->values();
@@ -519,7 +526,8 @@ function handleDropdownFilter(query, selectedId = null) {
         selectedId = select ? select.value : '';
     }
 
-    let filtered = poProductsList.filter(p => String(p.brand_id) === activeBrandId);
+    // Include unbranded products so legacy catalog rows remain selectable until backfilled.
+    let filtered = poProductsList.filter(p => !p.brand_id || String(p.brand_id) === activeBrandId);
     if (query && query.trim() !== '') {
         const q = query.toLowerCase().trim();
         filtered = filtered.filter(p => {

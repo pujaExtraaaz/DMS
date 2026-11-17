@@ -279,6 +279,17 @@ class PurchaseInvoice extends Model
         return $this->belongsTo(PurchaseOrder::class);
     }
 
+    public function purchaseInward(): BelongsTo
+    {
+        return $this->belongsTo(PurchaseInward::class, 'purchase_inward_id');
+    }
+
+    /** @deprecated Use purchaseInward() — kept for older blade references. */
+    public function grn(): BelongsTo
+    {
+        return $this->purchaseInward();
+    }
+
     public function receiptNote(): BelongsTo
     {
         return $this->belongsTo(ReceiptNote::class);

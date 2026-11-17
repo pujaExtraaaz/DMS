@@ -16,7 +16,7 @@
     @endif
 
     @isset($actions)
-        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div class="flex flex-wrap items-center gap-2">
             {{ $actions }}
         </div>
     @endisset

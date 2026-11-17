@@ -3,6 +3,7 @@
 namespace App\Domains\Master\Models;
 
 use App\Domains\Catalog\Models\Brand;
+use App\Domains\Organization\Models\Company;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,6 +18,7 @@ class PriceMaster extends Model
         'name',
         'customer_type_id',
         'brand_id',
+        'company_id',
         'product_id',
         'uom_id',
         'rate',
@@ -29,6 +31,8 @@ class PriceMaster extends Model
         'retail_price_entered',
         'retail_price_gst_mode',
         'min_qty',
+        'effective_from',
+        'effective_to',
     ];
 
     protected function casts(): array
@@ -42,6 +46,8 @@ class PriceMaster extends Model
             'retail_price' => 'decimal:2',
             'retail_price_entered' => 'decimal:2',
             'min_qty' => 'decimal:2',
+            'effective_from' => 'date',
+            'effective_to' => 'date',
         ];
     }
 
@@ -181,6 +187,11 @@ class PriceMaster extends Model
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
     }
 
     public function customerType(): BelongsTo

@@ -15,8 +15,10 @@
         @if($order->status==='pending_approval')
             <form method="POST" action="{{ route('purchasing.orders.approve', $order) }}">@csrf<x-ui.button type="submit" variant="primary">Approve</x-ui.button></form>
         @endif
-        @if($order->isReceivable())
+        @if($order->isReceivable() && ! $order->invoices()->where('status', '!=', 'cancelled')->exists())
             <x-ui.button variant="primary" :href="route('purchasing.orders.receive', $order)">Receive</x-ui.button>
+        @elseif($order->isReceivable())
+            <span class="text-xs text-slate-500 self-center">Receive via Purchase Invoice to avoid double stock.</span>
         @endif
         @if(!in_array($order->status, ['closed','cancelled']))
             <form method="POST" action="{{ route('purchasing.orders.cancel', $order) }}" onsubmit="return confirm('Cancel this PO?')">@csrf<x-ui.button type="submit" variant="ghost">Cancel</x-ui.button></form>
