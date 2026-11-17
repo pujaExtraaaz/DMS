@@ -52,16 +52,115 @@
                         Loading...
                     </span>
                 </div>
-                <select name="purchase_order_id"
-                        x-model="purchaseOrderId"
-                        @change="onPurchaseOrderChange()"
-                        :disabled="!supplierId || poLoading"
-                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed">
-                    <option value="">Select Purchase Order (Optional)</option>
-                    <template x-for="po in supplierOrders" :key="po.id">
-                        <option :value="po.id" x-text="po.label" :selected="String(po.id) === String(purchaseOrderId)"></option>
-                    </template>
-                </select>
+                <div class="relative" @click.outside="closePoDropdown()">
+                    <!-- Hidden input submitting selected PO ID -->
+                    <input type="hidden" name="purchase_order_id" :value="purchaseOrderId">
+
+                    <!-- Trigger Button -->
+                    <button type="button"
+                            @click="togglePoDropdown()"
+                            :disabled="!supplierId || poLoading"
+                            class="flex items-center justify-between w-full min-h-[38px] px-3 py-2 text-sm text-left bg-white border border-gray-300 rounded-lg shadow-2xs transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                            :class="{ 'border-indigo-500 ring-2 ring-indigo-500/20': poDropdownOpen }">
+                        <span class="truncate flex-1"
+                              :class="{ 'text-slate-400': !purchaseOrderId, 'text-slate-900 font-medium': purchaseOrderId }"
+                              x-text="!supplierId ? 'Select a supplier first' : (poLoading ? 'Loading purchase orders...' : (selectedOrderDisplay || 'Select Purchase Order (Optional)'))">
+                        </span>
+                        <div class="flex items-center gap-1.5 ml-2 shrink-0">
+                            <span x-show="purchaseOrderId && !poLoading"
+                                  @click.stop="clearPurchaseOrder()"
+                                  class="p-0.5 text-slate-400 hover:text-rose-600 rounded cursor-pointer transition-colors"
+                                  title="Clear purchase order selection">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </span>
+                            <svg class="w-4 h-4 text-slate-400 transition-transform duration-200"
+                                 :class="{ 'rotate-180 text-indigo-600': poDropdownOpen }"
+                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </button>
+
+                    <!-- Floating Dropdown Popover -->
+                    <div x-show="poDropdownOpen"
+                         x-transition:enter="transition ease-out duration-100"
+                         x-transition:enter-start="opacity-0 scale-95"
+                         x-transition:enter-end="opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-75"
+                         x-transition:leave-start="opacity-100 scale-100"
+                         x-transition:leave-end="opacity-0 scale-95"
+                         class="absolute z-50 left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden"
+                         style="display: none;"
+                         x-cloak>
+
+                        <!-- Search Input Header -->
+                        <div class="p-2 bg-slate-50 border-b border-slate-100">
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                    </svg>
+                                </div>
+                                <input type="text"
+                                       x-ref="poSearchInput"
+                                       x-model="poSearchQuery"
+                                       @keydown.escape.prevent="closePoDropdown()"
+                                       @keydown.arrow-down.prevent="navigatePoOptions(1)"
+                                       @keydown.arrow-up.prevent="navigatePoOptions(-1)"
+                                       @keydown.enter.prevent="selectHighlightedPo()"
+                                       placeholder="Search by PO #, date, product, status..."
+                                       autocomplete="off"
+                                       class="block w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-md shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400">
+                            </div>
+                        </div>
+
+                        <!-- Orders List -->
+                        <div class="max-h-64 overflow-y-auto divide-y divide-slate-100">
+                            <template x-for="(po, idx) in filteredSupplierOrders" :key="po.id">
+                                <div @click="selectPurchaseOrder(po.id)"
+                                     @mouseenter="highlightedPoIndex = idx"
+                                     :class="{
+                                         'bg-indigo-50 border-l-4 border-indigo-600 font-semibold': String(purchaseOrderId) === String(po.id),
+                                         'bg-slate-50': highlightedPoIndex === idx && String(purchaseOrderId) !== String(po.id)
+                                     }"
+                                     class="p-2.5 hover:bg-indigo-50/60 cursor-pointer text-xs flex flex-col gap-1 transition-colors">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-bold text-slate-900" x-text="po.po_no"></span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                                                  :class="{
+                                                      'bg-emerald-100 text-emerald-800': (po.status || '').toLowerCase().includes('approved'),
+                                                      'bg-blue-100 text-blue-800': (po.status || '').toLowerCase().includes('partially'),
+                                                      'bg-purple-100 text-purple-800': (po.status || '').toLowerCase().includes('closed'),
+                                                      'bg-slate-100 text-slate-700': !(po.status || '').toLowerCase().includes('approved') && !(po.status || '').toLowerCase().includes('partially') && !(po.status || '').toLowerCase().includes('closed')
+                                                  }"
+                                                  x-text="po.status"></span>
+                                        </div>
+                                        <div class="font-mono font-semibold text-slate-900 text-xs">
+                                            ₹<span x-text="Number(po.grand_total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center justify-between text-[11px] text-slate-500">
+                                        <span x-text="'Date: ' + (po.po_date || '—')"></span>
+                                        <span class="text-amber-700 font-medium" x-show="po.remaining_qty !== undefined" x-text="'Remaining: ' + po.remaining_qty + '/' + po.total_qty"></span>
+                                    </div>
+                                    <div x-show="po.products_summary || (po.products && po.products.length)" class="text-[10px] text-slate-500 truncate">
+                                        <span class="font-medium text-slate-600">Items:</span>
+                                        <span x-text="po.products_summary || (po.products ? po.products.join(', ') : '')"></span>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Empty / filter feedback inside dropdown -->
+                            <div x-show="supplierOrders.length > 0 && filteredSupplierOrders.length === 0" class="p-4 text-center text-xs text-slate-500 italic">
+                                No purchase orders match "<span class="font-semibold text-slate-700" x-text="poSearchQuery"></span>"
+                            </div>
+                            <div x-show="supplierOrders.length === 0" class="p-4 text-center text-xs text-amber-700 font-medium">
+                                No eligible Purchase Orders found for this supplier
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <p x-show="supplierId && !poLoading && supplierOrders.length === 0" class="mt-1 text-[11px] text-amber-600 font-medium" x-cloak>
                     No eligible purchase orders found for this supplier
                 </p>
@@ -187,16 +286,9 @@
         }
     @endphp
     @include('purchasing.invoices.partials.dispatch-and-freight', [
-        'receiptNoteNos' => old('receipt_note_nos', $invoice->receipt_note_nos),
         'receiptDocNo' => old('receipt_doc_no', $invoice->receipt_doc_no),
         'dispatchedThrough' => old('dispatched_through', $invoice->dispatched_through),
-        'carrierName' => old('carrier_name', $invoice->carrier_name),
-        'lrNumber' => old('lr_number', $invoice->lr_number),
-        'lrDate' => old('lr_date', optional($invoice->lr_date)->format('Y-m-d')),
         'vehicleNumber' => old('vehicle_number', $invoice->vehicle_number),
-        'paymentTerms' => old('payment_terms', $invoice->payment_terms),
-        'otherReferences' => old('other_references', $invoice->other_references),
-        'termsOfDelivery' => old('terms_of_delivery', $invoice->terms_of_delivery),
         'freightNotes' => old('freight_notes', $invoice->freight_notes),
     ])
 
@@ -527,6 +619,9 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         warehouseId: '{{ old('warehouse_id', $invoice->warehouse_id) }}',
         supplierOrders: initialOrders || [],
         poLoading: false,
+        poDropdownOpen: false,
+        poSearchQuery: '',
+        highlightedPoIndex: -1,
         purchaseOrderId: '{{ old('purchase_order_id', $invoice->purchase_order_id ?? '') }}',
         selectedOrderLabel: invoice && invoice.purchase_order ? (invoice.purchase_order.po_no || invoice.purchase_order.order_number || '') : '',
         linkedPoId: invoice ? invoice.purchase_order_id : null,
@@ -639,16 +734,20 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
 
         isSerialTracked(row) {
             if (!row) return false;
-            let tt = row.tracking_type;
-            let isTracked = row.is_serial_tracked;
+            if (row.is_serial_tracked !== undefined && row.is_serial_tracked !== null) {
+                return Boolean(row.is_serial_tracked);
+            }
             if (row.product_id) {
-                const p = this.products.find(item => item.id == row.product_id);
+                const p = this.products.find(item => String(item.id) === String(row.product_id));
                 if (p) {
                     if (p.is_serial_tracked !== undefined) return Boolean(p.is_serial_tracked);
-                    tt = tt || p.tracking_type;
+                    if (p.track_serial !== undefined) return Boolean(p.track_serial);
+                    if (p.tracking_type) {
+                        return String(p.tracking_type).toLowerCase().includes('serial');
+                    }
                 }
             }
-            if (isTracked !== undefined && isTracked !== null) return Boolean(isTracked);
+            let tt = row.tracking_type;
             if (!tt || tt === 'none') return false;
             if (Array.isArray(tt)) return tt.includes('serial');
             const str = String(tt).toLowerCase();
@@ -740,13 +839,27 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
             this.recalc();
         },
 
-        onProductChange(index) {
+        async onProductChange(index) {
             const row = this.items[index];
-            const p = this.products.find(item => item.id == row.product_id);
+            if (!row) return;
+
+            const prodId = row.product_id;
+            if (!prodId) {
+                row.tracking_type = 'none';
+                row.is_serial_tracked = false;
+                row.serial_numbers = [];
+                this.syncSerials(index);
+                this.recalc();
+                return;
+            }
+
+            const p = this.products.find(item => String(item.id) === String(prodId));
             if (p) {
-                row.unit = p.unit || 'PCS';
+                row.unit = p.unit || p.base_uom?.name || p.base_uom?.code || 'PCS';
                 row.tracking_type = p.tracking_type || 'none';
-                row.is_serial_tracked = p.is_serial_tracked !== undefined ? Boolean(p.is_serial_tracked) : undefined;
+                row.is_serial_tracked = p.is_serial_tracked !== undefined
+                    ? Boolean(p.is_serial_tracked)
+                    : (p.track_serial !== undefined ? Boolean(p.track_serial) : String(p.tracking_type || '').includes('serial'));
                 row.cgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.sgst_percent = Number(p.tax_rate ? p.tax_rate / 2 : 0);
                 row.batch_mrp = Number(p.mrp) || 0;
@@ -756,12 +869,40 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                 } else {
                     row.unit_cost = catalogBase;
                 }
+                if (!row.is_serial_tracked) {
+                    row.serial_numbers = [];
+                }
                 this.syncSerials(index);
                 this.onUnitCostChange(index);
-                return;
             }
-            row.tracking_type = 'none';
-            row.is_serial_tracked = false;
+
+            try {
+                const res = await fetch(`{{ url('/purchasing/invoices/products') }}/${prodId}/details`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json && json.data) {
+                        const dbProd = json.data;
+                        if (String(row.product_id) === String(dbProd.id)) {
+                            row.tracking_type = dbProd.tracking_type || 'none';
+                            row.is_serial_tracked = Boolean(dbProd.is_serial_tracked);
+                            if (!row.is_serial_tracked) {
+                                row.serial_numbers = [];
+                            } else {
+                                this.syncSerials(index);
+                            }
+                            const cached = this.products.find(item => String(item.id) === String(dbProd.id));
+                            if (cached) {
+                                cached.tracking_type = dbProd.tracking_type;
+                                cached.is_serial_tracked = dbProd.is_serial_tracked;
+                                cached.track_serial = dbProd.track_serial;
+                            }
+                        }
+                    }
+                }
+            } catch (err) {}
+
             this.syncSerials(index);
             this.recalc();
         },
@@ -775,8 +916,10 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
             }
             const qty = Math.min(30, Math.max(1, Math.round(Number(row.quantity) || 1)));
             if (!Array.isArray(row.serial_numbers)) row.serial_numbers = [];
-            while (row.serial_numbers.length < qty) row.serial_numbers.push('');
-            while (row.serial_numbers.length > qty && String(row.serial_numbers[row.serial_numbers.length - 1] || '').trim() === '') {
+            while (row.serial_numbers.length < qty) {
+                row.serial_numbers.push('');
+            }
+            while (row.serial_numbers.length > qty) {
                 row.serial_numbers.pop();
             }
         },
@@ -943,6 +1086,92 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
             }
         },
 
+        get filteredSupplierOrders() {
+            if (!this.poSearchQuery || !this.poSearchQuery.trim()) {
+                return this.supplierOrders || [];
+            }
+            const q = this.poSearchQuery.toLowerCase().trim();
+            return (this.supplierOrders || []).filter(po => {
+                const poNo = (po.po_no || '').toLowerCase();
+                const poDate = (po.po_date || '').toLowerCase();
+                const status = (po.status || '').toLowerCase();
+                const supName = (po.supplier_name || '').toLowerCase();
+                const label = (po.label || '').toLowerCase();
+                const productsSummary = (po.products_summary || '').toLowerCase();
+                const productsMatch = Array.isArray(po.products) && po.products.some(p => p && p.toLowerCase().includes(q));
+                return poNo.includes(q) || poDate.includes(q) || status.includes(q) || supName.includes(q) || label.includes(q) || productsSummary.includes(q) || productsMatch;
+            });
+        },
+
+        get selectedOrderDisplay() {
+            if (!this.purchaseOrderId) return '';
+            const found = (this.supplierOrders || []).find(o => String(o.id) === String(this.purchaseOrderId));
+            if (found) {
+                const dateStr = found.po_date ? ` (${found.po_date})` : '';
+                const amtStr = found.grand_total !== undefined ? ` - ₹${Number(found.grand_total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '';
+                return `${found.po_no}${dateStr}${amtStr}`;
+            }
+            return this.selectedOrderLabel ? this.selectedOrderLabel : `Selected PO #${this.purchaseOrderId}`;
+        },
+
+        togglePoDropdown() {
+            if (!this.supplierId || this.poLoading) return;
+            this.poDropdownOpen = !this.poDropdownOpen;
+            if (this.poDropdownOpen) {
+                this.poSearchQuery = '';
+                this.highlightedPoIndex = -1;
+                this.$nextTick(() => {
+                    if (this.$refs.poSearchInput) {
+                        this.$refs.poSearchInput.focus();
+                    }
+                });
+            }
+        },
+
+        closePoDropdown() {
+            this.poDropdownOpen = false;
+            this.highlightedPoIndex = -1;
+            this.poSearchQuery = '';
+        },
+
+        async selectPurchaseOrder(poId) {
+            if (String(this.purchaseOrderId) === String(poId)) {
+                this.closePoDropdown();
+                return;
+            }
+            this.purchaseOrderId = poId ? String(poId) : '';
+            const found = (this.supplierOrders || []).find(o => String(o.id) === String(poId));
+            this.selectedOrderLabel = found ? found.po_no : '';
+            this.closePoDropdown();
+            await this.onPurchaseOrderChange();
+        },
+
+        async clearPurchaseOrder() {
+            this.purchaseOrderId = '';
+            this.selectedOrderLabel = '';
+            this.closePoDropdown();
+            await this.onPurchaseOrderChange();
+        },
+
+        navigatePoOptions(step) {
+            const list = this.filteredSupplierOrders;
+            if (!list || list.length === 0) return;
+            let next = this.highlightedPoIndex + step;
+            if (next < 0) next = list.length - 1;
+            if (next >= list.length) next = 0;
+            this.highlightedPoIndex = next;
+        },
+
+        selectHighlightedPo() {
+            const list = this.filteredSupplierOrders;
+            if (!list || list.length === 0) return;
+            if (this.highlightedPoIndex >= 0 && this.highlightedPoIndex < list.length) {
+                this.selectPurchaseOrder(list[this.highlightedPoIndex].id);
+            } else if (list.length > 0) {
+                this.selectPurchaseOrder(list[0].id);
+            }
+        },
+
         async onPurchaseOrderChange() {
             if (!this.purchaseOrderId) {
                 if (this.linkedPoId) {
@@ -999,10 +1228,14 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                             const tax = cgst + sgst;
                             const mrp = Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0);
                             const inclusive = Number(it.purchase_price_inclusive) || Number((unitCost * (1 + tax / 100)).toFixed(2));
+                            const isTracked = (it.is_serial_tracked !== undefined && it.is_serial_tracked !== null)
+                                ? Boolean(it.is_serial_tracked)
+                                : (p ? Boolean(p.is_serial_tracked || (p.tracking_type && String(p.tracking_type).toLowerCase().includes('serial'))) : false);
                             return {
                                 product_id: it.product_id,
                                 unit: p ? (p.unit || 'PCS') : 'PCS',
-                                tracking_type: p ? (p.tracking_type || 'none') : 'none',
+                                tracking_type: p ? (p.tracking_type || 'none') : (it.tracking_type || 'none'),
+                                is_serial_tracked: isTracked,
                                 quantity: Number(it.quantity) || 1,
                                 unit_cost: unitCost,
                                 purchase_price_inclusive: inclusive,
@@ -1011,7 +1244,7 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                                 sgst_percent: sgst,
                                 batch_number: it.batch_number || '',
                                 batch_mrp: mrp,
-                                serial_numbers: [''],
+                                serial_numbers: isTracked ? [''] : [],
                                 line_total: Number(it.line_total) || 0
                             };
                         });

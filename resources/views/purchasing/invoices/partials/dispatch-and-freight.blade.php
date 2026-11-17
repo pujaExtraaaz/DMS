@@ -1,69 +1,21 @@
 <x-ui.card>
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="space-y-3">
-            <h3 class="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2">Receipt Details</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div class="sm:col-span-2">
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Receipt Note No(s)</label>
-                    <input type="text" name="receipt_note_nos" value="{{ old('receipt_note_nos', $receiptNoteNos ?? '') }}" maxlength="255"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Not applicable if none">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Receipt Doc No.</label>
-                    <input type="text" name="receipt_doc_no" value="{{ old('receipt_doc_no', $receiptDocNo ?? '') }}" maxlength="100"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Dispatched Through</label>
-                    <input type="text" name="dispatched_through" value="{{ old('dispatched_through', $dispatchedThrough ?? '') }}" maxlength="150"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Carrier Name / Agent</label>
-                    <input type="text" name="carrier_name" value="{{ old('carrier_name', $carrierName ?? '') }}" maxlength="150"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Bill of Lading / LR-RR No.</label>
-                    <input type="text" name="lr_number" value="{{ old('lr_number', $lrNumber ?? '') }}" maxlength="100"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">LR Date</label>
-                    <input type="date" name="lr_date" value="{{ old('lr_date', $lrDate ?? '') }}"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Motor Vehicle No.</label>
-                    <input type="text" name="vehicle_number" value="{{ old('vehicle_number', $vehicleNumber ?? '') }}" maxlength="50"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
+    <div class="space-y-4">
+        <h3 class="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2">Receipt / Courier Details</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1">Courier / Docket Number</label>
+                <input type="text" name="receipt_doc_no" value="{{ old('receipt_doc_no', $receiptDocNo ?? ($courierDocketNo ?? '')) }}" maxlength="100"
+                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="e.g. DKT-12345">
             </div>
-        </div>
-        <div class="space-y-3">
-            <h3 class="text-sm font-semibold text-slate-800 border-b border-slate-200 pb-2">Order Details</h3>
-            <div class="grid grid-cols-1 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Order No(s)</label>
-                    <input type="text" name="order_nos" x-model="orderNos" maxlength="255"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Mode / Terms of Payment</label>
-                    <input type="text" name="payment_terms" value="{{ old('payment_terms', $paymentTerms ?? '') }}" maxlength="255"
-                           placeholder="E.G. 15"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Other References</label>
-                    <input type="text" name="other_references" value="{{ old('other_references', $otherReferences ?? '') }}" maxlength="255"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-700 mb-1">Terms of Delivery</label>
-                    <input type="text" name="terms_of_delivery" value="{{ old('terms_of_delivery', $termsOfDelivery ?? '') }}" maxlength="255"
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1">Courier Name</label>
+                <input type="text" name="dispatched_through" value="{{ old('dispatched_through', $dispatchedThrough ?? ($courierName ?? '')) }}" maxlength="150"
+                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="e.g. Blue Dart, DTDC">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-700 mb-1">Motor Vehicle No.</label>
+                <input type="text" name="vehicle_number" value="{{ old('vehicle_number', $vehicleNumber ?? '') }}" maxlength="50"
+                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="e.g. MH-12-AB-1234">
             </div>
         </div>
     </div>

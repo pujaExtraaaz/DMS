@@ -182,7 +182,23 @@ class ProductController extends Controller
             defaultDirection: 'asc'
         );
 
-        $items = $query->paginate(15)->withQueryString();
+        $perPage = (int) $request->input('per_page', 15);
+        if ($perPage < 5 || $perPage > 200) {
+            $perPage = 15;
+        }
+
+        $items = $query->paginate($perPage)->withQueryString();
+
+        $newProductId = $request->input('new_product_id');
+        $updatedProductId = $request->input('updated_product_id');
+        $bannerProduct = null;
+
+        if ($newProductId) {
+            $inCurrentPage = $items->contains('id', (int) $newProductId);
+            if (! $inCurrentPage) {
+                $bannerProduct = Product::with(['baseUom', 'brand', 'category', 'subCategory', 'productType'])->find($newProductId);
+            }
+        }
 
         $serialSearch = trim((string) $request->input('search'));
         $serialMatches = $serialSearch === ''
@@ -196,6 +212,10 @@ class ProductController extends Controller
         return view('masters.products.index', [
             'items' => $items,
             'serialMatches' => $serialMatches,
+            'bannerProduct' => $bannerProduct,
+            'newProductId' => $newProductId,
+            'updatedProductId' => $updatedProductId,
+            'perPage' => $perPage,
             'brands' => $brands,
             'categories' => $categories,
             'subCategories' => $subCategories,
@@ -318,6 +338,19 @@ class ProductController extends Controller
                             ->with('success', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.");
                     }
 
+                    if (in_array($returnTo, ['purchasing.invoices.create', 'purchase_invoice', 'purchases.invoices.create'], true)) {
+                        $params = ['new_product_id' => $product->id];
+                        if ($targetRow !== null && $targetRow !== '') {
+                            $params['target_row'] = $targetRow;
+                        }
+
+                        $msg = "Product '{$product->name}' created successfully. You can now add it to your purchase invoice.";
+
+                        return redirect()->route('purchasing.invoices.create', $params)
+                            ->with('status', $msg)
+                            ->with('success', $msg);
+                    }
+
                     if ($returnUrl) {
                         $separator = str_contains($returnUrl, '?') ? '&' : '?';
                         $redirectUrl = $returnUrl . $separator . 'new_product_id=' . $product->id;
@@ -325,9 +358,20 @@ class ProductController extends Controller
                             $redirectUrl .= '&target_row=' . urlencode((string) $targetRow);
                         }
 
+                        $isInvoice = str_contains($returnUrl, '/invoices') || str_contains($returnUrl, 'invoices.create');
+                        $isPurchase = str_contains($returnUrl, '/purchasing');
+
+                        if ($isInvoice) {
+                            $msg = "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.";
+                        } elseif ($isPurchase) {
+                            $msg = "Product '{$product->name}' created successfully. You can now add it to your purchase invoice.";
+                        } else {
+                            $msg = "Product '{$product->name}' created successfully.";
+                        }
+
                         return redirect($redirectUrl)
-                            ->with('status', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.")
-                            ->with('success', "Product '{$product->name}' created successfully. You can continue preparing your tax invoice.");
+                            ->with('status', $msg)
+                            ->with('success', $msg);
                     }
 
                     return $this->flashSuccess('Product created successfully.', 'masters.products.index');
@@ -368,14 +412,37 @@ class ProductController extends Controller
         ]);
     }
 
-    public function show(Product $product): View
+    public function show(Request $request, Product $product): View|JsonResponse
     {
-        $product->load(['brand', 'category', 'subCategory', 'productType', 'baseUom', 'alternateUom']);
+        if ($request->wantsJson() || $request->ajax()) {
+            $product->loadMissing(['brand', 'category', 'subCategory', 'productType', 'baseUom', 'alternateUom']);
 
-        return view('masters.products.show', compact('product'));
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'sku' => $product->sku,
+                    'unit' => $product->unit ?? ($product->baseUom?->name ?? ($product->baseUom?->code ?? 'PCS')),
+                    'tax_rate' => (float) ($product->tax_rate ?? 0),
+                    'mrp' => (float) ($product->mrp ?? ($product->calculation_mrp ?? 0)),
+                    'purchase_price' => (float) ($product->purchase_price ?? 0),
+                    'tracking_type' => $product->tracking_type ?? 'none',
+                    'tracking_types' => $product->tracking_types,
+                    'is_serial_tracked' => $product->isSerialTracked(),
+                    'track_serial' => $product->isSerialTracked(),
+                    'is_batch_tracked' => $product->isBatchTracked(),
+                ],
+            ]);
+        }
+
+        $product->load(['brand', 'category', 'subCategory', 'productType', 'baseUom', 'alternateUom']);
+        $returnUrl = $this->safeInternalReturnUrl($request->query('return_url'));
+
+        return view('masters.products.show', compact('product', 'returnUrl'));
     }
 
-    public function edit(Product $product): View
+    public function edit(Request $request, Product $product): View
     {
         $product->load(['productUoms.uom', 'priceHistories.uom', 'baseUom', 'alternateUom']);
 
@@ -391,7 +458,13 @@ class ProductController extends Controller
             }
         }
 
-        return view('masters.products.form', $this->formData($product));
+        return view('masters.products.form', [
+            'returnTo' => $request->query('return_to', old('return_to')),
+            'returnUrl' => $this->safeInternalReturnUrl($request->query('return_url', old('return_url'))),
+            'targetRow' => $request->query('target_row', old('target_row')),
+            'orderId' => $request->query('order_id', old('order_id')),
+            ...$this->formData($product),
+        ]);
     }
 
     public function update(Request $request, Product $product): RedirectResponse
@@ -419,6 +492,16 @@ class ProductController extends Controller
                 ]);
             }
             throw $e;
+        }
+
+        $returnUrl = $this->safeInternalReturnUrl($request->input('return_url'));
+        if ($returnUrl) {
+            $separator = str_contains($returnUrl, '?') ? '&' : '?';
+            $redirectUrl = $returnUrl . $separator . 'updated_product_id=' . $product->id;
+
+            return redirect($redirectUrl)
+                ->with('status', "Product '{$product->name}' updated successfully.")
+                ->with('success', "Product '{$product->name}' updated successfully.");
         }
 
         return $this->flashSuccess('Product updated successfully.', 'masters.products.index');
@@ -650,6 +733,7 @@ class ProductController extends Controller
             'catalog_link' => 'nullable|string|max:255',
             'image' => 'nullable|image|max:4096',
             'remove_image' => 'nullable|boolean',
+            'track_serial' => 'nullable|boolean',
             'tracking_type' => 'nullable',
             'tracking_type.*' => 'nullable|string|in:none,serial,batch',
             'min_stock' => 'nullable|numeric|min:0',
@@ -853,6 +937,20 @@ class ProductController extends Controller
             $data['tracking_type'] = 'none';
         }
 
+        if ($request->has('track_serial')) {
+            $tracks = empty($data['tracking_type']) || $data['tracking_type'] === 'none'
+                ? []
+                : array_map('trim', explode(',', (string) $data['tracking_type']));
+            if ($request->boolean('track_serial')) {
+                if (! in_array('serial', $tracks, true)) {
+                    $tracks[] = 'serial';
+                }
+            } else {
+                $tracks = array_values(array_filter($tracks, fn ($t) => $t !== 'serial'));
+            }
+            $data['tracking_type'] = empty($tracks) ? 'none' : implode(',', $tracks);
+        }
+
         $data['min_stock'] = $data['min_stock'] ?? 0;
         $data['reorder_level'] = $data['reorder_level'] ?? 0;
         $data['company_id'] = auth()->user()?->company_id ?? Company::defaultCompanyId() ?? Company::query()->value('id');
@@ -890,17 +988,26 @@ class ProductController extends Controller
             return null;
         }
 
+        // Relative path starting with single /
         if (str_starts_with($url, '/')) {
             return $url;
         }
 
-        $appUrl = rtrim((string) config('app.url'), '/');
-        if ($appUrl !== '' && str_starts_with($url, $appUrl.'/')) {
-            return $url;
+        $parsed = parse_url($url);
+        if ($parsed === false || empty($parsed['host'])) {
+            return null;
         }
 
-        if ($appUrl !== '' && $url === $appUrl) {
-            return $url;
+        $currentHost = request()->getHost();
+        $appUrlHost = parse_url((string) config('app.url'), PHP_URL_HOST);
+        $allowedHosts = array_filter([$currentHost, $appUrlHost, 'localhost', '127.0.0.1']);
+
+        if (in_array(strtolower($parsed['host']), array_map('strtolower', $allowedHosts), true)) {
+            $path = $parsed['path'] ?? '/';
+            $query = isset($parsed['query']) ? '?' . $parsed['query'] : '';
+            $fragment = isset($parsed['fragment']) ? '#' . $parsed['fragment'] : '';
+
+            return $path . $query . $fragment;
         }
 
         return null;

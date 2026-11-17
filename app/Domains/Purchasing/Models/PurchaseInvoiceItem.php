@@ -13,6 +13,7 @@ class PurchaseInvoiceItem extends Model
 {
     protected $fillable = [
         'purchase_invoice_id',
+        'receipt_note_item_id',
         'product_id',
         'uom_id',
         'quantity',
@@ -70,6 +71,11 @@ class PurchaseInvoiceItem extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(PurchaseInvoice::class, 'purchase_invoice_id');
+    }
+
+    public function receiptNoteItem(): BelongsTo
+    {
+        return $this->belongsTo(ReceiptNoteItem::class);
     }
 
     public function product(): BelongsTo

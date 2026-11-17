@@ -7,6 +7,7 @@ use App\Http\Controllers\Purchasing\LandedCostController;
 use App\Http\Controllers\Purchasing\PurchaseInvoiceController;
 use App\Http\Controllers\Purchasing\PurchaseInwardController;
 use App\Http\Controllers\Purchasing\PurchaseOrderController;
+use App\Http\Controllers\Purchasing\ReceiptNoteController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission:super-admin|purchases.view|purchases.create|purchases.edit|purchases.delete|purchases.manage|purchase-orders.view|purchase-orders.create|purchase-orders.edit|purchase-orders.delete|purchase-orders.manage|inventory.view|inventory.manage')->group(function () {
@@ -48,9 +49,27 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
     Route::get('inwards', [PurchaseInwardController::class, 'index'])->name('inwards.index');
     Route::get('inwards/{inward}', [PurchaseInwardController::class, 'show'])->name('inwards.show');
 
+    // Receipt Notes
+    Route::get('receipt-notes', [ReceiptNoteController::class, 'index'])->name('receipt-notes.index');
+    Route::get('receipt-notes/create', [ReceiptNoteController::class, 'create'])->name('receipt-notes.create');
+    Route::post('receipt-notes', [ReceiptNoteController::class, 'store'])->name('receipt-notes.store');
+    Route::get('receipt-notes/purchase-order/{order}/items', [ReceiptNoteController::class, 'purchaseOrderItems'])->name('receipt-notes.po-items');
+    Route::get('receipt-notes/{receiptNote}/preview', [ReceiptNoteController::class, 'preview'])->name('receipt-notes.preview');
+    Route::get('receipt-notes/{receiptNote}/export/{format}', [ReceiptNoteController::class, 'export'])->name('receipt-notes.export');
+    Route::get('receipt-notes/{receiptNote}', [ReceiptNoteController::class, 'show'])->name('receipt-notes.show');
+    Route::get('receipt-notes/{receiptNote}/edit', [ReceiptNoteController::class, 'edit'])->name('receipt-notes.edit');
+    Route::put('receipt-notes/{receiptNote}', [ReceiptNoteController::class, 'update'])->name('receipt-notes.update');
+    Route::delete('receipt-notes/{receiptNote}', [ReceiptNoteController::class, 'destroy'])->name('receipt-notes.destroy');
+    Route::post('receipt-notes/{receiptNote}/confirm', [ReceiptNoteController::class, 'confirm'])->name('receipt-notes.confirm');
+    Route::post('receipt-notes/{receiptNote}/cancel', [ReceiptNoteController::class, 'cancel'])->name('receipt-notes.cancel');
+    Route::get('receipt-notes/{receiptNote}/return', [ReceiptNoteController::class, 'returnForm'])->name('receipt-notes.return');
+    Route::post('receipt-notes/{receiptNote}/return', [ReceiptNoteController::class, 'storeReturn'])->name('receipt-notes.return.store');
+
     Route::get('invoices', [PurchaseInvoiceController::class, 'index'])->name('invoices.index');
     Route::get('invoices/create', [PurchaseInvoiceController::class, 'create'])->name('invoices.create');
     Route::post('invoices', [PurchaseInvoiceController::class, 'store'])->name('invoices.store');
+    Route::post('invoices/draft', [PurchaseInvoiceController::class, 'saveDraftSession'])->name('invoices.draft.save');
+    Route::delete('invoices/draft', [PurchaseInvoiceController::class, 'clearDraftSession'])->name('invoices.draft.clear');
 
     Route::get('invoices/{invoice}/preview', [PurchaseInvoiceController::class, 'preview'])
         ->name('invoices.preview');
@@ -60,8 +79,17 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
     Route::get('invoices/purchase-order/{order}/data', [PurchaseInvoiceController::class, 'purchaseOrderData'])
         ->name('invoices.purchase-order-data');
 
+    Route::get('invoices/receipt-note/{receiptNote}/data', [PurchaseInvoiceController::class, 'receiptNoteData'])
+        ->name('invoices.receipt-note-data');
+
+    Route::get('invoices/products/{product}/details', [PurchaseInvoiceController::class, 'productDetails'])
+        ->name('invoices.product-details');
+
     Route::get('invoices/suppliers/{supplier}/purchase-orders', [PurchaseInvoiceController::class, 'supplierPurchaseOrders'])
         ->name('invoices.supplier-purchase-orders');
+
+    Route::get('invoices/suppliers/{supplier}/receipt-notes', [PurchaseInvoiceController::class, 'supplierReceiptNotes'])
+        ->name('invoices.supplier-receipt-notes');
 
     Route::get('invoices/{invoice}', [PurchaseInvoiceController::class, 'show'])
         ->name('invoices.show');

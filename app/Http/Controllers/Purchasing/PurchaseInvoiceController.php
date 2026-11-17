@@ -10,9 +10,12 @@ use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Organization\Services\FinancialYearService;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
+use App\Domains\Purchasing\Models\ReceiptNote;
+use App\Domains\Purchasing\Models\ReceiptNoteItem;
 use App\Domains\Purchasing\Services\PurchaseOrderService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -118,15 +121,27 @@ class PurchaseInvoiceController extends Controller
                 ->sum('purchase_invoice_items.quantity');
             $rem = max(0, $totalOrdered - $invoicedQty);
 
+            $productNames = $order->items
+                ->map(fn ($item) => $item->product?->name)
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
             $initialOrders->prepend([
                 'id' => $order->id,
                 'po_no' => $order->po_no,
                 'po_date' => $order->po_date?->format('d M Y') ?? '—',
+                'raw_date' => $order->po_date?->toDateString() ?? '',
                 'grand_total' => (float) $order->grand_total,
                 'status' => ucfirst(str_replace('_', ' ', $order->status)),
+                'raw_status' => $order->status,
                 'credit_days' => $order->credit_days,
                 'remaining_qty' => $rem,
                 'total_qty' => $totalOrdered,
+                'supplier_name' => $order->supplier?->name ?? '',
+                'products' => $productNames,
+                'products_summary' => implode(', ', array_slice($productNames, 0, 3)) . (count($productNames) > 3 ? ' +' . (count($productNames) - 3) . ' more' : ''),
                 'label' => sprintf(
                     '%s (%s) - ₹%s%s',
                     $order->po_no,
@@ -156,6 +171,24 @@ class PurchaseInvoiceController extends Controller
             return $acc;
         });
 
+        $newProduct = null;
+        if ($request->filled('new_product_id')) {
+            $candidateProduct = Product::with(['baseUom', 'productType'])
+                ->where('is_active', true)
+                ->find($request->input('new_product_id'));
+            if ($candidateProduct) {
+                $newProduct = $candidateProduct;
+            }
+        }
+
+        $products = $this->invoiceProducts();
+
+        if ($newProduct && ! $products->contains('id', $newProduct->id)) {
+            $products->prepend($newProduct);
+        }
+
+        $savedDraft = $request->session()->get('purchase_invoice_draft');
+
         return view('purchasing.invoices.create', [
             'order' => $order,
             'initialOrders' => $initialOrders,
@@ -163,7 +196,9 @@ class PurchaseInvoiceController extends Controller
             'defaultPaymentOrderDate' => null,
             'suppliers' => Customer::whereIn('party_type', [Customer::PARTY_TYPE_SUNDRY_CREDITORS, 'supplier', Customer::PARTY_TYPE_BOTH])->where('is_active', true)->orderBy('name')->get(),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
-            'products' => $this->invoiceProducts(),
+            'products' => $products,
+            'newProduct' => $newProduct,
+            'savedDraft' => $savedDraft,
             'odAccounts' => $odAccounts,
         ]);
     }
@@ -173,6 +208,7 @@ class PurchaseInvoiceController extends Controller
         $validated = $request->validate([
             'save_mode' => 'nullable|in:draft,open',
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
+            'receipt_note_id' => 'nullable|exists:receipt_notes,id',
             'supplier_id' => 'required|exists:customers,id',
             'od_account_id' => 'nullable|exists:od_accounts,id',
             'billing_address_id' => 'nullable|exists:party_addresses,id',
@@ -196,13 +232,15 @@ class PurchaseInvoiceController extends Controller
             'freight_amount' => 'nullable|numeric|min:0',
             'freight_tax_rate' => 'nullable|numeric|min:0|max:100',
             'freight_notes' => 'nullable|string|max:1000',
-            'receipt_note_nos' => 'nullable|string|max:255',
             'receipt_doc_no' => 'nullable|string|max:100',
+            'courier_docket_no' => 'nullable|string|max:100',
             'dispatched_through' => 'nullable|string|max:150',
+            'courier_name' => 'nullable|string|max:150',
+            'vehicle_number' => 'nullable|string|max:50',
+            'receipt_note_nos' => 'nullable|string|max:255',
             'carrier_name' => 'nullable|string|max:150',
             'lr_number' => 'nullable|string|max:100',
             'lr_date' => 'nullable|date',
-            'vehicle_number' => 'nullable|string|max:50',
             'order_nos' => 'nullable|string|max:255',
             'payment_terms' => 'nullable|string|max:255',
             'other_references' => 'nullable|string|max:255',
@@ -211,6 +249,7 @@ class PurchaseInvoiceController extends Controller
             'credit_days' => 'nullable|integer|min:0',
             'due_date' => 'nullable|date',
             'items' => 'required|array|min:1',
+            'items.*.receipt_note_item_id' => 'nullable|exists:receipt_note_items,id',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
@@ -223,6 +262,13 @@ class PurchaseInvoiceController extends Controller
             'items.*.serial_numbers' => 'nullable|array',
             'items.*.serial_numbers.*' => 'nullable|string|max:100',
         ]);
+
+        if (filled($request->input('courier_docket_no')) && ! filled($validated['receipt_doc_no'] ?? null)) {
+            $validated['receipt_doc_no'] = $request->input('courier_docket_no');
+        }
+        if (filled($request->input('courier_name')) && ! filled($validated['dispatched_through'] ?? null)) {
+            $validated['dispatched_through'] = $request->input('courier_name');
+        }
 
         if (!empty($validated['purchase_order_id'])) {
             $po = PurchaseOrder::with('items')->findOrFail($validated['purchase_order_id']);
@@ -264,6 +310,22 @@ class PurchaseInvoiceController extends Controller
             }
         }
 
+        $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
+        $dbProducts = Product::whereIn('id', $productIds)->get()->keyBy('id');
+        foreach ($validated['items'] as &$it) {
+            $prod = $dbProducts->get($it['product_id'] ?? null);
+            if (! $prod || ! $prod->isSerialTracked()) {
+                $it['serial_numbers'] = [];
+                $it['serials'] = [];
+            } else {
+                $it['serial_numbers'] = array_values(array_filter(
+                    (array) ($it['serial_numbers'] ?? []),
+                    fn ($s) => trim((string) $s) !== ''
+                ));
+            }
+        }
+        unset($it);
+
         $this->assertTrackedSerials($validated['items']);
 
         $saveMode = $validated['save_mode'] ?? 'open';
@@ -274,7 +336,7 @@ class PurchaseInvoiceController extends Controller
 
             // Draft = material already received → post stock now and mark ready to pay.
             // Open = still in transit (default create behaviour).
-            if ($saveMode === 'draft') {
+            if ($saveMode === 'draft' && $invoice->canReceiveMaterial()) {
                 $invoice = $this->service->receiveMaterial($invoice, [
                     'mark_all_received' => true,
                     'actual_material_receipt_date' => $validated['purchase_receive_date']
@@ -285,6 +347,8 @@ class PurchaseInvoiceController extends Controller
 
             return $invoice;
         });
+
+        $request->session()->forget('purchase_invoice_draft');
 
         $message = $saveMode === 'draft'
             ? 'Supplier invoice saved as Draft. Material marked received and stock posted — ready for payment.'
@@ -297,9 +361,34 @@ class PurchaseInvoiceController extends Controller
         );
     }
 
+    public function saveDraftSession(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $draft = $request->input('draft', $request->all());
+        $request->session()->put('purchase_invoice_draft', $draft);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function clearDraftSession(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $request->session()->forget('purchase_invoice_draft');
+
+        return response()->json(['success' => true]);
+    }
+
     public function show(PurchaseInvoice $invoice): View
     {
-        $invoice->load(['supplier', 'warehouse', 'purchaseOrder', 'items.product', 'inventoryMovements', 'odAccount', 'bankAccountTransactions']);
+        $invoice->load([
+            'supplier',
+            'warehouse',
+            'purchaseOrder',
+            'items.product',
+            'items.uom',
+            'items.serials',
+            'inventoryMovements',
+            'odAccount',
+            'bankAccountTransactions',
+        ]);
 
         return view('purchasing.invoices.show', compact('invoice'));
     }
@@ -413,6 +502,7 @@ class PurchaseInvoiceController extends Controller
             'purchaseOrder.items',
             'items.product',
             'items.uom',
+            'items.serials',
             'billingAddress',
             'shippingAddress',
             'odAccount',
@@ -461,15 +551,27 @@ class PurchaseInvoiceController extends Controller
                 ->sum('purchase_invoice_items.quantity');
             $rem = max(0, $totalOrdered - $invoicedQty);
 
+            $productNames = $po->items
+                ->map(fn ($item) => $item->product?->name)
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
             $initialOrders->prepend([
                 'id' => $po->id,
                 'po_no' => $po->po_no,
                 'po_date' => $po->po_date?->format('d M Y') ?? '—',
+                'raw_date' => $po->po_date?->toDateString() ?? '',
                 'grand_total' => (float) $po->grand_total,
                 'status' => ucfirst(str_replace('_', ' ', $po->status)),
+                'raw_status' => $po->status,
                 'credit_days' => $po->credit_days,
                 'remaining_qty' => $rem,
                 'total_qty' => $totalOrdered,
+                'supplier_name' => $po->supplier?->name ?? '',
+                'products' => $productNames,
+                'products_summary' => implode(', ', array_slice($productNames, 0, 3)) . (count($productNames) > 3 ? ' +' . (count($productNames) - 3) . ' more' : ''),
                 'label' => sprintf(
                     '%s (%s) - ₹%s%s',
                     $po->po_no,
@@ -505,11 +607,7 @@ class PurchaseInvoiceController extends Controller
                 'tax_percent' => $taxPercent,
                 'batch_number' => $it->batch_no ?? '',
                 'batch_mrp' => $batchMrp,
-                'serial_numbers' => \App\Domains\Inventory\Models\ProductSerial::where('source_type', $it->getMorphClass())
-                    ->where('source_id', $it->id)
-                    ->pluck('serial_number')
-                    ->values()
-                    ->all(),
+                'serial_numbers' => $it->serialNumbers(),
                 'line_total' => (float) $it->line_total,
             ];
         })->values();
@@ -540,6 +638,7 @@ class PurchaseInvoiceController extends Controller
         $validated = $request->validate([
             'save_mode' => 'nullable|in:draft,open',
             'purchase_order_id' => 'nullable|exists:purchase_orders,id',
+            'receipt_note_id' => 'nullable|exists:receipt_notes,id',
             'supplier_id' => 'required|exists:customers,id',
             'od_account_id' => 'nullable|exists:od_accounts,id',
             'billing_address_id' => 'nullable|exists:party_addresses,id',
@@ -563,13 +662,15 @@ class PurchaseInvoiceController extends Controller
             'freight_amount' => 'nullable|numeric|min:0',
             'freight_tax_rate' => 'nullable|numeric|min:0|max:100',
             'freight_notes' => 'nullable|string|max:1000',
-            'receipt_note_nos' => 'nullable|string|max:255',
             'receipt_doc_no' => 'nullable|string|max:100',
+            'courier_docket_no' => 'nullable|string|max:100',
             'dispatched_through' => 'nullable|string|max:150',
+            'courier_name' => 'nullable|string|max:150',
+            'vehicle_number' => 'nullable|string|max:50',
+            'receipt_note_nos' => 'nullable|string|max:255',
             'carrier_name' => 'nullable|string|max:150',
             'lr_number' => 'nullable|string|max:100',
             'lr_date' => 'nullable|date',
-            'vehicle_number' => 'nullable|string|max:50',
             'order_nos' => 'nullable|string|max:255',
             'payment_terms' => 'nullable|string|max:255',
             'other_references' => 'nullable|string|max:255',
@@ -578,6 +679,7 @@ class PurchaseInvoiceController extends Controller
             'credit_days' => 'nullable|integer|min:0',
             'due_date' => 'nullable|date',
             'items' => 'required|array|min:1',
+            'items.*.receipt_note_item_id' => 'nullable|exists:receipt_note_items,id',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
@@ -590,6 +692,13 @@ class PurchaseInvoiceController extends Controller
             'items.*.serial_numbers' => 'nullable|array',
             'items.*.serial_numbers.*' => 'nullable|string|max:100',
         ]);
+
+        if (filled($request->input('courier_docket_no')) && ! filled($validated['receipt_doc_no'] ?? null)) {
+            $validated['receipt_doc_no'] = $request->input('courier_docket_no');
+        }
+        if (filled($request->input('courier_name')) && ! filled($validated['dispatched_through'] ?? null)) {
+            $validated['dispatched_through'] = $request->input('courier_name');
+        }
 
         if (! empty($validated['purchase_order_id'])) {
             $po = PurchaseOrder::with('items')->findOrFail($validated['purchase_order_id']);
@@ -630,6 +739,22 @@ class PurchaseInvoiceController extends Controller
         }
 
         $this->financialYearService->assertOpen($validated['invoice_date'], $invoice->company_id);
+        $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
+        $dbProducts = Product::whereIn('id', $productIds)->get()->keyBy('id');
+        foreach ($validated['items'] as &$it) {
+            $prod = $dbProducts->get($it['product_id'] ?? null);
+            if (! $prod || ! $prod->isSerialTracked()) {
+                $it['serial_numbers'] = [];
+                $it['serials'] = [];
+            } else {
+                $it['serial_numbers'] = array_values(array_filter(
+                    (array) ($it['serial_numbers'] ?? []),
+                    fn ($s) => trim((string) $s) !== ''
+                ));
+            }
+        }
+        unset($it);
+
         $this->assertTrackedSerials($validated['items']);
 
         $saveMode = $validated['save_mode'] ?? 'open';
@@ -717,7 +842,7 @@ class PurchaseInvoiceController extends Controller
             ->where('supplier_id', $supplier->id)
             ->when($companyId, fn ($q) => $q->where(fn ($sub) => $sub->where('company_id', $companyId)->orWhereNull('company_id')))
             ->whereIn('status', ['approved', 'partially_received', 'closed'])
-            ->with(['items'])
+            ->with(['items.product', 'supplier'])
             ->orderByDesc('po_date')
             ->orderByDesc('id')
             ->get();
@@ -735,7 +860,7 @@ class PurchaseInvoiceController extends Controller
                 ->sum('purchase_invoice_items.quantity');
 
             return $invoicedQty < $totalOrdered;
-        })->map(function (PurchaseOrder $order) {
+        })->map(function (PurchaseOrder $order) use ($supplier) {
             $totalOrdered = (float) $order->items->sum('quantity');
             $invoicedQty = (float) DB::table('purchase_invoice_items')
                 ->join('purchase_invoices', 'purchase_invoice_items.purchase_invoice_id', '=', 'purchase_invoices.id')
@@ -743,6 +868,13 @@ class PurchaseInvoiceController extends Controller
                 ->where('purchase_invoices.status', '!=', 'cancelled')
                 ->sum('purchase_invoice_items.quantity');
             $remainingQty = max(0, $totalOrdered - $invoicedQty);
+
+            $productNames = $order->items
+                ->map(fn ($item) => $item->product?->name)
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
 
             $label = sprintf(
                 '%s (%s) - ₹%s%s',
@@ -756,11 +888,16 @@ class PurchaseInvoiceController extends Controller
                 'id' => $order->id,
                 'po_no' => $order->po_no,
                 'po_date' => $order->po_date?->format('d M Y') ?? '—',
+                'raw_date' => $order->po_date?->toDateString() ?? '',
                 'grand_total' => (float) $order->grand_total,
                 'status' => ucfirst(str_replace('_', ' ', $order->status)),
+                'raw_status' => $order->status,
                 'credit_days' => $order->credit_days,
                 'remaining_qty' => $remainingQty,
                 'total_qty' => $totalOrdered,
+                'supplier_name' => $order->supplier?->name ?? $supplier->name,
+                'products' => $productNames,
+                'products_summary' => implode(', ', array_slice($productNames, 0, 3)) . (count($productNames) > 3 ? ' +' . (count($productNames) - 3) . ' more' : ''),
                 'label' => $label,
             ];
         })->values();
@@ -822,6 +959,8 @@ class PurchaseInvoiceController extends Controller
                 'product_name' => $item->product?->name ?? 'Item',
                 'unit' => $item->product?->unit ?? 'PCS',
                 'tracking_type' => $item->product?->tracking_type ?? 'none',
+                'is_serial_tracked' => $item->product?->isSerialTracked() ?? false,
+                'track_serial' => $item->product?->isSerialTracked() ?? false,
                 'quantity' => $alreadyInvoiced > 0 ? $remaining : (float) $item->quantity,
                 'ordered_quantity' => (float) $item->quantity,
                 'unit_cost' => $unitCost,
@@ -859,6 +998,110 @@ class PurchaseInvoiceController extends Controller
                 'shipping_address_id' => $order->shipping_address_id,
                 'billing_address' => $order->billing_address,
                 'shipping_address' => $order->shipping_address,
+                'items' => $items,
+            ],
+        ]);
+    }
+
+    public function supplierReceiptNotes(Request $request, Customer $supplier)
+    {
+        $user = $request->user();
+        if ($user && $user->company_id && $supplier->company_id && $supplier->company_id !== $user->company_id) {
+            return response()->json(['receipt_notes' => []], 403);
+        }
+
+        $receiptNotes = ReceiptNote::query()
+            ->where('supplier_id', $supplier->id)
+            ->when($user?->company_id, fn ($q) => $q->where('company_id', $user->company_id))
+            ->whereIn('status', [
+                ReceiptNote::STATUS_RECEIVED,
+                ReceiptNote::STATUS_PARTIALLY_INVOICED,
+                ReceiptNote::STATUS_PARTIALLY_RETURNED,
+            ])
+            ->with(['items.product', 'warehouse'])
+            ->latest('receipt_date')
+            ->get()
+            ->filter(fn (ReceiptNote $rn) => $rn->pending_invoice_qty > 0.0001)
+            ->map(fn (ReceiptNote $rn) => [
+                'id' => $rn->id,
+                'receipt_note_no' => $rn->receipt_note_no,
+                'receipt_date' => $rn->receipt_date->format('d/m/Y'),
+                'supplier_challan_no' => $rn->supplier_challan_no,
+                'warehouse_id' => $rn->warehouse_id,
+                'warehouse_name' => $rn->warehouse?->name,
+                'pending_qty' => $rn->pending_invoice_qty,
+                'label' => "{$rn->receipt_note_no}".($rn->supplier_challan_no ? " (Challan: {$rn->supplier_challan_no})" : "")." - Pending: {$rn->pending_invoice_qty} qty ({$rn->receipt_date->format('d M Y')})",
+            ])
+            ->values();
+
+        return response()->json([
+            'receipt_notes' => $receiptNotes,
+        ]);
+    }
+
+    public function receiptNoteData(ReceiptNote $receiptNote)
+    {
+        $user = auth()->user();
+        if ($user && $user->company_id && $receiptNote->company_id && $receiptNote->company_id !== $user->company_id) {
+            abort(403, 'Unauthorized');
+        }
+
+        $receiptNote->load(['items.product.baseUom', 'items.uom', 'items.serials', 'supplier', 'warehouse']);
+
+        $items = $receiptNote->items->map(function (ReceiptNoteItem $item) {
+            $pending = $item->pending_invoice_qty;
+            if ($pending <= 0.0001) {
+                return null;
+            }
+
+            $product = $item->product;
+            $taxPercent = (float) ($product?->tax_rate ?? 18);
+            $unitCost = (float) $item->unit_cost;
+            $purchasePriceInclusive = round($unitCost * (1 + ($taxPercent / 100)), 4);
+            $batchMrp = (float) ($product?->mrp ?? 0);
+            $purchaseDiscountPercent = $batchMrp > 0 ? round((($batchMrp - $purchasePriceInclusive) / $batchMrp) * 100, 2) : 0;
+
+            $serials = $item->serials->pluck('serial_number')->all();
+
+            return [
+                'receipt_note_item_id' => $item->id,
+                'product_id' => $item->product_id,
+                'product_name' => $product?->name ?? 'Product',
+                'unit' => $item->uom?->short_name ?? $product?->unit ?? 'PCS',
+                'tracking_type' => $product?->tracking_type ?? 'none',
+                'is_serial_tracked' => $product?->isSerialTracked() ?? false,
+                'track_serial' => $product?->isSerialTracked() ?? false,
+                'quantity' => $pending,
+                'ordered_quantity' => (float) $item->ordered_qty,
+                'received_qty' => (float) $item->received_qty,
+                'unit_cost' => $unitCost,
+                'purchase_price_inclusive' => $purchasePriceInclusive,
+                'purchase_discount_percent' => $purchaseDiscountPercent,
+                'cgst_percent' => round($taxPercent / 2, 2),
+                'sgst_percent' => round($taxPercent / 2, 2),
+                'cgst_amount' => round(($pending * $unitCost) * ($taxPercent / 200), 2),
+                'sgst_amount' => round(($pending * $unitCost) * ($taxPercent / 200), 2),
+                'tax_amount' => round(($pending * $unitCost) * ($taxPercent / 100), 2),
+                'line_total' => round(($pending * $unitCost) * (1 + ($taxPercent / 100)), 2),
+                'batch_number' => $item->batch_no ?? '',
+                'selling_price' => (float) ($product?->selling_price ?? 0),
+                'batch_mrp' => $batchMrp,
+                'serials' => $serials,
+                'serial_numbers' => $serials,
+            ];
+        })->filter()->values();
+
+        return response()->json([
+            'receipt_note' => [
+                'id' => $receiptNote->id,
+                'receipt_note_no' => $receiptNote->receipt_note_no,
+                'receipt_date' => $receiptNote->receipt_date->toDateString(),
+                'supplier_challan_no' => $receiptNote->supplier_challan_no,
+                'supplier_challan_date' => $receiptNote->supplier_challan_date?->toDateString(),
+                'supplier_id' => $receiptNote->supplier_id,
+                'warehouse_id' => $receiptNote->warehouse_id,
+                'purchase_order_id' => $receiptNote->purchase_order_id,
+                'remarks' => $receiptNote->remarks,
                 'items' => $items,
             ],
         ]);
@@ -905,6 +1148,29 @@ class PurchaseInvoiceController extends Controller
         return $this->orderItems($order);
     }
 
+    public function productDetails(Product $product): JsonResponse
+    {
+        $product->loadMissing(['baseUom', 'productType']);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'sku' => $product->sku,
+                'unit' => $product->unit ?? ($product->baseUom?->name ?? ($product->baseUom?->code ?? 'PCS')),
+                'tax_rate' => (float) ($product->tax_rate ?? 0),
+                'mrp' => (float) ($product->mrp ?? ($product->calculation_mrp ?? 0)),
+                'purchase_price' => (float) ($product->purchase_price ?? 0),
+                'tracking_type' => $product->tracking_type ?? 'none',
+                'tracking_types' => $product->tracking_types,
+                'is_serial_tracked' => $product->isSerialTracked(),
+                'track_serial' => $product->isSerialTracked(),
+                'is_batch_tracked' => $product->isBatchTracked(),
+            ],
+        ]);
+    }
+
     /**
      * @param  array<int, array<string, mixed>>  $items
      */
@@ -912,6 +1178,7 @@ class PurchaseInvoiceController extends Controller
     {
         $products = Product::whereIn('id', collect($items)->pluck('product_id')->filter())->get()->keyBy('id');
         $errors = [];
+        $allTrackedSerials = [];
 
         foreach ($items as $index => $item) {
             $product = $products->get($item['product_id'] ?? null);
@@ -922,12 +1189,21 @@ class PurchaseInvoiceController extends Controller
             $needed = min(30, max(1, (int) round((float) ($item['quantity'] ?? 1))));
             $serials = collect($item['serial_numbers'] ?? [])
                 ->map(fn ($serial) => trim((string) $serial))
-                ->filter();
+                ->filter()
+                ->values();
 
             if ($serials->count() < $needed) {
                 $errors["items.{$index}.serial_numbers"] = ($product->name ?: 'This product').' needs '.$needed.' serial number'.($needed === 1 ? '' : 's').'.';
             } elseif ($serials->unique()->count() < $serials->count()) {
                 $errors["items.{$index}.serial_numbers"] = 'Duplicate serial numbers entered for '.($product->name ?: 'this product').'.';
+            }
+
+            foreach ($serials as $s) {
+                $lower = strtolower($s);
+                if (in_array($lower, $allTrackedSerials, true)) {
+                    $errors["items.{$index}.serial_numbers"] = "Serial number '{$s}' is repeated across multiple invoice items.";
+                }
+                $allTrackedSerials[] = $lower;
             }
         }
 
@@ -938,7 +1214,8 @@ class PurchaseInvoiceController extends Controller
 
     protected function invoiceProducts()
     {
-        return Product::where('is_active', true)
+        return Product::with(['baseUom', 'productType'])
+            ->where('is_active', true)
             ->orderBy('name')
             ->get();
     }

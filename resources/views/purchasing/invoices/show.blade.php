@@ -80,31 +80,28 @@
     </div>
 </div>
 
-<div class="mb-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <div class="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 class="text-sm font-semibold text-slate-800 mb-3">Receipt Details</h3>
-        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <div><dt class="text-[11px] uppercase text-slate-500">Receipt Note No(s)</dt><dd class="font-medium">{{ $invoice->receipt_note_nos ?: '—' }}</dd></div>
-            <div><dt class="text-[11px] uppercase text-slate-500">Receipt Doc No.</dt><dd class="font-medium">{{ $invoice->receipt_doc_no ?: '—' }}</dd></div>
-            <div><dt class="text-[11px] uppercase text-slate-500">Dispatched Through</dt><dd class="font-medium">{{ $invoice->dispatched_through ?: '—' }}</dd></div>
-            <div><dt class="text-[11px] uppercase text-slate-500">Carrier / Agent</dt><dd class="font-medium">{{ $invoice->carrier_name ?: '—' }}</dd></div>
-            <div><dt class="text-[11px] uppercase text-slate-500">LR / RR No.</dt><dd class="font-medium">{{ $invoice->lr_number ?: '—' }}</dd></div>
-            <div><dt class="text-[11px] uppercase text-slate-500">LR Date</dt><dd class="font-medium">{{ $invoice->lr_date?->format('d M Y') ?? '—' }}</dd></div>
-            <div><dt class="text-[11px] uppercase text-slate-500">Vehicle No.</dt><dd class="font-medium">{{ $invoice->vehicle_number ?: '—' }}</dd></div>
-        </dl>
-    </div>
-    <div class="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 class="text-sm font-semibold text-slate-800 mb-3">Order Details</h3>
-        <dl class="grid grid-cols-1 gap-y-2 text-sm">
-            <div><dt class="text-[11px] uppercase text-slate-500">Order No(s)</dt><dd class="font-medium">{{ $invoice->order_nos ?: ($invoice->purchaseOrder?->po_no ?: '—') }}</dd></div>
-            <div><dt class="text-[11px] uppercase text-slate-500">Mode / Terms of Payment</dt><dd class="font-medium">{{ $invoice->payment_terms ?: '—' }}</dd></div>
-            <div><dt class="text-[11px] uppercase text-slate-500">Other References</dt><dd class="font-medium">{{ $invoice->other_references ?: '—' }}</dd></div>
-            <div><dt class="text-[11px] uppercase text-slate-500">Terms of Delivery</dt><dd class="font-medium">{{ $invoice->terms_of_delivery ?: '—' }}</dd></div>
-            @if($invoice->freight_notes)
-                <div><dt class="text-[11px] uppercase text-slate-500">Freight Notes</dt><dd class="font-medium">{{ $invoice->freight_notes }}</dd></div>
-            @endif
-        </dl>
-    </div>
+<div class="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+    <h3 class="text-sm font-semibold text-slate-800 mb-3">Receipt / Courier Details</h3>
+    <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+        <div>
+            <dt class="text-[11px] uppercase text-slate-500 font-medium">Courier / Docket Number</dt>
+            <dd class="font-medium text-slate-800">{{ $invoice->receipt_doc_no ?: '—' }}</dd>
+        </div>
+        <div>
+            <dt class="text-[11px] uppercase text-slate-500 font-medium">Courier Name</dt>
+            <dd class="font-medium text-slate-800">{{ $invoice->dispatched_through ?: '—' }}</dd>
+        </div>
+        <div>
+            <dt class="text-[11px] uppercase text-slate-500 font-medium">Motor Vehicle No.</dt>
+            <dd class="font-medium text-slate-800">{{ $invoice->vehicle_number ?: '—' }}</dd>
+        </div>
+    </dl>
+    @if($invoice->freight_notes)
+        <div class="mt-3 pt-3 border-t border-slate-100 text-sm">
+            <dt class="text-[11px] uppercase text-slate-500 font-medium">Freight Notes</dt>
+            <dd class="font-medium text-slate-800">{{ $invoice->freight_notes }}</dd>
+        </div>
+    @endif
 </div>
 
 @if($invoice->odAccount)
@@ -179,9 +176,10 @@
 <td class="px-3 py-2">
     <div class="font-medium text-slate-900">{{ $item->product?->name }}</div>
     @php
-        $serials = $item->serialNumbers();
+        $isSerialTracked = $item->product ? $item->product->isSerialTracked() : false;
+        $serials = $isSerialTracked ? $item->serialNumbers() : [];
     @endphp
-    @if(!empty($serials))
+    @if($isSerialTracked && !empty($serials))
         <div class="text-[11px] text-indigo-700 font-mono mt-0.5">
             <span class="font-semibold text-indigo-900">S/N:</span> {{ implode(', ', $serials) }}
         </div>

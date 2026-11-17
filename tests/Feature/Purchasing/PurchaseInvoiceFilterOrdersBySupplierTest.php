@@ -520,4 +520,51 @@ class PurchaseInvoiceFilterOrdersBySupplierTest extends TestCase
         $showResponse->assertSee('Purchase Order');
         $showResponse->assertSee('—');
     }
+
+    public function test_supplier_purchase_orders_api_includes_products_and_supplier_metadata_for_search(): void
+    {
+        $po = $this->createPurchaseOrder($this->supplierA, 'approved', 10);
+
+        $response = $this->actingAs($this->user)->getJson(
+            route('purchasing.invoices.supplier-purchase-orders', $this->supplierA)
+        );
+
+        $response->assertStatus(200);
+        $orders = $response->json('orders');
+        $this->assertNotEmpty($orders);
+
+        $orderData = collect($orders)->firstWhere('id', $po->id);
+        $this->assertNotNull($orderData);
+        $this->assertEquals($po->po_no, $orderData['po_no']);
+        $this->assertEquals($this->supplierA->name, $orderData['supplier_name']);
+        $this->assertContains('Hydraulic Valve H1', $orderData['products']);
+        $this->assertStringContainsString('Hydraulic Valve H1', $orderData['products_summary']);
+        $this->assertEquals('Approved', $orderData['status']);
+        $this->assertEquals(1500.0, $orderData['grand_total']);
+    }
+
+    public function test_edit_invoice_page_renders_searchable_purchase_order_dropdown(): void
+    {
+        $po = $this->createPurchaseOrder($this->supplierA, 'approved', 10);
+        $invoice = PurchaseInvoice::create([
+            'company_id' => $this->company->id,
+            'purchase_order_id' => $po->id,
+            'supplier_id' => $this->supplierA->id,
+            'warehouse_id' => $this->warehouse->id,
+            'invoice_no' => 'PI-EDIT-PO-01',
+            'invoice_date' => '2026-10-12',
+            'status' => 'draft',
+            'subtotal' => 1500.00,
+            'tax_amount' => 0.00,
+            'grand_total' => 1500.00,
+        ]);
+
+        $response = $this->actingAs($this->user)->get(route('purchasing.invoices.edit', $invoice));
+
+        $response->assertStatus(200);
+        $response->assertSee('Purchase Order');
+        $response->assertSee('name="purchase_order_id"', false);
+        $response->assertSee('Select Purchase Order (Optional)');
+        $response->assertSee('Search by PO #, date, product, status...');
+    }
 }

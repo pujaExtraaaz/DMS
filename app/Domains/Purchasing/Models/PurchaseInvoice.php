@@ -22,6 +22,7 @@ class PurchaseInvoice extends Model
         'od_account_id',
         'supplier_id',
         'purchase_order_id',
+        'receipt_note_id',
         'purchase_inward_id',
         'created_by',
         'invoice_number',
@@ -178,6 +179,26 @@ class PurchaseInvoice extends Model
         return 'Outstanding';
     }
 
+    public function getCourierDocketNoAttribute(): ?string
+    {
+        return $this->receipt_doc_no;
+    }
+
+    public function setCourierDocketNoAttribute($value): void
+    {
+        $this->attributes['receipt_doc_no'] = $value;
+    }
+
+    public function getCourierNameAttribute(): ?string
+    {
+        return $this->dispatched_through;
+    }
+
+    public function setCourierNameAttribute($value): void
+    {
+        $this->attributes['dispatched_through'] = $value;
+    }
+
     public function canReceiveMaterial(): bool
     {
         return $this->status !== 'cancelled'
@@ -256,6 +277,11 @@ class PurchaseInvoice extends Model
     public function purchaseOrder(): BelongsTo
     {
         return $this->belongsTo(PurchaseOrder::class);
+    }
+
+    public function receiptNote(): BelongsTo
+    {
+        return $this->belongsTo(ReceiptNote::class);
     }
 
     public function creator(): BelongsTo

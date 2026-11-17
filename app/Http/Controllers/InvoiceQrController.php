@@ -67,6 +67,7 @@ class InvoiceQrController extends Controller
                 ->with([
                     'items.product',
                     'items.uom',
+                    'items.serials',
                     'supplier',
                     'warehouse',
                     'purchaseOrder',

@@ -2,6 +2,7 @@
 @section('title', 'Import Contacts - Phone Directory')
 
 @section('content')
+@include('phone_directory._styles')
 <div class="max-w-4xl mx-auto space-y-6">
 
     {{-- Breadcrumb & Title --}}
@@ -30,7 +31,7 @@
                     </div>
                 </div>
 
-                <a href="{{ route('phone-directory.index') }}" class="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-violet-700">
+                <a href="{{ route('phone-directory.index') }}" class="btn-pd-primary inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-purple-700 active:bg-purple-800">
                     <span>View Directory</span>
                 </a>
             </div>
@@ -86,12 +87,12 @@
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <a href="{{ route('phone-directory.import.template', ['format' => 'xlsx']) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
+                        <a href="{{ route('phone-directory.import.template', ['format' => 'xlsx']) }}" class="btn-pd-secondary inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-900 shadow-2xs hover:bg-slate-50 hover:border-slate-400 transition">
                             <svg class="h-3.5 w-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                             <span>Excel Template (.xlsx)</span>
                         </a>
 
-                        <a href="{{ route('phone-directory.import.template', ['format' => 'csv']) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition">
+                        <a href="{{ route('phone-directory.import.template', ['format' => 'csv']) }}" class="btn-pd-secondary inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-900 shadow-2xs hover:bg-slate-50 hover:border-slate-400 transition">
                             <svg class="h-3.5 w-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                             <span>CSV Template (.csv)</span>
                         </a>
@@ -154,9 +155,9 @@
                 <div class="pt-2 flex justify-end">
                     <button
                         type="submit"
-                        class="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-6 py-2.5 text-xs font-semibold text-white shadow-md shadow-violet-600/30 hover:bg-violet-700 transition"
+                        class="btn-pd-primary inline-flex items-center justify-center gap-2 rounded-xl bg-purple-600 px-6 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 active:bg-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition min-h-[38px]"
                     >
-                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+                        <svg class="h-4 w-4 shrink-0 text-white" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
                         <span>Import Contacts Now</span>
                     </button>
                 </div>

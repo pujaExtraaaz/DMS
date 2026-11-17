@@ -14,17 +14,23 @@
         $returnLabel = 'Back to Book Order';
     } elseif ($effectiveReturnTo === 'orders.edit' && $effectiveOrderId) {
         $returnRoute = route('orders.edit', ['order' => $effectiveOrderId, 'returned_from' => 'product_create']);
+        $returnLabel = 'Back to Edit Order';
     } elseif ($effectiveReturnTo === 'invoices.create') {
         $returnRoute = route('invoices.create', ['returned_from' => 'product_create']);
+        $returnLabel = 'Back to Tax Invoice';
+    } elseif (in_array($effectiveReturnTo, ['purchasing.invoices.create', 'purchase_invoice', 'purchases.invoices.create'], true)) {
+        $returnRoute = route('purchasing.invoices.create', ['returned_from' => 'product_create']);
+        $returnLabel = 'Back to Purchase Invoice';
     } elseif ($effectiveReturnUrl) {
         $returnRoute = $effectiveReturnUrl;
+        $returnLabel = str_contains($effectiveReturnUrl, 'masters/products') ? 'Back to Products' : 'Back';
     }
 @endphp
 
 <x-ui.page-header :title="$item->exists ? 'Edit Product' : 'Create Product'">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="$returnRoute ?: route('masters.products.index')">
-            {{ $effectiveReturnTo === 'orders.edit' ? 'Back to Edit Order' : ($effectiveReturnTo === 'invoices.create' ? 'Back to Tax Invoice' : ($effectiveReturnTo === 'orders.create' ? 'Back to Book Order' : 'Back')) }}
+            {{ $returnLabel }}
         </x-ui.button>
     </x-slot>
 </x-ui.page-header>
@@ -613,8 +619,9 @@
                 $selectedTracking = array_values(array_filter($selectedTracking, fn($t) => $t !== 'none'));
             @endphp
             <div class="md:col-span-2 space-y-1" x-data="productTrackingManager(@json($selectedTracking))">
+                <input type="hidden" name="track_serial" value="0">
                 <label class="flex items-start gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 cursor-pointer">
-                    <input type="checkbox" name="tracking_type[]" value="serial" @checked(in_array('serial', $selectedTracking, true)) class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                    <input type="checkbox" name="track_serial" value="1" @checked(in_array('serial', $selectedTracking, true)) class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
                     <span>
                         <span class="block text-sm font-semibold text-slate-800">Track serial numbers</span>
                         <span class="block text-xs text-slate-600">Saved on this product. Purchase invoices then show a serial number box for this item without turning it on again.</span>

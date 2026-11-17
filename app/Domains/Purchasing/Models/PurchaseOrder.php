@@ -127,6 +127,11 @@ class PurchaseOrder extends Model
         return $this->hasMany(PurchaseInvoice::class);
     }
 
+    public function receiptNotes(): HasMany
+    {
+        return $this->hasMany(ReceiptNote::class);
+    }
+
     public function freightAllocations(): MorphMany
     {
         return $this->morphMany(FreightBillAllocation::class, 'allocatable');

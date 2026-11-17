@@ -351,10 +351,20 @@
             </section>
         </div>
 
-        <div class="pd-footer">
-            <a href="{{ route('phone-directory.index') }}" class="pd-cancel-btn">Cancel</a>
-            <button type="submit" class="pd-save-btn">
-                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+        {{-- Form Actions Footer --}}
+        <div class="border-t border-slate-200 bg-slate-50 px-6 py-4 flex items-center justify-end gap-3">
+            <a
+                href="{{ route('phone-directory.index') }}"
+                class="btn-pd-secondary inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 shadow-xs hover:bg-slate-50 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition whitespace-nowrap min-h-[38px]"
+            >
+                Cancel
+            </a>
+
+            <button
+                type="submit"
+                class="btn-pd-primary inline-flex items-center justify-center gap-1.5 rounded-xl bg-purple-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-purple-700 active:bg-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition whitespace-nowrap min-h-[38px]"
+            >
+                <svg class="h-4 w-4 shrink-0 text-white" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
                 <span>{{ $isEdit ? 'Update Contact' : 'Save Contact' }}</span>
             </button>
         </div>
