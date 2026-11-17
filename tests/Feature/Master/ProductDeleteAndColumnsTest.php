@@ -277,20 +277,20 @@ class ProductDeleteAndColumnsTest extends TestCase
         // Search by series
         $resSeries = $this->actingAs($this->user)->get(route('masters.products.index', ['search' => 'EliteBook Series']));
         $resSeries->assertOk();
-        $resSeries->assertSee('ELITEBOOK 840');
-        $resSeries->assertDontSee('MACBOOK PRO 16');
+        $resSeries->assertSee('EliteBook 840');
+        $resSeries->assertDontSee('MacBook Pro 16');
 
         // Search by model
         $resModel = $this->actingAs($this->user)->get(route('masters.products.index', ['search' => 'M3 Max']));
         $resModel->assertOk();
-        $resModel->assertSee('MACBOOK PRO 16');
-        $resModel->assertDontSee('ELITEBOOK 840');
+        $resModel->assertSee('MacBook Pro 16');
+        $resModel->assertDontSee('EliteBook 840');
 
         // Search by product_type
         $resType = $this->actingAs($this->user)->get(route('masters.products.index', ['search' => 'Workstation Laptop']));
         $resType->assertOk();
-        $resType->assertSee('MACBOOK PRO 16');
-        $resType->assertDontSee('ELITEBOOK 840');
+        $resType->assertSee('MacBook Pro 16');
+        $resType->assertDontSee('EliteBook 840');
     }
 
     public function test_delete_button_and_confirmation_modal_appear_in_listing(): void
@@ -455,7 +455,7 @@ class ProductDeleteAndColumnsTest extends TestCase
         $invoiceItem->refresh();
         $this->assertNotNull($invoiceItem->product);
         $this->assertSame($product->id, $invoiceItem->product->id);
-        $this->assertSame('HISTORICAL PRODUCT', $invoiceItem->product->name);
+        $this->assertSame('Historical Product', $invoiceItem->product->name);
 
         $movement->refresh();
         $this->assertNotNull($movement->product);

@@ -517,7 +517,7 @@ class PurchaseInvoiceController extends Controller
             ->orderBy('name')
             ->get();
         $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get();
-        $products = $this->invoiceProducts();
+        $products = $this->invoiceProducts($invoice);
 
         $companyId = $invoice->company_id ?? $request->user()?->company_id ?? Company::defaultCompanyId();
         $odAccountsQuery = OdAccount::query()->orderBy('bank_name');
@@ -1239,10 +1239,16 @@ class PurchaseInvoiceController extends Controller
         }
     }
 
-    protected function invoiceProducts()
+    protected function invoiceProducts(?PurchaseInvoice $invoice = null)
     {
         return Product::with(['baseUom', 'productType'])
             ->where('is_active', true)
+            ->where(function ($q) use ($invoice) {
+                $q->where('is_hidden', false);
+                if ($invoice) {
+                    $q->orWhereIn('id', $invoice->items->pluck('product_id'));
+                }
+            })
             ->orderBy('name')
             ->get()
             ->map(function (Product $product) {

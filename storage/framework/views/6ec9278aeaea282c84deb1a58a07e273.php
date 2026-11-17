@@ -84,6 +84,9 @@
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('customers.view', 'masters.view')): ?>
                 <a href="<?php echo e(route('masters.customers.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['masters.customers.*', 'masters.parties.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Parties</span></a>
             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('designations.view', 'masters.view', 'customers.view')): ?>
+                <a href="<?php echo e(route('masters.designations.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['masters.designations.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Designations</span></a>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('price-master.view', 'masters.view')): ?>
                 <a href="<?php echo e(route('masters.price-masters.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['masters.price-masters.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Price List</span></a>
             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>

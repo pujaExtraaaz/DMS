@@ -69,13 +69,20 @@
     $initialBusinessGroupId = old('business_group_id', $item->business_group_id ?? request('selected_group_id', request('business_group_id')));
 
     $designationOptions = $contactDesignations ?? \App\Support\ContactDesignations::all();
+    $designationsData = ($designationsList ?? collect(\App\Support\ContactDesignations::items()))->map(fn ($d) => [
+        'id' => (int) $d->id,
+        'name' => (string) $d->name,
+        'code' => $d->code,
+        'is_active' => (bool) $d->is_active,
+    ])->values()->all();
 
     $oldContacts = old('contacts');
     if (is_array($oldContacts)) {
         $initialContacts = collect($oldContacts)->map(function ($row) {
             $rawRole = (string) ($row['role'] ?? $row['designation'] ?? '');
             $customRole = (string) ($row['custom_role'] ?? $row['other_designation'] ?? $row['other_role'] ?? '');
-            $resolved = \App\Support\ContactDesignations::resolve($rawRole);
+            $desigId = ! empty($row['designation_id']) ? (int) $row['designation_id'] : null;
+            $resolved = \App\Support\ContactDesignations::resolve($rawRole, $desigId);
             if ($rawRole === 'Other' && filled($customRole)) {
                 $resolved['other_designation'] = trim($customRole);
             }
@@ -83,6 +90,7 @@
             return [
                 'name' => $row['name'] ?? '',
                 'role' => $rawRole === 'Other' && filled($customRole) ? trim($customRole) : ($row['role'] ?? $rawRole),
+                'designation_id' => $desigId ?: $resolved['designation_id'],
                 'designation' => $row['designation'] ?? $resolved['designation'],
                 'other_designation' => $row['other_designation'] ?? $resolved['other_designation'],
                 'phone' => $row['phone'] ?? '',
@@ -93,12 +101,13 @@
         })->values()->all();
     } elseif ($item->exists && $item->relationLoaded('contacts')) {
         $initialContacts = $item->contacts->map(function ($contact) {
-            $resolved = \App\Support\ContactDesignations::resolve($contact->role ?? '');
+            $resolved = \App\Support\ContactDesignations::resolve($contact->role ?? '', $contact->designation_id);
 
             return [
                 'name' => $contact->name ?? '',
                 'role' => $contact->role ?? '',
-                'designation' => $resolved['designation'],
+                'designation_id' => $contact->designation_id ?: $resolved['designation_id'],
+                'designation' => $contact->designation?->name ?? $resolved['designation'],
                 'other_designation' => $resolved['other_designation'],
                 'phone' => $contact->phone ?? '',
                 'alternate_phone' => $contact->alternate_phone ?? '',
@@ -149,6 +158,9 @@
             ])->values()->all(),
         ])->all();
     }
+
+    $effectiveReturnUrl = old('return_url', $returnUrl ?? request('return_url', request('amp;return_url')));
+    $effectiveReturnTo = $returnTo ?? request('return_to', old('return_to', request('amp;return_to')));
 @endphp
 
 @section('content')
@@ -156,8 +168,12 @@
     <x-slot name="actions">
         @if(isset($lead))
             <x-ui.button variant="secondary" :href="route('crm.leads.index')">Back to Leads</x-ui.button>
-        @elseif(($returnTo ?? request('return_to', old('return_to'))) === 'orders.create')
+        @elseif(filled($effectiveReturnUrl))
+            <x-ui.button variant="secondary" :href="$effectiveReturnUrl">Cancel &amp; Go Back</x-ui.button>
+        @elseif($effectiveReturnTo === 'orders.create')
             <x-ui.button variant="secondary" :href="route('orders.create')">Back to Book Order</x-ui.button>
+        @elseif($effectiveReturnTo === 'invoices.create' || $effectiveReturnTo === 'sales.invoices.create')
+            <x-ui.button variant="secondary" :href="route('invoices.create')">Back to Tax Invoice</x-ui.button>
         @else
             <x-ui.button variant="secondary" :href="route('masters.customers.index')">Back</x-ui.button>
         @endif
@@ -188,8 +204,9 @@
     @endif
 
     @php
-        $returnUrl = old('return_url', request('return_url'));
+        $returnUrl = $effectiveReturnUrl;
         $isReturnToPo = is_string($returnUrl) && str_contains($returnUrl, '/purchasing/orders/create');
+        $isReturnToInvoice = is_string($returnUrl) && (str_contains($returnUrl, '/invoices') || $effectiveReturnTo === 'invoices.create' || $effectiveReturnTo === 'sales.invoices.create');
     @endphp
     @if(! $item->exists && filled($returnUrl))
         <div class="mb-4 bg-indigo-50/90 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-indigo-900 shadow-2xs max-w-5xl">
@@ -198,11 +215,15 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
                 </div>
                 <div>
-                    <span class="font-bold">{{ $isReturnToPo ? 'Adding Supplier for Purchase Order' : 'Return After Save' }}</span>
+                    <span class="font-bold">
+                        {{ $isReturnToPo ? 'Adding Supplier for Purchase Order' : ($isReturnToInvoice ? 'Adding Customer for Tax Invoice' : 'Return After Save') }}
+                    </span>
                     <p class="text-indigo-700 text-[11px]">
                         {{ $isReturnToPo
                             ? 'Save this party, then you will be returned to New Purchase Order with the supplier selected.'
-                            : 'After saving, you will be redirected back to the page you came from.' }}
+                            : ($isReturnToInvoice
+                                ? 'Save this party, then you will be returned to the Tax Invoice with the customer selected.'
+                                : 'After saving, you will be redirected back to the page you came from.') }}
                     </p>
                 </div>
             </div>
@@ -229,8 +250,8 @@
         @elseif(old('lead_id'))
             <input type="hidden" name="lead_id" value="{{ old('lead_id') }}">
         @endif
-        @if(($returnTo ?? request('return_to', old('return_to'))) === 'orders.create')
-            <input type="hidden" name="return_to" value="orders.create">
+        @if($effectiveReturnTo === 'orders.create' || $effectiveReturnTo === 'invoices.create' || $effectiveReturnTo === 'sales.invoices.create')
+            <input type="hidden" name="return_to" value="{{ $effectiveReturnTo }}">
         @endif
 
         <div>
@@ -1274,15 +1295,23 @@
                     </div>
                     <input type="hidden" :name="`contacts[${idx}][level]`" value="party">
                     <input type="hidden" :name="`contacts[${idx}][is_primary]`" :value="contact.is_primary ? 1 : 0">
-                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-start">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-start">
                         <div>
                             <label class="block text-xs font-medium text-slate-700 mb-1">Name *</label>
                             <input type="text" :name="`contacts[${idx}][name]`" x-model="contact.name" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         </div>
                         <div class="relative" x-data="dmsContactDesignation(contact, designationOptions)">
-                            <label class="block text-xs font-medium text-slate-700 mb-1">Designation</label>
+                            <div class="flex items-center justify-between mb-1 gap-2">
+                                <label class="block text-xs font-medium text-slate-700">Designation</label>
+                                <button type="button"
+                                        @click="openDesignationModal('add', contact)"
+                                        class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none whitespace-nowrap">
+                                    + Create Designation
+                                </button>
+                            </div>
                             
                             {{-- Hidden inputs to pass data to backend --}}
+                            <input type="hidden" :name="`contacts[${idx}][designation_id]`" :value="contact.designation_id || ''">
                             <input type="hidden" :name="`contacts[${idx}][role]`" :value="effectiveRole()">
                             <input type="hidden" :name="`contacts[${idx}][designation]`" :value="contact.designation || ''">
                             <input type="hidden" :name="`contacts[${idx}][custom_role]`" :value="contact.other_designation || ''">
@@ -1299,7 +1328,7 @@
                                            autocomplete="off"
                                            class="block w-full rounded-lg border-gray-300 text-sm bg-white focus:border-indigo-500 focus:ring-indigo-500 pr-14 placeholder:text-slate-400">
                                     
-                                    <div class="absolute inset-y-0 right-0 flex items-center pr-1.5 gap-0.5">
+                                    <div class="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
                                         {{-- Clear button --}}
                                         <button type="button"
                                                 x-show="contact.designation"
@@ -1344,13 +1373,48 @@
                                                  'bg-indigo-50 text-indigo-900 font-semibold': contact.designation === opt,
                                                  'bg-slate-100': highlightedIndex === oIdx && contact.designation !== opt
                                              }"
-                                             class="px-3 py-2 hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer flex items-center justify-between transition-colors">
-                                            <span x-text="opt"></span>
-                                            <span x-show="contact.designation === opt" class="text-indigo-600 font-bold" x-cloak>✓</span>
+                                             class="group px-3 py-2 hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer flex items-center justify-between transition-colors">
+                                            <span class="truncate pr-2" x-text="opt"></span>
+                                            <div class="flex items-center gap-1.5 shrink-0" @click.stop>
+                                                <span x-show="contact.designation === opt" class="text-indigo-600 font-bold" x-cloak>✓</span>
+                                                <template x-if="opt !== 'Other'">
+                                                    <div class="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                                                        <button type="button"
+                                                                @click="openDesignationModal('edit', contact, opt); close()"
+                                                                class="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded transition"
+                                                                title="Edit this designation">
+                                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                            </svg>
+                                                        </button>
+                                                        <button type="button"
+                                                                @click="openDesignationModal('delete', contact, opt); close()"
+                                                                class="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded transition"
+                                                                title="Delete this designation">
+                                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                </template>
+                                            </div>
                                         </div>
                                     </template>
                                     <div x-show="filteredOptions.length === 0" class="px-3 py-2.5 text-center text-slate-400 italic">
                                         No matching designations
+                                    </div>
+                                    <div class="p-1.5 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-xs">
+                                        <button type="button"
+                                                @click.stop="openDesignationModal('add', contact); close()"
+                                                class="text-left px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 rounded transition flex items-center gap-1.5">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                            <span>+ Create Designation</span>
+                                        </button>
+                                        <a href="{{ route('masters.designations.index') }}"
+                                           target="_blank"
+                                           class="px-2 py-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 hover:underline">
+                                            Manage All ↗
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -1481,7 +1545,18 @@
             <x-ui.button type="submit" variant="primary">
                 {{ isset($lead) ? 'Save Customer & Complete Conversion' : 'Save Party' }}
             </x-ui.button>
-            <x-ui.button variant="secondary" :href="isset($lead) ? route('crm.leads.index') : ((($returnTo ?? request('return_to', old('return_to'))) === 'orders.create') ? route('orders.create') : route('masters.customers.index'))">
+            @php
+                $cancelUrl = isset($lead)
+                    ? route('crm.leads.index')
+                    : (filled($effectiveReturnUrl)
+                        ? $effectiveReturnUrl
+                        : ($effectiveReturnTo === 'orders.create'
+                            ? route('orders.create')
+                            : ($effectiveReturnTo === 'invoices.create' || $effectiveReturnTo === 'sales.invoices.create'
+                                ? route('invoices.create')
+                                : route('masters.customers.index'))));
+            @endphp
+            <x-ui.button variant="secondary" :href="$cancelUrl">
                 Cancel
             </x-ui.button>
         </div>
@@ -1706,6 +1781,135 @@
                                     class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-50">
                                 <span x-text="classificationSaving ? 'Deleting...' : 'Delete'"></span>
                             </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Designation Modal (Add / Edit / Delete) -->
+        <div x-show="designationModalOpen"
+             x-cloak
+             class="fixed inset-0 z-50 overflow-y-auto"
+             aria-labelledby="designation-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="closeDesignationModal()">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div x-show="designationModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 transition-opacity bg-slate-900/50 backdrop-blur-sm"
+                     @click="closeDesignationModal()"></div>
+
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+                <div x-show="designationModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     class="relative inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl sm:my-8"
+                     @click.stop>
+
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800" id="designation-modal-title"
+                            x-text="designationMode === 'edit' ? 'Edit Designation' : (designationMode === 'delete' ? 'Delete Designation' : '+ Create Designation')"></h3>
+                        <button type="button" @click="closeDesignationModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- Error Feedback -->
+                    <div x-show="designationError" x-cloak class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span x-text="designationError"></span>
+                    </div>
+
+                    <!-- Success Feedback -->
+                    <div x-show="designationSuccess" x-cloak class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        <span x-text="designationSuccess"></span>
+                    </div>
+
+                    <!-- Create / Edit Form -->
+                    <div class="mt-4 space-y-4" x-show="designationMode !== 'delete'">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Designation Name *</label>
+                            <input type="text"
+                                   x-ref="designationInput"
+                                   x-model="designationForm.name"
+                                   :disabled="designationSaving"
+                                   @keydown.enter.prevent="saveDesignation()"
+                                   placeholder="E.G. Accounts, ASM, Branch Manager, CEO"
+                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed">
+                            <p class="text-[11px] text-slate-500 mt-1" x-text="designationMode === 'edit' ? 'Updating this designation will automatically update all contacts using it.' : 'This designation will be added to the master records and selected automatically.'"></p>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeDesignationModal()"
+                                    :disabled="designationSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    @click="saveDesignation()"
+                                    :disabled="designationSaving"
+                                    class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 shadow-sm transition">
+                                <svg x-show="designationSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                <span x-text="designationSaving ? 'Saving...' : (designationMode === 'edit' ? 'Update' : 'Save')"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Delete Confirmation / In-Use Warning -->
+                    <div class="mt-4 space-y-4" x-show="designationMode === 'delete'" x-cloak>
+                        <template x-if="!designationInUse">
+                            <div>
+                                <p class="text-sm text-slate-700">Are you sure you want to delete designation <span class="font-semibold text-slate-900" x-text="designationForm.name"></span>?</p>
+                                <p class="text-xs text-slate-500 mt-1">If this designation is assigned to any contact or employee, it cannot be permanently deleted.</p>
+                            </div>
+                        </template>
+
+                        <template x-if="designationInUse">
+                            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1.5">
+                                <p class="font-semibold">Designation is Currently In Use</p>
+                                <p>This designation is currently assigned to contacts or employees and cannot be permanently deleted. You can deactivate it so it will no longer appear for new selections while preserving all historical records.</p>
+                            </div>
+                        </template>
+
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeDesignationModal()"
+                                    :disabled="designationSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
+                                Cancel
+                            </button>
+                            <template x-if="!designationInUse">
+                                <button type="button"
+                                        @click="deleteDesignation()"
+                                        :disabled="designationSaving"
+                                        class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-50 shadow-sm transition">
+                                    <svg x-show="designationSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    <span x-text="designationSaving ? 'Deleting...' : 'Delete Designation'"></span>
+                                </button>
+                            </template>
+                            <template x-if="designationInUse">
+                                <button type="button"
+                                        @click="deactivateDesignation()"
+                                        :disabled="designationSaving"
+                                        class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50 shadow-sm transition">
+                                    <svg x-show="designationSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    <span x-text="designationSaving ? 'Deactivating...' : 'Deactivate Designation'"></span>
+                                </button>
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -2439,7 +2643,20 @@ function partyFormController() {
         lastAutoGstin: '',
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
         contacts: {!! json_encode($initialContacts) !!},
+        designationList: {!! json_encode($designationsData ?? []) !!},
         designationOptions: {!! json_encode($designationOptions) !!},
+        designationModalOpen: false,
+        designationMode: 'add',
+        designationSaving: false,
+        designationError: '',
+        designationSuccess: '',
+        designationInUse: false,
+        targetContact: null,
+        designationForm: {
+            id: null,
+            name: '',
+            code: '',
+        },
         addresses: {!! json_encode($initialAddresses) !!},
         gemAuthorizations: {!! json_encode($initialGemAuthorizations) !!},
         brands: {!! json_encode(($brands ?? collect())->map(fn ($brand) => ['id' => (string) $brand->id, 'name' => $brand->name])->values()) !!},
@@ -2467,6 +2684,7 @@ function partyFormController() {
             this.contacts.push({
                 name: '',
                 role: '',
+                designation_id: null,
                 designation: '',
                 other_designation: '',
                 phone: '',
@@ -2565,6 +2783,242 @@ function partyFormController() {
                 this.brandError = 'An error occurred while creating the brand. Please try again.';
             } finally {
                 this.brandSaving = false;
+            }
+        },
+
+        openDesignationModal(mode, contact, optName = null) {
+            this.designationMode = mode;
+            this.targetContact = contact || null;
+            this.designationError = '';
+            this.designationSuccess = '';
+            this.designationInUse = false;
+
+            if (mode === 'add') {
+                this.designationForm.id = null;
+                this.designationForm.name = '';
+                this.designationForm.code = '';
+            } else if (mode === 'edit' || mode === 'delete') {
+                const currentName = optName || contact?.designation || '';
+                const currentId = (!optName && contact) ? contact.designation_id : null;
+                const match = this.designationList.find(d => 
+                    (currentId && String(d.id) === String(currentId)) || 
+                    d.name.toLowerCase() === currentName.toLowerCase()
+                );
+                if (match) {
+                    this.designationForm.id = match.id;
+                    this.designationForm.name = match.name;
+                    this.designationForm.code = match.code || '';
+                } else {
+                    this.designationForm.id = null;
+                    this.designationForm.name = currentName;
+                    this.designationForm.code = '';
+                }
+            }
+
+            this.designationModalOpen = true;
+            this.$nextTick(() => {
+                if (this.designationMode !== 'delete') {
+                    this.$refs.designationInput?.focus();
+                }
+            });
+        },
+
+        closeDesignationModal() {
+            this.designationModalOpen = false;
+            this.designationError = '';
+            this.designationSuccess = '';
+            this.designationInUse = false;
+        },
+
+        async saveDesignation() {
+            const name = (this.designationForm.name || '').trim();
+            if (!name) {
+                this.designationError = 'Designation Name is required.';
+                return;
+            }
+
+            // Case-insensitive duplicate check
+            const lowerName = name.toLowerCase();
+            const currentId = this.designationForm.id;
+            const duplicate = this.designationList.find(d => d.name.toLowerCase() === lowerName && (!currentId || String(d.id) !== String(currentId)));
+            if (duplicate) {
+                this.designationError = 'A designation with this name already exists.';
+                return;
+            }
+
+            this.designationSaving = true;
+            this.designationError = '';
+            this.designationSuccess = '';
+
+            const isEdit = this.designationMode === 'edit';
+            const url = isEdit
+                ? "{{ url('masters/designations') }}/" + this.designationForm.id + "/quick-update"
+                : "{{ route('masters.designations.quick-store') }}";
+
+            try {
+                const response = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        code: this.designationForm.code || null
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.designationError = data.message || 'Failed to save designation.';
+                    this.designationSaving = false;
+                    return;
+                }
+
+                const newItem = data.item;
+
+                if (isEdit) {
+                    const match = this.designationList.find(d => String(d.id) === String(newItem.id));
+                    const oldName = match ? match.name : '';
+                    if (match) {
+                        match.name = newItem.name;
+                    }
+                    this.designationOptions = this.designationOptions.map(opt => opt.toLowerCase() === oldName.toLowerCase() ? newItem.name : opt);
+                    this.contacts.forEach(c => {
+                        if (String(c.designation_id) === String(newItem.id) || (oldName && (c.designation || '').toLowerCase() === oldName.toLowerCase())) {
+                            c.designation = newItem.name;
+                            c.role = newItem.name;
+                        }
+                    });
+                    this.designationSuccess = data.message || 'Designation updated successfully!';
+                } else {
+                    const exists = this.designationList.some(d => String(d.id) === String(newItem.id));
+                    if (!exists) {
+                        this.designationList.push(newItem);
+                    }
+                    if (!this.designationOptions.some(opt => opt.toLowerCase() === newItem.name.toLowerCase())) {
+                        const otherIdx = this.designationOptions.findIndex(o => o.toLowerCase() === 'other');
+                        if (otherIdx !== -1) {
+                            this.designationOptions.splice(otherIdx, 0, newItem.name);
+                        } else {
+                            this.designationOptions.push(newItem.name);
+                        }
+                    }
+
+                    if (this.targetContact) {
+                        this.targetContact.designation_id = newItem.id;
+                        this.targetContact.designation = newItem.name;
+                        this.targetContact.role = newItem.name;
+                        this.targetContact.other_designation = '';
+                    }
+
+                    this.designationSuccess = data.message || 'Designation created successfully!';
+                }
+
+                setTimeout(() => {
+                    this.closeDesignationModal();
+                }, 500);
+            } catch (err) {
+                this.designationError = 'An error occurred while saving the designation. Please try again.';
+            } finally {
+                this.designationSaving = false;
+            }
+        },
+
+        async deleteDesignation() {
+            if (!this.designationForm.id) {
+                const match = this.designationList.find(d => d.name.toLowerCase() === (this.designationForm.name || '').toLowerCase());
+                if (match) {
+                    this.designationForm.id = match.id;
+                } else {
+                    this.designationError = 'Designation record not found in database.';
+                    return;
+                }
+            }
+
+            this.designationSaving = true;
+            this.designationError = '';
+
+            try {
+                const response = await fetch("{{ url('masters/designations') }}/" + this.designationForm.id + "/quick-destroy", {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    if (data.in_use) {
+                        this.designationInUse = true;
+                    }
+                    this.designationError = data.message || 'Failed to delete designation.';
+                    this.designationSaving = false;
+                    return;
+                }
+
+                const deletedName = (this.designationForm.name || '').toLowerCase();
+                const deletedId = String(this.designationForm.id);
+
+                this.designationList = this.designationList.filter(d => String(d.id) !== deletedId);
+                this.designationOptions = this.designationOptions.filter(o => o.toLowerCase() !== deletedName);
+
+                if (this.targetContact && (String(this.targetContact.designation_id) === deletedId || (this.targetContact.designation || '').toLowerCase() === deletedName)) {
+                    this.targetContact.designation_id = null;
+                    this.targetContact.designation = '';
+                    this.targetContact.role = '';
+                }
+
+                this.designationSuccess = data.message || 'Designation deleted successfully!';
+                setTimeout(() => {
+                    this.closeDesignationModal();
+                }, 500);
+            } catch (err) {
+                this.designationError = 'An error occurred while deleting the designation. Please try again.';
+            } finally {
+                this.designationSaving = false;
+            }
+        },
+
+        async deactivateDesignation() {
+            if (!this.designationForm.id) return;
+
+            this.designationSaving = true;
+            this.designationError = '';
+
+            try {
+                const response = await fetch("{{ url('masters/designations') }}/" + this.designationForm.id + "/toggle-active", {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ is_active: false })
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.designationError = data.message || 'Failed to deactivate designation.';
+                    this.designationSaving = false;
+                    return;
+                }
+
+                const match = this.designationList.find(d => String(d.id) === String(this.designationForm.id));
+                if (match) {
+                    match.is_active = false;
+                }
+
+                this.designationSuccess = data.message || 'Designation deactivated successfully!';
+                setTimeout(() => {
+                    this.closeDesignationModal();
+                }, 500);
+            } catch (err) {
+                this.designationError = 'An error occurred while deactivating the designation. Please try again.';
+            } finally {
+                this.designationSaving = false;
             }
         },
 
@@ -3268,7 +3722,7 @@ function dmsContactDesignation(contact, options) {
             this.search = contact.designation || '';
         },
         get filteredOptions() {
-            const list = this.options || [];
+            const list = (this.designationOptions && Array.isArray(this.designationOptions)) ? this.designationOptions : (this.options || []);
             const q = (this.search || '').trim().toLowerCase();
             if (!q || (contact.designation && q === contact.designation.trim().toLowerCase())) {
                 return list;
@@ -3296,6 +3750,18 @@ function dmsContactDesignation(contact, options) {
             this.search = opt;
             this.isOpen = false;
             this.highlightedIndex = -1;
+
+            const list = this.designationList || [];
+            const match = list.find(d => d.name.toLowerCase() === opt.toLowerCase());
+            if (match) {
+                contact.designation_id = match.id;
+            } else if (opt.toLowerCase() === 'other') {
+                const other = list.find(d => d.name.toLowerCase() === 'other');
+                contact.designation_id = other ? other.id : null;
+            } else {
+                contact.designation_id = null;
+            }
+
             if (opt === 'Other') {
                 contact.role = (contact.other_designation || '').trim() || 'Other';
                 this.$nextTick(() => {
@@ -3307,6 +3773,7 @@ function dmsContactDesignation(contact, options) {
             }
         },
         clear() {
+            contact.designation_id = null;
             contact.designation = '';
             contact.other_designation = '';
             contact.role = '';

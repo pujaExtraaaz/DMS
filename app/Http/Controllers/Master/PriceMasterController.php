@@ -107,7 +107,7 @@ class PriceMasterController extends Controller
 
         return view('masters.price-masters.index', [
             'items' => $items,
-            'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::where('is_active', true)->where('is_hidden', false)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
             'sort' => $sortData['sort'],

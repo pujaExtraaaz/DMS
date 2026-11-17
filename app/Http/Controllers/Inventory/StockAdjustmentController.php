@@ -79,7 +79,7 @@ class StockAdjustmentController extends Controller
     {
         return view('inventory.adjustments.create', [
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
-            'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::where('is_active', true)->where('is_hidden', false)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
         ]);
     }
@@ -188,7 +188,13 @@ class StockAdjustmentController extends Controller
         return view('inventory.adjustments.edit', [
             'adjustment' => $adjustment,
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
-            'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::where('is_active', true)
+                ->where(function ($q) use ($adjustment) {
+                    $q->where('is_hidden', false)
+                        ->orWhereIn('id', $adjustment->items->pluck('product_id'));
+                })
+                ->orderBy('name')
+                ->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
         ]);
     }

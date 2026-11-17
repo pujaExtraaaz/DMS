@@ -78,7 +78,7 @@ class QuotationController extends Controller
                 'status' => 'draft',
             ]),
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
-            'products' => Product::with('baseUom')->where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::with('baseUom')->where('is_active', true)->where('is_hidden', false)->orderBy('name')->get(),
         ]);
     }
 
@@ -109,7 +109,14 @@ class QuotationController extends Controller
         return view('sales.quotations.form', [
             'item' => $quotation,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
-            'products' => Product::with('baseUom')->where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::with('baseUom')
+                ->where('is_active', true)
+                ->where(function ($q) use ($quotation) {
+                    $q->where('is_hidden', false)
+                        ->orWhereIn('id', $quotation->items->pluck('product_id'));
+                })
+                ->orderBy('name')
+                ->get(),
         ]);
     }
 

@@ -18,6 +18,11 @@
             <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {{ $product->is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600' }}">
                 {{ $product->is_active ? 'Active' : 'Inactive' }}
             </span>
+            @if($product->is_hidden)
+                <span class="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800 border border-amber-300">
+                    Hidden Product
+                </span>
+            @endif
             <span class="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700">
                 {{ $product->warranty ?: 'No warranty' }}
             </span>

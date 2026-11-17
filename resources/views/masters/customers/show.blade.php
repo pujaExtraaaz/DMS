@@ -231,7 +231,7 @@
                             <div class="flex items-center justify-between p-2 rounded-lg bg-slate-50 text-xs">
                                 <div>
                                     <span class="font-semibold text-slate-800">{{ $contact->name }}</span>
-                                    @if($contact->role)<span class="text-slate-500">({{ $contact->role }})</span>@endif
+                                    @if($contact->designation?->name || $contact->role)<span class="text-slate-500">({{ $contact->designation?->name ?: $contact->role }})</span>@endif
                                     @if($contact->is_primary)<span class="ml-1 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-semibold">Primary</span>@endif
                                 </div>
                                 <div class="text-slate-600 space-x-2">

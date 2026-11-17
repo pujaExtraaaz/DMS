@@ -147,6 +147,7 @@ class Product extends Model
         'payment_period_days',
         'lifespan_days',
         'is_active',
+        'is_hidden',
     ];
 
     protected function casts(): array
@@ -184,6 +185,7 @@ class Product extends Model
             'min_stock' => 'decimal:4',
             'reorder_level' => 'decimal:4',
             'is_active' => 'boolean',
+            'is_hidden' => 'boolean',
             'warranty_months' => 'integer',
         ];
     }
@@ -301,6 +303,40 @@ class Product extends Model
         $avg = InvoiceItem::query()->where('product_id', $this->id)->avg('unit_price');
 
         return $avg !== null ? round((float) $avg, 4) : (float) ($this->selling_price ?? 0);
+    }
+
+    /**
+     * Scope query to only visible (not hidden) products.
+     */
+    public function scopeVisible($query)
+    {
+        return $query->where('is_hidden', false);
+    }
+
+    /**
+     * Scope query to only hidden products.
+     */
+    public function scopeHidden($query)
+    {
+        return $query->where('is_hidden', true);
+    }
+
+    /**
+     * Mark this product as hidden without altering its active/inactive status.
+     */
+    public function hide(): bool
+    {
+        $this->is_hidden = true;
+        return $this->save();
+    }
+
+    /**
+     * Restore this product to visible without altering its active/inactive status.
+     */
+    public function unhide(): bool
+    {
+        $this->is_hidden = false;
+        return $this->save();
     }
 
     /**

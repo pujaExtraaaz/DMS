@@ -1454,11 +1454,18 @@
 
     <!-- SECTION F: STATUS & ACTIONS BAR -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sticky bottom-4 z-20 backdrop-blur-md bg-white/95">
-        <label class="flex items-center gap-2.5 text-sm font-semibold text-slate-700 cursor-pointer select-none">
-            <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
-            <span>Active</span>
-            <span class="text-xs font-normal text-slate-500">(Item is available for sales and purchase transactions)</span>
-        </label>
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+            <label class="flex items-center gap-2.5 text-sm font-semibold text-slate-700 cursor-pointer select-none">
+                <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                <span>Active</span>
+                <span class="text-xs font-normal text-slate-500">(Item is available for sales and purchase transactions)</span>
+            </label>
+            <label class="flex items-center gap-2.5 text-sm font-semibold text-amber-900 cursor-pointer select-none">
+                <input type="checkbox" name="is_hidden" value="1" @checked(old('is_hidden', $item->is_hidden ?? false)) class="rounded border-gray-300 text-amber-600 focus:ring-amber-500 w-4 h-4">
+                <span>Hidden from Product List</span>
+                <span class="text-xs font-normal text-slate-500">(Discontinued or unavailable; excluded from regular listing)</span>
+            </label>
+        </div>
         <div class="flex items-center gap-3">
             <x-ui.button variant="secondary" :href="$returnRoute ?: route('masters.products.index')">Cancel</x-ui.button>
             <x-ui.button type="submit" variant="primary">{{ $item->exists ? 'Update Product' : 'Save Product' }}</x-ui.button>

@@ -123,6 +123,7 @@ class ReceiptNoteController extends Controller
 
         $products = Product::with(['baseUom'])
             ->where('is_active', true)
+            ->where('is_hidden', false)
             ->orderBy('name')
             ->get();
 
@@ -223,7 +224,13 @@ class ReceiptNoteController extends Controller
             ->get();
 
         $warehouses = Warehouse::where('is_active', true)->orderBy('name')->get();
-        $products = Product::where('is_active', true)->orderBy('name')->get();
+        $products = Product::where('is_active', true)
+            ->where(function ($q) use ($receiptNote) {
+                $q->where('is_hidden', false)
+                    ->orWhereIn('id', $receiptNote->items->pluck('product_id'));
+            })
+            ->orderBy('name')
+            ->get();
 
         return view('purchasing.receipt-notes.edit', [
             'receiptNote' => $receiptNote,

@@ -69,6 +69,7 @@
         <div x-show="open && !$root.sidebarCollapsed" x-cloak class="space-y-0.5">
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('stock.view', 'inventory.view')): ?>
                 <a href="<?php echo e(route('inventory.stock.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['inventory.stock.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Current Stock</span></a>
+                <a href="<?php echo e(route('inventory.stock-register.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['inventory.stock-register.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Register</span></a>
                 <a href="<?php echo e(route('inventory.transfers.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['inventory.transfers.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Transfer</span></a>
                 <a href="<?php echo e(route('inventory.adjustments.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['inventory.adjustments.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Adjustments</span></a>
                 <a href="<?php echo e(route('inventory.serials.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['inventory.serials.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Serial Numbers</span></a>

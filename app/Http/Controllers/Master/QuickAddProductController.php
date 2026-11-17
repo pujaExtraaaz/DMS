@@ -85,6 +85,7 @@ class QuickAddProductController extends Controller
                 'color_variant' => $data['color_variant'] ?? null,
                 'tracking_type' => 'none',
                 'is_active' => true,
+                'is_hidden' => false,
                 'discount_type' => 'percent',
                 'discount_value' => 0,
                 'selling_discount_type' => 'percent',

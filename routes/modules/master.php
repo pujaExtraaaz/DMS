@@ -5,6 +5,7 @@ use App\Http\Controllers\Master\BulkImportController;
 use App\Http\Controllers\Master\CustomerController;
 use App\Http\Controllers\Master\CustomerTypeController;
 use App\Http\Controllers\Master\DeliveryPersonController;
+use App\Http\Controllers\Master\DesignationController;
 use App\Http\Controllers\Master\DriverController;
 use App\Http\Controllers\Master\PriceMasterController;
 use App\Http\Controllers\Master\ProductController;
@@ -21,6 +22,12 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
     Route::delete('customer-types/{customerType}/quick-destroy', [CustomerTypeController::class, 'quickDestroy'])->name('customer-types.quick-destroy');
     Route::get('customer-types/list', [CustomerTypeController::class, 'list'])->name('customer-types.list');
     Route::resource('customer-types', CustomerTypeController::class);
+    Route::post('designations/quick-store', [DesignationController::class, 'quickStore'])->name('designations.quick-store');
+    Route::put('designations/{designation}/quick-update', [DesignationController::class, 'quickUpdate'])->name('designations.quick-update');
+    Route::delete('designations/{designation}/quick-destroy', [DesignationController::class, 'quickDestroy'])->name('designations.quick-destroy');
+    Route::patch('designations/{designation}/toggle-active', [DesignationController::class, 'toggleActive'])->name('designations.toggle-active');
+    Route::get('designations/list', [DesignationController::class, 'list'])->name('designations.list');
+    Route::resource('designations', DesignationController::class);
     Route::post('product-types/quick-store', [ProductTypeController::class, 'quickStore'])->name('product-types.quick-store');
     Route::get('product-types/list', [ProductTypeController::class, 'list'])->name('product-types.list');
     Route::resource('product-types', ProductTypeController::class);
@@ -41,6 +48,9 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
 
     Route::middleware('role_or_permission:super-admin|masters.view|masters.create|masters.edit|masters.delete|masters.manage|products.view|products.create|products.edit|customers.view|customers.create|customers.edit|price-master.view|price-master.create|price-master.edit|price-master.delete|orders.create|orders.book|orders.manage|purchases.create|purchase-orders.create|crm.manage|crm.edit|invoices.create|invoices.edit|invoices.view|sales.create|sales.edit|sales.view|organization.view|organization.create|organization.edit|organization.manage')->group(function () {
         Route::patch('products/{product}/assign-type', [ProductController::class, 'assignType'])->name('products.assign-type');
+        Route::patch('products/{product}/hide', [ProductController::class, 'hide'])->name('products.hide');
+        Route::patch('products/{product}/unhide', [ProductController::class, 'unhide'])->name('products.unhide');
+        Route::get('products/{product}/in-transit-details', [ProductController::class, 'inTransitDetails'])->name('products.in-transit-details');
         Route::resource('products', ProductController::class);
         Route::get('price-masters/copy-options', [PriceMasterController::class, 'copyOptions'])->name('price-masters.copy-options');
         Route::get('price-masters/copy-source', [PriceMasterController::class, 'copySource'])->name('price-masters.copy-source');
