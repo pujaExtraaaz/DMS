@@ -407,7 +407,11 @@
                                         class="block w-full rounded-md border-gray-300 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-h-[38px] px-3 py-2 bg-white">
                                     <option value="">Select product...</option>
                                     <template x-for="p in products" :key="p.id">
-                                        <option :value="p.id" x-text="p.name" :selected="String(p.id) === String(row.product_id)"></option>
+                                        <option :value="p.id"
+                                                :data-code="p.sku || ''"
+                                                :data-subtext="p.sku ? ('Part No: ' + p.sku) : ''"
+                                                x-text="p.sku ? (p.name + ' (' + p.sku + ')') : p.name"
+                                                :selected="String(p.id) === String(row.product_id)"></option>
                                     </template>
                                 </select>
 
@@ -657,6 +661,13 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
         taxTotal: 0,
         grandTotal: 0,
         items: [],
+
+        syncSupplierLabel() {
+            const sel = document.querySelector('select[name="supplier_id"]');
+            if (sel && sel.selectedOptions && sel.selectedOptions[0]) {
+                this.supplierQuery = sel.selectedOptions[0].textContent.trim();
+            }
+        },
 
         async init() {
             this.recalcDueDate();

@@ -69,7 +69,7 @@ class PurchaseController extends Controller
     public function create(): View
     {
         return view('inventory.purchases.create', [
-            'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::where('is_active', true)->where('is_hidden', false)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
             'warehouses' => Warehouse::where('is_active', true)->orderBy('name')->get(),
             'suppliers' => Customer::query()

@@ -12,6 +12,7 @@ class PartyContact extends Model
 
     protected $fillable = [
         'customer_id',
+        'designation_id',
         'level',
         'name',
         'role',
@@ -34,5 +35,10 @@ class PartyContact extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function designation(): BelongsTo
+    {
+        return $this->belongsTo(Designation::class, 'designation_id');
     }
 }

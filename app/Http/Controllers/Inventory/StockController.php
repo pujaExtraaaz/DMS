@@ -4,89 +4,61 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
-use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Inventory\Models\StockMovement;
+use App\Domains\Inventory\Services\InTransitStockService;
 use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Warehouse;
 use App\Http\Controllers\Controller;
 use App\Support\Traits\SortableAndSearchable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class StockController extends Controller
 {
     use SortableAndSearchable;
 
+    public function __construct(
+        protected InTransitStockService $inTransitStockService
+    ) {}
+
     public function index(Request $request): View
     {
-        $query = StockLevel::query()
-            ->with(['product.category', 'product.brand', 'warehouse', 'uom'])
-            ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
-            ->when($request->filled('product_id'), fn ($q) => $q->where('product_id', $request->product_id))
-            ->when($request->filled('category_id'), function ($q) use ($request) {
-                $q->whereHas('product', fn ($pq) => $pq->where('category_id', $request->category_id));
-            })
-            ->when($request->filled('brand_id'), function ($q) use ($request) {
-                $q->whereHas('product', fn ($pq) => $pq->where('brand_id', $request->brand_id));
-            })
-            ->when($request->filled('color_variant'), function ($q) use ($request) {
-                $q->whereHas('product', fn ($pq) => $pq->where('color_variant', 'like', '%'.$request->color_variant.'%'));
-            })
-            ->when($request->boolean('low_stock'), function ($q) {
-                $q->where(function ($sub) {
-                    $sub->where('quantity', '<', 10)
-                        ->orWhereHas('product', function ($pq) {
-                            $pq->whereNotNull('reorder_level')
-                               ->where('reorder_level', '>', 0)
-                               ->whereColumn('stock_levels.quantity', '<=', 'products.reorder_level');
-                        });
-                });
-            });
-
-        $this->applySearch(
-            $query,
-            $request->input('search'),
-            [],
-            [
-                'product' => ['name', 'sku', 'serial_no', 'color_variant'],
-                'warehouse' => ['name'],
-            ]
-        );
+        $query = $this->inTransitStockService->buildStockQuery($request);
 
         $allowedSorts = [
             'product' => function ($q, $dir) {
                 $q->join('products', 'stock_levels.product_id', '=', 'products.id')
-                  ->orderBy('products.name', $dir)
-                  ->select('stock_levels.*');
+                  ->orderBy('products.name', $dir);
             },
             'sku' => function ($q, $dir) {
                 $q->join('products', 'stock_levels.product_id', '=', 'products.id')
-                  ->orderBy('products.sku', $dir)
-                  ->select('stock_levels.*');
+                  ->orderBy('products.sku', $dir);
             },
             'serial_no' => function ($q, $dir) {
                 $q->join('products', 'stock_levels.product_id', '=', 'products.id')
-                  ->orderBy('products.serial_no', $dir)
-                  ->select('stock_levels.*');
+                  ->orderBy('products.serial_no', $dir);
             },
             'brand' => function ($q, $dir) {
                 $q->join('products', 'stock_levels.product_id', '=', 'products.id')
                   ->leftJoin('brands', 'products.brand_id', '=', 'brands.id')
-                  ->orderBy('brands.name', $dir)
-                  ->select('stock_levels.*');
+                  ->orderBy('brands.name', $dir);
             },
             'category' => function ($q, $dir) {
                 $q->join('products', 'stock_levels.product_id', '=', 'products.id')
                   ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
-                  ->orderBy('categories.name', $dir)
-                  ->select('stock_levels.*');
+                  ->orderBy('categories.name', $dir);
             },
             'warehouse' => function ($q, $dir) {
                 $q->join('warehouses', 'stock_levels.warehouse_id', '=', 'warehouses.id')
-                  ->orderBy('warehouses.name', $dir)
-                  ->select('stock_levels.*');
+                  ->orderBy('warehouses.name', $dir);
             },
-            'quantity' => 'quantity',
+            'quantity' => 'stock_levels.quantity',
+            'available_stock' => 'stock_levels.quantity',
+            'in_transit' => 'transit_agg.in_transit_qty',
+            'total_expected' => DB::raw('(stock_levels.quantity + COALESCE(transit_agg.in_transit_qty, 0))'),
+            'expected_delivery_date' => 'transit_agg.next_delivery_date',
         ];
 
         $sortData = $this->applySorting(
@@ -130,9 +102,37 @@ class StockController extends Controller
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
             'products' => $products,
             'colors' => $colors,
-            'filters' => $request->only(['warehouse_id', 'product_id', 'category_id', 'brand_id', 'color_variant', 'search', 'low_stock']),
+            'filters' => $request->only([
+                'warehouse_id',
+                'product_id',
+                'category_id',
+                'brand_id',
+                'color_variant',
+                'search',
+                'low_stock',
+                'stock_status',
+                'expected_delivery_date',
+            ]),
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
+        ]);
+    }
+
+    /**
+     * AJAX endpoint to fetch incoming purchase invoices for a product and warehouse.
+     */
+    public function inTransitDetails(Request $request, int $productId, ?int $warehouseId = null): JsonResponse
+    {
+        $details = $this->inTransitStockService->getInTransitDetails($productId, $warehouseId);
+        $product = Product::select('id', 'name', 'sku', 'serial_no')->find($productId);
+        $warehouse = $warehouseId ? Warehouse::select('id', 'name')->find($warehouseId) : null;
+
+        return response()->json([
+            'success' => true,
+            'product' => $product,
+            'warehouse' => $warehouse,
+            'invoices' => $details,
+            'total_in_transit' => (float) $details->sum('in_transit_qty'),
         ]);
     }
 }

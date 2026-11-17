@@ -77,15 +77,16 @@ class EmployeeController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
         $companyId = auth()->user()?->company_id ?? Company::defaultCompanyId();
+        $isSalesperson = $request->boolean('is_salesperson') || $request->query('return_to') === 'invoices.create';
 
         return view('hrms.employees.form', [
             'item' => new Employee([
                 'company_id' => $companyId,
                 'status' => 'active',
-                'is_salesperson' => false,
+                'is_salesperson' => $isSalesperson,
                 'employee_code' => CodeGenerator::forEmployee($companyId),
             ]),
             'companies' => Company::orderBy('name')->get(),
@@ -94,6 +95,8 @@ class EmployeeController extends Controller
             'designations' => Designation::where('is_active', true)->orderBy('name')->get(),
             'managers' => Employee::where('status', 'active')->orderBy('name')->get(),
             'users' => User::orderBy('name')->get(),
+            'returnTo' => $request->query('return_to', old('return_to')),
+            'returnUrl' => $request->query('return_url', old('return_url')),
         ]);
     }
 
@@ -102,12 +105,117 @@ class EmployeeController extends Controller
         $data = $this->validated($request);
         if (empty($data['employee_code'])) {
             $data['employee_code'] = CodeGenerator::forEmployee($data['company_id'] ?? null);
+            while (Employee::where('employee_code', $data['employee_code'])->exists()) {
+                $data['employee_code'] = CodeGenerator::forEmployee($data['company_id'] ?? null);
+            }
+        }
+
+        if (!empty($data['is_salesperson']) && empty($data['user_id'])) {
+            $user = $this->findOrCreateSalespersonUser($data);
+            $data['user_id'] = $user->id;
         }
 
         $employee = Employee::create($data);
         $this->auditLogService->record($employee, 'created');
 
+        $returnTo = $request->input('return_to');
+        if ($returnTo === 'invoices.create' || $returnTo === 'sales.invoices.create') {
+            $salespersonUserId = $employee->user_id;
+            return redirect()->route('invoices.create', [
+                'salesperson_id' => $salespersonUserId,
+                'new_salesperson_id' => $salespersonUserId,
+                'returned_from' => 'salesperson_create',
+            ])
+                ->with('status', "Salesperson '{$employee->name}' created successfully. Continue with the tax invoice.")
+                ->with('success', "Salesperson '{$employee->name}' created successfully.");
+        }
+
+        $returnUrl = $this->safeInternalReturnUrl($request->input('return_url'));
+        if ($returnUrl) {
+            $separator = str_contains($returnUrl, '?') ? '&' : '?';
+            $salespersonUserId = $employee->user_id;
+            $queryParams = [];
+            if (! str_contains($returnUrl, 'salesperson_id=')) {
+                $queryParams[] = 'salesperson_id='.$salespersonUserId;
+            }
+            if (! str_contains($returnUrl, 'new_salesperson_id=')) {
+                $queryParams[] = 'new_salesperson_id='.$salespersonUserId;
+            }
+            if (! str_contains($returnUrl, 'returned_from=')) {
+                $queryParams[] = 'returned_from=salesperson_create';
+            }
+            $target = ! empty($queryParams) ? $returnUrl.$separator.implode('&', $queryParams) : $returnUrl;
+            return redirect()->to($target)
+                ->with('status', "Salesperson '{$employee->name}' created successfully. Continue with the tax invoice.")
+                ->with('success', "Salesperson '{$employee->name}' created successfully.");
+        }
+
         return $this->flashSuccess('Employee created.', 'hrms.employees.index');
+    }
+
+    public function findOrCreateSalespersonUser(array $data): User
+    {
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'salesperson', 'guard_name' => 'web']);
+
+        $email = !empty($data['email']) ? trim($data['email']) : null;
+        $user = null;
+        if ($email) {
+            $user = User::where('email', $email)->first();
+        }
+
+        if (! $user) {
+            $companyId = $data['company_id'] ?? auth()->user()?->company_id ?? Company::defaultCompanyId() ?? 1;
+            $branchId = $data['branch_id'] ?? auth()->user()?->branch_id;
+            $generatedEmail = $email ?: \Illuminate\Support\Str::slug($data['name']).'.'.time().'@salesperson.local';
+
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $generatedEmail,
+                'password' => bcrypt(\Illuminate\Support\Str::random(16)),
+                'company_id' => $companyId,
+                'branch_id' => $branchId,
+                'phone' => $data['phone'] ?? null,
+            ]);
+        }
+
+        if (! $user->hasRole('salesperson')) {
+            $user->assignRole('salesperson');
+        }
+
+        return $user;
+    }
+
+    protected function safeInternalReturnUrl(mixed $url): ?string
+    {
+        if (! is_string($url)) {
+            return null;
+        }
+
+        $url = trim($url);
+        if ($url === '' || str_starts_with($url, '//')) {
+            return null;
+        }
+
+        if (str_starts_with($url, '/')) {
+            return $url;
+        }
+
+        $appUrl = config('app.url');
+        if ($appUrl && str_starts_with($url, $appUrl)) {
+            return $url;
+        }
+
+        $parsed = parse_url($url);
+        if (! isset($parsed['host'])) {
+            return null;
+        }
+
+        $currentHost = request()->getHost();
+        if (strcasecmp($parsed['host'], $currentHost) === 0) {
+            return $url;
+        }
+
+        return null;
     }
 
     public function show(Employee $employee): View

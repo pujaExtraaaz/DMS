@@ -10,6 +10,7 @@ Route::prefix('invoices')->name('invoices.')->middleware('role_or_permission:sup
     Route::get('/create', [InvoiceController::class, 'create'])->name('create');
     Route::post('/', [InvoiceController::class, 'store'])->name('store');
     Route::post('/draft', [InvoiceController::class, 'saveDraft'])->name('draft.save');
+    Route::post('/salespersons/quick-add', [InvoiceController::class, 'quickAddSalesperson'])->name('salespersons.quick-add');
     Route::get('/customers/{customer}/sales-orders', [InvoiceController::class, 'customerSalesOrders'])->name('customer-sales-orders');
     Route::get('/sales-orders/{order}/data', [InvoiceController::class, 'salesOrderData'])->name('sales-order-data');
     Route::get('/{invoice}/pdf', [InvoiceController::class, 'pdf'])->name('pdf');

@@ -566,7 +566,7 @@ class PurchaseOrderController extends Controller
                 ->get(),
             'warehouses' => Warehouse::where('is_active', true)->with(['branch', 'company'])->orderBy('name')->get(),
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
-            'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::where('is_active', true)->where('is_hidden', false)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
             'poNumberSeries' => $poSeries,
             'nextPoNumber' => $nextPoNumber,
