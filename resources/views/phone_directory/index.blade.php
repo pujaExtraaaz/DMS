@@ -1,8 +1,12 @@
 @extends('layouts.dms')
 @section('title', 'Phone Directory')
 
+@push('styles')
+    <link rel="stylesheet" href="{{ asset('css/phone-directory.css') }}?v=20261116g">
+@endpush
+
 @section('content')
-<div x-data="phoneDirectoryManager()" class="space-y-4">
+<div x-data="phoneDirectoryManager()" class="pd-page space-y-3">
 
     {{-- Live Flash Notification Banner --}}
     @if(session('success'))
@@ -28,143 +32,91 @@
         </div>
     @endif
 
-    {{-- Header Section --}}
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-            <div class="flex items-center gap-2.5">
-                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white shadow-md shadow-violet-500/20">
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-                    </svg>
-                </div>
-                <div>
-                    <h1 class="text-xl font-bold text-slate-900 flex items-center gap-2">
-                        Phone Directory
-                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200">
-                            {{ number_format($summary['total']) }} Contacts
-                        </span>
-                    </h1>
-                    <p class="text-xs text-slate-500">Centralized corporate directory for employees, clients, suppliers, and business associates.</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-2">
-            {{-- Quick Important Filter Pill --}}
-            <a
-                href="{{ request()->fullUrlWithQuery(['important' => request('important') === '1' ? null : '1', 'page' => 1]) }}"
-                class="inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition shadow-xs {{ request('important') === '1' ? 'border-amber-400 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50' }}"
-                title="{{ request('important') === '1' ? 'Show all contacts' : 'Show important contacts only' }}"
-            >
-                <svg class="h-4 w-4 {{ request('important') === '1' ? 'text-amber-500 fill-amber-500' : 'text-slate-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-                </svg>
-                <span>Important</span>
-            </a>
-
-            {{-- Column Visibility Dropdown --}}
-            <div class="relative" x-data="{ colOpen: false }" @click.outside="colOpen = false">
-                <button
-                    type="button"
-                    @click="colOpen = !colOpen"
-                    class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
-                    title="Toggle Visible Columns"
+    <x-ui.page-header
+        title="Phone Directory"
+        description="{{ number_format($summary['total']) }} contacts · Centralized corporate directory for employees, clients, suppliers, and business associates."
+        class="mb-3 sm:mb-4"
+    >
+        <x-slot name="actions">
+            <div class="pd-toolbar flex flex-wrap items-center gap-2 w-full">
+                <a
+                    href="{{ request()->fullUrlWithQuery(['important' => request('important') === '1' ? null : '1', 'page' => 1]) }}"
+                    class="pd-toolbar-btn {{ request('important') === '1' ? 'is-active-important' : '' }}"
+                    title="{{ request('important') === '1' ? 'Show all contacts' : 'Show important contacts only' }}"
                 >
-                    <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                    <svg class="{{ request('important') === '1' ? 'text-amber-500 fill-amber-500' : 'text-slate-400' }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
                     </svg>
-                    <span>Columns</span>
-                </button>
+                    <span>Important</span>
+                </a>
 
-                <div
-                    x-show="colOpen"
-                    x-cloak
-                    x-transition
-                    class="absolute right-0 z-30 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-3 shadow-xl space-y-2 text-xs"
-                >
-                    <div class="font-semibold text-slate-900 border-b border-slate-100 pb-1.5 flex justify-between items-center">
-                        <span>Visible Columns</span>
-                        <button type="button" @click="resetColumns()" class="text-[10px] text-violet-600 hover:underline">Reset</button>
+                <div class="relative" x-data="{ colOpen: false }" @click.outside="colOpen = false">
+                    <button type="button" @click="colOpen = !colOpen" class="pd-toolbar-btn" title="Toggle Visible Columns">
+                        <svg class="text-slate-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                        </svg>
+                        <span>Columns</span>
+                    </button>
+                    <div x-show="colOpen" x-cloak x-transition class="absolute left-0 z-30 mt-1 w-52 rounded-xl border border-slate-200 bg-white p-3 shadow-xl space-y-2 text-xs">
+                        <div class="font-semibold text-slate-900 border-b border-slate-100 pb-1.5 flex justify-between items-center">
+                            <span>Visible Columns</span>
+                            <button type="button" @click="resetColumns()" class="text-[10px] text-violet-600 hover:underline">Reset</button>
+                        </div>
+                        <template x-for="col in availableColumns" :key="col.id">
+                            <label class="flex items-center gap-2 text-slate-700 hover:text-slate-900 cursor-pointer">
+                                <input type="checkbox" x-model="visibleColumns[col.id]" class="rounded border-slate-300 text-violet-600 focus:ring-violet-500">
+                                <span x-text="col.label"></span>
+                            </label>
+                        </template>
                     </div>
-                    <template x-for="col in availableColumns" :key="col.id">
-                        <label class="flex items-center gap-2 text-slate-700 hover:text-slate-900 cursor-pointer">
-                            <input type="checkbox" x-model="visibleColumns[col.id]" class="rounded border-slate-300 text-violet-600 focus:ring-violet-500">
-                            <span x-text="col.label"></span>
-                        </label>
-                    </template>
                 </div>
-            </div>
 
-            {{-- Export Menu --}}
-            <div class="relative" x-data="{ exportOpen: false }" @click.outside="exportOpen = false">
-                <button
-                    type="button"
-                    @click="exportOpen = !exportOpen"
-                    class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
-                >
-                    <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                <div class="relative" x-data="{ exportOpen: false }" @click.outside="exportOpen = false">
+                    <button type="button" @click="exportOpen = !exportOpen" class="pd-toolbar-btn">
+                        <svg class="text-slate-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        <span>Export</span>
+                        <svg class="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                    </button>
+                    <div x-show="exportOpen" x-cloak x-transition class="absolute left-0 z-30 mt-1 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl text-xs space-y-0.5">
+                        <a href="{{ route('phone-directory.export.excel', request()->query()) }}" class="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition">
+                            <svg class="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                            <span>Export Excel (.xlsx)</span>
+                        </a>
+                        <a href="{{ route('phone-directory.export.csv', request()->query()) }}" class="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition">
+                            <svg class="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                            <span>Export CSV</span>
+                        </a>
+                        <a href="{{ route('phone-directory.export.pdf', request()->query()) }}" target="_blank" class="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition">
+                            <svg class="h-4 w-4 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                            <span>Export PDF</span>
+                        </a>
+                    </div>
+                </div>
+
+                <a href="{{ route('phone-directory.import.index') }}" class="pd-toolbar-btn" title="Bulk Import Contacts via CSV or Excel">
+                    <svg class="text-slate-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                     </svg>
-                    <span>Export</span>
-                    <svg class="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                </button>
+                    <span>Import</span>
+                </a>
 
-                <div
-                    x-show="exportOpen"
-                    x-cloak
-                    x-transition
-                    class="absolute right-0 z-30 mt-1 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl text-xs space-y-0.5"
-                >
-                    <a href="{{ route('phone-directory.export.excel', request()->query()) }}" class="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition">
-                        <svg class="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                        <span>Export Excel (.xlsx)</span>
-                    </a>
-                    <a href="{{ route('phone-directory.export.csv', request()->query()) }}" class="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition">
-                        <svg class="h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                        <span>Export CSV</span>
-                    </a>
-                    <a href="{{ route('phone-directory.export.pdf', request()->query()) }}" target="_blank" class="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition">
-                        <svg class="h-4 w-4 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                        <span>Export PDF</span>
-                    </a>
-                </div>
+                <a href="{{ route('phone-directory.departments.index') }}" class="pd-toolbar-btn" title="Manage Departments and Categories">
+                    <svg class="text-slate-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span>Masters</span>
+                </a>
+
+                <a href="{{ route('phone-directory.contacts.create') }}" class="pd-add-contact pd-add-contact--compact" title="Add Directory Contact">
+                    <svg fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                    <span>Add Directory</span>
+                </a>
             </div>
-
-            {{-- Import Button --}}
-            <a
-                href="{{ route('phone-directory.import.index') }}"
-                class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
-                title="Bulk Import Contacts via CSV or Excel"
-            >
-                <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                </svg>
-                <span>Import</span>
-            </a>
-
-            {{-- Master Management --}}
-            <a
-                href="{{ route('phone-directory.departments.index') }}"
-                class="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
-                title="Manage Departments and Categories"
-            >
-                <svg class="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span>Masters</span>
-            </a>
-
-            {{-- Add Contact Button (Primary Refrens Violet) --}}
-            <a
-                href="{{ route('phone-directory.contacts.create') }}"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-violet-600/30 hover:bg-violet-700 transition"
-            >
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                <span>Add Contact</span>
-            </a>
-        </div>
-    </div>
+        </x-slot>
+    </x-ui.page-header>
 
     {{-- Summary Cards (Section 11) --}}
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -229,7 +181,7 @@
         </a>
 
         {{-- Archived --}}
-        <a href="{{ route('phone-directory.index', ['archive_view' => 'archived']) }}" class="group block rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs hover:border-slate-400 hover:shadow-md transition">
+        <a href="{{ route('phone-directory.index', ['status' => 'archived']) }}" class="group block rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-xs hover:border-slate-400 hover:shadow-md transition">
             <div class="flex items-center justify-between">
                 <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Archived</span>
                 <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600 group-hover:bg-slate-700 group-hover:text-white transition">
@@ -296,7 +248,7 @@
                         <span>Apply</span>
                     </button>
 
-                    @if(request()->anyFilled(['search', 'contact_type', 'department_id', 'designation', 'company_name', 'state', 'city', 'status', 'category_id', 'important']) || request('archive_view') === 'archived')
+                    @if(request()->anyFilled(['search', 'contact_type', 'department_id', 'designation', 'company_name', 'state', 'city', 'status', 'category_id', 'important']))
                         <a
                             href="{{ route('phone-directory.index') }}"
                             class="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
@@ -361,23 +313,15 @@
                     </datalist>
                 </div>
 
-                {{-- Status --}}
+                {{-- Status (includes archive) --}}
                 <div>
                     <label class="block text-[11px] font-semibold text-slate-600 mb-1">Status</label>
                     <select name="status" class="w-full rounded-lg border-slate-300 py-1.5 pl-2.5 pr-7 text-xs text-slate-700 focus:border-violet-500 focus:ring-violet-500 shadow-xs">
-                        <option value="">All Statuses</option>
+                        <option value="" @selected(request('status', '') === '')>Current (Active + Inactive)</option>
                         <option value="active" @selected(request('status') === 'active')>Active</option>
                         <option value="inactive" @selected(request('status') === 'inactive')>Inactive</option>
-                    </select>
-                </div>
-
-                {{-- Archive View --}}
-                <div>
-                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Archive View</label>
-                    <select name="archive_view" class="w-full rounded-lg border-slate-300 py-1.5 pl-2.5 pr-7 text-xs text-slate-700 focus:border-violet-500 focus:ring-violet-500 shadow-xs">
-                        <option value="active" @selected(request('archive_view', 'active') === 'active')>Active Contacts</option>
-                        <option value="archived" @selected(request('archive_view') === 'archived')>Archived Contacts</option>
-                        <option value="all" @selected(request('archive_view') === 'all')>All (Active + Archived)</option>
+                        <option value="archived" @selected(request('status') === 'archived')>Archived</option>
+                        <option value="all" @selected(request('status') === 'all')>All Records</option>
                     </select>
                 </div>
             </div>
@@ -524,18 +468,20 @@
 
                             {{-- Star / Important Toggle --}}
                             <td class="w-8 px-1 py-2.5 text-center">
+                                @php $isImportant = (bool) $contact->is_important; @endphp
                                 <button
                                     type="button"
                                     @click="toggleImportant({{ $contact->id }})"
-                                    class="text-slate-300 hover:text-amber-500 transition-colors focus:outline-none"
-                                    title="{{ $contact->is_important ? 'Remove from Important' : 'Mark as Important' }}"
+                                    class="transition-colors focus:outline-none {{ $isImportant ? 'text-amber-400 hover:text-amber-500' : 'text-slate-300 hover:text-amber-400' }}"
+                                    title="{{ $isImportant ? 'Remove from Important' : 'Mark as Important' }}"
                                 >
                                     <svg
-                                        class="h-4 w-4 {{ $contact->is_important ? 'text-amber-400 fill-amber-400' : 'text-slate-300' }}"
-                                        fill="none"
+                                        class="h-4 w-4"
                                         viewBox="0 0 24 24"
+                                        fill="{{ $isImportant ? 'currentColor' : 'none' }}"
                                         stroke="currentColor"
-                                        stroke-width="2"
+                                        stroke-width="{{ $isImportant ? '1.5' : '2' }}"
+                                        @if($isImportant) style="color:#f59e0b" @endif
                                     >
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
                                     </svg>
@@ -777,8 +723,8 @@
                                 <h3 class="mt-3 text-sm font-semibold text-slate-900">No contacts found</h3>
                                 <p class="mt-1 text-xs text-slate-500">Try adjusting your search terms or filter criteria.</p>
                                 <div class="mt-4">
-                                    <a href="{{ route('phone-directory.contacts.create') }}" class="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-violet-700">
-                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                                    <a href="{{ route('phone-directory.contacts.create') }}" class="pd-add-contact">
+                                        <svg fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                                         <span>Add First Contact</span>
                                     </a>
                                 </div>
@@ -957,7 +903,7 @@ function phoneDirectoryManager() {
     return {
         selectedIds: [],
         pageIds: @json($contacts->pluck('id')),
-        filtersExpanded: {{ (request()->anyFilled(['contact_type', 'department_id', 'designation', 'company_name', 'state', 'city', 'status']) || request('archive_view') === 'archived') ? 'true' : 'false' }},
+        filtersExpanded: {{ request()->anyFilled(['contact_type', 'department_id', 'designation', 'company_name', 'state', 'city', 'status', 'category_id']) ? 'true' : 'false' }},
         quickViewOpen: false,
         quickContact: {},
 

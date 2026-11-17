@@ -18,6 +18,8 @@ class DatabaseSeeder extends Seeder
             // AvitDigitalCompanySeeder::class,
             // AvitBooksCompanySeeder::class,
             UnlinkExternalUsersSeeder::class,
+            PhoneDirectoryPermissionSeeder::class,
+            PhoneDirectorySeeder::class,
             // AvitDigitalDemoSeeder::class,
             // AvitBooksDemoSeeder::class,
         ]);

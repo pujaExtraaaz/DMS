@@ -34,7 +34,8 @@
             "Database\\Seeders\\": "database/seeders/"
         },
         "files": [
-            "app/Tally/helpers.php"
+            "app/Tally/helpers.php",
+            "app/Support/helpers.php"
         ]
     },
     "autoload-dev": {

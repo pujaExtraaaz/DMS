@@ -41,7 +41,6 @@ class PhoneDirectoryExportController extends Controller
             'status' => $request->query('status'),
             'category_id' => $request->query('category_id'),
             'important' => $request->query('important'),
-            'archive_view' => $request->query('archive_view', 'active'),
         ];
 
         return $query->filter($filters)->orderBy('contact_name', 'asc');
@@ -268,7 +267,7 @@ class PhoneDirectoryExportController extends Controller
             'title' => 'Phone Directory Contact List',
             'generatedAt' => now()->format('d M Y, h:i A'),
             'filtersApplied' => array_filter($request->only([
-                'search', 'contact_type', 'department_id', 'state', 'city', 'important', 'archive_view'
+                'search', 'contact_type', 'department_id', 'state', 'city', 'important', 'status'
             ])),
         ])->setPaper('a4', 'landscape');
 

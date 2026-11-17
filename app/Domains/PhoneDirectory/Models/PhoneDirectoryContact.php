@@ -269,11 +269,6 @@ class PhoneDirectoryContact extends Model
             $query->where('city', 'like', "%{$filters['city']}%");
         }
 
-        // Status
-        if (! empty($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
         // Category
         if (! empty($filters['category_id'])) {
             $query->where('category_id', $filters['category_id']);
@@ -287,12 +282,14 @@ class PhoneDirectoryContact extends Model
             }
         }
 
-        // Archive view: 'archived', 'all', default is 'active' (non-archived)
-        $archiveFilter = $filters['archive_view'] ?? 'active';
-        if ($archiveFilter === 'archived') {
+        // Status also covers archive: active | inactive | archived | all | (empty = current non-archived)
+        $status = (string) ($filters['status'] ?? '');
+        if ($status === 'archived') {
             $query->whereNotNull('archived_at');
-        } elseif ($archiveFilter === 'all') {
-            // No archived filter
+        } elseif ($status === 'all') {
+            // No archive/status restriction.
+        } elseif ($status === 'active' || $status === 'inactive') {
+            $query->whereNull('archived_at')->where('status', $status);
         } else {
             $query->whereNull('archived_at');
         }

@@ -24,7 +24,28 @@
         rel="stylesheet"
     >
 
-    <?php echo app('Illuminate\Foundation\Vite')(['resources/css/app.css', 'resources/js/app.js']); ?>
+    <?php if (isset($component)) { $__componentOriginalbc748dc00b05cca704641fe6d2156d6b = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginalbc748dc00b05cca704641fe6d2156d6b = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.vite-assets','data' => []] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('vite-assets'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes([]); ?>
+<?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
+
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginalbc748dc00b05cca704641fe6d2156d6b)): ?>
+<?php $attributes = $__attributesOriginalbc748dc00b05cca704641fe6d2156d6b; ?>
+<?php unset($__attributesOriginalbc748dc00b05cca704641fe6d2156d6b); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginalbc748dc00b05cca704641fe6d2156d6b)): ?>
+<?php $component = $__componentOriginalbc748dc00b05cca704641fe6d2156d6b; ?>
+<?php unset($__componentOriginalbc748dc00b05cca704641fe6d2156d6b); ?>
+<?php endif; ?>
 
     <link rel="stylesheet" href="<?php echo e(asset('css/pwa-mobile.css')); ?>">
     <link rel="stylesheet" href="<?php echo e(asset('css/avit-login.css')); ?>">

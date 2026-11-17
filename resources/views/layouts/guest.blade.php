@@ -24,7 +24,7 @@
         rel="stylesheet"
     >
 
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <x-vite-assets />
 
     <link rel="stylesheet" href="{{ asset('css/pwa-mobile.css') }}">
     <link rel="stylesheet" href="{{ asset('css/avit-login.css') }}">

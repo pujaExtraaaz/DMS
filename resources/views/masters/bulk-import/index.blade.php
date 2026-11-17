@@ -262,7 +262,7 @@
     @endforeach
 </div>
 
-<div id="import-progress" hidden class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4">
+<div id="import-progress" class="fixed inset-0 z-[80] hidden items-center justify-center bg-slate-900/50 p-4" aria-hidden="true">
     <div class="w-full max-w-sm rounded-2xl bg-white px-6 py-6 text-center shadow-xl">
         <div id="import-ring" class="mx-auto grid h-28 w-28 place-items-center rounded-full" style="background: conic-gradient(#4f46e5 0%, #e2e8f0 0%);">
             <div class="grid h-20 w-20 place-items-center rounded-full bg-white">
@@ -291,6 +291,18 @@
     const cancelBtn = document.getElementById('import-cancel');
     let active = null;
 
+    const showOverlay = () => {
+        overlay.classList.remove('hidden');
+        overlay.classList.add('flex');
+        overlay.setAttribute('aria-hidden', 'false');
+    };
+
+    const hideOverlay = () => {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('flex');
+        overlay.setAttribute('aria-hidden', 'true');
+    };
+
     const paint = (percent, processed, total, label) => {
         if (active && active.cancelled) {
             return;
@@ -306,7 +318,7 @@
     const finishCancelled = () => {
         statusEl.textContent = 'Import cancelled';
         countEl.textContent = 'Nothing was saved';
-        setTimeout(() => { overlay.hidden = true; }, 900);
+        setTimeout(() => { hideOverlay(); }, 900);
     };
 
     cancelBtn.addEventListener('click', () => {
@@ -349,7 +361,7 @@
             const run = active;
             const body = new FormData(form);
             body.set('progress_id', progressId);
-            overlay.hidden = false;
+            showOverlay();
             cancelBtn.disabled = false;
             paint(0, 0, 0, 'Importing products…');
 
@@ -386,7 +398,7 @@
                 }
                 if (!res.ok) {
                     paint(0, 0, 0, data.message || 'Import failed');
-                    setTimeout(() => { overlay.hidden = true; }, 1600);
+                    setTimeout(() => { hideOverlay(); }, 1600);
                     return;
                 }
                 run.finished = true;
@@ -402,7 +414,7 @@
                     return;
                 }
                 paint(0, 0, 0, 'Import failed');
-                setTimeout(() => { overlay.hidden = true; }, 1600);
+                setTimeout(() => { hideOverlay(); }, 1600);
             }
         });
     });

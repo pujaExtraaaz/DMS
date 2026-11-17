@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Pay {{ $paymentLink->invoice->invoice_no }}</title>
-    @vite(['resources/css/app.css'])
+    <x-vite-assets :css-only="true" />
 </head>
 <body class="bg-gray-50 font-sans antialiased">
 <div class="min-h-screen flex items-center justify-center py-12 px-4">

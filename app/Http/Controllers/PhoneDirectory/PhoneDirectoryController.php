@@ -8,7 +8,9 @@ use App\Domains\PhoneDirectory\Models\PhoneDirectoryDepartment;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PhoneDirectory\StoreContactRequest;
 use App\Http\Requests\PhoneDirectory\UpdateContactRequest;
+use App\Support\IndianCities;
 use App\Support\IndianStates;
+use App\Support\WorldCountries;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -44,7 +46,6 @@ class PhoneDirectoryController extends Controller
             'status' => $request->query('status'),
             'category_id' => $request->query('category_id'),
             'important' => $request->query('important'),
-            'archive_view' => $request->query('archive_view', 'active'),
         ];
 
         // Query
@@ -141,7 +142,9 @@ class PhoneDirectoryController extends Controller
         $departments = PhoneDirectoryDepartment::where('is_active', true)->orderBy('name')->get();
         $categories = PhoneDirectoryCategory::where('is_active', true)->orderBy('name')->get();
         $contactTypes = PhoneDirectoryContact::CONTACT_TYPES;
-        $states = IndianStates::all();
+        $states = IndianStates::namesAlphabetical();
+        $stateCities = IndianCities::all();
+        $countries = WorldCountries::all();
 
         return view('phone_directory.form', [
             'contact' => $contact,
@@ -150,6 +153,8 @@ class PhoneDirectoryController extends Controller
             'categories' => $categories,
             'contactTypes' => $contactTypes,
             'states' => $states,
+            'stateCities' => $stateCities,
+            'countries' => $countries,
         ]);
     }
 
@@ -206,7 +211,9 @@ class PhoneDirectoryController extends Controller
         $departments = PhoneDirectoryDepartment::where('is_active', true)->orderBy('name')->get();
         $categories = PhoneDirectoryCategory::where('is_active', true)->orderBy('name')->get();
         $contactTypes = PhoneDirectoryContact::CONTACT_TYPES;
-        $states = IndianStates::all();
+        $states = IndianStates::namesAlphabetical();
+        $stateCities = IndianCities::all();
+        $countries = WorldCountries::all();
 
         return view('phone_directory.form', [
             'contact' => $contact,
@@ -215,6 +222,8 @@ class PhoneDirectoryController extends Controller
             'categories' => $categories,
             'contactTypes' => $contactTypes,
             'states' => $states,
+            'stateCities' => $stateCities,
+            'countries' => $countries,
         ]);
     }
 

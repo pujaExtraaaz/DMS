@@ -593,5 +593,10 @@ function dashboardAnalytics(initial) {
 @endsection
 
 @push('scripts')
-    @vite('resources/js/dashboard.js')
+    @if (dms_vite_ready(['resources/js/dashboard.js']))
+        @vite('resources/js/dashboard.js')
+    @else
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+        <script src="{{ asset('js/dashboard-fallback.js') }}?v=20261116"></script>
+    @endif
 @endpush

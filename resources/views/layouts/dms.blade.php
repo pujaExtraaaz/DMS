@@ -23,11 +23,46 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <x-vite-assets />
     <link rel="stylesheet" href="{{ asset('css/pwa-mobile.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/phone-directory.css') }}?v=20261116c">
     <style>
         input.uppercase, textarea.uppercase { text-transform: uppercase; }
+        /* Cap runaway SVGs without forcing every icon/chevron to the same size */
+        .dms-sidebar svg,
+        header svg,
+        button svg,
+        a svg {
+            max-width: 1.5rem;
+            max-height: 1.5rem;
+            flex-shrink: 0;
+        }
+        .dms-sidebar {
+            font-size: 13px;
+        }
+        .dms-sidebar .sidebar-section-item > div > button {
+            min-height: 2rem;
+        }
+        .dms-sidebar .sidebar-chevron {
+            width: 0.875rem !important;
+            height: 0.875rem !important;
+            max-width: 0.875rem !important;
+            max-height: 0.875rem !important;
+        }
+        .dms-sidebar .sidebar-section-icon {
+            width: 1rem !important;
+            height: 1rem !important;
+            max-width: 1rem !important;
+            max-height: 1rem !important;
+        }
+        .dms-sidebar .sidebar-item-icon {
+            width: 1.15rem !important;
+            height: 1.15rem !important;
+            max-width: 1.15rem !important;
+            max-height: 1.15rem !important;
+        }
     </style>
+    @stack('styles')
     @livewireStyles
 </head>
 <body class="font-sans antialiased bg-slate-100 text-slate-900 overflow-hidden dms-pwa">

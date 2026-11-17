@@ -1,0 +1,305 @@
+/* Phone Directory — DMS dark-blue theme (matches sidebar #0F172A / active #4F46E5) */
+
+:root {
+    --pd-navy: #0f172a;
+    --pd-blue: #4f46e5;
+    --pd-blue-hover: #4338ca;
+    --pd-blue-soft: #eef2ff;
+    --pd-blue-border: #c7d2fe;
+    --pd-blue-text: #3730a3;
+}
+
+.pd-toolbar {
+    max-width: 100%;
+    overflow: visible;
+}
+
+.pd-toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    padding: 0.5rem 0.75rem;
+    min-height: 2.25rem;
+    font-size: 0.75rem;
+    line-height: 1;
+    font-weight: 600;
+    color: #334155;
+    white-space: nowrap;
+    text-decoration: none;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.pd-toolbar-btn:hover {
+    background: #f8fafc;
+}
+.pd-toolbar-btn svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+.pd-toolbar-btn.is-active-important {
+    border-color: #fbbf24;
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.pd-add-contact,
+.pd-save-btn,
+.pd-primary-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: 0.75rem;
+    background-color: var(--pd-blue) !important;
+    padding: 0.5rem 1.25rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 600;
+    color: #fff !important;
+    box-shadow: 0 4px 6px -1px rgb(79 70 229 / 0.28);
+    text-decoration: none !important;
+    border: 0;
+    cursor: pointer;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.pd-add-contact--compact {
+    padding: 0.5rem 0.85rem !important;
+    min-height: 2.25rem !important;
+    font-size: 0.75rem !important;
+    line-height: 1 !important;
+    border-radius: 0.5rem !important;
+    gap: 0.375rem !important;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px -1px rgb(79 70 229 / 0.22) !important;
+}
+.pd-add-contact--compact svg {
+    width: 1rem !important;
+    height: 1rem !important;
+}
+.pd-add-contact:hover,
+.pd-save-btn:hover,
+.pd-primary-btn:hover {
+    background-color: var(--pd-blue-hover) !important;
+    color: #fff !important;
+}
+.pd-add-contact svg,
+.pd-save-btn svg,
+.pd-primary-btn svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+
+.pd-create-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--pd-blue);
+    text-decoration: none;
+    white-space: nowrap;
+}
+.pd-create-link:hover {
+    color: var(--pd-blue-hover);
+    text-decoration: underline;
+}
+
+.pd-photo-box {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0.75rem;
+    max-width: 16.5rem;
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+.pd-photo-box__avatar {
+    flex: 0 0 auto;
+    width: 4rem;
+}
+.pd-photo-box__meta {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.pd-photo-box__meta p {
+    margin: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.45;
+}
+.pd-photo-avatar {
+    width: 4rem;
+    height: 4rem;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--pd-blue-soft);
+    color: var(--pd-blue-text);
+    border: 2px dashed var(--pd-blue-border);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+.pd-photo-avatar img {
+    width: 4rem;
+    height: 4rem;
+    border-radius: 9999px;
+    object-fit: cover;
+    border: 2px solid var(--pd-blue);
+}
+
+.pd-section-badge {
+    display: inline-flex;
+    height: 1.5rem;
+    width: 1.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    background: var(--pd-blue-soft);
+    color: var(--pd-blue-text);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.pd-field {
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid #cbd5e1;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    color: #1e293b;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+.pd-field:focus {
+    outline: none;
+    border-color: var(--pd-blue);
+    box-shadow: 0 0 0 3px rgb(79 70 229 / 0.15);
+}
+.pd-field:disabled {
+    background: #f1f5f9;
+    color: #94a3b8;
+    cursor: not-allowed;
+}
+
+.pd-label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.pd-titlecase {
+    text-transform: capitalize;
+}
+
+.pd-dropdown {
+    position: absolute;
+    z-index: 40;
+    margin-top: 0.25rem;
+    max-height: 14rem;
+    width: 100%;
+    overflow: auto;
+    border-radius: 0.75rem;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    padding: 0.25rem;
+    box-shadow: 0 10px 25px rgb(15 23 42 / 0.12);
+}
+.pd-dropdown button {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    border-radius: 0.5rem;
+    padding: 0.375rem 0.625rem;
+    text-align: left;
+    font-size: 0.75rem;
+    color: #334155;
+    cursor: pointer;
+}
+.pd-dropdown button:hover,
+.pd-dropdown button.is-active {
+    background: var(--pd-blue-soft);
+    color: var(--pd-blue-text);
+}
+
+.pd-form-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+@media (min-width: 768px) {
+    .pd-form-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem 1.25rem;
+        align-items: start;
+    }
+}
+.pd-span-3 {
+    grid-column: 1 / -1;
+}
+
+.pd-footer {
+    border-top: 1px solid #e2e8f0;
+    background: #f8fafc;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+.pd-cancel-btn {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 0.75rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #334155;
+    text-decoration: none;
+}
+.pd-cancel-btn:hover {
+    background: #f8fafc;
+}
+
+/* Remap leftover violet utilities on PD pages to DMS indigo */
+.pd-page .bg-violet-600,
+.pd-page .hover\:bg-violet-600:hover,
+.pd-page .hover\:bg-violet-700:hover {
+    background-color: var(--pd-blue) !important;
+}
+.pd-page .text-violet-600,
+.pd-page .text-violet-700,
+.pd-page .hover\:text-violet-700:hover {
+    color: var(--pd-blue-text) !important;
+}
+.pd-page .bg-violet-50,
+.pd-page .bg-violet-100,
+.pd-page .hover\:bg-violet-50:hover,
+.pd-page .hover\:bg-violet-100:hover {
+    background-color: var(--pd-blue-soft) !important;
+}
+.pd-page .border-violet-200,
+.pd-page .border-violet-300,
+.pd-page .border-violet-400,
+.pd-page .focus\:border-violet-500:focus {
+    border-color: var(--pd-blue-border) !important;
+}
+.pd-page .focus\:ring-violet-500:focus {
+    --tw-ring-color: rgb(79 70 229 / 0.35) !important;
+}

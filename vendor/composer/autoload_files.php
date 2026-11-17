@@ -127,4 +127,5 @@ return array(
     'ec07570ca5a812141189b1fa81503674' => $vendorDir . '/phpunit/phpunit/src/Framework/Assert/Functions.php',
     '377b22b161c09ed6e5152de788ca020a' => $vendorDir . '/spatie/laravel-permission/src/helpers.php',
     '9417b2080abbab49545fa47fa6013a6b' => $baseDir . '/app/Tally/helpers.php',
+    '6f63623309b417353d909e0e864f4beb' => $baseDir . '/app/Support/helpers.php',
 );

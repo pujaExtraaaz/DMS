@@ -53,18 +53,18 @@ class PriceMasterController extends Controller
             'rate' => 'rate',
             'product' => function ($q, $dir) {
                 $q->join('products', 'price_masters.product_id', '=', 'products.id')
-                    ->orderBy('products.name', $dir)
-                    ->select('price_masters.*');
+                  ->orderBy('products.name', $dir)
+                  ->select('price_masters.*');
             },
             'customer_type' => function ($q, $dir) {
                 $q->leftJoin('customer_types', 'price_masters.customer_type_id', '=', 'customer_types.id')
-                    ->orderBy('customer_types.name', $dir)
-                    ->select('price_masters.*');
+                  ->orderBy('customer_types.name', $dir)
+                  ->select('price_masters.*');
             },
             'brand' => function ($q, $dir) {
                 $q->leftJoin('brands', 'price_masters.brand_id', '=', 'brands.id')
                     ->orderBy('brands.name', $dir)
-                    ->select('price_masters.*');
+                  ->select('price_masters.*');
             },
             'created_at' => 'price_masters.created_at',
         ];
@@ -146,21 +146,21 @@ class PriceMasterController extends Controller
                 'lines.*.min_qty' => 'nullable|numeric|min:0',
             ]);
         } else {
-            $validated = $request->validate([
+        $validated = $request->validate([
                 'type' => 'nullable|in:customer_type,brand',
-                'customer_type_id' => 'required|exists:customer_types,id',
+            'customer_type_id' => 'required|exists:customer_types,id',
                 'name' => 'nullable|string|max:255',
-                'lines' => 'required|array|min:1',
-                'lines.*.product_id' => 'nullable|exists:products,id',
-                'lines.*.uom_id' => 'nullable|exists:uoms,id',
+            'lines' => 'required|array|min:1',
+            'lines.*.product_id' => 'nullable|exists:products,id',
+            'lines.*.uom_id' => 'nullable|exists:uoms,id',
                 'lines.*.dealer_price' => 'nullable|numeric|min:0',
                 'lines.*.dealer_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
                 'lines.*.retail_price' => 'nullable|numeric|min:0',
                 'lines.*.retail_price_gst_mode' => 'nullable|in:inclusive,exclusive,Inclusive,Exclusive',
-                'lines.*.rate' => 'nullable|numeric|min:0',
+            'lines.*.rate' => 'nullable|numeric|min:0',
                 'lines.*.rate_includes_gst' => 'nullable|boolean',
-                'lines.*.min_qty' => 'nullable|numeric|min:0',
-            ]);
+            'lines.*.min_qty' => 'nullable|numeric|min:0',
+        ]);
         }
 
         $lines = collect($validated['lines'] ?? [])
@@ -271,9 +271,9 @@ class PriceMasterController extends Controller
                             'name' => filled($validated['name'] ?? null) ? $validated['name'] : null,
                             'customer_type_id' => $type === PriceMaster::TYPE_CUSTOMER_TYPE ? $validated['customer_type_id'] : null,
                             'brand_id' => $type === PriceMaster::TYPE_BRAND ? $validated['brand_id'] : null,
-                            'product_id' => $row['product_id'],
-                            'uom_id' => $row['uom_id'],
-                            'min_qty' => filled($row['min_qty'] ?? null) ? $row['min_qty'] : null,
+                        'product_id' => $row['product_id'],
+                        'uom_id' => $row['uom_id'],
+                        'min_qty' => filled($row['min_qty'] ?? null) ? $row['min_qty'] : null,
                         ]
                     ));
                 }
