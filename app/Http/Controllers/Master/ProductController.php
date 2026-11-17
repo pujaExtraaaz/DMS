@@ -124,6 +124,14 @@ class ProductController extends Controller
         // Validate and reset subcategory selection if invalid
         $subCategoryId = ($rawSubCategoryId && $subCategories->contains('id', (int) $rawSubCategoryId)) ? (int) $rawSubCategoryId : null;
 
+        $canViewHidden = $this->canViewHidden();
+        $canHideProduct = $this->canHideProduct();
+        $canUnhideProduct = $this->canUnhideProduct();
+
+        $rawStatus = $request->input('status');
+        $searchTerm = trim((string) $request->input('search'));
+        $isSearching = ($searchTerm !== '');
+
         // 5. Query Products
         $query = Product::query()
             ->with(['baseUom', 'brand', 'category', 'subCategory', 'productType'])
@@ -136,20 +144,37 @@ class ProductController extends Controller
                     $sub->where('product_type', $val)
                         ->orWhere('product_type_id', $val);
                 });
-            })
-            ->when($request->filled('status'), function ($q) use ($request) {
-                if ($request->status === 'active') {
-                    $q->where('is_active', true);
-                } elseif ($request->status === 'inactive') {
-                    $q->where('is_active', false);
-                }
             });
+
+        // Visibility & Status Filtering:
+        // By default, regular listing displays only products that are not hidden (is_hidden = false).
+        // If status == 'hidden' and user is authorized, display hidden products.
+        // If user searches for a product, matching hidden products are included in results for authorized users.
+        // Search results must not accidentally expose hidden products when not searched or when Hidden is not selected.
+        if ($rawStatus === 'hidden' && $canViewHidden) {
+            $query->where('is_hidden', true);
+        } elseif ($rawStatus === 'active') {
+            $query->where('is_active', true);
+            if (! $isSearching || ! $canViewHidden) {
+                $query->where('is_hidden', false);
+            }
+        } elseif ($rawStatus === 'inactive') {
+            $query->where('is_active', false);
+            if (! $isSearching || ! $canViewHidden) {
+                $query->where('is_hidden', false);
+            }
+        } else {
+            // Default: All Visible Products (or 'all_visible' or empty)
+            if (! $isSearching || ! $canViewHidden) {
+                $query->where('is_hidden', false);
+            }
+        }
 
         $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'hsn_code', 'series', 'model', 'product_type'], [
             'serials' => ['serial_number'],
         ]);
 
-        if ($export = $this->exportIfRequested($request, $query, 'Products', 'Products', ['Name', 'Part Number', 'Model', 'Brand', 'Category', 'Subcategory', 'Product Type', 'Base UOM', 'GST Rate', 'Status'], fn ($item) => [
+        if ($export = $this->exportIfRequested($request, $query, 'Products', 'Products', ['Name', 'Part Number', 'Model', 'Brand', 'Category', 'Subcategory', 'Product Type', 'Base UOM', 'GST Rate', 'Status', 'Visibility'], fn ($item) => [
             $item->name,
             $item->sku ?: '',
             $item->model ?: '',
@@ -160,6 +185,7 @@ class ProductController extends Controller
             $item->baseUom?->name ?? '',
             $item->tax_rate !== null ? (string) $item->tax_rate : '',
             $item->is_active ? 'Active' : 'Inactive',
+            $item->is_hidden ? 'Hidden' : 'Visible',
         ])) {
             return $export;
         }
@@ -176,6 +202,7 @@ class ProductController extends Controller
                 'models' => 'model',
                 'product_type' => 'product_type',
                 'is_active' => 'is_active',
+                'is_hidden' => 'is_hidden',
                 'created_at' => 'created_at',
             ],
             defaultSort: 'name',
@@ -209,8 +236,15 @@ class ProductController extends Controller
                 ->limit(10)
                 ->get();
 
+        $productIds = $items->pluck('id')->all();
+        if ($bannerProduct && ! in_array($bannerProduct->id, $productIds, true)) {
+            $productIds[] = $bannerProduct->id;
+        }
+        $stockSummary = app(\App\Domains\Inventory\Services\InTransitStockService::class)->getAggregatedStockForProducts($productIds);
+
         return view('masters.products.index', [
             'items' => $items,
+            'stockSummary' => $stockSummary,
             'serialMatches' => $serialMatches,
             'bannerProduct' => $bannerProduct,
             'newProductId' => $newProductId,
@@ -238,7 +272,112 @@ class ProductController extends Controller
             'subCategoryId' => $subCategoryId,
             'productType' => $request->string('product_type'),
             'status' => $request->string('status'),
+            'canViewHidden' => $canViewHidden,
+            'canHideProduct' => $canHideProduct,
+            'canUnhideProduct' => $canUnhideProduct,
         ]);
+    }
+
+    public function hide(Request $request, Product $product): RedirectResponse|JsonResponse
+    {
+        if (! $this->canHideProduct()) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: You do not have permission to hide products.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized to hide product.');
+        }
+
+        $user = auth()->user();
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && (int) $product->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This product belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This product belongs to another company.');
+        }
+
+        $productName = $product->getRawOriginal('name') ?: $product->name;
+
+        try {
+            $product->hide();
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Product '{$productName}' marked as hidden.",
+                ]);
+            }
+
+            return back()->with('success', "Product '{$productName}' marked as hidden.");
+        } catch (\Throwable $e) {
+            report($e);
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to hide product: ' . $e->getMessage(),
+                ], 500);
+            }
+
+            return back()->with('error', 'Failed to hide product: ' . $e->getMessage());
+        }
+    }
+
+    public function unhide(Request $request, Product $product): RedirectResponse|JsonResponse
+    {
+        if (! $this->canUnhideProduct()) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: You do not have permission to unhide products.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized to unhide product.');
+        }
+
+        $user = auth()->user();
+        if ($user && ! $user->hasAnyRole(['super-admin', 'client-admin']) && $user->company_id && (int) $product->company_id !== (int) $user->company_id) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized: This product belongs to another company.',
+                ], 403);
+            }
+
+            return back()->with('error', 'Unauthorized: This product belongs to another company.');
+        }
+
+        $productName = $product->getRawOriginal('name') ?: $product->name;
+
+        try {
+            $product->unhide();
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => "Product '{$productName}' restored to regular product listing.",
+                ]);
+            }
+
+            return back()->with('success', "Product '{$productName}' restored to regular product listing.");
+        } catch (\Throwable $e) {
+            report($e);
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to unhide product: ' . $e->getMessage(),
+                ], 500);
+            }
+
+            return back()->with('error', 'Failed to unhide product: ' . $e->getMessage());
+        }
     }
 
     public function assignType(Request $request, Product $product): JsonResponse|RedirectResponse
@@ -743,6 +882,7 @@ class ProductController extends Controller
             'payment_period_days' => 'nullable|integer|min:0',
             'lifespan_days' => 'nullable|integer|min:0',
             'is_active' => 'boolean',
+            'is_hidden' => 'nullable|boolean',
             'product_uoms' => 'nullable|array',
             'product_uoms.*.uom_id' => 'nullable|exists:uoms,id',
             'product_uoms.*.label' => 'nullable|string|max:60',
@@ -783,6 +923,7 @@ class ProductController extends Controller
         ]);
 
         $data['is_active'] = $request->boolean('is_active');
+        $data['is_hidden'] = $request->has('is_hidden') ? $request->boolean('is_hidden') : ($product?->is_hidden ?? false);
         $data['model'] = $data['model'] ?? $data['models'] ?? ($product?->model ?? null);
         $data['series'] = $request->input('series', $product?->series ?? null);
         $data['color_variant'] = $request->input('color_variant', $product?->color_variant ?? null);
@@ -1102,5 +1243,66 @@ class ProductController extends Controller
         return str_contains($message, 'products_serial_no_unique')
             || str_contains($message, 'products.serial_no')
             || (str_contains($message, 'Duplicate entry') && str_contains($message, 'serial_no'));
+    }
+
+    protected function canViewHidden(): bool
+    {
+        $user = auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasAnyRole(['super-admin', 'owner', 'client-admin'])
+            || $user->can('products.view-hidden')
+            || $user->can('products.manage');
+    }
+
+    protected function canHideProduct(): bool
+    {
+        $user = auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasAnyRole(['super-admin', 'owner', 'client-admin'])
+            || $user->can('products.hide')
+            || $user->can('products.manage');
+    }
+
+    protected function canUnhideProduct(): bool
+    {
+        $user = auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasAnyRole(['super-admin', 'owner', 'client-admin'])
+            || $user->can('products.unhide')
+            || $user->can('products.manage');
+    }
+
+    public function inTransitDetails(Product $product): \Illuminate\Http\JsonResponse
+    {
+        $summary = app(\App\Domains\Inventory\Services\InTransitStockService::class)->getAggregatedStockForProducts([$product->id]);
+        $data = $summary[$product->id] ?? [
+            'physical_stock' => 0.0,
+            'in_transit_stock' => 0.0,
+            'total_expected_stock' => 0.0,
+            'next_expected_delivery_date' => null,
+            'warehouses' => [],
+            'invoices' => [],
+        ];
+
+        return response()->json([
+            'success' => true,
+            'product' => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'sku' => $product->sku,
+                'serial_no' => $product->serial_no,
+            ],
+            'total_in_transit' => (float) ($data['in_transit_stock'] ?? 0),
+            'summary' => $data,
+        ]);
     }
 }

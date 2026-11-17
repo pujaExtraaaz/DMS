@@ -85,7 +85,7 @@ class CreditNoteController extends Controller
             ]),
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
             'invoices' => Invoice::with('customer')->orderByDesc('invoice_date')->limit(200)->get(),
-            'products' => Product::where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::where('is_active', true)->where('is_hidden', false)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
         ]);
     }

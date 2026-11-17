@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Sales;
 
+use App\Domains\Hrms\Models\Employee;
 use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Purchasing\Services\SerialBatchService;
 use App\Domains\Master\Models\Customer;
@@ -27,6 +28,7 @@ use App\Domains\Scheme\Models\Scheme;
 use App\Domains\Scheme\Services\SchemeService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\CodeGenerator;
 use App\Support\DueDateService;
 use App\Support\WarrantyPeriod;
 use App\Support\QrCodeRenderer;
@@ -182,7 +184,8 @@ class InvoiceController extends Controller
             ? Order::with(['items.product.baseUom', 'items.uom', 'customer', 'billingAddress', 'shippingAddress'])->find($selectedOrderId)
             : null;
 
-        $selectedCustomerId = old('customer_id', $order?->customer_id);
+        $newCustomerId = $request->query('new_customer_id') ?? $request->query('customer_id');
+        $selectedCustomerId = old('customer_id', $order?->customer_id ?? $newCustomerId);
         $customer = $selectedCustomerId ? Customer::find($selectedCustomerId) : null;
         $initialOrders = $customer ? $this->getEligibleOrdersForCustomer($customer, $request->user()) : collect();
 
@@ -215,7 +218,14 @@ class InvoiceController extends Controller
         }
 
         $savedDraft = $request->session()->get('tax_invoice_draft');
-        if ($savedDraft && ($request->filled('new_product_id') || $request->query('returned_from') === 'product_create')) {
+        if ($savedDraft && (
+            $request->filled('new_product_id')
+            || $request->query('returned_from') === 'product_create'
+            || $request->filled('new_customer_id')
+            || $request->query('returned_from') === 'party_create'
+            || $request->filled('new_salesperson_id')
+            || $request->query('returned_from') === 'salesperson_create'
+        )) {
             $request->session()->forget('tax_invoice_draft');
         }
 
@@ -225,8 +235,26 @@ class InvoiceController extends Controller
                 ->find($request->input('new_product_id'));
         }
 
+        $newCustomer = null;
+        if ($newCustomerId) {
+            $newCustomer = Customer::with('customerType')->find($newCustomerId);
+        }
+
+        $newSalespersonId = $request->query('new_salesperson_id') ?? $request->query('salesperson_id');
+        $newSalesperson = $newSalespersonId ? User::find($newSalespersonId) : null;
+        $salespersons = self::getSalespersons();
+        if ($newSalesperson && ! $salespersons->contains('id', $newSalesperson->id)) {
+            $salespersons->prepend($newSalesperson);
+        }
+
         $products = Product::with(['baseUom', 'productType'])
             ->where('is_active', true)
+            ->where(function ($q) use ($order) {
+                $q->where('is_hidden', false);
+                if ($order) {
+                    $q->orWhereIn('id', $order->items->pluck('product_id'));
+                }
+            })
             ->orderBy('name')
             ->get();
 
@@ -234,16 +262,26 @@ class InvoiceController extends Controller
             $products->prepend($newProduct);
         }
 
+        $customers = Customer::with('customerType')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+
+        if ($newCustomer && ! $customers->contains('id', $newCustomer->id)) {
+            $customers->prepend($newCustomer);
+        }
+
         return view('sales.invoices.create', [
             'order' => $order,
             'initialOrders' => $initialOrders,
             'company' => $company,
-            'customers' => Customer::with('customerType')
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get(),
+            'customers' => $customers,
+            'newCustomer' => $newCustomer,
             'transporters' => self::getTransporters(),
-            'salespersons' => self::getSalespersons(),
+            'salespersons' => $salespersons,
+            'newSalesperson' => $newSalesperson,
+            'departments' => \App\Domains\Hrms\Models\Department::where('is_active', true)->orderBy('name')->get(),
+            'designations' => \App\Domains\Hrms\Models\Designation::where('is_active', true)->orderBy('name')->get(),
 
             'products' => $products,
             'newProduct' => $newProduct,
@@ -272,6 +310,64 @@ class InvoiceController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Invoice draft saved successfully.',
+        ]);
+    }
+
+    public function quickAddSalesperson(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'employee_code' => 'nullable|string|max:40|unique:employees,employee_code',
+            'phone' => 'nullable|string|max:20',
+            'email' => 'nullable|email|max:255',
+            'department_id' => 'nullable|exists:departments,id',
+            'designation_id' => 'nullable|exists:designations,id',
+            'status' => 'nullable|string|max:30',
+        ]);
+
+        $companyId = auth()->user()?->company_id ?? Company::defaultCompanyId() ?? 1;
+        $branchId = auth()->user()?->branch_id;
+
+        if (empty($validated['employee_code'])) {
+            $validated['employee_code'] = CodeGenerator::forEmployee($companyId);
+            while (\App\Domains\Hrms\Models\Employee::where('employee_code', $validated['employee_code'])->exists()) {
+                $validated['employee_code'] = CodeGenerator::forEmployee($companyId);
+            }
+        }
+
+        $employeeController = app(\App\Http\Controllers\Hrms\EmployeeController::class);
+        $user = $employeeController->findOrCreateSalespersonUser([
+            'name' => $validated['name'],
+            'email' => $validated['email'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'company_id' => $companyId,
+            'branch_id' => $branchId,
+        ]);
+
+        $employee = \App\Domains\Hrms\Models\Employee::create([
+            'company_id' => $companyId,
+            'branch_id' => $branchId,
+            'user_id' => $user->id,
+            'employee_code' => $validated['employee_code'],
+            'name' => $validated['name'],
+            'email' => $validated['email'] ?? null,
+            'phone' => $validated['phone'] ?? null,
+            'department_id' => $validated['department_id'] ?? null,
+            'designation_id' => $validated['designation_id'] ?? null,
+            'status' => $validated['status'] ?? 'active',
+            'is_salesperson' => true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Salesperson '{$user->name}' created successfully.",
+            'salesperson' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $validated['phone'] ?? '',
+                'employee_code' => $employee->employee_code,
+            ],
         ]);
     }
 
@@ -957,7 +1053,14 @@ class InvoiceController extends Controller
             'customers' => Customer::with('customerType')->where('is_active', true)->orderBy('name')->get(),
             'transporters' => self::getTransporters(),
             'salespersons' => $salespersons,
-            'products' => Product::with(['baseUom', 'productType'])->where('is_active', true)->orderBy('name')->get(),
+            'products' => Product::with(['baseUom', 'productType'])
+                ->where('is_active', true)
+                ->where(function ($q) use ($invoice) {
+                    $q->where('is_hidden', false)
+                        ->orWhereIn('id', $invoice->items->pluck('product_id'));
+                })
+                ->orderBy('name')
+                ->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
             'schemes' => Scheme::with(['brand', 'slabs', 'products'])->where('status', 'active')->orderBy('name')->get(),
             'stateOptions' => \App\Support\IndianStates::options(),

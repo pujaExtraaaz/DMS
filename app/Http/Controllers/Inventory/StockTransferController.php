@@ -122,6 +122,7 @@ class StockTransferController extends Controller
     public function create(Request $request): View
     {
         $products = Product::where('is_active', true)
+            ->where('is_hidden', false)
             ->with(['baseUom', 'brand'])
             ->orderBy('name')
             ->get();
@@ -418,6 +419,10 @@ class StockTransferController extends Controller
         $transfer->load(['items.product', 'items.uom', 'fromWarehouse', 'toWarehouse']);
 
         $products = Product::where('is_active', true)
+            ->where(function ($q) use ($transfer) {
+                $q->where('is_hidden', false)
+                    ->orWhereIn('id', $transfer->items->pluck('product_id'));
+            })
             ->with(['baseUom', 'brand'])
             ->orderBy('name')
             ->get();
@@ -611,6 +616,10 @@ class StockTransferController extends Controller
         $reclassification->load(['warehouse', 'fromProduct.baseUom', 'toProduct.baseUom', 'uom']);
 
         $products = Product::where('is_active', true)
+            ->where(function ($q) use ($reclassification) {
+                $q->where('is_hidden', false)
+                    ->orWhereIn('id', array_filter([$reclassification->from_product_id, $reclassification->to_product_id]));
+            })
             ->with(['baseUom', 'brand'])
             ->orderBy('name')
             ->get();

@@ -852,7 +852,7 @@
             let optionsChanged = false;
             let attrChanged = false;
             for (const m of mutations) {
-                if (m.type === 'childList') {
+                if (m.type === 'childList' || m.type === 'characterData') {
                     optionsChanged = true;
                 } else if (m.type === 'attributes') {
                     if (m.attributeName === 'disabled') {
@@ -876,7 +876,7 @@
                 }
             }
         });
-        observer.observe(select, { childList: true, subtree: true, attributes: true });
+        observer.observe(select, { childList: true, subtree: true, attributes: true, characterData: true });
 
         // Initial paint
         updateTriggerDisplay();

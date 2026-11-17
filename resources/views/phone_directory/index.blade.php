@@ -64,7 +64,8 @@
                 <span>Important</span>
             </a>
 
-            {{-- Column Visibility Dropdown --}}
+            {{-- Column Visibility Dropdown (Temporarily hidden per requirement; preserved for future use) --}}
+            {{--
             <div class="relative" x-data="{ colOpen: false }" @click.outside="colOpen = false">
                 <button
                     type="button"
@@ -96,6 +97,7 @@
                     </template>
                 </div>
             </div>
+            --}}
 
             {{-- Export Menu --}}
             <div class="relative" x-data="{ exportOpen: false }" @click.outside="exportOpen = false">
@@ -996,7 +998,8 @@ function phoneDirectoryManager() {
         },
 
         init() {
-            // Restore column preferences from localStorage
+            // Restore column preferences from localStorage (temporarily disabled to keep all default columns visible while Columns customization UI is hidden)
+            /*
             try {
                 const saved = localStorage.getItem('dms_pd_cols');
                 if (saved) {
@@ -1009,6 +1012,7 @@ function phoneDirectoryManager() {
                     localStorage.setItem('dms_pd_cols', JSON.stringify(val));
                 } catch (e) {}
             });
+            */
         },
 
         resetColumns() {

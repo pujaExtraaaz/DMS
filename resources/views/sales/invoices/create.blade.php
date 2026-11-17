@@ -5,6 +5,8 @@
 @php
     $company = $company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first();
     $companyState = $company?->state ?? '';
+    $companyGstin = $company?->gstin ?? '';
+    $ewayThreshold = \App\Domains\Sales\Services\GstComplianceService::EWAY_BILL_THRESHOLD;
 
     $productsJson = $products->map(function ($p) {
         $isTracked = (bool) ($p->isSerialTracked() || $p->productType?->track_serial);
@@ -83,6 +85,7 @@
             'credit_days' => (int) ($c->credit_days ?? 0),
             'state' => $c->shipping_state ?? $c->state ?? '',
             'salesperson_id' => $c->salesperson_id,
+            'gstin' => $c->gstin ?? '',
         ];
     })->values()->toArray();
 
@@ -167,6 +170,7 @@
                         <option value="{{ $c->id }}"
                                 data-credit-days="{{ $c->credit_days ?? 0 }}"
                                 data-state="{{ $c->shipping_state ?? ($c->state ?? '') }}"
+                                data-gstin="{{ $c->gstin ?? '' }}"
                                 @if(!empty($cPhone)) data-code="{{ $cPhone }}" data-subtext="{{ $cPhone }}" @elseif(!empty($c->code)) data-code="{{ $c->code }}" @endif
                                 @selected(old('customer_id', $order?->customer_id) == $c->id)>
                             {{ $c->name }}
@@ -709,385 +713,6 @@
         </x-ui.card>
     </div>
 
-    {{-- Card 3: e-Way Bill, Consignor, Consignee & Transport Details --}}
-    <x-ui.card>
-        <div class="space-y-6">
-            {{-- Header & e-Way Bill Details --}}
-            <div>
-                <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
-                    <div>
-                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-800">e-Way Bill Details</h4>
-                        <p class="text-[11px] text-slate-500">Applicable for inter-state or intra-state movement of goods exceeding ₹50,000 consignment value.</p>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer font-medium select-none">
-                            <input type="checkbox"
-                                   x-model="ewayNa"
-                                   @change="onEwayNaToggle()"
-                                   class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                            <span>Not Applicable / Exempt</span>
-                        </label>
-                    </div>
-                </div>
-
-                {{-- Requirement Selector --}}
-                <div class="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-2">
-                        e-Way Bill Requirement Mode
-                    </label>
-                    <div class="flex flex-wrap items-center gap-5 text-xs">
-                        <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                            <input type="radio" name="eway_bill_required" value="auto" x-model="ewayBillRequired" class="text-indigo-600 focus:ring-indigo-500">
-                            <span class="font-medium text-slate-800">Auto-Determined (Recommended — Mandatory if &gt; ₹50,000)</span>
-                        </label>
-                        <label class="inline-flex items-center gap-1.5 cursor-pointer">
-                            <input type="radio" name="eway_bill_required" value="yes" x-model="ewayBillRequired" class="text-indigo-600 focus:ring-indigo-500">
-                            <span class="font-medium text-slate-800">Yes (Generate / Mandatory)</span>
-                        </label>
-                        <label class="inline-flex items-center gap-1.5 cursor-pointer" :class="isEWayBillMandatory ? 'opacity-50 cursor-not-allowed' : ''">
-                            <input type="radio" name="eway_bill_required" value="no" x-model="ewayBillRequired" :disabled="isEWayBillMandatory" class="text-indigo-600 focus:ring-indigo-500">
-                            <span class="font-medium text-slate-800">No (Exempt)</span>
-                        </label>
-                    </div>
-                    <p x-show="isEWayBillMandatory" class="mt-1.5 text-[11px] text-amber-700 font-medium flex items-center gap-1" x-cloak>
-                        <svg class="w-3.5 h-3.5 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-                        <span>Consignment value exceeds ₹50,000 threshold; E-Way Bill is legally mandatory under GST Rule 138.</span>
-                    </p>
-                </div>
-
-                {{-- e-Way Bill Document & Classification Fields --}}
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-3.5" :class="ewayNa ? 'opacity-50 pointer-events-none' : ''">
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                            e-Way Bill No. <span class="text-slate-400 font-normal">(Optional / Manual)</span>
-                        </label>
-                        <input type="text"
-                               name="eway_bill_no"
-                               x-model="ewayBillNo"
-                               placeholder="12-digit e-Way Bill No"
-                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono">
-                        @error('eway_bill_no')
-                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                            e-Way Bill Date
-                        </label>
-                        <input type="date"
-                               name="eway_bill_date"
-                               x-model="ewayBillDate"
-                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        @error('eway_bill_date')
-                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                            Sub-Type
-                        </label>
-                        <select name="eway_sub_type" x-model="ewaySubType"
-                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            <option value="Supply">Supply</option>
-                            <option value="Export">Export</option>
-                            <option value="Job Work">Job Work</option>
-                            <option value="SKD/CKD">SKD / CKD</option>
-                            <option value="Recipient Not Known">Recipient Not Known</option>
-                            <option value="For Own Use">For Own Use</option>
-                            <option value="Exhibition/Fair">Exhibition or Fair</option>
-                            <option value="Line Sales">Line Sales</option>
-                            <option value="Others">Others</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                            Document Type
-                        </label>
-                        <select name="eway_doc_type" x-model="ewayDocType"
-                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            <option value="Tax Invoice">Tax Invoice</option>
-                            <option value="Bill of Supply">Bill of Supply</option>
-                            <option value="Delivery Challan">Delivery Challan</option>
-                            <option value="Others">Others</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                            Supply Type
-                        </label>
-                        <select name="eway_supply_type" x-model="ewaySupplyType"
-                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            <option value="Outward">Outward</option>
-                            <option value="Inward">Inward</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            {{-- Consignor & Consignee Details (2 Columns) --}}
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-4 border-t border-slate-200">
-                {{-- Consignor Details (From) --}}
-                <div class="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
-                    <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-                        <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                            <span class="w-2 h-2 rounded-full bg-indigo-600"></span>
-                            Consignor Details (From - Seller)
-                        </h5>
-                        <span class="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                            Company Master
-                        </span>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div class="sm:col-span-2">
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Party / Company Name</label>
-                            <input type="text" name="consignor_name" x-model="consignorName" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">GSTIN / UIN</label>
-                            <input type="text" name="consignor_gstin" x-model="consignorGstin" class="block w-full rounded-lg border-gray-300 text-xs font-mono uppercase focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">State</label>
-                            <input type="text" name="consignor_state" x-model="consignorState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Type</label>
-                            <input type="text" name="consignor_address_type" x-model="consignorAddressType" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Actual State</label>
-                            <input type="text" name="consignor_actual_state" x-model="consignorActualState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div class="sm:col-span-2">
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 1</label>
-                            <input type="text" name="consignor_address_line_1" x-model="consignorAddressLine1" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div class="sm:col-span-2">
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 2</label>
-                            <input type="text" name="consignor_address_line_2" x-model="consignorAddressLine2" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">City / Place</label>
-                            <input type="text" name="consignor_city" x-model="consignorCity" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">PIN Code</label>
-                            <input type="text" name="consignor_pincode" x-model="consignorPincode" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
-                        </div>
-                    </div>
-                </div>
-
-                {{-- Consignee Details (To) --}}
-                <div class="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
-                    <div class="flex items-center justify-between pb-2 border-b border-slate-200">
-                        <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                            <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
-                            Consignee Details (To - Delivery Party)
-                        </h5>
-                        <span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                            Party Delivery Master
-                        </span>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div class="sm:col-span-2">
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Consignee Name</label>
-                            <input type="text" name="consignee_name" x-model="consigneeName" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">GSTIN / UIN</label>
-                            <input type="text" name="consignee_gstin" x-model="consigneeGstin" class="block w-full rounded-lg border-gray-300 text-xs font-mono uppercase focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">State</label>
-                            <input type="text" name="consignee_state" x-model="consigneeState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Type</label>
-                            <input type="text" name="consignee_address_type" x-model="consigneeAddressType" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Actual State</label>
-                            <input type="text" name="consignee_actual_state" x-model="consigneeActualState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div class="sm:col-span-2">
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 1</label>
-                            <input type="text" name="consignee_address_line_1" x-model="consigneeAddressLine1" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div class="sm:col-span-2">
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 2</label>
-                            <input type="text" name="consignee_address_line_2" x-model="consigneeAddressLine2" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">City / Place</label>
-                            <input type="text" name="consignee_city" x-model="consigneeCity" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">PIN Code</label>
-                            <input type="text" name="consignee_pincode" x-model="consigneePincode" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {{-- Transport Details & Part B (Vehicle / Transporter) --}}
-            <div class="pt-4 border-t border-slate-200">
-                <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-                    <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                        <span class="w-2 h-2 rounded-full bg-blue-600"></span>
-                        Transport Details &amp; Part B (Vehicle Details)
-                    </h5>
-                    <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer font-medium select-none">
-                        <input type="checkbox"
-                               x-model="partBNa"
-                               @change="onPartBNaToggle()"
-                               class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                        <span>Part B Not Applicable (Direct Handover / Local)</span>
-                    </label>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs" :class="partBNa ? 'opacity-50 pointer-events-none' : ''">
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1">
-                            Mode of Transport
-                        </label>
-                        <select name="transport_mode"
-                                x-model="transportMode"
-                                @change="onTransportModeChange()"
-                                class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white">
-                            <option value="Not Applicable">Not Applicable</option>
-                            <option value="1 - Road">1 - Road</option>
-                            <option value="2 - Rail">2 - Rail</option>
-                            <option value="3 - Air">3 - Air</option>
-                            <option value="4 - Ship">4 - Ship</option>
-                        </select>
-                        @error('transport_mode')
-                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1">
-                            Distance (in KM)
-                        </label>
-                        <input type="number"
-                               min="0"
-                               max="9999"
-                               name="distance_km"
-                               x-model.number="distanceKm"
-                               placeholder="E.g. 150 (0 for auto-calc)"
-                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        <p class="mt-0.5 text-[10px] text-slate-400">Portal auto-calculates if left 0 based on PIN codes.</p>
-                        @error('distance_km')
-                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1">
-                            Transporter Name
-                        </label>
-                        <select name="transporter_name"
-                                x-model="transporterName"
-                                @change="onTransporterChange($event)"
-                                class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white">
-                            <option value="">-- None / Select Transporter --</option>
-                            @foreach($transporters as $transporter)
-                                <option value="{{ $transporter->name }}"
-                                        data-transporter-id="{{ $transporter->gstin ?: $transporter->code }}"
-                                        @selected(old('transporter_name') === $transporter->name)>
-                                    {{ $transporter->name }} @if($transporter->gstin)({{ $transporter->gstin }})@elseif($transporter->code)({{ $transporter->code }})@endif
-                                </option>
-                            @endforeach
-                            @if(filled(old('transporter_name')) && !$transporters->contains('name', old('transporter_name')))
-                                <option value="{{ old('transporter_name') }}" selected>{{ old('transporter_name') }}</option>
-                            @endif
-                        </select>
-                        <p class="mt-0.5 text-[10px] text-slate-400">Selects party and auto-fetches Transporter ID.</p>
-                        @error('transporter_name')
-                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1">
-                            Transporter ID / GSTIN
-                        </label>
-                        <input type="text"
-                               name="transporter_id"
-                               x-model="transporterId"
-                               placeholder="15-digit GSTIN or TRANS ID"
-                               maxlength="25"
-                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono uppercase">
-                        <p class="mt-0.5 text-[10px] text-slate-400">Auto-filled from master; editable if missing.</p>
-                        @error('transporter_id')
-                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                            <span>Doc / LR / RR / Airway Bill No.</span>
-                            <span x-show="!isRoadMode && transportMode !== 'Not Applicable'" class="text-[10px] text-indigo-600 font-semibold" x-cloak>(Required)</span>
-                        </label>
-                        <input type="text"
-                               name="lr_rr_no"
-                               x-model="lrRrNo"
-                               placeholder="E.g. LR-10293 or AWB-88123"
-                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        @error('lr_rr_no')
-                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <label class="block font-semibold text-slate-700 mb-1">
-                            Doc / LR-RR Date
-                        </label>
-                        <input type="date"
-                               name="lr_rr_date"
-                               x-model="lrRrDate"
-                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
-                        @error('lr_rr_date')
-                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div :class="isRoadMode ? '' : 'opacity-70'">
-                        <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                            <span>Vehicle Number</span>
-                            <span x-show="!isRoadMode" class="text-[10px] text-slate-400 font-normal" x-cloak>(Optional for Rail/Air/Ship)</span>
-                        </label>
-                        <input type="text"
-                               name="motor_vehicle_no"
-                               x-model="motorVehicleNo"
-                               placeholder="E.g. MH-12-AB-1234"
-                               class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono uppercase">
-                        <input type="hidden" name="vehicle_no" :value="motorVehicleNo">
-                        @error('motor_vehicle_no')
-                            <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div :class="isRoadMode ? '' : 'opacity-70'">
-                        <label class="block font-semibold text-slate-700 mb-1">
-                            Vehicle Type
-                        </label>
-                        <select name="vehicle_type" x-model="vehicleType"
-                                class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white">
-                            <option value="R">Regular Cargo (R)</option>
-                            <option value="O">Over Dimensional Cargo (ODC)</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </x-ui.card>
 
     {{-- Card 2: Dynamic Line Items (Matches Purchase Invoice layout and design) --}}
     <x-ui.card padding="false">
@@ -1510,6 +1135,520 @@
         </div>
     </div>
 
+
+    {{-- Card 5: Statutory Compliance & Logistics (E-Invoice / E-Way Bill) --}}
+    {{-- Displayed after Line Items, Schemes, and Totals, before final Create Invoice action --}}
+    <x-ui.card id="compliance-and-logistics-section">
+        <div class="space-y-6">
+            {{-- Header with Dynamic Status Badges --}}
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                        <h4 class="text-sm font-bold uppercase tracking-wider text-slate-800">
+                            Statutory Compliance &amp; Logistics (E-Invoice &amp; E-Way Bill)
+                        </h4>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                        Evaluated dynamically based on customer registration, line items, and consignment value (<span class="font-semibold text-slate-700" x-text="formatCurrency(grandTotal())"></span>).
+                    </p>
+                </div>
+
+                {{-- Status Badges --}}
+                <div class="flex flex-wrap items-center gap-2">
+                    {{-- E-Invoice Badge --}}
+                    <template x-if="isEInvoiceApplicable">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            E-Invoice Applicable (B2B)
+                        </span>
+                    </template>
+                    <template x-if="!isEInvoiceApplicable">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                            E-Invoice Not Required (B2C / Unregistered)
+                        </span>
+                    </template>
+
+                    {{-- E-Way Bill Badge --}}
+                    <template x-if="isEWayBillMandatory">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 shadow-2xs">
+                            <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                            e-Way Bill Mandatory (&gt; ₹50,000)
+                        </span>
+                    </template>
+                    <template x-if="!isEWayBillMandatory && isEWayBillApplicable">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                            e-Way Bill Enabled (Optional)
+                        </span>
+                    </template>
+                    <template x-if="!isEWayBillApplicable">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                            e-Way Bill Not Required (&lt; ₹50,000)
+                        </span>
+                    </template>
+                </div>
+            </div>
+
+            {{-- Non-applicable Clean Banner when neither compliance is needed --}}
+            <div x-show="!isEInvoiceApplicable && !isEWayBillApplicable" class="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-3" x-cloak>
+                <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div class="flex items-start gap-3">
+                        <div class="p-2 rounded-lg bg-slate-200 text-slate-600 shrink-0 mt-0.5">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <div class="space-y-1">
+                            <h5 class="text-xs font-bold text-slate-800">E-Invoice &amp; E-Way Bill Not Required for this Invoice</h5>
+                            <p class="text-xs text-slate-600 leading-relaxed">
+                                • <strong class="text-slate-700">E-Invoice:</strong> Not applicable because the selected customer is unregistered / B2C (Under GST Rule 48(4), e-invoicing is restricted to registered B2B supplies).<br>
+                                • <strong class="text-slate-700">E-Way Bill:</strong> Not required because consignment value (<span class="font-semibold text-slate-800" x-text="formatCurrency(grandTotal())"></span>) is below the statutory ₹50,000 threshold.
+                            </p>
+                        </div>
+                    </div>
+                    <button type="button"
+                            @click="ewayBillRequired = 'yes'; ewayNa = false;"
+                            class="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 shadow-2xs transition">
+                        + Enable e-Way Bill / Transport Details
+                    </button>
+                </div>
+            </div>
+
+            {{-- E-Invoice Section (Applicable for B2B) --}}
+            <div x-show="isEInvoiceApplicable" class="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-3" x-cloak>
+                <div class="flex items-center justify-between pb-2 border-b border-emerald-200/60">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                        <h5 class="text-xs font-bold uppercase tracking-wider text-emerald-950">GST E-Invoice Compliance (IRN Generation)</h5>
+                    </div>
+                    <span class="text-[11px] font-semibold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded">
+                        Mandatory B2B Supply (Rule 48(4))
+                    </span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div class="bg-white/90 p-3 rounded-lg border border-emerald-100">
+                        <span class="text-slate-500 block text-[11px] font-medium">Buyer / Customer GSTIN</span>
+                        <span class="font-mono font-bold text-slate-900 text-sm mt-0.5 block" x-text="buyerGstin || '—'"></span>
+                        <span class="text-[10px] text-emerald-700 font-medium">Registered Regular Taxpayer</span>
+                    </div>
+                    <div class="bg-white/90 p-3 rounded-lg border border-emerald-100">
+                        <span class="text-slate-500 block text-[11px] font-medium">Supplier / Company GSTIN</span>
+                        <span class="font-mono font-bold text-slate-900 text-sm mt-0.5 block" x-text="companyGstin || '—'"></span>
+                        <span class="text-[10px] text-slate-500">Turnover &gt; ₹5 Cr Statutory Mandate</span>
+                    </div>
+                    <div class="bg-white/90 p-3 rounded-lg border border-emerald-100">
+                        <span class="text-slate-500 block text-[11px] font-medium">IRN Registration Status</span>
+                        <span class="font-semibold text-amber-700 text-sm mt-0.5 block">Pending Invoice Issuance</span>
+                        <span class="text-[10px] text-slate-500">IRN &amp; Signed QR attached upon creation</span>
+                    </div>
+                </div>
+                <p class="text-[11px] text-emerald-800/90 leading-relaxed">
+                    Under GST Rule 48(4), invoice data will be reported to the Invoice Registration Portal (IRP). The signed QR code and 64-character IRN will be attached to the invoice voucher.
+                </p>
+            </div>
+
+            {{-- If E-Way bill is applicable but E-Invoice is not, show subtle B2C clarification --}}
+            <div x-show="!isEInvoiceApplicable && isEWayBillApplicable" class="p-3 bg-slate-50 rounded-lg border border-slate-200 text-slate-600 text-xs flex items-center justify-between" x-cloak>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                    <span><strong>E-Invoice Not Required:</strong> Customer is unregistered / B2C (No 15-digit GSTIN). Statutory e-invoicing under Rule 48(4) applies only to B2B supplies.</span>
+                </div>
+            </div>
+
+            {{-- E-Way Bill & Transport Section (Applicable when >= 50k or user opt-in) --}}
+            <div x-show="isEWayBillApplicable" class="space-y-6 pt-2" x-cloak>
+                {{-- E-Way Bill Header & Requirement Mode --}}
+                <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-200">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                            <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800">e-Way Bill Details &amp; Movement of Goods</h5>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer font-medium select-none"
+                                   :class="isEWayBillMandatory ? 'opacity-50 cursor-not-allowed' : ''">
+                                <input type="checkbox"
+                                       x-model="ewayNa"
+                                       :disabled="isEWayBillMandatory"
+                                       @change="onEwayNaToggle()"
+                                       class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span>Not Applicable / Exempt</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {{-- Requirement Selector --}}
+                    <div class="p-3 bg-white rounded-lg border border-slate-200">
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-2">
+                            e-Way Bill Requirement Mode
+                        </label>
+                        <div class="flex flex-wrap items-center gap-5 text-xs">
+                            <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                                <input type="radio" name="eway_bill_required" value="auto" x-model="ewayBillRequired" class="text-indigo-600 focus:ring-indigo-500">
+                                <span class="font-medium text-slate-800">Auto-Determined (Recommended — Mandatory if &gt; ₹50,000)</span>
+                            </label>
+                            <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                                <input type="radio" name="eway_bill_required" value="yes" x-model="ewayBillRequired" class="text-indigo-600 focus:ring-indigo-500">
+                                <span class="font-medium text-slate-800">Yes (Generate / Mandatory)</span>
+                            </label>
+                            <label class="inline-flex items-center gap-1.5 cursor-pointer" :class="isEWayBillMandatory ? 'opacity-50 cursor-not-allowed' : ''">
+                                <input type="radio" name="eway_bill_required" value="no" x-model="ewayBillRequired" :disabled="isEWayBillMandatory" class="text-indigo-600 focus:ring-indigo-500">
+                                <span class="font-medium text-slate-800">No (Exempt)</span>
+                            </label>
+                        </div>
+                        <p x-show="isEWayBillMandatory" class="mt-2 text-[11px] text-amber-700 font-medium flex items-center gap-1.5" x-cloak>
+                            <svg class="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                            <span>Consignment value (<strong x-text="formatCurrency(grandTotal())"></strong>) exceeds ₹50,000 threshold; E-Way Bill is legally mandatory under GST Rule 138.</span>
+                        </p>
+                    </div>
+
+                    {{-- Document & Classification Fields --}}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mt-3" :class="ewayNa ? 'opacity-50 pointer-events-none' : ''">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                                e-Way Bill No. <span class="text-slate-400 font-normal">(Optional / Manual)</span>
+                            </label>
+                            <input type="text"
+                                   name="eway_bill_no"
+                                   x-model="ewayBillNo"
+                                   placeholder="12-digit e-Way Bill No"
+                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                            @error('eway_bill_no')
+                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                                e-Way Bill Date
+                            </label>
+                            <input type="date"
+                                   name="eway_bill_date"
+                                   x-model="ewayBillDate"
+                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            @error('eway_bill_date')
+                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                                Sub-Type
+                            </label>
+                            <select name="eway_sub_type" x-model="ewaySubType"
+                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="Supply">Supply</option>
+                                <option value="Export">Export</option>
+                                <option value="Job Work">Job Work</option>
+                                <option value="SKD/CKD">SKD / CKD</option>
+                                <option value="Recipient Not Known">Recipient Not Known</option>
+                                <option value="For Own Use">For Own Use</option>
+                                <option value="Exhibition/Fair">Exhibition or Fair</option>
+                                <option value="Line Sales">Line Sales</option>
+                                <option value="Others">Others</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                                Document Type
+                            </label>
+                            <select name="eway_doc_type" x-model="ewayDocType"
+                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="Tax Invoice">Tax Invoice</option>
+                                <option value="Bill of Supply">Bill of Supply</option>
+                                <option value="Delivery Challan">Delivery Challan</option>
+                                <option value="Others">Others</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                                Supply Type
+                            </label>
+                            <select name="eway_supply_type" x-model="ewaySupplyType"
+                                    class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="Outward">Outward</option>
+                                <option value="Inward">Inward</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Consignor & Consignee Details (2 Columns) --}}
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {{-- Consignor Details (From) --}}
+                    <div class="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
+                        <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                            <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-indigo-600"></span>
+                                Consignor Details (From - Seller)
+                            </h5>
+                            <span class="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                Company Master
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div class="sm:col-span-2">
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Party / Company Name</label>
+                                <input type="text" name="consignor_name" x-model="consignorName" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">GSTIN / UIN</label>
+                                <input type="text" name="consignor_gstin" x-model="consignorGstin" class="block w-full rounded-lg border-gray-300 text-xs font-mono uppercase focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">State</label>
+                                <input type="text" name="consignor_state" x-model="consignorState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Type</label>
+                                <input type="text" name="consignor_address_type" x-model="consignorAddressType" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Actual State</label>
+                                <input type="text" name="consignor_actual_state" x-model="consignorActualState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 1</label>
+                                <input type="text" name="consignor_address_line_1" x-model="consignorAddressLine1" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 2</label>
+                                <input type="text" name="consignor_address_line_2" x-model="consignorAddressLine2" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">City / Place</label>
+                                <input type="text" name="consignor_city" x-model="consignorCity" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">PIN Code</label>
+                                <input type="text" name="consignor_pincode" x-model="consignorPincode" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- Consignee Details (To) --}}
+                    <div class="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
+                        <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+                            <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                                Consignee Details (To - Delivery Party)
+                            </h5>
+                            <span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                                Party Delivery Master
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div class="sm:col-span-2">
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Consignee Name</label>
+                                <input type="text" name="consignee_name" x-model="consigneeName" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">GSTIN / UIN</label>
+                                <input type="text" name="consignee_gstin" x-model="consigneeGstin" class="block w-full rounded-lg border-gray-300 text-xs font-mono uppercase focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">State</label>
+                                <input type="text" name="consignee_state" x-model="consigneeState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Type</label>
+                                <input type="text" name="consignee_address_type" x-model="consigneeAddressType" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Actual State</label>
+                                <input type="text" name="consignee_actual_state" x-model="consigneeActualState" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 1</label>
+                                <input type="text" name="consignee_address_line_1" x-model="consigneeAddressLine1" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Address Line 2</label>
+                                <input type="text" name="consignee_address_line_2" x-model="consigneeAddressLine2" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">City / Place</label>
+                                <input type="text" name="consignee_city" x-model="consigneeCity" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">PIN Code</label>
+                                <input type="text" name="consignee_pincode" x-model="consigneePincode" class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Transport Details & Part B (Vehicle / Transporter) --}}
+                <div class="pt-4 border-t border-slate-200">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                        <h5 class="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+                            Transport Details &amp; Part B (Vehicle Details)
+                        </h5>
+                        <label class="inline-flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer font-medium select-none">
+                            <input type="checkbox"
+                                   x-model="partBNa"
+                                   @change="onPartBNaToggle()"
+                                   class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <span>Part B Not Applicable (Direct Handover / Local)</span>
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs" :class="partBNa ? 'opacity-50 pointer-events-none' : ''">
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">
+                                Mode of Transport
+                            </label>
+                            <select name="transport_mode"
+                                    x-model="transportMode"
+                                    @change="onTransportModeChange()"
+                                    class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                                <option value="Not Applicable">Not Applicable</option>
+                                <option value="1 - Road">1 - Road</option>
+                                <option value="2 - Rail">2 - Rail</option>
+                                <option value="3 - Air">3 - Air</option>
+                                <option value="4 - Ship">4 - Ship</option>
+                            </select>
+                            @error('transport_mode')
+                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">
+                                Distance (in KM)
+                            </label>
+                            <input type="number"
+                                   min="0"
+                                   max="9999"
+                                   name="distance_km"
+                                   x-model.number="distanceKm"
+                                   placeholder="E.g. 150 (0 for auto-calc)"
+                                   class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            <p class="mt-0.5 text-[10px] text-slate-400">Portal auto-calculates if left 0 based on PIN codes.</p>
+                            @error('distance_km')
+                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">
+                                Transporter Name
+                            </label>
+                            <select name="transporter_name"
+                                    x-model="transporterName"
+                                    @change="onTransporterChange($event)"
+                                    class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                                <option value="">-- None / Select Transporter --</option>
+                                @foreach($transporters as $transporter)
+                                    <option value="{{ $transporter->name }}"
+                                            data-transporter-id="{{ $transporter->gstin ?: $transporter->code }}"
+                                            @selected(old('transporter_name') === $transporter->name)>
+                                        {{ $transporter->name }} @if($transporter->gstin)({{ $transporter->gstin }})@elseif($transporter->code)({{ $transporter->code }})@endif
+                                    </option>
+                                @endforeach
+                                @if(filled(old('transporter_name')) && !$transporters->contains('name', old('transporter_name')))
+                                    <option value="{{ old('transporter_name') }}" selected>{{ old('transporter_name') }}</option>
+                                @endif
+                            </select>
+                            <p class="mt-0.5 text-[10px] text-slate-400">Selects party and auto-fetches Transporter ID.</p>
+                            @error('transporter_name')
+                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">
+                                Transporter ID / GSTIN
+                            </label>
+                            <input type="text"
+                                   name="transporter_id"
+                                   x-model="transporterId"
+                                   placeholder="15-digit GSTIN or TRANS ID"
+                                   maxlength="25"
+                                   class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono uppercase">
+                            <p class="mt-0.5 text-[10px] text-slate-400">Auto-filled from master; editable if missing.</p>
+                            @error('transporter_id')
+                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                                <span>Doc / LR / RR / Airway Bill No.</span>
+                                <span x-show="!isRoadMode && transportMode !== 'Not Applicable'" class="text-[10px] text-indigo-600 font-semibold" x-cloak>(Required)</span>
+                            </label>
+                            <input type="text"
+                                   name="lr_rr_no"
+                                   x-model="lrRrNo"
+                                   placeholder="E.g. LR-10293 or AWB-88123"
+                                   class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            @error('lr_rr_no')
+                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">
+                                Doc / LR-RR Date
+                            </label>
+                            <input type="date"
+                                   name="lr_rr_date"
+                                   x-model="lrRrDate"
+                                   class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            @error('lr_rr_date')
+                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div :class="isRoadMode ? '' : 'opacity-70'">
+                            <label class="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                                <span>Vehicle Number</span>
+                                <span x-show="!isRoadMode" class="text-[10px] text-slate-400 font-normal" x-cloak>(Optional for Rail/Air/Ship)</span>
+                            </label>
+                            <input type="text"
+                                   name="motor_vehicle_no"
+                                   x-model="motorVehicleNo"
+                                   placeholder="E.g. MH-12-AB-1234"
+                                   class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono uppercase">
+                            <input type="hidden" name="vehicle_no" :value="motorVehicleNo">
+                            @error('motor_vehicle_no')
+                                <p class="text-xs text-rose-600 mt-1">{{ $message }}</p>
+                            @enderror
+                        </div>
+
+                        <div :class="isRoadMode ? '' : 'opacity-70'">
+                            <label class="block font-semibold text-slate-700 mb-1">
+                                Vehicle Type
+                            </label>
+                            <select name="vehicle_type" x-model="vehicleType"
+                                    class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                                <option value="R">Regular Cargo (R)</option>
+                                <option value="O">Over Dimensional Cargo (ODC)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Subtle optional trigger if E-Way bill is not active but E-Invoice is --}}
+            <div x-show="isEInvoiceApplicable && !isEWayBillApplicable" class="pt-2 text-right" x-cloak>
+                <button type="button"
+                        @click="ewayBillRequired = 'yes'; ewayNa = false;"
+                        class="text-xs text-indigo-600 hover:text-indigo-800 font-medium inline-flex items-center gap-1">
+                    + Add E-Way Bill &amp; Vehicle Transport Details (Optional)
+                </button>
+            </div>
+        </div>
+    </x-ui.card>
+
     {{-- Hidden field for legacy compatibility --}}
     <input type="hidden" name="discount_amount" :value="itemDiscountTotal()">
 
@@ -1718,6 +1857,8 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         schemes: schemes || [],
         customers: customers || [],
         companyState: companyState || '',
+        companyGstin: '{{ $companyGstin }}',
+        ewayThreshold: {{ $ewayThreshold }},
         newProduct: newProduct || null,
         savedDraft: savedDraft || null,
         targetRow: targetRow !== undefined ? targetRow : null,
@@ -2667,13 +2808,43 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             return this.companyState.trim().toLowerCase() === this.deliveryState.trim().toLowerCase();
         },
 
+        get currentCustomer() {
+            return this.customers.find(c => String(c.id) === String(this.customerId)) || null;
+        },
+
+        get buyerGstin() {
+            const addr = this.partyAddresses.find(a => String(a.id) === String(this.selectedBillingId));
+            if (addr && addr.gstin && addr.gstin.trim() !== '') {
+                return addr.gstin.trim();
+            }
+            const c = this.currentCustomer;
+            return (c && c.gstin) ? c.gstin.trim() : '';
+        },
+
+        get isB2B() {
+            const g = (this.buyerGstin || '').trim();
+            return g.length === 15 && g.toUpperCase() !== 'URP';
+        },
+
+        get hasValidLineItems() {
+            return Array.isArray(this.lines) && this.lines.some(l => l.product_id && (Number(l.quantity) || 0) > 0);
+        },
+
+        get isEInvoiceApplicable() {
+            return Boolean(this.companyGstin) && this.isB2B && this.hasValidLineItems;
+        },
+
         get isEWayBillMandatory() {
-            return (Number(this.grandTotal()) || 0) >= 50000;
+            return (Number(this.grandTotal()) || 0) >= this.ewayThreshold;
         },
 
         get isEWayBillApplicable() {
             if (this.isEWayBillMandatory) return true;
             return this.ewayBillRequired === 'yes';
+        },
+
+        get isComplianceSectionApplicable() {
+            return this.isEInvoiceApplicable || this.isEWayBillApplicable;
         },
 
         // Items and lines management
@@ -2755,6 +2926,7 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 label: c.name + (phone ? ' - ' + phone : ''),
                 credit_days: Number(c.credit_days) || 0,
                 state: c.state || '',
+                gstin: c.gstin || '',
             };
             this.customers.push(newCust);
             this.customerId = String(c.id);
@@ -2973,6 +3145,10 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             if (!this.isManualRoundOff) {
                 const total = this.totalBeforeRoundOff();
                 this.roundOff = Math.round((Math.round(total) - total) * 100) / 100;
+            }
+            if (this.isEWayBillMandatory && this.ewayBillRequired === 'no') {
+                this.ewayBillRequired = 'auto';
+                this.ewayNa = false;
             }
         },
 

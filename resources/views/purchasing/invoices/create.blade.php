@@ -9,10 +9,30 @@
 </x-ui.page-header>
 
 <form method="POST" action="{{ route('purchasing.invoices.store') }}"
+      id="purchase-invoice-form"
+      novalidate
       x-data="purchaseInvoiceForm(@js($products), @js($order ?? null), @js($initialOrders ?? []), @js($odAccounts ?? []), @js($savedDraft ?? null))"
-      @submit="clearDraftOnSubmit()"
+      @submit.prevent="submitForm(submitSaveMode)"
       class="space-y-6">
     @csrf
+
+    @if ($errors->any())
+        <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800 shadow-2xs">
+            <div class="flex items-start gap-3">
+                <svg class="h-5 w-5 text-rose-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div class="text-sm">
+                    <h4 class="font-semibold text-rose-900">Please correct the following errors:</h4>
+                    <ul class="list-disc list-inside mt-1 space-y-0.5 text-xs text-rose-700">
+                        @foreach ($errors->all() as $err)
+                            <li>{{ $err }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            </div>
+        </div>
+    @endif
 
     <div x-show="draftRestored" x-cloak class="rounded-xl border border-indigo-200 bg-indigo-50/80 px-4 py-3 text-xs text-indigo-900 flex items-center justify-between shadow-2xs">
         <div class="flex items-center gap-2">
@@ -39,7 +59,7 @@
                         + Add Supplier
                     </a>
                 </div>
-                <select name="supplier_id" id="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel()" required
+                <select name="supplier_id" id="supplier_id" x-model="supplierId" @change="onSupplierChange(); syncSupplierLabel(); delete formErrors.supplier_id" required
                         class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     <option value="">Select supplier</option>
                     @foreach($suppliers as $s)
@@ -50,6 +70,10 @@
                         </option>
                     @endforeach
                 </select>
+                <p x-show="formErrors.supplier_id" x-text="formErrors.supplier_id" class="mt-1 text-xs text-rose-600" x-cloak></p>
+                @error('supplier_id')
+                    <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                @enderror
             </div>
 
             <div>
@@ -215,19 +239,27 @@
 
             <div>
                 <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Warehouse *</label>
-                <select name="warehouse_id" x-model="warehouseId" required
+                <select name="warehouse_id" id="warehouse_id" x-model="warehouseId" @change="delete formErrors.warehouse_id" required
                         class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     <option value="">Select warehouse</option>
                     @foreach($warehouses as $w)
                         <option value="{{ $w->id }}" @selected(old('warehouse_id', $order?->warehouse_id)==$w->id)>{{ $w->name }}</option>
                     @endforeach
                 </select>
+                <p x-show="formErrors.warehouse_id" x-text="formErrors.warehouse_id" class="mt-1 text-xs text-rose-600" x-cloak></p>
+                @error('warehouse_id')
+                    <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                @enderror
             </div>
 
             <div>
                 <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Invoice Date *</label>
-                <input type="date" name="invoice_date" x-model="invoiceDate" @change="recalcDueDate()" @input="recalcDueDate()" value="{{ old('invoice_date', date('Y-m-d')) }}" required
+                <input type="date" name="invoice_date" x-model="invoiceDate" @change="recalcDueDate(); delete formErrors.invoice_date" @input="recalcDueDate(); delete formErrors.invoice_date" value="{{ old('invoice_date', date('Y-m-d')) }}" required
                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <p x-show="formErrors.invoice_date" x-text="formErrors.invoice_date" class="mt-1 text-xs text-rose-600" x-cloak></p>
+                @error('invoice_date')
+                    <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                @enderror
             </div>
 
             <div>
@@ -379,7 +411,7 @@
         </div>
     </div>
 
-    <x-ui.card padding="false">
+    <x-ui.card padding="false" id="line-items-section">
         <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
                 <div class="flex items-center gap-3">
@@ -408,7 +440,28 @@
             </button>
         </div>
 
-        <div class="overflow-x-auto border-t border-slate-200">
+        <div x-show="itemsError" x-cloak class="mx-4 mt-3 p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center justify-between text-xs text-rose-700 shadow-2xs">
+            <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="font-medium" x-text="itemsError"></span>
+            </div>
+            <button type="button" @click="itemsError = ''" class="text-rose-400 hover:text-rose-600">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        @if($errors->has('items') || $errors->has('items.*'))
+            <div class="mx-4 mt-3 p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 font-medium flex items-center gap-2 shadow-2xs">
+                <svg class="w-4 h-4 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span>{{ $errors->first('items') ?: $errors->first('items.*') }}</span>
+            </div>
+        @endif
+
+        <div class="overflow-x-auto border-t border-slate-200 mt-2">
             <table class="w-full min-w-[1580px] text-left text-xs border-collapse">
                 <thead class="bg-slate-50 text-slate-600 tracking-wider border-b border-slate-200 font-semibold text-[11px]">
                     <tr>
@@ -441,14 +494,23 @@
                                 </div>
                                 <select :name="`items[${i}][product_id]`"
                                         x-model="row.product_id"
-                                        @change="onProductChange(i)"
+                                        @change="onProductChange(i); itemsError = ''"
                                         required
                                         class="block w-full rounded-md border-gray-300 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-h-[38px] px-3 py-2 bg-white">
                                     <option value="">Select product...</option>
                                     <template x-for="p in products" :key="p.id">
-                                        <option :value="p.id" x-text="p.name"></option>
+                                        <option :value="p.id"
+                                                :data-code="p.sku || ''"
+                                                :data-subtext="p.sku ? ('Part No: ' + p.sku) : ''"
+                                                x-text="p.sku ? (p.name + ' (' + p.sku + ')') : p.name"></option>
                                     </template>
                                 </select>
+                                <template x-if="getSelectedProductSku(row.product_id)">
+                                    <div class="mt-1 text-[11px] text-slate-500 flex items-center gap-1.5 font-mono">
+                                        <span class="text-slate-400">Part No / SKU:</span>
+                                        <span class="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" x-text="getSelectedProductSku(row.product_id)"></span>
+                                    </div>
+                                </template>
                                 <input type="hidden" :name="`items[${i}][receipt_note_item_id]`" :value="row.receipt_note_item_id || ''">
 
                                     <template x-if="isSerialTracked(row)">
@@ -620,14 +682,28 @@
     </x-ui.card>
 
     <div class="flex items-center gap-3 pt-2 border-t border-slate-200">
-        <x-ui.button type="submit" name="save_mode" value="draft" variant="secondary"
-                     title="Material already received — invoice is ready for payment; stock will be posted now">
-            Save as Draft
-        </x-ui.button>
-        <x-ui.button type="submit" name="save_mode" value="open" variant="primary"
-                     title="Material still in transit — stock posts only after you confirm receipt">
-            Save as Open
-        </x-ui.button>
+        <button type="button"
+                @click="submitForm('draft')"
+                :disabled="isSubmitting"
+                class="inline-flex items-center justify-center px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-lg text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                title="Material already received — invoice is ready for payment; stock will be posted now">
+            <svg x-show="isSubmitting && submitSaveMode === 'draft'" class="animate-spin -ml-1 mr-2 h-4 w-4 text-slate-700" fill="none" viewBox="0 0 24 24" x-cloak>
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span x-text="isSubmitting && submitSaveMode === 'draft' ? 'Saving...' : 'Save as Draft'"></span>
+        </button>
+        <button type="button"
+                @click="submitForm('open')"
+                :disabled="isSubmitting"
+                class="inline-flex items-center justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                title="Material still in transit — stock posts only after you confirm receipt">
+            <svg x-show="isSubmitting && submitSaveMode === 'open'" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" x-cloak>
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span x-text="isSubmitting && submitSaveMode === 'open' ? 'Saving...' : 'Save as Open'"></span>
+        </button>
         <x-ui.button variant="secondary" :href="route('purchasing.invoices.index')" @click="clearDraft()">Cancel</x-ui.button>
     </div>
     <p class="text-[11px] text-slate-500 -mt-2">
@@ -696,6 +772,109 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
         taxTotal: 0,
         grandTotal: 0,
         items: [],
+        formErrors: {},
+        itemsError: '',
+        isSubmitting: false,
+        submitSaveMode: 'draft',
+
+        syncSupplierLabel() {
+            const sel = document.querySelector('select[name="supplier_id"]');
+            if (sel && sel.selectedOptions && sel.selectedOptions[0]) {
+                this.supplierQuery = sel.selectedOptions[0].textContent.trim();
+            }
+        },
+
+        getSelectedProductSku(id) {
+            if (!id) return '';
+            const p = this.products.find(item => String(item.id) === String(id));
+            return p ? (p.sku || p.part_number || '') : '';
+        },
+
+        validateForm() {
+            this.formErrors = {};
+            this.itemsError = '';
+
+            if (!this.supplierId) {
+                this.formErrors.supplier_id = 'Please select a supplier.';
+            }
+            if (!this.warehouseId) {
+                this.formErrors.warehouse_id = 'Please select a warehouse.';
+            }
+            if (!this.invoiceDate) {
+                this.formErrors.invoice_date = 'Please select an invoice date.';
+            }
+
+            if (!this.items || this.items.length === 0) {
+                this.itemsError = 'The items field is required. Please add at least one product.';
+            } else {
+                let hasValidItem = false;
+                for (let i = 0; i < this.items.length; i++) {
+                    const item = this.items[i];
+                    if (!item.product_id) {
+                        this.itemsError = `Please select a product for line #${i + 1}.`;
+                        return false;
+                    }
+                    if (!item.quantity || Number(item.quantity) <= 0) {
+                        this.itemsError = `Please enter a valid quantity greater than 0 for line #${i + 1}.`;
+                        return false;
+                    }
+                    if (this.isSerialTracked(item)) {
+                        const serials = (item.serial_numbers || []).filter(s => String(s || '').trim() !== '');
+                        const needed = Math.round(Number(item.quantity) || 1);
+                        if (serials.length < needed) {
+                            this.itemsError = `Please enter all ${needed} required serial numbers for line #${i + 1}.`;
+                            return false;
+                        }
+                    }
+                    hasValidItem = true;
+                }
+
+                if (!hasValidItem) {
+                    this.itemsError = 'The items field is required. Please select at least one product.';
+                    return false;
+                }
+            }
+
+            if (Object.keys(this.formErrors).length > 0 || this.itemsError) {
+                return false;
+            }
+            return true;
+        },
+
+        submitForm(mode) {
+            if (this.isSubmitting) return;
+
+            this.submitSaveMode = mode || 'draft';
+            if (!this.validateForm()) {
+                if (this.itemsError) {
+                    const el = document.getElementById('line-items-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else if (this.formErrors.supplier_id) {
+                    const supEl = document.getElementById('supplier_id_searchable_trigger') || document.getElementById('supplier_id');
+                    if (supEl) supEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else if (this.formErrors.warehouse_id) {
+                    const whEl = document.getElementById('warehouse_id_searchable_trigger') || document.getElementById('warehouse_id');
+                    if (whEl) whEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                return;
+            }
+
+            this.isSubmitting = true;
+            this.clearDraft();
+
+            const form = document.getElementById('purchase-invoice-form');
+            if (form) {
+                let saveModeInput = form.querySelector('input[name="save_mode"]');
+                if (!saveModeInput) {
+                    saveModeInput = document.createElement('input');
+                    saveModeInput.type = 'hidden';
+                    saveModeInput.name = 'save_mode';
+                    form.appendChild(saveModeInput);
+                }
+                saveModeInput.value = this.submitSaveMode;
+                form.submit();
+            }
+        },
 
         async init() {
             this.recalcDueDate();
@@ -797,8 +976,6 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
                 sessionStorage.setItem('pi_create_draft', JSON.stringify(this.getDraftState(targetRow)));
             } catch (e) {}
         },
-            this.recalc();
-        },
 
         addItem() {
             this.items.push({
@@ -817,6 +994,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
                 serial_numbers: [],
                 line_total: 0
             });
+            this.itemsError = '';
             this.recalc();
         },
 
@@ -908,6 +1086,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
         removeItem(index) {
             if (this.items.length > 1) {
                 this.items.splice(index, 1);
+                this.itemsError = '';
                 this.recalc();
             }
         },

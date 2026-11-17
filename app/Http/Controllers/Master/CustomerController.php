@@ -608,7 +608,8 @@ class CustomerController extends Controller
             'item' => $customer,
             'initialAddresses' => $initialAddresses,
             'lead' => $lead,
-            'returnTo' => $request->query('return_to', old('return_to')),
+            'returnTo' => $request->query('return_to', $request->query('amp;return_to', old('return_to'))),
+            'returnUrl' => $request->query('return_url', $request->query('amp;return_url', old('return_url'))),
             ...$this->formData($customer),
         ]);
     }
@@ -692,18 +693,29 @@ class CustomerController extends Controller
             return $this->flashSuccess("Lead '{$lead->name}' converted to Customer '{$customer->name}' ({$customer->code}) successfully.", 'masters.customers.index');
         }
 
-        $returnTo = $request->input('return_to');
+        $returnTo = $request->input('return_to', $request->input('amp;return_to'));
         if ($returnTo === 'orders.create') {
             return redirect()->route('orders.create', ['customer_id' => $customer->id])
                 ->with('status', TitleCase::format("Party '{$customer->name}' created successfully."))
                 ->with('success', "Customer '{$customer->name}' created successfully.");
         }
 
-        $returnUrl = $this->safeInternalReturnUrl($request->input('return_url'));
+        if ($returnTo === 'invoices.create' || $returnTo === 'sales.invoices.create') {
+            return redirect()->route('invoices.create', [
+                'customer_id' => $customer->id,
+                'new_customer_id' => $customer->id,
+                'returned_from' => 'party_create',
+            ])
+                ->with('status', TitleCase::format("Party '{$customer->name}' created successfully. Continue with the tax invoice."))
+                ->with('success', "Customer '{$customer->name}' created successfully.");
+        }
+
+        $returnUrl = $this->safeInternalReturnUrl($request->input('return_url', $request->input('amp;return_url')));
         if ($returnUrl) {
             $separator = str_contains($returnUrl, '?') ? '&' : '?';
             $isPurchasingOrder = str_contains($returnUrl, '/purchasing');
             $isSalesOrder = str_contains($returnUrl, '/orders') && ! $isPurchasingOrder;
+            $isSalesInvoice = (str_contains($returnUrl, '/invoices') || str_contains($returnUrl, 'sales/invoices')) && ! $isPurchasingOrder;
 
             if ($isPurchasingOrder) {
                 $target = $returnUrl.$separator.'supplier_id='.$customer->id;
@@ -711,6 +723,19 @@ class CustomerController extends Controller
             } elseif ($isSalesOrder) {
                 $target = $returnUrl.$separator.'customer_id='.$customer->id;
                 $message = "Party '{$customer->name}' created successfully.";
+            } elseif ($isSalesInvoice) {
+                $queryParams = [];
+                if (! str_contains($returnUrl, 'customer_id=')) {
+                    $queryParams[] = 'customer_id='.$customer->id;
+                }
+                if (! str_contains($returnUrl, 'new_customer_id=')) {
+                    $queryParams[] = 'new_customer_id='.$customer->id;
+                }
+                if (! str_contains($returnUrl, 'returned_from=')) {
+                    $queryParams[] = 'returned_from=party_create';
+                }
+                $target = ! empty($queryParams) ? $returnUrl.$separator.implode('&', $queryParams) : $returnUrl;
+                $message = "Party '{$customer->name}' created successfully. Continue with the tax invoice.";
             } else {
                 $target = $returnUrl;
                 $message = "Party '{$customer->name}' created successfully.";
@@ -1172,6 +1197,8 @@ class CustomerController extends Controller
             'target_end_date' => 'nullable|date|after_or_equal:target_start_date',
             'is_active' => 'boolean',
             'contacts' => 'nullable|array',
+            'contacts.*.id' => 'nullable|integer',
+            'contacts.*.designation_id' => 'nullable|integer',
             'contacts.*.name' => 'nullable|string|max:255',
             'contacts.*.role' => 'nullable|string|max:100',
             'contacts.*.designation' => 'nullable|string|max:100',
@@ -1366,7 +1393,15 @@ class CustomerController extends Controller
                     $finalRole = null;
                 }
 
+                $designationId = ! empty($row['designation_id']) ? (int) $row['designation_id'] : null;
+                if (! $designationId && $rawRole !== '' && $rawRole !== 'Other') {
+                    $designationId = \App\Domains\Master\Models\Designation::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($rawRole)])->value('id');
+                } elseif (! $designationId && $rawRole === 'Other') {
+                    $designationId = \App\Domains\Master\Models\Designation::whereRaw('LOWER(TRIM(name)) = ?', ['other'])->value('id');
+                }
+
                 return [
+                    'designation_id' => $designationId,
                     'level' => in_array($row['level'] ?? null, ['party', 'branch', 'site', 'warehouse', 'transporter', 'driver', 'site_incharge'], true) ? $row['level'] : 'party',
                     'name' => $row['name'] ?? null,
                     'role' => $finalRole,
@@ -1951,6 +1986,18 @@ class CustomerController extends Controller
             'stateOptions' => IndianStates::options(),
             'stateCities' => IndianCities::all(),
             'contactDesignations' => \App\Support\ContactDesignations::all(),
+            'designationsList' => \App\Domains\Master\Models\Designation::query()
+                ->where(function ($query) use ($customer) {
+                    $query->where('is_active', true);
+                    if ($customer?->relationLoaded('contacts') || $customer?->exists) {
+                        $usedIds = $customer->contacts()->pluck('designation_id')->filter()->all();
+                        if (! empty($usedIds)) {
+                            $query->orWhereIn('id', $usedIds);
+                        }
+                    }
+                })
+                ->orderBy('name')
+                ->get(['id', 'name', 'code', 'is_active']),
         ];
     }
 }

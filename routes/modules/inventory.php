@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('inventory')->name('inventory.')->middleware('role_or_permission:super-admin|inventory.view|inventory.create|inventory.edit|inventory.manage|stock.view|stock.create|stock.edit|purchases.view|purchases.create|purchases.edit')->group(function () {
     Route::get('/stock', [StockController::class, 'index'])->name('stock.index');
+    Route::get('/stock/{product}/{warehouse?}/in-transit-details', [StockController::class, 'inTransitDetails'])->name('stock.in-transit-details');
+
+    Route::get('/stock-register', [\App\Http\Controllers\Inventory\StockRegisterController::class, 'index'])->name('stock-register.index');
+    Route::get('/stock-register/{product}/{warehouse?}/in-transit-details', [\App\Http\Controllers\Inventory\StockRegisterController::class, 'inTransitDetails'])->name('stock-register.in-transit-details');
     Route::resource('purchases', PurchaseController::class)->only(['index', 'create', 'store', 'show']);
 
     Route::get('transfers', [StockTransferController::class, 'index'])->name('transfers.index');

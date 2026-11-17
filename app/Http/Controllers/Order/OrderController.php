@@ -233,6 +233,7 @@ class OrderController extends Controller
             'products' => Product::query()
                 ->with('baseUom')
                 ->where('is_active', true)
+                ->where('is_hidden', false)
                 ->orderBy('name')
                 ->get(),
 
@@ -300,9 +301,20 @@ class OrderController extends Controller
 
         $term = trim($validated['q'] ?? '');
 
+        $user = auth()->user();
+        $canIncludeHidden = $user && (
+            $user->hasAnyRole(['super-admin', 'owner', 'client-admin'])
+            || $user->can('products.view-hidden')
+            || $user->can('products.manage')
+        );
+
         $query = Product::query()
             ->with('baseUom')
             ->where('is_active', true);
+
+        if (! $request->boolean('include_hidden') || ! $canIncludeHidden) {
+            $query->where('is_hidden', false);
+        }
 
         if ($term !== '') {
             $query->where(function ($query) use ($term) {
@@ -638,6 +650,10 @@ class OrderController extends Controller
 
             'products' => Product::with('baseUom')
                 ->where('is_active', true)
+                ->where(function ($q) use ($order) {
+                    $q->where('is_hidden', false)
+                        ->orWhereIn('id', $order->items->pluck('product_id'));
+                })
                 ->orderBy('name')
                 ->get(),
 

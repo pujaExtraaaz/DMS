@@ -14,18 +14,27 @@
             Back
         </x-ui.button>
 
-        <div class="flex items-center gap-2">
-            @if($invoice->canReceiveMaterial())
-                <x-ui.button variant="primary" :href="route('purchasing.invoices.receive-material', $invoice)">
-                    Receive Material
-                </x-ui.button>
-            @endif
+        <div class="flex flex-col sm:items-end gap-2">
             <x-ui.button
-                variant="secondary"
-                :href="route('purchasing.invoices.preview', $invoice)"
+                variant="primary"
+                :href="route('purchasing.invoices.create')"
             >
-                Preview Invoice
+                + Create New Purchase Invoice
             </x-ui.button>
+
+            <div class="flex items-center gap-2">
+                @if($invoice->canReceiveMaterial())
+                    <x-ui.button variant="primary" :href="route('purchasing.invoices.receive-material', $invoice)">
+                        Receive Material
+                    </x-ui.button>
+                @endif
+                <x-ui.button
+                    variant="secondary"
+                    :href="route('purchasing.invoices.preview', $invoice)"
+                >
+                    Preview Invoice
+                </x-ui.button>
+            </div>
         </div>
     </x-slot>
 </x-ui.page-header>

@@ -22,6 +22,7 @@ class DmsPermissionCatalog
             'products',
             'customers',
             'price-master',
+            'designations',
             'orders',
             'quotations',
             'inventory',
@@ -65,6 +66,7 @@ class DmsPermissionCatalog
             'products',
             'customers',
             'price-master',
+            'designations',
             'orders',
             'quotations',
             'inventory',
@@ -120,6 +122,11 @@ class DmsPermissionCatalog
             'receipt-notes.cancel',
             'receipt-notes.return',
             'receipt-notes.export',
+            'products.view-hidden',
+            'products.hide',
+            'products.unhide',
+            'designations.activate',
+            'designations.deactivate',
         ];
     }
 
@@ -138,6 +145,7 @@ class DmsPermissionCatalog
             'Products' => 'products',
             'Customers' => 'customers',
             'Price Master' => 'price-master',
+            'Designations' => 'designations',
             'Orders' => 'orders',
             'Quotations' => 'quotations',
             'Inventory' => 'inventory',
@@ -208,7 +216,7 @@ class DmsPermissionCatalog
     {
         $linked = [];
 
-        if (in_array($module, ['products', 'customers', 'price-master'], true)) {
+        if (in_array($module, ['products', 'customers', 'price-master', 'designations'], true)) {
             $linked[] = "masters.{$action}";
         }
 
