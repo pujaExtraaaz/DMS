@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Domains\Hrms\Models\Employee;
+use App\Domains\Inventory\Models\ProductSerial;
 use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Purchasing\Services\SerialBatchService;
 use App\Domains\Master\Models\Customer;
@@ -28,6 +29,7 @@ use App\Domains\Scheme\Models\Scheme;
 use App\Domains\Scheme\Services\SchemeService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\AuditLogService;
 use App\Support\CodeGenerator;
 use App\Support\DueDateService;
 use App\Support\WarrantyPeriod;
@@ -62,7 +64,27 @@ class InvoiceController extends Controller
         protected FinancialYearService $financialYearService,
         protected SchemeService $schemeService,
         protected SerialBatchService $serialBatchService,
+        protected AuditLogService $auditLogService,
     ) {}
+
+    /**
+     * Determine if user is authorized to edit saved invoices.
+     */
+    protected function authorizeInvoiceEdit(?User $user, Invoice $invoice): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->hasRole('super-admin')) {
+            return true;
+        }
+
+        return $user->can('invoices.edit')
+            || $user->can('invoices.manage')
+            || $user->can('sales.edit')
+            || $user->can('sales.manage');
+    }
 
     /**
      * Resolve salespersons dynamically from roles or employees.
@@ -221,6 +243,8 @@ class InvoiceController extends Controller
         if ($savedDraft && (
             $request->filled('new_product_id')
             || $request->query('returned_from') === 'product_create'
+            || $request->filled('updated_product_id')
+            || $request->query('returned_from') === 'product_edit'
             || $request->filled('new_customer_id')
             || $request->query('returned_from') === 'party_create'
             || $request->filled('new_salesperson_id')
@@ -231,8 +255,14 @@ class InvoiceController extends Controller
 
         $newProduct = null;
         if ($request->filled('new_product_id')) {
-            $newProduct = Product::with(['baseUom', 'productType'])
+            $newProduct = Product::with(['baseUom', 'alternateUom', 'productUoms.uom', 'productType'])
                 ->find($request->input('new_product_id'));
+        }
+
+        $updatedProduct = null;
+        if ($request->filled('updated_product_id')) {
+            $updatedProduct = Product::with(['baseUom', 'alternateUom', 'productUoms.uom', 'productType'])
+                ->find($request->input('updated_product_id'));
         }
 
         $newCustomer = null;
@@ -247,7 +277,7 @@ class InvoiceController extends Controller
             $salespersons->prepend($newSalesperson);
         }
 
-        $products = Product::with(['baseUom', 'productType'])
+        $products = Product::with(['baseUom', 'alternateUom', 'productUoms.uom', 'productType'])
             ->where('is_active', true)
             ->where(function ($q) use ($order) {
                 $q->where('is_hidden', false);
@@ -260,6 +290,13 @@ class InvoiceController extends Controller
 
         if ($newProduct && ! $products->contains('id', $newProduct->id)) {
             $products->prepend($newProduct);
+        }
+
+        if ($updatedProduct) {
+            $products = $products->map(fn ($p) => (int) $p->id === (int) $updatedProduct->id ? $updatedProduct : $p);
+            if (! $products->contains('id', $updatedProduct->id)) {
+                $products->prepend($updatedProduct);
+            }
         }
 
         $customers = Customer::with('customerType')
@@ -285,6 +322,7 @@ class InvoiceController extends Controller
 
             'products' => $products,
             'newProduct' => $newProduct,
+            'updatedProduct' => $updatedProduct,
             'targetRow' => $request->query('target_row'),
             'savedDraft' => $savedDraft,
 
@@ -305,7 +343,13 @@ class InvoiceController extends Controller
     public function saveDraft(Request $request): JsonResponse
     {
         $draft = $request->input('draft', []);
-        $request->session()->put('tax_invoice_draft', $draft);
+        $invoiceId = $request->input('invoice_id');
+
+        if ($invoiceId) {
+            $request->session()->put('tax_invoice_edit_draft_' . $invoiceId, $draft);
+        } else {
+            $request->session()->put('tax_invoice_draft', $draft);
+        }
 
         return response()->json([
             'success' => true,
@@ -588,6 +632,61 @@ class InvoiceController extends Controller
             'items.*.batch_no' => 'nullable|string|max:60',
             'items.*.serial_numbers' => 'nullable',
         ]);
+
+        // Validate each item's selected UOM is configured/allowed for that product.
+        $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
+        $dbProducts = Product::with(['baseUom', 'alternateUom', 'productUoms.uom'])
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy('id');
+
+        $allEnteredSerials = [];
+        foreach ($validated['items'] as $itemIdx => $valItem) {
+            $pId = $valItem['product_id'] ?? null;
+            $prod = $dbProducts->get($pId);
+            if ($prod && ! $prod->isAllowedUom($valItem['uom_id'] ?? null)) {
+                throw ValidationException::withMessages([
+                    "items.{$itemIdx}.uom_id" => ["The selected unit is not valid for product '{$prod->name}'."],
+                ]);
+            }
+
+            // Serial tracking validation according to Product Master
+            if ($prod && $prod->isSerialTracked()) {
+                $rawSerials = $valItem['serial_numbers'] ?? null;
+                $serialsList = is_array($rawSerials)
+                    ? collect($rawSerials)->map(fn ($s) => trim((string) $s))->filter()->values()->all()
+                    : (filled($rawSerials) ? WarrantyPeriod::split($rawSerials) : []);
+
+                $expectedQty = (int) round((float) $valItem['quantity']);
+                if (empty($serialsList)) {
+                    throw ValidationException::withMessages([
+                        "items.{$itemIdx}.serial_numbers" => ["Serial numbers are required for tracked product '{$prod->name}'."],
+                    ]);
+                }
+
+                if (count($serialsList) !== $expectedQty) {
+                    throw ValidationException::withMessages([
+                        "items.{$itemIdx}.serial_numbers" => ["Product '{$prod->name}' requires exactly {$expectedQty} serial number(s) (" . count($serialsList) . " entered)."],
+                    ]);
+                }
+
+                if (count($serialsList) !== count(array_unique($serialsList))) {
+                    throw ValidationException::withMessages([
+                        "items.{$itemIdx}.serial_numbers" => ["Duplicate serial numbers entered for product '{$prod->name}'."],
+                    ]);
+                }
+
+                foreach ($serialsList as $sn) {
+                    $snKey = strtolower($sn);
+                    if (isset($allEnteredSerials[$snKey])) {
+                        throw ValidationException::withMessages([
+                            "items.{$itemIdx}.serial_numbers" => ["Serial number '{$sn}' is duplicated in this invoice."],
+                        ]);
+                    }
+                    $allEnteredSerials[$snKey] = true;
+                }
+            }
+        }
 
         // Enforce FY period lock — refuse to post into a closed/unmapped period.
         $this->financialYearService->assertOpen($validated['invoice_date']);
@@ -954,10 +1053,14 @@ class InvoiceController extends Controller
                     $uom = $line['uom'];
                     $inputRow = $validated['items'][$idx] ?? [];
                     $serialsRaw = $inputRow['serial_numbers'] ?? null;
-                    if (is_array($serialsRaw)) {
-                        $serials = collect($serialsRaw)->map(fn ($s) => trim((string) $s))->filter()->values()->all();
+                    if ($product->isSerialTracked()) {
+                        if (is_array($serialsRaw)) {
+                            $serials = collect($serialsRaw)->map(fn ($s) => trim((string) $s))->filter()->values()->all();
+                        } else {
+                            $serials = WarrantyPeriod::split($serialsRaw);
+                        }
                     } else {
-                        $serials = WarrantyPeriod::split($serialsRaw);
+                        $serials = [];
                     }
 
                     $invoiceItem = InvoiceItem::create([
@@ -1034,9 +1137,30 @@ class InvoiceController extends Controller
         return $this->flashSuccess('Invoice created successfully.', 'invoices.show', ['invoice' => $invoice]);
     }
 
-    public function edit(Invoice $invoice): View
+    public function edit(Request $request, Invoice $invoice): View
     {
-        $invoice->load(['items.product.baseUom', 'items.uom', 'customer', 'billingAddress', 'shippingAddress', 'order', 'salesperson']);
+        if (! $this->authorizeInvoiceEdit(auth()->user(), $invoice)) {
+            abort(403, 'Unauthorized: You do not have permission to edit saved tax invoices.');
+        }
+
+        if ($invoice->status === 'cancelled') {
+            return redirect()->route('invoices.show', $invoice)->with('error', 'Cancelled invoices cannot be edited.');
+        }
+
+        $invoice->load([
+            'items.product.baseUom',
+            'items.product.productType',
+            'items.product.productUoms.uom',
+            'items.uom',
+            'customer',
+            'billingAddress',
+            'shippingAddress',
+            'order',
+            'salesperson',
+            'eInvoice',
+            'eWayBill'
+        ]);
+
         $company = Company::resolveCurrent() ?? Company::query()->first();
         $initialOrders = $invoice->customer ? $this->getEligibleOrdersForCustomer($invoice->customer, auth()->user()) : collect();
 
@@ -1044,6 +1168,33 @@ class InvoiceController extends Controller
         if ($invoice->salesperson && ! $salespersons->contains('id', $invoice->salesperson_id)) {
             $salespersons->prepend($invoice->salesperson);
         }
+
+        $updatedProduct = null;
+        if ($request->query('updated_product_id')) {
+            $up = Product::with(['baseUom', 'productType', 'productUoms.uom'])->find($request->query('updated_product_id'));
+            if ($up) {
+                $isTracked = (bool) ($up->isSerialTracked() || $up->productType?->track_serial);
+                $allowedUoms = $up->getAllowedUoms();
+                $updatedProduct = [
+                    'id' => $up->id,
+                    'name' => $up->name,
+                    'brand_id' => $up->brand_id,
+                    'base_uom_id' => $up->base_uom_id ? (string) $up->base_uom_id : '',
+                    'base_uom_code' => $up->baseUom?->code ?? $up->baseUom?->name ?? 'PCS',
+                    'unit' => $up->baseUom?->code ?? $up->baseUom?->name ?? 'PCS',
+                    'allowed_uoms' => $allowedUoms->values()->toArray(),
+                    'allow_unit_change' => $allowedUoms->count() > 1,
+                    'selling_price' => (float) $up->selling_price,
+                    'tax_rate' => (float) ($up->tax_rate ?? 0),
+                    'tracking_type' => $isTracked ? 'serial' : ($up->tracking_type ?? 'none'),
+                    'selling_discount_type' => $up->selling_discount_type ?? 'percent',
+                    'selling_discount_value' => (float) ($up->selling_discount_value ?? 0),
+                    'hsn_code' => $up->hsn_code ?? '',
+                ];
+            }
+        }
+
+        $savedDraft = $request->session()->pull('tax_invoice_edit_draft_' . $invoice->id);
 
         return view('sales.invoices.edit', [
             'invoice' => $invoice,
@@ -1053,7 +1204,7 @@ class InvoiceController extends Controller
             'customers' => Customer::with('customerType')->where('is_active', true)->orderBy('name')->get(),
             'transporters' => self::getTransporters(),
             'salespersons' => $salespersons,
-            'products' => Product::with(['baseUom', 'productType'])
+            'products' => Product::with(['baseUom', 'productType', 'productUoms.uom'])
                 ->where('is_active', true)
                 ->where(function ($q) use ($invoice) {
                     $q->where('is_hidden', false)
@@ -1065,16 +1216,64 @@ class InvoiceController extends Controller
             'schemes' => Scheme::with(['brand', 'slabs', 'products'])->where('status', 'active')->orderBy('name')->get(),
             'stateOptions' => \App\Support\IndianStates::options(),
             'sellingTermsAndConditions' => $company?->selling_terms_and_conditions,
+            'isStatutoryLocked' => $invoice->isStatutoryLocked(),
+            'isEInvoiceGenerated' => $invoice->isEInvoiceGenerated(),
+            'isEWayBillGenerated' => $invoice->isEWayBillGenerated(),
+            'updatedProduct' => $updatedProduct,
+            'savedDraft' => $savedDraft,
+            'targetRow' => $request->query('target_row'),
         ]);
     }
 
     public function update(Request $request, Invoice $invoice): RedirectResponse
     {
+        if (! $this->authorizeInvoiceEdit(auth()->user(), $invoice)) {
+            abort(403, 'Unauthorized: You do not have permission to edit saved tax invoices.');
+        }
+
+        if ($invoice->status === 'cancelled') {
+            return back()->with('error', 'Cancelled invoices cannot be modified.');
+        }
+
+        $request->session()->forget('tax_invoice_edit_draft_' . $invoice->id);
+
+        $isStatutoryLocked = $invoice->isStatutoryLocked();
+
+        // Check if statutory lock is active and the request attempts to modify line items
+        if ($isStatutoryLocked && $request->has('items')) {
+            $oldItems = $invoice->items()->get();
+            $newItems = $request->input('items', []);
+            $hasItemChanges = count($newItems) !== $oldItems->count();
+            if (! $hasItemChanges) {
+                foreach ($newItems as $i => $nItem) {
+                    $oItem = $oldItems[$i] ?? null;
+                    if (! $oItem
+                        || (int) $oItem->product_id !== (int) ($nItem['product_id'] ?? 0)
+                        || (float) $oItem->quantity !== (float) ($nItem['quantity'] ?? 0)
+                        || (float) $oItem->unit_price !== (float) ($nItem['unit_price'] ?? 0)
+                        || (int) $oItem->uom_id !== (int) ($nItem['uom_id'] ?? 0)
+                        || (float) ($oItem->discount_value ?? 0) !== (float) ($nItem['discount_value'] ?? 0)
+                    ) {
+                        $hasItemChanges = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($hasItemChanges) {
+                $doc = $invoice->isEInvoiceGenerated() ? 'E-Invoice (IRN generated)' : 'E-Way Bill';
+                if ($invoice->isEInvoiceGenerated() && $invoice->isEWayBillGenerated()) {
+                    $doc = 'E-Invoice and E-Way Bill';
+                }
+                return back()->withInput()->with('error', "Direct modification of product and pricing details is legally restricted because {$doc} has already been generated. Please cancel the statutory document(s) first, or issue a Credit/Debit Note.");
+            }
+        }
+
         if ($request->has('eway_bill_required')) {
             $request->merge(['eway_bill_required' => strtolower((string) $request->input('eway_bill_required'))]);
         }
 
-        $validated = $request->validate([
+        $rules = [
             'salesperson_id' => 'nullable|exists:users,id',
             'notes' => 'nullable|string',
             'terms_and_conditions' => 'nullable|string',
@@ -1129,7 +1328,88 @@ class InvoiceController extends Controller
             'consignee_pincode' => 'nullable|string|max:20',
             'consignee_city' => 'nullable|string|max:100',
             'consignee_actual_state' => 'nullable|string|max:100',
-        ]);
+        ];
+
+        $shouldUpdateItems = ! $isStatutoryLocked && $request->has('items');
+
+        if ($shouldUpdateItems) {
+            $rules['discount_amount'] = 'nullable|numeric|min:0';
+            $rules['universal_discount_type'] = 'nullable|in:percent,flat';
+            $rules['universal_discount_value'] = 'nullable|numeric|min:0';
+            $rules['price_type'] = 'nullable|in:exclusive,inclusive';
+            $rules['tax_type'] = 'nullable|in:intra,inter,cgst_sgst,igst';
+            $rules['round_off'] = 'nullable|numeric|between:-500,500';
+            $rules['items'] = 'required|array|min:1';
+            $rules['items.*.product_id'] = 'required|exists:products,id';
+            $rules['items.*.uom_id'] = 'required|exists:uoms,id';
+            $rules['items.*.quantity'] = 'required|numeric|min:0.0001';
+            $rules['items.*.unit_price'] = 'nullable|numeric|min:0';
+            $rules['items.*.discount_type'] = 'nullable|in:percent,flat';
+            $rules['items.*.discount_value'] = 'nullable|numeric|min:0';
+            $rules['items.*.batch_no'] = 'nullable|string|max:60';
+            $rules['items.*.serial_numbers'] = 'nullable';
+        }
+
+        $validated = $request->validate($rules);
+
+        if ($shouldUpdateItems) {
+            // Validate each item's selected UOM and serial numbers
+            $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
+            $dbProducts = Product::with(['baseUom', 'alternateUom', 'productUoms.uom'])
+                ->whereIn('id', $productIds)
+                ->get()
+                ->keyBy('id');
+
+            $allEnteredSerials = [];
+            foreach ($validated['items'] as $itemIdx => $valItem) {
+                $pId = $valItem['product_id'] ?? null;
+                $prod = $dbProducts->get($pId);
+                if ($prod && ! $prod->isAllowedUom($valItem['uom_id'] ?? null)) {
+                    throw ValidationException::withMessages([
+                        "items.{$itemIdx}.uom_id" => ["The selected unit is not valid for product '{$prod->name}'."],
+                    ]);
+                }
+
+                if ($prod && $prod->isSerialTracked()) {
+                    $rawSerials = $valItem['serial_numbers'] ?? null;
+                    $serialsList = is_array($rawSerials)
+                        ? collect($rawSerials)->map(fn ($s) => trim((string) $s))->filter()->values()->all()
+                        : (filled($rawSerials) ? WarrantyPeriod::split($rawSerials) : []);
+
+                    $expectedQty = (int) round((float) $valItem['quantity']);
+                    if (empty($serialsList)) {
+                        throw ValidationException::withMessages([
+                            "items.{$itemIdx}.serial_numbers" => ["Serial numbers are required for tracked product '{$prod->name}'."],
+                        ]);
+                    }
+
+                    if (count($serialsList) !== $expectedQty) {
+                        throw ValidationException::withMessages([
+                            "items.{$itemIdx}.serial_numbers" => ["Product '{$prod->name}' requires exactly {$expectedQty} serial number(s) (" . count($serialsList) . " entered)."],
+                        ]);
+                    }
+
+                    if (count($serialsList) !== count(array_unique($serialsList))) {
+                        throw ValidationException::withMessages([
+                            "items.{$itemIdx}.serial_numbers" => ["Duplicate serial numbers entered for product '{$prod->name}'."],
+                        ]);
+                    }
+
+                    foreach ($serialsList as $sn) {
+                        $snKey = strtolower($sn);
+                        if (isset($allEnteredSerials[$snKey])) {
+                            throw ValidationException::withMessages([
+                                "items.{$itemIdx}.serial_numbers" => ["Serial number '{$sn}' is duplicated in this invoice."],
+                            ]);
+                        }
+                        $allEnteredSerials[$snKey] = true;
+                    }
+                }
+            }
+
+            // FY period lock check
+            $this->financialYearService->assertOpen($invoice->invoice_date);
+        }
 
         $deliveryNoteNa = !empty($validated['delivery_note_na']);
         $deliveryNoteNo = $deliveryNoteNa ? null : (isset($validated['delivery_note_no']) ? trim((string)$validated['delivery_note_no']) : null);
@@ -1164,6 +1444,13 @@ class InvoiceController extends Controller
         $company = $invoice->selling_company ?? Company::resolveCurrent() ?? Company::first();
         $sellerState = \App\Domains\Master\Services\GstTaxCalculationService::resolveSellerState($company);
         $newIsIntra = \App\Domains\Master\Services\GstTaxCalculationService::isIntraState($sellerState, $newDeliveryState);
+        if (isset($validated['tax_type'])) {
+            if (in_array($validated['tax_type'], ['inter', 'igst'], true)) {
+                $newIsIntra = false;
+            } elseif (in_array($validated['tax_type'], ['intra', 'cgst_sgst'], true)) {
+                $newIsIntra = true;
+            }
+        }
         $newTaxType = $newIsIntra ? 'intra' : 'inter';
 
         $billToPlace = array_key_exists('bill_to_place', $validated)
@@ -1178,66 +1465,305 @@ class InvoiceController extends Controller
         $ewayBillDate = array_key_exists('eway_bill_date', $validated) ? (!empty($validated['eway_bill_date']) ? $validated['eway_bill_date'] : null) : $invoice->eway_bill_date;
         $ewayStatus = $ewayBillNo ? 'generated' : $invoice->eway_bill_status;
 
-        $invoice->update([
-            'salesperson_id' => array_key_exists('salesperson_id', $validated)
-                ? (!empty($validated['salesperson_id']) ? (int) $validated['salesperson_id'] : null)
-                : $invoice->salesperson_id,
-            'delivery_note_no' => $deliveryNoteNo,
-            'delivery_note_na' => $deliveryNoteNa,
-            'dispatch_doc_no' => trim((string)($validated['dispatch_doc_no'] ?? '')) ?: null,
-            'dispatched_through' => $dispatchedThrough,
-            'destination' => trim((string)($validated['destination'] ?? '')) ?: null,
-            'carrier_name' => trim((string)($validated['carrier_name'] ?? '')) ?: null,
-            'lr_rr_no' => trim((string)($validated['lr_rr_no'] ?? '')) ?: null,
-            'lr_rr_date' => !empty($validated['lr_rr_date']) ? $validated['lr_rr_date'] : null,
-            'vehicle_no' => $vehicleNo,
-            'transport_mode' => $transportMode,
-            'order_no' => trim((string)($validated['order_no'] ?? '')) ?: null,
-            'payment_terms' => trim((string)($validated['payment_terms'] ?? '')) ?: null,
-            'other_references' => $otherReferences,
-            'reference_no' => $otherReferences,
-            'terms_of_delivery' => trim((string)($validated['terms_of_delivery'] ?? '')) ?: null,
-            'notes' => $validated['notes'] ?? $invoice->notes,
-            'terms_and_conditions' => $validated['terms_and_conditions'] ?? $invoice->terms_and_conditions,
-            'delivery_state' => $newDeliveryState,
-            'place_of_supply_state' => $newDeliveryState,
-            'bill_to_place' => $billToPlace,
-            'ship_to_place' => $shipToPlace,
-            'tax_type' => $newTaxType,
-            'billing_address_id' => $validated['billing_address_id'] ?? $invoice->billing_address_id,
-            'shipping_address_id' => $validated['shipping_address_id'] ?? $invoice->shipping_address_id,
-            'billing_address' => $validated['billing_address'] ?? $invoice->billing_address,
-            'shipping_address' => $shippingSnapshot,
-            'eway_bill_required' => $validated['eway_bill_required'] ?? $invoice->eway_bill_required ?? 'auto',
-            'eway_bill_no' => $ewayBillNo,
-            'eway_bill_date' => $ewayBillDate,
-            'eway_sub_type' => $validated['eway_sub_type'] ?? $invoice->eway_sub_type ?? 'Supply',
-            'eway_doc_type' => $validated['eway_doc_type'] ?? $invoice->eway_doc_type ?? 'Tax Invoice',
-            'eway_supply_type' => $validated['eway_supply_type'] ?? $invoice->eway_supply_type ?? 'Outward',
-            'consignor_name' => $validated['consignor_name'] ?? $invoice->consignor_name,
-            'consignor_gstin' => $validated['consignor_gstin'] ?? $invoice->consignor_gstin,
-            'consignor_state' => $validated['consignor_state'] ?? $invoice->consignor_state,
-            'consignor_address_type' => $validated['consignor_address_type'] ?? $invoice->consignor_address_type,
-            'consignor_address_line_1' => $validated['consignor_address_line_1'] ?? $invoice->consignor_address_line_1,
-            'consignor_address_line_2' => $validated['consignor_address_line_2'] ?? $invoice->consignor_address_line_2,
-            'consignor_pincode' => $validated['consignor_pincode'] ?? $invoice->consignor_pincode,
-            'consignor_city' => $validated['consignor_city'] ?? $invoice->consignor_city,
-            'consignor_actual_state' => $validated['consignor_actual_state'] ?? $invoice->consignor_actual_state,
-            'consignee_name' => $validated['consignee_name'] ?? $invoice->consignee_name,
-            'consignee_gstin' => $validated['consignee_gstin'] ?? $invoice->consignee_gstin,
-            'consignee_state' => $validated['consignee_state'] ?? $invoice->consignee_state,
-            'consignee_address_type' => $validated['consignee_address_type'] ?? $invoice->consignee_address_type,
-            'consignee_address_line_1' => $validated['consignee_address_line_1'] ?? $invoice->consignee_address_line_1,
-            'consignee_address_line_2' => $validated['consignee_address_line_2'] ?? $invoice->consignee_address_line_2,
-            'consignee_pincode' => $validated['consignee_pincode'] ?? $invoice->consignee_pincode,
-            'consignee_city' => $validated['consignee_city'] ?? $invoice->consignee_city,
-            'consignee_actual_state' => $validated['consignee_actual_state'] ?? $invoice->consignee_actual_state,
-            'eway_bill_status' => $ewayStatus,
-            'transporter_id' => $validated['transporter_id'] ?? $invoice->transporter_id,
-            'transporter_name' => $validated['transporter_name'] ?? $invoice->transporter_name,
-            'distance_km' => array_key_exists('distance_km', $validated) ? (!empty($validated['distance_km']) ? (int) $validated['distance_km'] : null) : $invoice->distance_km,
-            'vehicle_type' => $validated['vehicle_type'] ?? $invoice->vehicle_type ?? 'R',
-        ]);
+        try {
+            DB::transaction(function () use (
+                $invoice,
+                $validated,
+                $shouldUpdateItems,
+                $deliveryNoteNo,
+                $deliveryNoteNa,
+                $vehicleNo,
+                $transportMode,
+                $dispatchedThrough,
+                $otherReferences,
+                $billingAddress,
+                $shippingAddress,
+                $shippingSnapshot,
+                $newDeliveryState,
+                $newIsIntra,
+                $newTaxType,
+                $billToPlace,
+                $shipToPlace,
+                $ewayBillNo,
+                $ewayBillDate,
+                $ewayStatus
+            ) {
+                $oldGrandTotal = (float) $invoice->grand_total;
+                $oldTaxableAmount = (float) $invoice->taxable_amount;
+                $oldTaxAmount = (float) $invoice->tax_amount;
+                $oldDiscountAmount = (float) $invoice->discount_amount;
+                $oldSubtotal = (float) $invoice->subtotal;
+                $oldItems = $invoice->items()->with('product')->get()->map(fn ($it) => [
+                    'product_id' => $it->product_id,
+                    'name' => $it->product?->name ?? $it->item_name,
+                    'quantity' => (float) $it->quantity,
+                    'unit_price' => (float) $it->unit_price,
+                    'taxable_amount' => (float) $it->taxable_amount,
+                    'tax_amount' => (float) $it->tax_amount,
+                    'line_total' => (float) $it->line_total,
+                ])->toArray();
+
+                $updatePayload = [
+                    'salesperson_id' => array_key_exists('salesperson_id', $validated)
+                        ? (!empty($validated['salesperson_id']) ? (int) $validated['salesperson_id'] : null)
+                        : $invoice->salesperson_id,
+                    'delivery_note_no' => $deliveryNoteNo,
+                    'delivery_note_na' => $deliveryNoteNa,
+                    'dispatch_doc_no' => trim((string)($validated['dispatch_doc_no'] ?? '')) ?: null,
+                    'dispatched_through' => $dispatchedThrough,
+                    'destination' => trim((string)($validated['destination'] ?? '')) ?: null,
+                    'carrier_name' => trim((string)($validated['carrier_name'] ?? '')) ?: null,
+                    'lr_rr_no' => trim((string)($validated['lr_rr_no'] ?? '')) ?: null,
+                    'lr_rr_date' => !empty($validated['lr_rr_date']) ? $validated['lr_rr_date'] : null,
+                    'vehicle_no' => $vehicleNo,
+                    'transport_mode' => $transportMode,
+                    'order_no' => trim((string)($validated['order_no'] ?? '')) ?: null,
+                    'payment_terms' => trim((string)($validated['payment_terms'] ?? '')) ?: null,
+                    'other_references' => $otherReferences,
+                    'reference_no' => $otherReferences,
+                    'terms_of_delivery' => trim((string)($validated['terms_of_delivery'] ?? '')) ?: null,
+                    'notes' => $validated['notes'] ?? $invoice->notes,
+                    'terms_and_conditions' => $validated['terms_and_conditions'] ?? $invoice->terms_and_conditions,
+                    'delivery_state' => $newDeliveryState,
+                    'place_of_supply_state' => $newDeliveryState,
+                    'bill_to_place' => $billToPlace,
+                    'ship_to_place' => $shipToPlace,
+                    'tax_type' => $newTaxType,
+                    'billing_address_id' => $validated['billing_address_id'] ?? $invoice->billing_address_id,
+                    'shipping_address_id' => $validated['shipping_address_id'] ?? $invoice->shipping_address_id,
+                    'billing_address' => $validated['billing_address'] ?? $invoice->billing_address,
+                    'shipping_address' => $shippingSnapshot,
+                    'eway_bill_required' => $validated['eway_bill_required'] ?? $invoice->eway_bill_required ?? 'auto',
+                    'eway_bill_no' => $ewayBillNo,
+                    'eway_bill_date' => $ewayBillDate,
+                    'eway_sub_type' => $validated['eway_sub_type'] ?? $invoice->eway_sub_type ?? 'Supply',
+                    'eway_doc_type' => $validated['eway_doc_type'] ?? $invoice->eway_doc_type ?? 'Tax Invoice',
+                    'eway_supply_type' => $validated['eway_supply_type'] ?? $invoice->eway_supply_type ?? 'Outward',
+                    'consignor_name' => $validated['consignor_name'] ?? $invoice->consignor_name,
+                    'consignor_gstin' => $validated['consignor_gstin'] ?? $invoice->consignor_gstin,
+                    'consignor_state' => $validated['consignor_state'] ?? $invoice->consignor_state,
+                    'consignor_address_type' => $validated['consignor_address_type'] ?? $invoice->consignor_address_type,
+                    'consignor_address_line_1' => $validated['consignor_address_line_1'] ?? $invoice->consignor_address_line_1,
+                    'consignor_address_line_2' => $validated['consignor_address_line_2'] ?? $invoice->consignor_address_line_2,
+                    'consignor_pincode' => $validated['consignor_pincode'] ?? $invoice->consignor_pincode,
+                    'consignor_city' => $validated['consignor_city'] ?? $invoice->consignor_city,
+                    'consignor_actual_state' => $validated['consignor_actual_state'] ?? $invoice->consignor_actual_state,
+                    'consignee_name' => $validated['consignee_name'] ?? $invoice->consignee_name,
+                    'consignee_gstin' => $validated['consignee_gstin'] ?? $invoice->consignee_gstin,
+                    'consignee_state' => $validated['consignee_state'] ?? $invoice->consignee_state,
+                    'consignee_address_type' => $validated['consignee_address_type'] ?? $invoice->consignee_address_type,
+                    'consignee_address_line_1' => $validated['consignee_address_line_1'] ?? $invoice->consignee_address_line_1,
+                    'consignee_address_line_2' => $validated['consignee_address_line_2'] ?? $invoice->consignee_address_line_2,
+                    'consignee_pincode' => $validated['consignee_pincode'] ?? $invoice->consignee_pincode,
+                    'consignee_city' => $validated['consignee_city'] ?? $invoice->consignee_city,
+                    'consignee_actual_state' => $validated['consignee_actual_state'] ?? $invoice->consignee_actual_state,
+                    'eway_bill_status' => $ewayStatus,
+                    'transporter_id' => $validated['transporter_id'] ?? $invoice->transporter_id,
+                    'transporter_name' => $validated['transporter_name'] ?? $invoice->transporter_name,
+                    'distance_km' => array_key_exists('distance_km', $validated) ? (!empty($validated['distance_km']) ? (int) $validated['distance_km'] : null) : $invoice->distance_km,
+                    'vehicle_type' => $validated['vehicle_type'] ?? $invoice->vehicle_type ?? 'R',
+                ];
+
+                if ($shouldUpdateItems) {
+                    $priceType = $validated['price_type'] ?? ($invoice->price_type ?? 'exclusive');
+                    $pricing = $this->salePricingService->price(
+                        $invoice->customer,
+                        $validated['items'],
+                        (float) ($validated['discount_amount'] ?? 0),
+                        $priceType,
+                        $newIsIntra
+                    );
+
+                    $universalType = $validated['universal_discount_type'] ?? ($invoice->universal_discount_type ?? 'flat');
+                    $universalValue = (float) ($validated['universal_discount_value'] ?? 0);
+                    $universalDiscount = $this->productDiscountService->universalDiscount((float) $pricing['subtotal'], $universalType, $universalValue);
+
+                    $itemDiscountTotal = (float) $pricing['discount'];
+                    $taxableAmount = max(0, (float) $pricing['subtotal'] - $universalDiscount);
+                    $totalTax = (float) $pricing['tax'];
+                    $totalDiscount = round($itemDiscountTotal + $universalDiscount, 2);
+
+                    $totalBeforeRound = round($taxableAmount + $totalTax, 2);
+                    $roundOff = isset($validated['round_off']) && $validated['round_off'] !== null && $validated['round_off'] !== ''
+                        ? round((float) $validated['round_off'], 2)
+                        : (float) $pricing['round_off'];
+                    $adjustedTotal = round(max(0, $totalBeforeRound + $roundOff), 2);
+
+                    if ($adjustedTotal < (float) $invoice->paid_amount) {
+                        throw ValidationException::withMessages([
+                            'items' => ['Grand total cannot be less than the amount already paid on this invoice (₹' . number_format($invoice->paid_amount, 2) . ').'],
+                        ]);
+                    }
+
+                    // 1. Revert previous stock movements & serial numbers
+                    foreach ($invoice->items()->with(['product', 'uom'])->get() as $oldItem) {
+                        if ($oldItem->product && $oldItem->uom) {
+                            $this->stockMovementService->recordIn(
+                                product: $oldItem->product,
+                                uom: $oldItem->uom,
+                                quantity: (float) $oldItem->quantity,
+                                type: 'adjustment',
+                                reference: $invoice,
+                                notes: "Invoice revision reversal for {$invoice->invoice_no} (line #{$oldItem->id})",
+                                user: auth()->user(),
+                            );
+                        }
+                    }
+
+                    ProductSerial::where('sales_invoice_id', $invoice->id)->update([
+                        'status' => 'in_stock',
+                        'sold_at' => null,
+                        'delivered_at' => null,
+                        'sales_invoice_id' => null,
+                        'customer_id' => null,
+                        'warranty_start_on' => null,
+                        'warranty_expires_on' => null,
+                    ]);
+
+                    // 2. Delete old invoice line items
+                    $invoice->items()->delete();
+
+                    // 3. Insert newly calculated invoice items & issue stock/serials
+                    foreach ($pricing['lines'] as $idx => $line) {
+                        $product = $line['product'];
+                        $uom = $line['uom'];
+                        $inputRow = $validated['items'][$idx] ?? [];
+                        $serialsRaw = $inputRow['serial_numbers'] ?? null;
+                        if ($product->isSerialTracked()) {
+                            if (is_array($serialsRaw)) {
+                                $serials = collect($serialsRaw)->map(fn ($s) => trim((string) $s))->filter()->values()->all();
+                            } else {
+                                $serials = WarrantyPeriod::split($serialsRaw);
+                            }
+                        } else {
+                            $serials = [];
+                        }
+
+                        $invoiceItem = InvoiceItem::create([
+                            'invoice_id' => $invoice->id,
+                            'product_id' => $product->id,
+                            'uom_id' => $uom->id,
+                            'quantity' => $line['quantity'],
+                            'price_type' => $line['price_type'] ?? $priceType,
+                            'entered_unit_price' => $line['entered_unit_price'] ?? $line['unitPrice'],
+                            'unit_price' => $line['unit_price'] ?? $line['unitPrice'],
+                            'discount_amount' => $line['discount_amount'] ?? $line['discount'],
+                            'discount_type' => $inputRow['discount_type'] ?? 'flat',
+                            'discount_value' => (float) ($inputRow['discount_value'] ?? $line['discount']),
+                            'taxable_amount' => $line['taxable_amount'] ?? $line['unitPrice'],
+                            'tax_rate' => $line['tax_rate'] ?? 0,
+                            'cgst_rate' => $line['cgst_rate'] ?? 0,
+                            'sgst_rate' => $line['sgst_rate'] ?? 0,
+                            'igst_rate' => $line['igst_rate'] ?? 0,
+                            'hsn_code' => $product->hsn_code,
+                            'batch_no' => $inputRow['batch_no'] ?? null,
+                            'serial_numbers' => $serials !== [] ? $serials : null,
+                            'tax_amount' => $line['tax_amount'] ?? $line['tax'],
+                            'cgst_amount' => $line['cgst_amount'] ?? 0,
+                            'sgst_amount' => $line['sgst_amount'] ?? 0,
+                            'igst_amount' => $line['igst_amount'] ?? 0,
+                            'line_total' => $line['line_total'] ?? $line['lineTotal'],
+                        ]);
+
+                        $this->serialBatchService->sellSerials($serials, $invoice, $product, $invoiceItem);
+
+                        $this->stockMovementService->recordOut(
+                            product: $product,
+                            uom: $uom,
+                            quantity: (float) $line['quantity'],
+                            type: 'sale',
+                            reference: $invoice,
+                            notes: "Sale via revised invoice {$invoice->invoice_no}",
+                            user: auth()->user(),
+                        );
+                    }
+
+                    // 4. Update financial totals in invoice update payload
+                    $updatePayload['price_type'] = $priceType;
+                    $updatePayload['subtotal'] = $taxableAmount;
+                    $updatePayload['taxable_amount'] = $taxableAmount;
+                    $updatePayload['discount_amount'] = $totalDiscount;
+                    $updatePayload['universal_discount_type'] = $universalType;
+                    $updatePayload['universal_discount_value'] = $universalValue;
+                    $updatePayload['item_discount_total'] = $itemDiscountTotal;
+                    $updatePayload['tax_amount'] = $totalTax;
+                    $updatePayload['cgst_amount'] = $pricing['cgst_amount'];
+                    $updatePayload['sgst_amount'] = $pricing['sgst_amount'];
+                    $updatePayload['igst_amount'] = $pricing['igst_amount'];
+                    $updatePayload['round_off'] = $roundOff;
+                    $updatePayload['grand_total'] = $adjustedTotal;
+
+                    // 5. Update OutstandingLedger by difference
+                    $diff = round($adjustedTotal - $oldGrandTotal, 2);
+                    if ($diff > 0) {
+                        $this->outstandingLedgerService->recordAdjustment(
+                            $invoice->customer_id,
+                            debit: $diff,
+                            credit: 0,
+                            notes: "Invoice {$invoice->invoice_no} revision adjustment (+{$diff})"
+                        );
+                    } elseif ($diff < 0) {
+                        $this->outstandingLedgerService->recordAdjustment(
+                            $invoice->customer_id,
+                            debit: 0,
+                            credit: abs($diff),
+                            notes: "Invoice {$invoice->invoice_no} revision adjustment ({$diff})"
+                        );
+                    }
+
+                    // 6. Refresh payment link
+                    try {
+                        $this->paymentLinkService->createForInvoice($invoice);
+                    } catch (\Throwable) {
+                        // Optional notification / non-critical
+                    }
+
+                    // 7. Record full audit trail
+                    $this->auditLogService->record(
+                        $invoice,
+                        'updated',
+                        actorName: auth()->user()?->name,
+                        properties: [
+                            'event' => 'invoice_line_items_edited',
+                            'invoice_no' => $invoice->invoice_no,
+                            'diff_grand_total' => $diff,
+                            'old' => [
+                                'subtotal' => $oldSubtotal,
+                                'taxable_amount' => $oldTaxableAmount,
+                                'tax_amount' => $oldTaxAmount,
+                                'discount_amount' => $oldDiscountAmount,
+                                'grand_total' => $oldGrandTotal,
+                                'items' => $oldItems,
+                            ],
+                            'new' => [
+                                'subtotal' => $taxableAmount,
+                                'taxable_amount' => $taxableAmount,
+                                'tax_amount' => $totalTax,
+                                'discount_amount' => $totalDiscount,
+                                'grand_total' => $adjustedTotal,
+                                'items_count' => count($pricing['lines']),
+                            ],
+                        ]
+                    );
+                } else {
+                    // Audit trail for metadata/transport only update
+                    $this->auditLogService->record(
+                        $invoice,
+                        'updated',
+                        actorName: auth()->user()?->name,
+                        properties: [
+                            'event' => 'invoice_details_updated',
+                            'invoice_no' => $invoice->invoice_no,
+                            'note' => $invoice->isStatutoryLocked() ? 'Non-statutory transport/details updated while statutory lock active' : 'Invoice details updated',
+                        ]
+                    );
+                }
+
+                $invoice->update($updatePayload);
+            });
+        } catch (\InvalidArgumentException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        }
 
         if ($ewayBillNo) {
             EWayBill::updateOrCreate(
@@ -1347,7 +1873,7 @@ class InvoiceController extends Controller
             $upiQrDataUri = QrCodeRenderer::dataUri($upiUri, 160);
         }
 
-        $copyType = $request->query('copy_type', $request->query('copy', 'all'));
+        $copyType = $request->query('copy_type', $request->query('copy', 'original'));
         $copies = (int) $request->query('copies', ($copyType === 'all' ? 3 : 1));
         $copiesList = self::resolveCopies($copyType, $copies);
 
@@ -1442,7 +1968,7 @@ class InvoiceController extends Controller
             $upiQrDataUri = QrCodeRenderer::dataUri($upiUri, 160);
         }
 
-        $copyType = $request->query('copy_type', $request->query('copy', 'all'));
+        $copyType = $request->query('copy_type', $request->query('copy', 'original'));
         $copies = (int) $request->query('copies', ($copyType === 'all' ? 3 : 1));
         $copiesList = self::resolveCopies($copyType, $copies);
         $autoPrint = $request->boolean('auto_print');
@@ -1464,7 +1990,7 @@ class InvoiceController extends Controller
         $format = strtolower($format);
         abort_unless(in_array($format, ['pdf', 'xlsx', 'excel', 'csv'], true), 404);
 
-        $copyType = $request->query('copy_type', $request->query('copy', 'all'));
+        $copyType = $request->query('copy_type', $request->query('copy', 'original'));
         $copies = (int) $request->query('copies', ($copyType === 'all' ? 3 : 1));
 
         return DocumentExporter::exportSalesInvoice($invoice, $format, $copyType, $copies);
@@ -1473,11 +1999,12 @@ class InvoiceController extends Controller
     public function eWayBillDocument(Invoice $invoice): View|RedirectResponse
     {
         $invoice->load(['customer', 'items.product', 'items.uom', 'eWayBill']);
-        if (! $invoice->eWayBill) {
-            return redirect()->route('invoices.show', $invoice)->with('error', 'E-Way Bill has not been generated for this invoice.');
+        $eWayBill = $invoice->eWayBill;
+
+        if (! $eWayBill || blank($eWayBill->eway_bill_no) || ! in_array($eWayBill->status, ['generated', 'active', 'cancelled', 'manual', 'stub'], true)) {
+            return redirect()->route('invoices.show', $invoice)->with('error', 'E-Way Bill has not been generated for this invoice. Please generate it using the "Generate E-Way Bill" button below.');
         }
 
-        $eWayBill = $invoice->eWayBill;
         $company = Company::resolveCurrent() ?? Company::query()->first();
 
         return view('sales.invoices.e-way-bill', compact('invoice', 'eWayBill', 'company'));
@@ -1571,8 +2098,9 @@ class InvoiceController extends Controller
     {
         $invoice->load(['customer', 'items.product', 'items.uom', 'eInvoice', 'eWayBill']);
 
-        if ($invoice->eWayBill && $invoice->eWayBill->status === 'generated') {
-            return $this->flashError('E-Way Bill has already been generated with number: ' . $invoice->eWayBill->eway_bill_no, 'invoices.show', ['invoice' => $invoice]);
+        if ($invoice->isEWayBillGenerated() || ($invoice->eWayBill && in_array($invoice->eWayBill->status, ['generated', 'active'], true) && filled($invoice->eWayBill->eway_bill_no))) {
+            $existingNo = $invoice->eWayBill?->eway_bill_no ?: $invoice->eway_bill_no;
+            return $this->flashError("E-Way Bill has already been generated with number: {$existingNo}. Duplicate generation is not allowed.", 'invoices.show', ['invoice' => $invoice]);
         }
 
         $validated = $request->validate([
@@ -1581,9 +2109,13 @@ class InvoiceController extends Controller
             'vehicle_type' => 'nullable|in:R,O',
             'transporter_id' => 'nullable|string|max:25',
             'transporter_name' => 'nullable|string|max:255',
-            'distance_km' => 'nullable|integer|min:1|max:9999',
+            'distance_km' => 'nullable|numeric',
             'lr_rr_no' => 'nullable|string|max:100',
             'lr_rr_date' => 'nullable|date',
+            'consignor_pincode' => 'nullable|string|max:10',
+            'consignor_city' => 'nullable|string|max:100',
+            'consignee_pincode' => 'nullable|string|max:10',
+            'consignee_city' => 'nullable|string|max:100',
         ]);
 
         $transportUpdates = array_filter([
@@ -1592,18 +2124,23 @@ class InvoiceController extends Controller
             'vehicle_type' => $validated['vehicle_type'] ?? $invoice->vehicle_type ?? 'R',
             'transporter_id' => $validated['transporter_id'] ?? $invoice->transporter_id,
             'transporter_name' => $validated['transporter_name'] ?? $invoice->transporter_name,
-            'distance_km' => !empty($validated['distance_km']) ? (int) $validated['distance_km'] : ($invoice->distance_km ?: 50),
+            'distance_km' => array_key_exists('distance_km', $validated) ? (int) $validated['distance_km'] : ($invoice->distance_km ?: 50),
             'lr_rr_no' => $validated['lr_rr_no'] ?? $invoice->lr_rr_no,
             'lr_rr_date' => $validated['lr_rr_date'] ?? $invoice->lr_rr_date,
+            'consignor_pincode' => $validated['consignor_pincode'] ?? $invoice->consignor_pincode,
+            'consignor_city' => $validated['consignor_city'] ?? $invoice->consignor_city,
+            'consignee_pincode' => $validated['consignee_pincode'] ?? $invoice->consignee_pincode,
+            'consignee_city' => $validated['consignee_city'] ?? $invoice->consignee_city,
         ], fn ($val) => $val !== null && $val !== '');
 
         if (! empty($transportUpdates)) {
             $invoice->update($transportUpdates);
         }
 
-        $eligibility = $this->complianceService->evaluateEWayBillEligibility($invoice);
-        if (! empty($eligibility['missing_fields'])) {
-            return $this->flashError('Cannot generate E-Way Bill: ' . implode(', ', $eligibility['missing_fields']) . ' must be provided.', 'invoices.show', ['invoice' => $invoice]);
+        // Validate all required information before sending generation request
+        $validation = $this->complianceService->validateForEWayBillGeneration($invoice);
+        if (! $validation['valid']) {
+            return $this->flashError('Cannot generate E-Way Bill: ' . implode(' ', $validation['errors']), 'invoices.show', ['invoice' => $invoice]);
         }
 
         try {
@@ -1627,14 +2164,32 @@ class InvoiceController extends Controller
             return $this->flashError('E-Way Bill generation failed: ' . $e->getMessage(), 'invoices.show', ['invoice' => $invoice]);
         }
 
+        $company = Company::resolveCurrent() ?? Company::query()->first();
+
+        $parseEwbDate = function (?string $dateStr): ?\Carbon\Carbon {
+            if (empty($dateStr)) return null;
+            try {
+                if (preg_match('#^\d{2}/\d{2}/\d{4}#', $dateStr)) {
+                    return \Carbon\Carbon::createFromFormat('d/m/Y H:i:s', strlen($dateStr) === 10 ? $dateStr . ' 00:00:00' : $dateStr);
+                }
+                return \Carbon\Carbon::parse($dateStr);
+            } catch (\Throwable) {
+                try {
+                    return \Carbon\Carbon::parse(str_replace('/', '-', $dateStr));
+                } catch (\Throwable) {
+                    return now();
+                }
+            }
+        };
+
         EWayBill::updateOrCreate(
             ['invoice_id' => $invoice->id],
             [
                 'status' => $result['status'],
                 'provider' => 'mastersindia',
                 'eway_bill_no' => $result['eway_bill_no'],
-                'valid_upto' => isset($result['valid_upto']) ? \Carbon\Carbon::parse($result['valid_upto']) : null,
-                'ewb_date' => isset($result['ewb_date']) ? \Carbon\Carbon::parse($result['ewb_date']) : now(),
+                'valid_upto' => $parseEwbDate($result['valid_upto'] ?? null),
+                'ewb_date' => $parseEwbDate($result['ewb_date'] ?? null) ?? now(),
                 'distance_km' => $invoice->distance_km ?: 50,
                 'transporter_id' => $invoice->transporter_id,
                 'transporter_name' => $invoice->transporter_name,
@@ -1643,18 +2198,22 @@ class InvoiceController extends Controller
                 'transport_mode' => $invoice->transport_mode ?? '1',
                 'doc_no' => $invoice->lr_rr_no,
                 'doc_date' => $invoice->lr_rr_date,
+                'from_pincode' => $invoice->consignor_pincode ?: ($company?->pincode ?: null),
+                'to_pincode' => $invoice->shippingAddress?->pincode ?: ($invoice->consignee_pincode ?: ($invoice->customer?->pincode ?: null)),
+                'from_state' => $invoice->consignor_state ?: ($company?->state ?: null),
+                'to_state' => $invoice->delivery_state ?: ($invoice->customer?->state ?: null),
                 'last_error' => null,
                 'payload' => $result['raw'],
             ]
         );
 
-        $invoice->update(['eway_bill_status' => 'generated']);
+        $invoice->update([
+            'eway_bill_no' => $result['eway_bill_no'],
+            'eway_bill_date' => $parseEwbDate($result['ewb_date'] ?? null) ?? now(),
+            'eway_bill_status' => 'generated',
+        ]);
 
-        $note = ! $this->mastersIndiaService->isConfigured()
-            ? 'E-Way Bill generated with number ' . $result['eway_bill_no'] . ' (Masters India sandbox/demo mode).'
-            : 'E-Way Bill generated successfully.';
-
-        return redirect()->route('invoices.show', $invoice)->with('success', $note);
+        return redirect()->route('invoices.show', $invoice)->with('success', 'E-Way Bill generated successfully with number ' . $result['eway_bill_no'] . '.');
     }
 
     public function cancelEway(Request $request, Invoice $invoice): RedirectResponse

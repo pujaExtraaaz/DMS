@@ -401,7 +401,7 @@
     $amountWords = \App\Support\DocumentExporter::numberToIndianWords($invoice->grand_total);
     $billingAddr = $invoice->billing_address ?: ($customer?->address ?: '—');
     $deliveryAddr = $invoice->shipping_address ?: ($invoice->billing_address ?: ($customer?->shipping_address ?: ($customer?->address ?: '—')));
-    $copyType = $copyType ?? request('copy_type', request('copy', 'all'));
+    $copyType = $copyType ?? request('copy_type', request('copy', 'original'));
     $copies = (int) ($copies ?? request('copies', ($copyType === 'all' ? 3 : 1)));
     $copiesList = $copiesList ?? \App\Http\Controllers\Sales\InvoiceController::resolveCopies($copyType, $copies);
     $autoPrint = $autoPrint ?? request()->boolean('auto_print');
@@ -417,13 +417,13 @@
         <div class="toolbar-divider"></div>
         <form method="GET" action="{{ route('invoices.preview', $invoice) }}" class="copy-selector" id="printSettingsForm">
             <span class="meta-label">Type of Copy:</span>
-            <select name="copy_type" id="selectCopyType" onchange="document.getElementById('printSettingsForm').submit()" style="padding: 4px 8px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
-                <option value="all" {{ ($copyType ?? 'all') === 'all' ? 'selected' : '' }}>All Copies (Original, Duplicate, Triplicate)</option>
-                <option value="original" {{ ($copyType ?? '') === 'original' ? 'selected' : '' }}>Original for Recipient</option>
+            <select name="copy_type" id="selectCopyType" onchange="if(this.value === 'all' && document.getElementById('inputCopies').value == 1) { document.getElementById('inputCopies').value = 3; } else if(this.value !== 'all' && document.getElementById('inputCopies').value == 3) { document.getElementById('inputCopies').value = 1; } document.getElementById('printSettingsForm').submit()" style="padding: 4px 8px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;">
+                <option value="original" {{ ($copyType ?? 'original') === 'original' ? 'selected' : '' }}>Original for Recipient</option>
                 <option value="duplicate" {{ ($copyType ?? '') === 'duplicate' ? 'selected' : '' }}>Duplicate for Transporter</option>
                 <option value="triplicate" {{ ($copyType ?? '') === 'triplicate' ? 'selected' : '' }}>Triplicate for Supplier</option>
                 <option value="extra" {{ ($copyType ?? '') === 'extra' ? 'selected' : '' }}>Extra Copy</option>
                 <option value="na" {{ ($copyType ?? '') === 'na' ? 'selected' : '' }}>Not Applicable (No copy mark)</option>
+                <option value="all" {{ ($copyType ?? '') === 'all' ? 'selected' : '' }}>All Copies (Original, Duplicate, Triplicate)</option>
             </select>
 
             <span class="meta-label" style="margin-left: 6px;">Copies:</span>
@@ -447,7 +447,7 @@
             <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
             Print
         </button>
-        <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'pdf', 'copy_type' => $copyType ?? 'all', 'copies' => $copies ?? 1]) }}" class="btn-primary" title="Export as PDF document">
+        <a href="{{ route('invoices.export', ['invoice' => $invoice, 'format' => 'pdf', 'copy_type' => $copyType ?? 'original', 'copies' => $copies ?? 1]) }}" class="btn-primary" title="Export as PDF document">
             <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             PDF
         </a>
@@ -763,6 +763,15 @@
                         <div class="font-bold">{{ $item->product?->name }}</div>
                         @if($item->product?->code)
                             <div style="font-size: 9px; color: #64748b;">Code: {{ $item->product->code }}</div>
+                        @endif
+                        @php
+                            $serials = is_array($item->serial_numbers) ? $item->serial_numbers : (filled($item->serial_numbers) ? explode(',', $item->serial_numbers) : []);
+                            $serials = array_filter(array_map('trim', $serials));
+                        @endphp
+                        @if(count($serials) > 0)
+                            <div style="font-size: 9px; color: #b45309; font-family: monospace; margin-top: 2px;">
+                                <strong>S/N:</strong> {{ implode(', ', $serials) }}
+                            </div>
                         @endif
                     </td>
                     <td class="text-center font-mono">{{ $item->hsn_code ?? $item->product?->hsn_code ?? '—' }}</td>

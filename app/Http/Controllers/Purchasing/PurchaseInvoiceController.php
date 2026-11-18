@@ -173,7 +173,7 @@ class PurchaseInvoiceController extends Controller
 
         $newProduct = null;
         if ($request->filled('new_product_id')) {
-            $candidateProduct = Product::with(['baseUom', 'productType'])
+            $candidateProduct = Product::with(['baseUom', 'alternateUom', 'productUoms.uom', 'productType'])
                 ->where('is_active', true)
                 ->find($request->input('new_product_id'));
             if ($candidateProduct) {
@@ -251,6 +251,7 @@ class PurchaseInvoiceController extends Controller
             'items' => 'required|array|min:1',
             'items.*.receipt_note_item_id' => 'nullable|exists:receipt_note_items,id',
             'items.*.product_id' => 'required|exists:products,id',
+            'items.*.uom_id' => 'nullable|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
@@ -681,6 +682,7 @@ class PurchaseInvoiceController extends Controller
             'items' => 'required|array|min:1',
             'items.*.receipt_note_item_id' => 'nullable|exists:receipt_note_items,id',
             'items.*.product_id' => 'required|exists:products,id',
+            'items.*.uom_id' => 'nullable|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_cost' => 'required|numeric|min:0',
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
@@ -1150,7 +1152,7 @@ class PurchaseInvoiceController extends Controller
 
     public function productDetails(Product $product): JsonResponse
     {
-        $product->loadMissing(['baseUom', 'productType']);
+        $product->loadMissing(['baseUom', 'alternateUom', 'productUoms.uom', 'productType']);
 
         return response()->json([
             'success' => true,
@@ -1158,7 +1160,10 @@ class PurchaseInvoiceController extends Controller
                 'id' => $product->id,
                 'name' => $product->name,
                 'sku' => $product->sku,
+                'base_uom_id' => $product->base_uom_id ? (string) $product->base_uom_id : '',
                 'unit' => $product->unit ?? ($product->baseUom?->name ?? ($product->baseUom?->code ?? 'PCS')),
+                'allowed_uoms' => $product->getAllowedUoms()->values()->toArray(),
+                'allow_unit_change' => $product->allowsUnitChange(),
                 'tax_rate' => (float) ($product->tax_rate ?? 0),
                 'mrp' => (float) ($product->mrp ?? ($product->calculation_mrp ?? 0)),
                 'purchase_price' => (float) ($product->purchase_price ?? 0),
@@ -1214,7 +1219,7 @@ class PurchaseInvoiceController extends Controller
 
     protected function invoiceProducts(?PurchaseInvoice $invoice = null)
     {
-        return Product::with(['baseUom', 'productType'])
+        return Product::with(['baseUom', 'alternateUom', 'productUoms.uom', 'productType'])
             ->where('is_active', true)
             ->where(function ($q) use ($invoice) {
                 $q->where('is_hidden', false);
