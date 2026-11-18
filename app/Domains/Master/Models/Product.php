@@ -73,6 +73,8 @@ class Product extends Model
         'track_serial',
         'mrp',
         'unit',
+        'allowed_uoms',
+        'allow_unit_change',
     ];
 
     protected $fillable = [
@@ -140,6 +142,8 @@ class Product extends Model
         'catalog_link',
         'image_path',
         'tracking_type',
+        'tracking_types',
+        'track_serial',
         'min_stock',
         'reorder_level',
         'aging_threshold_days',
@@ -406,6 +410,95 @@ class Product extends Model
             ->withPivot(['conversion_factor', 'is_base']);
     }
 
+    /**
+     * Get all allowed UOMs for this product (base UOM + alternate UOM + active product UOMs).
+     *
+     * @return \Illuminate\Support\Collection<int, array{id: string, code: string, name: string, is_base: bool, label: string}>
+     */
+    public function getAllowedUoms(): \Illuminate\Support\Collection
+    {
+        $validUoms = collect();
+
+        $baseUom = $this->relationLoaded('baseUom') ? $this->baseUom : $this->baseUom()->first();
+        if ($baseUom) {
+            $validUoms->push([
+                'id' => (string) $baseUom->id,
+                'code' => $baseUom->code,
+                'name' => $baseUom->name,
+                'is_base' => true,
+                'label' => 'Base UOM',
+            ]);
+        }
+
+        $altUom = $this->relationLoaded('alternateUom') ? $this->alternateUom : $this->alternateUom()->first();
+        if ($altUom && (int) $this->alternate_uom_id !== (int) $this->base_uom_id) {
+            $validUoms->push([
+                'id' => (string) $altUom->id,
+                'code' => $altUom->code,
+                'name' => $altUom->name,
+                'is_base' => false,
+                'label' => 'Alternate UOM',
+            ]);
+        }
+
+        if ($this->relationLoaded('productUoms')) {
+            foreach ($this->productUoms as $pu) {
+                if ($pu->is_active === false) {
+                    continue;
+                }
+                $u = $pu->relationLoaded('uom') ? $pu->uom : $pu->uom()->first();
+                if ($u && ! $validUoms->contains('id', (string) $u->id)) {
+                    $validUoms->push([
+                        'id' => (string) $u->id,
+                        'code' => $u->code,
+                        'name' => $u->name,
+                        'is_base' => false,
+                        'label' => $pu->label ?: 'Additional UOM',
+                    ]);
+                }
+            }
+        } elseif ($this->exists) {
+            $activePus = $this->productUoms()->where('is_active', true)->with('uom')->get();
+            foreach ($activePus as $pu) {
+                if ($pu->uom && ! $validUoms->contains('id', (string) $pu->uom->id)) {
+                    $validUoms->push([
+                        'id' => (string) $pu->uom->id,
+                        'code' => $pu->uom->code,
+                        'name' => $pu->uom->name,
+                        'is_base' => false,
+                        'label' => $pu->label ?: 'Additional UOM',
+                    ]);
+                }
+            }
+        }
+
+        return $validUoms;
+    }
+
+    public function allowsUnitChange(): bool
+    {
+        return $this->getAllowedUoms()->count() > 1;
+    }
+
+    public function isAllowedUom(int|string|null $uomId): bool
+    {
+        if ($uomId === null || $uomId === '') {
+            return false;
+        }
+
+        return $this->getAllowedUoms()->contains('id', (string) $uomId);
+    }
+
+    public function getAllowedUomsAttribute(): array
+    {
+        return $this->getAllowedUoms()->values()->toArray();
+    }
+
+    public function getAllowUnitChangeAttribute(): bool
+    {
+        return $this->allowsUnitChange();
+    }
+
     public function priceMasters(): HasMany
     {
         return $this->hasMany(PriceMaster::class);
@@ -509,5 +602,15 @@ class Product extends Model
             }
         }
         return array_values(array_filter(array_map('trim', explode(',', (string) $val))));
+    }
+
+    public function setTrackingTypesAttribute($value): void
+    {
+        if (is_array($value)) {
+            $tracks = array_values(array_filter(array_map('trim', $value)));
+            $this->attributes['tracking_type'] = empty($tracks) ? 'none' : implode(',', $tracks);
+        } elseif (is_string($value)) {
+            $this->attributes['tracking_type'] = $value;
+        }
     }
 }

@@ -1567,8 +1567,15 @@ class PurchaseOrderService
             }
 
             $uomId = $item['uom_id'] ?? null;
-            if (! $uomId && ! empty($item['product_id'])) {
-                $uomId = Product::query()->whereKey($item['product_id'])->value('base_uom_id');
+            if (! empty($item['product_id'])) {
+                $product = Product::with(['baseUom', 'alternateUom', 'productUoms.uom'])->find($item['product_id']);
+                if ($product) {
+                    if (! $uomId) {
+                        $uomId = $product->base_uom_id;
+                    } elseif (! $product->isAllowedUom($uomId)) {
+                        throw ValidationException::withMessages(['items' => ["The selected unit is not valid for product '{$product->name}'."]]);
+                    }
+                }
             }
 
             $taxPercent = isset($item['tax_percent'])

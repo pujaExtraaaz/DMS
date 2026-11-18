@@ -193,7 +193,12 @@
                     <td>
                         <div class="bold">{{ $item->item_name }}</div>
                         @if($item->batch_no)<div style="color: #4b5563;">Batch: {{ $item->batch_no }}</div>@endif
-                        @php $printedSerials = is_array($item->serial_numbers ?? null) ? $item->serial_numbers : []; @endphp
+                        @php
+                            $printedSerials = is_array($item->serial_numbers ?? null)
+                                ? $item->serial_numbers
+                                : (filled($item->serial_numbers ?? null) ? explode(',', $item->serial_numbers) : []);
+                            $printedSerials = array_filter(array_map('trim', $printedSerials));
+                        @endphp
                         @if($printedSerials !== [])<div style="color: #4b5563;">S/N: {{ implode(', ', $printedSerials) }}</div>@endif
                     </td>
                     <td>{{ $item->hsn_code ?: '-' }}</td>

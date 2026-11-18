@@ -10,12 +10,16 @@
 
     $productsJson = $products->map(function ($p) {
         $isTracked = (bool) ($p->isSerialTracked() || $p->productType?->track_serial);
+        $allowedUoms = $p->getAllowedUoms();
         return [
             'id' => $p->id,
             'name' => $p->name,
             'brand_id' => $p->brand_id,
-            'base_uom_id' => $p->base_uom_id,
-            'unit' => $p->baseUom?->code ?? 'PCS',
+            'base_uom_id' => $p->base_uom_id ? (string) $p->base_uom_id : '',
+            'base_uom_code' => $p->baseUom?->code ?? $p->baseUom?->name ?? 'PCS',
+            'unit' => $p->baseUom?->code ?? $p->baseUom?->name ?? 'PCS',
+            'allowed_uoms' => $allowedUoms->values()->toArray(),
+            'allow_unit_change' => $allowedUoms->count() > 1,
             'selling_price' => (float) $p->selling_price,
             'tax_rate' => (float) ($p->tax_rate ?? 0),
             'tracking_type' => $isTracked ? 'serial' : ($p->tracking_type ?? 'none'),
@@ -93,8 +97,11 @@
         'id' => $newProduct->id,
         'name' => $newProduct->name,
         'brand_id' => $newProduct->brand_id,
-        'base_uom_id' => $newProduct->base_uom_id,
-        'unit' => $newProduct->baseUom?->code ?? 'PCS',
+        'base_uom_id' => $newProduct->base_uom_id ? (string) $newProduct->base_uom_id : '',
+        'base_uom_code' => $newProduct->baseUom?->code ?? $newProduct->baseUom?->name ?? 'PCS',
+        'unit' => $newProduct->baseUom?->code ?? $newProduct->baseUom?->name ?? 'PCS',
+        'allowed_uoms' => $newProduct->getAllowedUoms()->values()->toArray(),
+        'allow_unit_change' => $newProduct->allowsUnitChange(),
         'selling_price' => (float) $newProduct->selling_price,
         'tax_rate' => (float) ($newProduct->tax_rate ?? 0),
         'tracking_type' => (bool) ($newProduct->isSerialTracked() || $newProduct->productType?->track_serial) ? 'serial' : ($newProduct->tracking_type ?? 'none'),
@@ -103,9 +110,58 @@
         'hsn_code' => $newProduct->hsn_code ?? '',
     ] : null;
 
+    $updatedProductJson = ($updatedProduct ?? null) ? [
+        'id' => $updatedProduct->id,
+        'name' => $updatedProduct->name,
+        'brand_id' => $updatedProduct->brand_id,
+        'base_uom_id' => $updatedProduct->base_uom_id ? (string) $updatedProduct->base_uom_id : '',
+        'base_uom_code' => $updatedProduct->baseUom?->code ?? $updatedProduct->baseUom?->name ?? 'PCS',
+        'unit' => $updatedProduct->baseUom?->code ?? $updatedProduct->baseUom?->name ?? 'PCS',
+        'allowed_uoms' => $updatedProduct->getAllowedUoms()->values()->toArray(),
+        'allow_unit_change' => $updatedProduct->allowsUnitChange(),
+        'selling_price' => (float) $updatedProduct->selling_price,
+        'tax_rate' => (float) ($updatedProduct->tax_rate ?? 0),
+        'tracking_type' => (bool) ($updatedProduct->isSerialTracked() || $updatedProduct->productType?->track_serial) ? 'serial' : ($updatedProduct->tracking_type ?? 'none'),
+        'selling_discount_type' => $updatedProduct->selling_discount_type ?? 'percent',
+        'selling_discount_value' => (float) ($updatedProduct->selling_discount_value ?? 0),
+        'hsn_code' => $updatedProduct->hsn_code ?? '',
+    ] : null;
+
     $savedDraftJson = $savedDraft ?? null;
 
-    $selectedCustomerId = old('customer_id', $order?->customer_id);
+    $newCustomerJson = ($newCustomer ?? null) ? [
+        'id' => $newCustomer->id,
+        'name' => $newCustomer->name,
+        'code' => $newCustomer->code ?? '',
+        'phone' => $newCustomer->phone ?? '',
+        'credit_days' => (int) ($newCustomer->credit_days ?? 0),
+        'state' => $newCustomer->shipping_state ?? $newCustomer->state ?? '',
+        'salesperson_id' => $newCustomer->salesperson_id,
+        'gstin' => $newCustomer->gstin ?? '',
+    ] : null;
+
+    $selectedSalespersonId = old('salesperson_id', $order?->salesperson_id ?? request('new_salesperson_id') ?? request('salesperson_id'));
+
+    $newSalespersonJson = ($newSalesperson ?? null) ? [
+        'id' => $newSalesperson->id,
+        'name' => $newSalesperson->name,
+        'email' => $newSalesperson->email,
+        'phone' => $newSalesperson->phone ?? '',
+    ] : null;
+
+    $salespersonCreateUrl = route('hrms.employees.create', [
+        'is_salesperson' => 1,
+        'return_to' => 'invoices.create',
+        'return_url' => route('invoices.create', ['returned_from' => 'salesperson_create']),
+    ]);
+
+    $partyCreateUrl = route('masters.customers.create', [
+        'party_type' => \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_DEBTORS,
+        'return_to' => 'invoices.create',
+        'return_url' => route('invoices.create', ['returned_from' => 'party_create']),
+    ]);
+
+    $selectedCustomerId = old('customer_id', $order?->customer_id ?? request('new_customer_id') ?? request('customer_id'));
     $initialCustomer = $selectedCustomerId ? $customers->firstWhere('id', $selectedCustomerId) : null;
     $initialDeliveryState = old('delivery_state', $orderJson['delivery_state'] ?? ($initialCustomer?->shipping_state ?? ($initialCustomer?->state ?? '')));
 @endphp
@@ -127,12 +183,15 @@
           @js($companyState),
           @js($newProductJson),
           @js($savedDraftJson),
-          @js($targetRow ?? null)
+          @js($targetRow ?? null),
+          @js($newCustomerJson),
+          @js($newSalespersonJson),
+          @js($updatedProductJson)
       )"
       x-init="init()"
       x-on:product-quick-added.window="onProductAdded($event.detail)"
       x-on:customer-quick-added.window="onCustomerAdded($event.detail)"
-      @submit="clearDraftOnSubmit()"
+      @submit="handleInvoiceSubmit($event)"
       class="space-y-6">
     @csrf
 
@@ -155,10 +214,10 @@
             <div>
                 <div class="flex items-center justify-between mb-1">
                     <label for="customer_id" class="block text-xs font-semibold text-slate-700 tracking-wider">Customer / Debtor *</label>
-                    <button type="button" @click="$dispatch('open-quick-add-customer')"
-                            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1">
+                    <a :href="partyCreateUrl" @click="saveDraftAndRedirectToParty($event)"
+                       class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 cursor-pointer">
                         + Add New
-                    </button>
+                    </a>
                 </div>
                 <select name="customer_id" id="customer_id" x-model="customerId" @change="onCustomerChange()" required
                         class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
@@ -172,7 +231,7 @@
                                 data-state="{{ $c->shipping_state ?? ($c->state ?? '') }}"
                                 data-gstin="{{ $c->gstin ?? '' }}"
                                 @if(!empty($cPhone)) data-code="{{ $cPhone }}" data-subtext="{{ $cPhone }}" @elseif(!empty($c->code)) data-code="{{ $c->code }}" @endif
-                                @selected(old('customer_id', $order?->customer_id) == $c->id)>
+                                @selected(($selectedCustomerId ?? old('customer_id', $order?->customer_id)) == $c->id)>
                             {{ $c->name }}
                         </option>
                     @endforeach
@@ -184,16 +243,23 @@
 
             {{-- Salesperson Searchable Select --}}
             <div>
-                <label for="salesperson_id" class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
-                    Salesperson
-                </label>
+                <div class="flex items-center justify-between mb-1">
+                    <label for="salesperson_id" class="block text-xs font-semibold text-slate-700 tracking-wider">
+                        Salesperson
+                    </label>
+                    <button type="button"
+                            @click="openSalespersonModal()"
+                            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 cursor-pointer">
+                        + Create Salesperson
+                    </button>
+                </div>
                 <select name="salesperson_id"
                         id="salesperson_id"
                         x-model="salespersonId"
                         class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                     <option value="">Select Salesperson (Optional)</option>
                     @foreach($salespersons as $sp)
-                        <option value="{{ $sp->id }}" @selected(old('salesperson_id', $order?->salesperson_id) == $sp->id)>
+                        <option value="{{ $sp->id }}" @selected(($selectedSalespersonId ?? old('salesperson_id', $order?->salesperson_id)) == $sp->id)>
                             {{ $sp->name }}
                         </option>
                     @endforeach
@@ -796,32 +862,62 @@
                                        title="Add a new product to master catalog">
                                         + Quick Add
                                     </a>
+                                    <template x-if="row.product_id">
+                                        <a :href="productEditUrl(row.product_id, i)"
+                                           @click="saveDraftAndRedirectToEditProduct($event, row.product_id, i)"
+                                           class="font-semibold text-amber-600 hover:text-amber-800 inline-flex items-center gap-1 transition-colors"
+                                           title="Edit this product in Product Master">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                            Edit Product
+                                        </a>
+                                    </template>
                                 </div>
 
                                 {{-- Serial Number Tracking Block --}}
                                 <div class="mt-2" x-show="isSerialTracked(row)" x-cloak>
-                                    <label class="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-800">
-                                        Serial Numbers
-                                        <span class="text-[10px] font-bold uppercase text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">Tracked</span>
-                                    </label>
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                                            Serial Numbers
+                                            <span class="text-[10px] font-bold uppercase text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">Tracked</span>
+                                        </label>
+                                        <span class="text-[10px] font-semibold text-slate-500 font-mono"
+                                              x-text="`Expected: ${Math.round(Number(row.quantity) || 1)}`"></span>
+                                    </div>
                                     <input type="text"
                                            :name="`items[${i}][serial_numbers]`"
                                            x-model="row.serial_numbers"
+                                           :required="isSerialTracked(row)"
                                            placeholder="Enter serial number(s) comma separated"
                                            class="block w-full rounded-md border-gray-300 px-2.5 py-2 text-xs font-mono text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                    <p class="mt-1 text-[10px] text-amber-700 font-medium"
+                                       x-text="`Requires ${Math.round(Number(row.quantity) || 1)} serial number(s), comma separated.`"></p>
                                 </div>
                             </td>
 
                             {{-- UOM Column --}}
-                            <td class="p-3 align-top min-w-[85px] w-24 text-center">
-                                <select :name="`items[${i}][uom_id]`"
-                                        x-model="row.uom_id"
-                                        required
-                                        class="block w-full rounded-md border-gray-300 text-xs font-semibold text-slate-700 h-[38px] px-2 bg-white shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-                                    <template x-for="u in uoms" :key="u.id">
-                                        <option :value="u.id" x-text="u.code" :selected="String(u.id) === String(row.uom_id)"></option>
-                                    </template>
-                                </select>
+                            <td class="p-3 align-top min-w-[95px] w-28 text-center">
+                                <template x-if="!row.allow_unit_change">
+                                    <div class="relative">
+                                        <input type="hidden" :name="`items[${i}][uom_id]`" :value="row.uom_id">
+                                        <span class="inline-flex items-center justify-center w-full h-[38px] px-2 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 rounded-md cursor-not-allowed select-none"
+                                              x-text="row.unit || '—'"
+                                              :title="row.product_id ? ('Unit locked to ' + (row.unit || 'configured unit') + ' (single unit configured)') : 'Select a product'">
+                                        </span>
+                                    </div>
+                                </template>
+                                <template x-if="row.allow_unit_change">
+                                    <div>
+                                        <select :name="`items[${i}][uom_id]`"
+                                                x-model="row.uom_id"
+                                                @change="onUomChange(i)"
+                                                required
+                                                class="block w-full rounded-md border-gray-300 text-xs font-semibold text-slate-700 h-[38px] px-2 bg-white shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                            <template x-for="u in (row.allowed_uoms || [])" :key="u.id">
+                                                <option :value="String(u.id)" x-text="u.code || u.name" :selected="String(u.id) === String(row.uom_id)"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                </template>
                             </td>
 
                             {{-- Quantity Column --}}
@@ -1771,6 +1867,114 @@
         </div>
     </div>
 
+    {{-- Create Salesperson Modal --}}
+    <div x-show="salespersonModal.open"
+         x-cloak
+         class="fixed inset-0 z-50 overflow-y-auto"
+         aria-labelledby="salesperson-modal-title" role="dialog" aria-modal="true"
+         @keydown.escape.window="closeSalespersonModal()">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div x-show="salespersonModal.open"
+                 x-transition:enter="ease-out duration-300"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="ease-in duration-200"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 @click="closeSalespersonModal()"
+                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"></div>
+
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+            <div x-show="salespersonModal.open"
+                 x-transition:enter="ease-out duration-300"
+                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave="ease-in duration-200"
+                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 class="inline-block align-bottom bg-white rounded-xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+
+                <div class="bg-indigo-600 px-5 py-3.5 flex items-center justify-between text-white">
+                    <h3 class="text-sm font-bold flex items-center gap-2" id="salesperson-modal-title">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                        <span>Create New Salesperson</span>
+                    </h3>
+                    <button type="button" @click="closeSalespersonModal()" class="text-indigo-100 hover:text-white text-lg font-bold">✕</button>
+                </div>
+
+                <div class="p-5 space-y-4 text-xs">
+                    <div x-show="salespersonModal.error" class="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs" x-text="salespersonModal.error" x-cloak></div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="sm:col-span-2">
+                            <label class="block font-semibold text-slate-700 mb-1">Salesperson / Employee Name <span class="text-rose-500">*</span></label>
+                            <input type="text" x-model="salespersonModal.name" placeholder="Full name of salesperson" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Employee Code</label>
+                            <input type="text" x-model="salespersonModal.employee_code" placeholder="Auto-generated if blank" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Mobile Number</label>
+                            <input type="text" x-model="salespersonModal.phone" placeholder="E.g. 9876543210" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Email</label>
+                            <input type="email" x-model="salespersonModal.email" placeholder="salesperson@example.com" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Status</label>
+                            <select x-model="salespersonModal.status" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Department</label>
+                            <select x-model="salespersonModal.department_id" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="">— Select Department (Optional) —</option>
+                                @foreach($departments as $dept)
+                                    <option value="{{ $dept->id }}">{{ $dept->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block font-semibold text-slate-700 mb-1">Designation</label>
+                            <select x-model="salespersonModal.designation_id" class="w-full rounded-lg border-gray-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="">— Select Designation (Optional) —</option>
+                                @foreach($designations as $desig)
+                                    <option value="{{ $desig->id }}">{{ $desig->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="pt-2 text-slate-500 text-[11px] flex items-center justify-between">
+                        <span>Creates employee profile &amp; assigns salesperson role.</span>
+                        <a :href="salespersonCreateUrl" @click="saveDraftAndRedirectToSalesperson($event)" class="text-indigo-600 hover:text-indigo-800 font-semibold underline">
+                            Full Employee Form &rarr;
+                        </a>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 px-5 py-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                    <button type="button" @click="closeSalespersonModal()" class="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition">Cancel</button>
+                    <button type="button" @click="saveNewSalesperson()" :disabled="salespersonModal.saving" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition disabled:opacity-50">
+                        <span x-show="!salespersonModal.saving">Save Salesperson</span>
+                        <span x-show="salespersonModal.saving" x-cloak>Saving...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {{-- Pick Batch Modal --}}
     <div x-show="batchPicker.open" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @keydown.escape.window="closeBatchPicker()">
         <div class="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
@@ -1850,7 +2054,7 @@ window.batchPicker = window.batchPicker || {
     error: null,
 };
 
-function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, initialOrders, companyState, newProduct, savedDraft, targetRow) {
+function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, initialOrders, companyState, newProduct, savedDraft, targetRow, newCustomer = null, newSalesperson = null, updatedProduct = null) {
     return {
         products: products || [],
         uoms: uoms || [],
@@ -1860,17 +2064,35 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         companyGstin: '{{ $companyGstin }}',
         ewayThreshold: {{ $ewayThreshold }},
         newProduct: newProduct || null,
+        updatedProduct: updatedProduct || null,
+        newCustomer: newCustomer || null,
+        newSalesperson: newSalesperson || null,
         savedDraft: savedDraft || null,
         targetRow: targetRow !== undefined ? targetRow : null,
+        partyCreateUrl: @json($partyCreateUrl),
+        salespersonCreateUrl: @json($salespersonCreateUrl),
         _seq: 0,
         lines: [],
+
+        salespersonModal: {
+            open: false,
+            saving: false,
+            error: '',
+            name: '',
+            employee_code: '',
+            phone: '',
+            email: '',
+            department_id: '',
+            designation_id: '',
+            status: 'active',
+        },
 
         // Header models
         priceType: '{{ old('price_type', 'exclusive') }}',
         roundOff: {{ old('round_off', 0) }},
         isManualRoundOff: {{ old('round_off') !== null ? 'true' : 'false' }},
-        customerId: initialOrder ? initialOrder.customer_id : '{{ old('customer_id', '') }}',
-        salespersonId: initialOrder && initialOrder.salesperson_id ? String(initialOrder.salesperson_id) : '{{ old('salesperson_id', '') }}',
+        customerId: initialOrder ? initialOrder.customer_id : '{{ old('customer_id', $selectedCustomerId ?? '') }}',
+        salespersonId: initialOrder && initialOrder.salesperson_id ? String(initialOrder.salesperson_id) : '{{ old('salesperson_id', $selectedSalespersonId ?? '') }}',
 
         orderId: initialOrder ? initialOrder.id : '{{ old('order_id', '') }}',
         customerOrders: initialOrders || [],
@@ -2013,7 +2235,13 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
 
             const urlParams = new URLSearchParams(window.location.search);
             const returnedNewProductId = (newProduct && newProduct.id ? String(newProduct.id) : '') || urlParams.get('new_product_id');
+            const returnedUpdatedProductId = (this.updatedProduct && this.updatedProduct.id ? String(this.updatedProduct.id) : '') || urlParams.get('updated_product_id');
+            const returnedNewCustomerId = (newCustomer && newCustomer.id ? String(newCustomer.id) : '') || urlParams.get('new_customer_id') || urlParams.get('customer_id');
+            const returnedNewSalespersonId = (newSalesperson && newSalesperson.id ? String(newSalesperson.id) : '') || urlParams.get('new_salesperson_id') || urlParams.get('salesperson_id');
             const isReturnedFromProduct = Boolean(returnedNewProductId) || urlParams.get('returned_from') === 'product_create';
+            const isReturnedFromProductEdit = Boolean(returnedUpdatedProductId) || urlParams.get('returned_from') === 'product_edit';
+            const isReturnedFromParty = Boolean(returnedNewCustomerId) || urlParams.get('returned_from') === 'party_create';
+            const isReturnedFromSalesperson = Boolean(returnedNewSalespersonId) || urlParams.get('returned_from') === 'salesperson_create';
             const hasServerOldValues = @json(old('_token') !== null);
 
             let draft = savedDraft || null;
@@ -2026,22 +2254,27 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 }
             }
 
-            if (draft && (isReturnedFromProduct || !hasServerOldValues)) {
-                if (draft.customerId) {
+            if (draft && (isReturnedFromProduct || isReturnedFromProductEdit || isReturnedFromParty || isReturnedFromSalesperson || !hasServerOldValues)) {
+                if (isReturnedFromParty || returnedNewCustomerId) {
+                    this.customerId = String(returnedNewCustomerId);
+                } else if (draft.customerId) {
                     this.customerId = String(draft.customerId);
-                    const custSel = document.querySelector('select[name="customer_id"]');
-                    if (custSel) {
-                        custSel.value = this.customerId;
-                        custSel.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
                 }
-                if (draft.salespersonId !== undefined && draft.salespersonId !== null && draft.salespersonId !== '') {
+                const custSel = document.querySelector('select[name="customer_id"]');
+                if (custSel && this.customerId) {
+                    custSel.value = this.customerId;
+                    custSel.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                if (isReturnedFromSalesperson || returnedNewSalespersonId) {
+                    this.salespersonId = String(returnedNewSalespersonId);
+                } else if (draft.salespersonId !== undefined && draft.salespersonId !== null && draft.salespersonId !== '') {
                     this.salespersonId = String(draft.salespersonId);
-                    const spSel = document.querySelector('select[name="salesperson_id"]');
-                    if (spSel) {
-                        spSel.value = this.salespersonId;
-                        spSel.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
+                }
+                const spSel = document.querySelector('select[name="salesperson_id"]');
+                if (spSel && this.salespersonId) {
+                    spSel.value = this.salespersonId;
+                    spSel.dispatchEvent(new Event('change', { bubbles: true }));
                 }
                 if (draft.orderId) {
                     this.orderId = draft.orderId;
@@ -2088,12 +2321,14 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 if (Array.isArray(draft.lines) && draft.lines.length > 0) {
                     this.lines = draft.lines.map(it => {
                         const p = this.products.find(prod => String(prod.id) === String(it.product_id));
-                        const u = this.uoms.find(uom => String(uom.id) === String(it.uom_id));
+                        const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                         return {
                             _key: ++this._seq,
                             product_id: it.product_id || '',
-                            uom_id: it.uom_id || (p ? p.base_uom_id : ''),
-                            unit: it.unit || (u ? u.code : (p ? p.unit : 'PCS')),
+                            uom_id: uomInfo.uom_id,
+                            unit: uomInfo.unit,
+                            allowed_uoms: uomInfo.allowed_uoms,
+                            allow_unit_change: uomInfo.allow_unit_change,
                             tracking_type: it.tracking_type || (p ? p.tracking_type : 'none'),
                             quantity: Number(it.quantity) || 1,
                             ordered_quantity: Number(it.ordered_quantity || it.quantity) || 1,
@@ -2150,12 +2385,14 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 if (initialOrder.items && initialOrder.items.length) {
                     this.lines = initialOrder.items.map(it => {
                         const p = this.products.find(prod => String(prod.id) === String(it.product_id));
-                        const u = this.uoms.find(uom => String(uom.id) === String(it.uom_id));
+                        const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                         return {
                             _key: ++this._seq,
                             product_id: it.product_id,
-                            uom_id: it.uom_id || (p ? p.base_uom_id : ''),
-                            unit: u ? u.code : (p ? p.unit : 'PCS'),
+                            uom_id: uomInfo.uom_id,
+                            unit: uomInfo.unit,
+                            allowed_uoms: uomInfo.allowed_uoms,
+                            allow_unit_change: uomInfo.allow_unit_change,
                             tracking_type: p ? p.tracking_type : 'none',
                             quantity: Number(it.quantity) || 1,
                             ordered_quantity: Number(it.ordered_quantity || it.quantity) || 1,
@@ -2182,6 +2419,29 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             // Ensure new product is registered in this.products
             if (newProduct && !this.products.some(p => String(p.id) === String(newProduct.id))) {
                 this.products.push(newProduct);
+            }
+
+            // Ensure updated product is updated or added in this.products, and refresh active lines
+            if (this.updatedProduct && this.updatedProduct.id) {
+                const uId = String(this.updatedProduct.id);
+                const existingIdx = this.products.findIndex(p => String(p.id) === uId);
+                if (existingIdx !== -1) {
+                    this.products[existingIdx] = { ...this.products[existingIdx], ...this.updatedProduct };
+                } else {
+                    this.products.push(this.updatedProduct);
+                }
+
+                this.lines.forEach(row => {
+                    if (String(row.product_id) === uId) {
+                        row.tracking_type = this.updatedProduct.tracking_type || 'none';
+                        row.tax_rate = Number(this.updatedProduct.tax_rate) || 0;
+                        row.allowed_uoms = this.updatedProduct.allowed_uoms || [];
+                        row.allow_unit_change = Boolean(this.updatedProduct.allow_unit_change);
+                        if (!this.isSerialTracked(row)) {
+                            row.serial_numbers = '';
+                        }
+                    }
+                });
             }
 
             // Automatically select newly created product
@@ -2218,20 +2478,16 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             } catch (e) {}
 
             // Clean query parameters from URL so refreshes don't re-trigger
-            if (isReturnedFromProduct && window.history && window.history.replaceState) {
+            if ((isReturnedFromProduct || isReturnedFromProductEdit || isReturnedFromParty || isReturnedFromSalesperson) && window.history && window.history.replaceState) {
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
         },
 
-        saveDraftAndRedirectToProduct(event, targetRowIndex = null) {
-            if (event) {
-                event.preventDefault();
-            }
-
+        getInvoiceDraftState(targetRowIndex = null) {
             const custEl = document.querySelector('select[name="customer_id"]');
             const custId = custEl ? custEl.value : this.customerId;
 
-            const draft = {
+            return {
                 customerId: custId || '',
                 salespersonId: this.salespersonId || '',
                 orderId: this.orderId || '',
@@ -2270,6 +2526,32 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 universalValue: this.universalValue || 0,
                 selectedSchemeId: this.selectedSchemeId || '',
                 priceType: this.priceType || 'exclusive',
+                roundOff: this.roundOff,
+                isManualRoundOff: Boolean(this.isManualRoundOff),
+                ewayBillRequired: this.ewayBillRequired || 'auto',
+                ewayBillNo: this.ewayBillNo || '',
+                ewayBillDate: this.ewayBillDate || '',
+                ewaySubType: this.ewaySubType || 'Supply',
+                ewayDocType: this.ewayDocType || 'Tax Invoice',
+                ewaySupplyType: this.ewaySupplyType || 'Outward',
+                consignorName: this.consignorName || '',
+                consignorGstin: this.consignorGstin || '',
+                consignorState: this.consignorState || '',
+                consignorAddressType: this.consignorAddressType || '',
+                consignorAddressLine1: this.consignorAddressLine1 || '',
+                consignorAddressLine2: this.consignorAddressLine2 || '',
+                consignorPincode: this.consignorPincode || '',
+                consignorCity: this.consignorCity || '',
+                consignorActualState: this.consignorActualState || '',
+                consigneeName: this.consigneeName || '',
+                consigneeGstin: this.consigneeGstin || '',
+                consigneeState: this.consigneeState || '',
+                consigneeAddressType: this.consigneeAddressType || '',
+                consigneeAddressLine1: this.consigneeAddressLine1 || '',
+                consigneeAddressLine2: this.consigneeAddressLine2 || '',
+                consigneePincode: this.consigneePincode || '',
+                consigneeCity: this.consigneeCity || '',
+                consigneeActualState: this.consigneeActualState || '',
                 lines: (this.lines || []).map(r => ({
                     product_id: r.product_id || '',
                     uom_id: r.uom_id || '',
@@ -2287,6 +2569,14 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 targetRow: targetRowIndex !== null ? targetRowIndex : null,
                 timestamp: Date.now()
             };
+        },
+
+        saveDraftAndRedirectToProduct(event, targetRowIndex = null) {
+            if (event) {
+                event.preventDefault();
+            }
+
+            const draft = this.getInvoiceDraftState(targetRowIndex);
 
             try {
                 sessionStorage.setItem('dms_sales_invoice_draft', JSON.stringify(draft));
@@ -2321,6 +2611,255 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             } else {
                 window.location.href = targetUrl;
             }
+        },
+
+        saveDraftAndRedirectToParty(event) {
+            if (event) {
+                event.preventDefault();
+            }
+
+            const draft = this.getInvoiceDraftState();
+
+            try {
+                sessionStorage.setItem('dms_sales_invoice_draft', JSON.stringify(draft));
+            } catch (e) {
+                console.error('Failed to save invoice draft to sessionStorage', e);
+            }
+
+            const targetUrl = this.partyCreateUrl;
+
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+                              document.querySelector('input[name="_token"]')?.value;
+
+            if (csrfToken && window.fetch) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1200);
+                fetch(@json(route('invoices.draft.save')), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({ draft }),
+                    signal: controller.signal
+                }).finally(() => {
+                    clearTimeout(timeoutId);
+                    window.location.href = targetUrl;
+                });
+            } else {
+                window.location.href = targetUrl;
+            }
+        },
+
+        saveDraftAndRedirectToSalesperson(event) {
+            if (event) {
+                event.preventDefault();
+            }
+
+            const draft = this.getInvoiceDraftState();
+
+            try {
+                sessionStorage.setItem('dms_sales_invoice_draft', JSON.stringify(draft));
+            } catch (e) {
+                console.error('Failed to save invoice draft to sessionStorage', e);
+            }
+
+            const targetUrl = this.salespersonCreateUrl;
+
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+                              document.querySelector('input[name="_token"]')?.value;
+
+            if (csrfToken && window.fetch) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1200);
+                fetch(@json(route('invoices.draft.save')), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({ draft }),
+                    signal: controller.signal
+                }).finally(() => {
+                    clearTimeout(timeoutId);
+                    window.location.href = targetUrl;
+                });
+            } else {
+                window.location.href = targetUrl;
+            }
+        },
+
+        openSalespersonModal() {
+            this.salespersonModal.open = true;
+            this.salespersonModal.saving = false;
+            this.salespersonModal.error = '';
+            this.salespersonModal.name = '';
+            this.salespersonModal.employee_code = '';
+            this.salespersonModal.phone = '';
+            this.salespersonModal.email = '';
+            this.salespersonModal.department_id = '';
+            this.salespersonModal.designation_id = '';
+            this.salespersonModal.status = 'active';
+        },
+
+        closeSalespersonModal() {
+            this.salespersonModal.open = false;
+            this.salespersonModal.saving = false;
+            this.salespersonModal.error = '';
+        },
+
+        async saveNewSalesperson() {
+            if (!this.salespersonModal.name || !this.salespersonModal.name.trim()) {
+                this.salespersonModal.error = 'Salesperson / Employee Name is required.';
+                return;
+            }
+
+            this.salespersonModal.saving = true;
+            this.salespersonModal.error = '';
+
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+                              document.querySelector('input[name="_token"]')?.value;
+
+            try {
+                const res = await fetch(@json(route('invoices.salespersons.quick-add')), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({
+                        name: this.salespersonModal.name.trim(),
+                        employee_code: this.salespersonModal.employee_code.trim(),
+                        phone: this.salespersonModal.phone.trim(),
+                        email: this.salespersonModal.email.trim(),
+                        department_id: this.salespersonModal.department_id || null,
+                        designation_id: this.salespersonModal.designation_id || null,
+                        status: this.salespersonModal.status || 'active',
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    this.salespersonModal.error = data.message || (data.errors ? Object.values(data.errors).flat().join(', ') : 'Failed to save salesperson.');
+                    return;
+                }
+
+                const newSp = data.salesperson;
+                const spIdStr = String(newSp.id);
+
+                // Add to select options if not present
+                const sel = document.querySelector('select[name="salesperson_id"]');
+                if (sel) {
+                    let opt = sel.querySelector(`option[value="${spIdStr}"]`);
+                    if (!opt) {
+                        opt = document.createElement('option');
+                        opt.value = spIdStr;
+                        opt.textContent = newSp.name;
+                        sel.appendChild(opt);
+                    }
+                    opt.selected = true;
+                    sel.value = spIdStr;
+                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                // Update Alpine state
+                this.salespersonId = spIdStr;
+
+                // Close modal
+                this.closeSalespersonModal();
+            } catch (err) {
+                console.error('Failed to create salesperson:', err);
+                this.salespersonModal.error = 'Network or server error while saving salesperson.';
+            } finally {
+                this.salespersonModal.saving = false;
+            }
+        },
+
+        productEditUrl(productId, targetRowIndex = null) {
+            if (!productId) return '#';
+            let url = @json(route('masters.products.edit', ['product' => '__PID__'])).replace('__PID__', encodeURIComponent(productId));
+            url += (url.includes('?') ? '&' : '?') + 'return_to=invoices.create&return_url=' + encodeURIComponent(@json(route('invoices.create')));
+            if (targetRowIndex !== null && targetRowIndex !== undefined) {
+                url += '&target_row=' + encodeURIComponent(targetRowIndex);
+            }
+            return url;
+        },
+
+        saveDraftAndRedirectToEditProduct(event, productId, targetRowIndex = null) {
+            if (event) {
+                event.preventDefault();
+            }
+
+            const draft = this.getInvoiceDraftState(targetRowIndex);
+
+            try {
+                sessionStorage.setItem('dms_sales_invoice_draft', JSON.stringify(draft));
+            } catch (e) {
+                console.error('Failed to save invoice draft to sessionStorage', e);
+            }
+
+            const targetUrl = this.productEditUrl(productId, targetRowIndex);
+
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+                              document.querySelector('input[name="_token"]')?.value;
+
+            if (csrfToken && window.fetch) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1200);
+                fetch(@json(route('invoices.draft.save')), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken
+                    },
+                    body: JSON.stringify({ draft }),
+                    signal: controller.signal
+                }).finally(() => {
+                    clearTimeout(timeoutId);
+                    window.location.href = targetUrl;
+                });
+            } else {
+                window.location.href = targetUrl;
+            }
+        },
+
+        handleInvoiceSubmit(event) {
+            for (let i = 0; i < this.lines.length; i++) {
+                const row = this.lines[i];
+                if (this.isSerialTracked(row)) {
+                    const expectedCount = Math.round(Number(row.quantity) || 1);
+                    const rawSerials = (row.serial_numbers || '')
+                        .split(',')
+                        .map(s => s.trim())
+                        .filter(s => s.length > 0);
+
+                    if (rawSerials.length === 0) {
+                        alert(`Line #${i + 1} requires ${expectedCount} serial number(s) for the tracked product.`);
+                        if (event) event.preventDefault();
+                        return false;
+                    }
+
+                    if (rawSerials.length !== expectedCount) {
+                        alert(`Line #${i + 1} requires exactly ${expectedCount} serial number(s), but ${rawSerials.length} provided.`);
+                        if (event) event.preventDefault();
+                        return false;
+                    }
+
+                    const uniqueSerials = new Set(rawSerials.map(s => s.toLowerCase()));
+                    if (uniqueSerials.size !== rawSerials.length) {
+                        alert(`Line #${i + 1} contains duplicate serial numbers.`);
+                        if (event) event.preventDefault();
+                        return false;
+                    }
+                }
+            }
+            this.clearDraftOnSubmit();
+            return true;
         },
 
         clearDraftOnSubmit() {
@@ -2745,12 +3284,14 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                     if (ord.items && ord.items.length) {
                         this.lines = ord.items.map(it => {
                             const p = this.products.find(prod => String(prod.id) === String(it.product_id));
-                            const u = this.uoms.find(uom => String(uom.id) === String(it.uom_id));
+                            const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                             return {
                                 _key: ++this._seq,
                                 product_id: it.product_id,
-                                uom_id: it.uom_id || (p ? p.base_uom_id : ''),
-                                unit: it.unit || (u ? u.code : (p ? p.unit : 'PCS')),
+                                uom_id: uomInfo.uom_id,
+                                unit: uomInfo.unit,
+                                allowed_uoms: uomInfo.allowed_uoms,
+                                allow_unit_change: uomInfo.allow_unit_change,
                                 tracking_type: it.tracking_type || (p ? p.tracking_type : 'none'),
                                 quantity: Number(it.quantity) || 1,
                                 ordered_quantity: Number(it.ordered_quantity || it.quantity) || 1,
@@ -2848,13 +3389,52 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         },
 
         // Items and lines management
+        resolveLineUom(productId, requestedUomId = null, fallbackUnit = null) {
+            const p = this.products.find(prod => String(prod.id) === String(productId));
+            if (!p) {
+                return {
+                    uom_id: requestedUomId ? String(requestedUomId) : '',
+                    unit: fallbackUnit || '—',
+                    allowed_uoms: [],
+                    allow_unit_change: false,
+                };
+            }
+
+            const allowedUoms = (p.allowed_uoms && p.allowed_uoms.length)
+                ? p.allowed_uoms
+                : [{
+                    id: String(p.base_uom_id || ''),
+                    code: p.unit || p.base_uom_code || 'PCS',
+                    name: p.unit || p.base_uom_code || 'PCS',
+                    is_base: true
+                }];
+
+            const allowUnitChange = Boolean(p.allow_unit_change ?? (allowedUoms.length > 1));
+
+            // Check if requestedUomId matches any allowed UOM
+            let matched = requestedUomId ? allowedUoms.find(u => String(u.id) === String(requestedUomId)) : null;
+
+            // If not found, default to the base UOM configured for this product
+            if (!matched) {
+                matched = allowedUoms.find(u => u.is_base) || allowedUoms[0];
+            }
+
+            return {
+                uom_id: matched ? String(matched.id) : (p.base_uom_id ? String(p.base_uom_id) : ''),
+                unit: matched ? (matched.code || matched.name) : (p.unit || 'PCS'),
+                allowed_uoms: allowedUoms,
+                allow_unit_change: allowUnitChange,
+            };
+        },
+
         addItem() {
-            const firstUom = this.uoms[0]?.id || '';
             this.lines.push({
                 _key: ++this._seq,
                 product_id: '',
-                uom_id: firstUom,
-                unit: 'PCS',
+                uom_id: '',
+                unit: '—',
+                allowed_uoms: [],
+                allow_unit_change: false,
                 tracking_type: 'none',
                 quantity: 1,
                 ordered_quantity: null,
@@ -2884,10 +3464,25 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
 
         onProductChange(index) {
             const row = this.lines[index];
-            const p = this.products.find(item => String(item.id) === String(row.product_id));
+            if (!row) return;
+            const prodId = row.product_id;
+            if (!prodId) {
+                row.uom_id = '';
+                row.unit = '—';
+                row.allowed_uoms = [];
+                row.allow_unit_change = false;
+                this.recalc();
+                return;
+            }
+
+            const p = this.products.find(item => String(item.id) === String(prodId));
             if (p) {
-                row.uom_id = p.base_uom_id || row.uom_id;
-                row.unit = p.unit || 'PCS';
+                const uomInfo = this.resolveLineUom(p.id, null, p.unit);
+                row.uom_id = uomInfo.uom_id;
+                row.unit = uomInfo.unit;
+                row.allowed_uoms = uomInfo.allowed_uoms;
+                row.allow_unit_change = uomInfo.allow_unit_change;
+
                 row.tracking_type = p.tracking_type || 'none';
                 row.unit_price = Number(p.selling_price) || 0;
                 row.discount_type = p.selling_discount_type || 'percent';
@@ -2897,13 +3492,35 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             this.recalc();
         },
 
+        onUomChange(index) {
+            const row = this.lines[index];
+            if (!row) return;
+            const selected = (row.allowed_uoms || []).find(u => String(u.id) === String(row.uom_id));
+            if (selected) {
+                row.unit = selected.code || selected.name;
+            }
+            this.recalc();
+        },
+
         onProductAdded(p) {
+            const allowedUoms = (p.allowed_uoms && p.allowed_uoms.length)
+                ? p.allowed_uoms
+                : [{
+                    id: String(p.base_uom_id || ''),
+                    code: p.base_uom_code || p.base_uom_name || p.unit || 'PCS',
+                    name: p.base_uom_name || p.unit || 'PCS',
+                    is_base: true
+                }];
+
             this.products.push({
                 id: p.id,
                 name: p.name,
                 brand_id: p.brand_id,
-                base_uom_id: p.base_uom_id,
-                unit: p.base_uom_name || 'PCS',
+                base_uom_id: p.base_uom_id ? String(p.base_uom_id) : '',
+                base_uom_code: p.base_uom_code || p.base_uom_name || p.unit || 'PCS',
+                unit: p.base_uom_code || p.base_uom_name || p.unit || 'PCS',
+                allowed_uoms: allowedUoms,
+                allow_unit_change: Boolean(p.allow_unit_change ?? (allowedUoms.length > 1)),
                 selling_price: Number(p.selling_price) || 0,
                 tax_rate: Number(p.tax_rate) || 0,
                 tracking_type: p.tracking_type || 'none',
