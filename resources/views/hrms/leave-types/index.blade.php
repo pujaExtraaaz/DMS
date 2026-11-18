@@ -1,9 +1,10 @@
 @extends('layouts.dms')
-@section('title', 'Leave Types')
+@section('title', 'Leave Management · Types')
 @section('content')
-<x-ui.page-header title="Leave Types"><x-slot name="actions"><x-ui.button variant="primary" :href="route('hrms.leave-types.create')">Add</x-ui.button></x-slot></x-ui.page-header>
+<x-hrms.leave-nav active="types" />
+
 <div id="listing-container" data-dynamic-container>
-    <x-ui.card>
+    <x-ui.card title="Leave Types">
         <x-ui.table-toolbar
             placeholder="Search Leave Types By Name..."
             :searchValue="request('search')"

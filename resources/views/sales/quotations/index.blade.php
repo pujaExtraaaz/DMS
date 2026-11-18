@@ -93,8 +93,20 @@
                                 <x-ui.badge variant="info">{{ ucfirst($item->status) }}</x-ui.badge>
                             </td>
                             <td class="px-3 py-2 text-right font-medium text-slate-900">₹{{ number_format($item->grand_total, 2) }}</td>
-                            <td class="px-3 py-2 text-right whitespace-nowrap">
+                            <td class="px-3 py-2 text-right whitespace-nowrap space-x-1">
                                 <x-ui.button variant="secondary" size="sm" :href="route('quotations.show', $item)">View</x-ui.button>
+                                <x-ui.button variant="secondary" size="sm" :href="route('quotations.preview', $item)" target="_blank">Preview</x-ui.button>
+                                @if($item->isEditable())
+                                    <x-ui.button variant="secondary" size="sm" :href="route('quotations.edit', $item)">Edit</x-ui.button>
+                                @endif
+                                @if($item->isDeletable())
+                                    <form method="POST" action="{{ route('quotations.destroy', $item) }}" class="inline"
+                                          onsubmit="return confirm('Delete quotation {{ $item->quotation_no }}?');">
+                                        @csrf
+                                        @method('DELETE')
+                                        <x-ui.button type="submit" variant="danger" size="sm">Delete</x-ui.button>
+                                    </form>
+                                @endif
                             </td>
                         </tr>
                     @empty

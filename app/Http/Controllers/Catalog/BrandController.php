@@ -246,7 +246,7 @@ class BrandController extends Controller
                         ->orWhereNull('company_id');
                 });
             })
-            ->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($query) . '%'])
+            ->whereRaw('LOWER(name) LIKE ?', [mb_strtolower($query).'%'])
             ->orderBy('name', 'asc')
             ->limit(10)
             ->get(['id', 'name', 'company_id', 'is_active', 'detail']);

@@ -21,7 +21,7 @@
             </div>
             <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
                 <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active)) class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                Active (Active designations appear in the Party Contact designation dropdown)
+                Active (Active designations appear in Party Contact and Phone Directory dropdowns)
             </label>
             <div class="flex gap-2 pt-2">
                 <x-ui.button type="submit" variant="primary">Save</x-ui.button>

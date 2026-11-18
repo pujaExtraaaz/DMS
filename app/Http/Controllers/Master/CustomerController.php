@@ -288,8 +288,8 @@ class CustomerController extends Controller
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('code', 'like', "%{$search}%");
+                $q->where('name', 'like', "{$search}%")
+                  ->orWhere('code', 'like', "{$search}%");
             });
         }
 
@@ -494,15 +494,15 @@ class CustomerController extends Controller
         // Search party name, trade name, code, phone, gstin, email, and area name/code
         if ($term !== '') {
             $query->where(function ($sub) use ($term) {
-                $sub->where('name', 'like', "%{$term}%")
-                    ->orWhere('trade_name', 'like', "%{$term}%")
-                    ->orWhere('code', 'like', "%{$term}%")
-                    ->orWhere('phone', 'like', "%{$term}%")
-                    ->orWhere('gstin', 'like', "%{$term}%")
-                    ->orWhere('email', 'like', "%{$term}%")
+                $sub->where('name', 'like', "{$term}%")
+                    ->orWhere('trade_name', 'like', "{$term}%")
+                    ->orWhere('code', 'like', "{$term}%")
+                    ->orWhere('phone', 'like', "{$term}%")
+                    ->orWhere('gstin', 'like', "{$term}%")
+                    ->orWhere('email', 'like', "{$term}%")
                     ->orWhereHas('area', function ($aq) use ($term) {
-                        $aq->where('name', 'like', "%{$term}%")
-                           ->orWhere('code', 'like', "%{$term}%");
+                        $aq->where('name', 'like', "{$term}%")
+                           ->orWhere('code', 'like', "{$term}%");
                     });
             });
         }
@@ -1829,7 +1829,7 @@ class CustomerController extends Controller
             })
             ->when($request->filled('search'), function ($q) use ($request) {
                 $term = trim($request->search);
-                $q->where(fn ($sq) => $sq->where('name', 'like', "%{$term}%")->orWhere('code', 'like', "%{$term}%"));
+                $q->where(fn ($sq) => $sq->where('name', 'like', "{$term}%")->orWhere('code', 'like', "{$term}%"));
             })
             ->when($request->filled('target_status'), function ($q) use ($request) {
                 $status = strtolower(str_replace(' ', '_', (string) $request->target_status));

@@ -113,7 +113,12 @@ class PurchasePrerequisitesSeeder extends Seeder
             $fy->update(['is_current' => true, 'is_closed' => false]);
         }
 
-        foreach (['PO' => 'Purchase Order', 'PI' => 'Purchase Invoice', 'GRN' => 'Goods Receipt'] as $type => $label) {
+        foreach ([
+            'PO' => 'Purchase Order',
+            'PI' => 'Purchase Invoice',
+            'GRN' => 'Goods Receipt',
+            'QTN' => 'Sales Quotation',
+        ] as $type => $label) {
             $series = DocumentNumberSeries::query()
                 ->where('document_type', $type)
                 ->where(function ($q) use ($company) {

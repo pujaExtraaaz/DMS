@@ -2,7 +2,7 @@
 @section('title', 'Products')
 @section('content')
 @php
-    $currentListingUrl = request()->getRequestUri();
+    $currentListingUrl = request()->getPathInfo().(request()->getQueryString() ? '?'.request()->getQueryString() : '');
 @endphp
 <div id="listing-container" data-dynamic-container x-data="productIndex()">
     <x-ui.page-header title="Products">
@@ -52,7 +52,7 @@
 
         <x-ui.table-toolbar
             :search="$search ?? request('search')"
-            search-placeholder="Search Name, Part Number, Serial No, Model..."
+            search-placeholder="Search by name or part number (starts with)..."
             :reset-url="route('masters.products.index')"
         >
             <x-slot name="filters">
@@ -1173,7 +1173,15 @@ function productIndex() {
         if (!link || !link.href) return;
         try {
             const u = new URL(link.href, window.location.origin);
-            const livePathAndQuery = window.location.pathname + window.location.search;
+            const appBasePath = @json(rtrim(request()->getBasePath(), '/'));
+            let livePathAndQuery = window.location.pathname + window.location.search;
+            if (appBasePath && livePathAndQuery === appBasePath) {
+                livePathAndQuery = '/';
+            } else if (appBasePath && livePathAndQuery.startsWith(appBasePath + '/')) {
+                livePathAndQuery = livePathAndQuery.slice(appBasePath.length) || '/';
+            } else if (appBasePath && livePathAndQuery.startsWith(appBasePath + '?')) {
+                livePathAndQuery = '/' + livePathAndQuery.slice(appBasePath.length);
+            }
             u.searchParams.set('return_url', livePathAndQuery);
             link.href = u.toString();
         } catch (_) {}

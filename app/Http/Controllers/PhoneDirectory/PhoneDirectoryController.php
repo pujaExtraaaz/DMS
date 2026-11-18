@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\PhoneDirectory;
 
+use App\Domains\Master\Models\Designation;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryCategory;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryContact;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryDepartment;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PhoneDirectory\StoreContactRequest;
 use App\Http\Requests\PhoneDirectory\UpdateContactRequest;
+use App\Support\ContactDesignations;
 use App\Support\IndianCities;
 use App\Support\IndianStates;
 use App\Support\WorldCountries;
@@ -15,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
@@ -50,7 +53,7 @@ class PhoneDirectoryController extends Controller
 
         // Query
         $query = PhoneDirectoryContact::query()
-            ->with(['department', 'category'])
+            ->with(['department', 'category', 'designationMaster'])
             ->filter($filters);
 
         // Sorting
@@ -103,12 +106,21 @@ class PhoneDirectoryController extends Controller
             ->limit(50)
             ->pluck('company_name');
 
-        $designations = PhoneDirectoryContact::whereNotNull('designation')
-            ->where('designation', '!=', '')
-            ->distinct()
-            ->orderBy('designation')
-            ->limit(50)
-            ->pluck('designation');
+        $designations = collect();
+        if (Schema::hasTable('designations')) {
+            $designations = Designation::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->pluck('name');
+        }
+        if ($designations->isEmpty()) {
+            $designations = PhoneDirectoryContact::whereNotNull('designation')
+                ->where('designation', '!=', '')
+                ->distinct()
+                ->orderBy('designation')
+                ->limit(50)
+                ->pluck('designation');
+        }
 
         $cities = PhoneDirectoryContact::whereNotNull('city')
             ->where('city', '!=', '')
@@ -145,6 +157,7 @@ class PhoneDirectoryController extends Controller
         $states = IndianStates::namesAlphabetical();
         $stateCities = IndianCities::all();
         $countries = WorldCountries::all();
+        $masterDesignations = $this->masterDesignationOptions();
 
         return view('phone_directory.form', [
             'contact' => $contact,
@@ -155,12 +168,14 @@ class PhoneDirectoryController extends Controller
             'states' => $states,
             'stateCities' => $stateCities,
             'countries' => $countries,
+            'masterDesignations' => $masterDesignations,
         ]);
     }
 
     public function store(StoreContactRequest $request): RedirectResponse
     {
         $data = $request->validated();
+        $this->resolveDesignationFields($data);
 
         if ($request->hasFile('profile_photo')) {
             $path = $request->file('profile_photo')->store('phone-directory/photos', 'public');
@@ -182,7 +197,7 @@ class PhoneDirectoryController extends Controller
     {
         $this->authorizePermission('phone_directory.view');
 
-        $contact->load(['department', 'category', 'creator', 'updater']);
+        $contact->load(['department', 'category', 'designationMaster', 'creator', 'updater']);
 
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
@@ -197,6 +212,7 @@ class PhoneDirectoryController extends Controller
                     'contact_type_label' => PhoneDirectoryContact::CONTACT_TYPES[$contact->contact_type] ?? ucfirst($contact->contact_type),
                     'department_name' => $contact->department?->name ?? '—',
                     'category_name' => $contact->category?->name ?? '—',
+                    'designation_name' => $contact->designation ?: ($contact->designationMaster?->name ?? '—'),
                 ]),
             ]);
         }
@@ -214,6 +230,7 @@ class PhoneDirectoryController extends Controller
         $states = IndianStates::namesAlphabetical();
         $stateCities = IndianCities::all();
         $countries = WorldCountries::all();
+        $masterDesignations = $this->masterDesignationOptions();
 
         return view('phone_directory.form', [
             'contact' => $contact,
@@ -224,12 +241,14 @@ class PhoneDirectoryController extends Controller
             'states' => $states,
             'stateCities' => $stateCities,
             'countries' => $countries,
+            'masterDesignations' => $masterDesignations,
         ]);
     }
 
     public function update(UpdateContactRequest $request, PhoneDirectoryContact $contact): RedirectResponse
     {
         $data = $request->validated();
+        $this->resolveDesignationFields($data);
 
         if ($request->boolean('remove_photo')) {
             if ($contact->profile_photo && Storage::disk('public')->exists($contact->profile_photo)) {
@@ -252,6 +271,57 @@ class PhoneDirectoryController extends Controller
 
         return redirect()->route('phone-directory.index')
             ->with('success', "Contact '{$contact->contact_name}' updated successfully.");
+    }
+
+    /**
+     * @return array<int, array{id: string, name: string}>
+     */
+    protected function masterDesignationOptions(): array
+    {
+        return collect(ContactDesignations::items())
+            ->map(fn ($d) => ['id' => (string) $d['id'], 'name' => (string) $d['name']])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Resolve designation_id + display designation text from masters.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function resolveDesignationFields(array &$data): void
+    {
+        $designationId = ! empty($data['designation_id']) ? (int) $data['designation_id'] : null;
+        $designationText = trim((string) ($data['designation'] ?? ''));
+
+        if ($designationId && Schema::hasTable('designations')) {
+            $master = Designation::query()->find($designationId);
+            if ($master) {
+                $data['designation_id'] = $master->id;
+                if (strcasecmp((string) $master->name, 'Other') === 0) {
+                    $data['designation'] = $designationText !== '' && strcasecmp($designationText, 'Other') !== 0
+                        ? $designationText
+                        : 'Other';
+                } else {
+                    $data['designation'] = $master->name;
+                }
+
+                return;
+            }
+        }
+
+        if ($designationText !== '') {
+            $resolved = ContactDesignations::resolve($designationText);
+            $data['designation_id'] = $resolved['designation_id'];
+            $data['designation'] = $resolved['other_designation'] !== ''
+                ? $resolved['other_designation']
+                : ($resolved['designation'] !== '' ? $resolved['designation'] : $designationText);
+
+            return;
+        }
+
+        $data['designation_id'] = null;
+        $data['designation'] = null;
     }
 
     public function destroy(PhoneDirectoryContact $contact, Request $request): RedirectResponse|JsonResponse

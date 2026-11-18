@@ -856,16 +856,35 @@ class DmsVoucherImporter
                 continue;
             }
             if ($this->yes($this->text($entry, 'ISPARTYLEDGER'))) {
-                return (float) str_replace(',', '', $this->text($entry, 'AMOUNT') ?: '0');
+                $amount = $this->leadingNumber($this->text($entry, 'AMOUNT'));
+                if (abs($amount) >= 0.01) {
+                    return $amount;
+                }
             }
         }
 
-        return (float) str_replace(',', '', $this->text($node, 'AMOUNT') ?: '0');
+        foreach ($node->getElementsByTagName('ALLLEDGERENTRIES.LIST') as $entry) {
+            if (! $entry instanceof \DOMElement) {
+                continue;
+            }
+            $amount = $this->leadingNumber($this->text($entry, 'AMOUNT'));
+            if (abs($amount) >= 0.01) {
+                return $amount;
+            }
+        }
+
+        return $this->leadingNumber($this->text($node, 'AMOUNT'));
     }
 
     private function leadingNumber(string $text): float
     {
-        if (preg_match('/-?\d+(?:\.\d+)?/', str_replace(',', '', $text), $m)) {
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = str_replace([',', '₹', 'Rs.', 'Rs', 'INR', ' '], '', $text);
+        $text = preg_replace('/[^\d.\-]/', '', $text) ?? '';
+        if ($text === '' || $text === '-' || $text === '.') {
+            return 0.0;
+        }
+        if (preg_match('/^-?\d+(?:\.\d+)?/', $text, $m)) {
             return (float) $m[0];
         }
 

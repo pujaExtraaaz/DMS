@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Hrms;
 use App\Domains\Hrms\Models\Department;
 use App\Domains\Hrms\Models\Designation;
 use App\Domains\Hrms\Models\Employee;
+use App\Domains\Master\Services\IfscLookupService;
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Http\Controllers\Controller;
@@ -13,10 +14,13 @@ use App\Support\AuditLogService;
 use App\Support\CodeGenerator;
 use App\Support\DocumentNumberService;
 use App\Support\Traits\SortableAndSearchable;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EmployeeController extends Controller
 {
@@ -25,6 +29,7 @@ class EmployeeController extends Controller
     public function __construct(
         protected DocumentNumberService $documentNumbers,
         protected AuditLogService $auditLogService,
+        protected IfscLookupService $ifscLookupService,
     ) {}
 
     public function index(Request $request): View
@@ -116,6 +121,7 @@ class EmployeeController extends Controller
         }
 
         $employee = Employee::create($data);
+        $this->storeEmployeeFiles($request, $employee);
         $this->auditLogService->record($employee, 'created');
 
         $returnTo = $request->input('return_to');
@@ -252,9 +258,31 @@ class EmployeeController extends Controller
     public function update(Request $request, Employee $employee): RedirectResponse
     {
         $employee->update($this->validated($request, $employee));
+        $this->storeEmployeeFiles($request, $employee);
         $this->auditLogService->record($employee, 'updated');
 
-        return $this->flashSuccess('Employee updated.', 'hrms.employees.index');
+        return $this->flashSuccess('Employee updated.', 'hrms.employees.show', ['employee' => $employee]);
+    }
+
+    public function downloadPhoto(Employee $employee): StreamedResponse
+    {
+        $this->authorizeEmployeeFileAccess($employee);
+        abort_unless($employee->photo_path && Storage::disk('local')->exists($employee->photo_path), 404);
+
+        return Storage::disk('local')->response($employee->photo_path);
+    }
+
+    public function downloadCancelledCheque(Employee $employee): StreamedResponse
+    {
+        $this->authorizeEmployeeFileAccess($employee);
+        abort_unless($employee->cancelled_cheque_path && Storage::disk('local')->exists($employee->cancelled_cheque_path), 404);
+
+        $ext = pathinfo($employee->cancelled_cheque_path, PATHINFO_EXTENSION) ?: 'pdf';
+
+        return Storage::disk('local')->download(
+            $employee->cancelled_cheque_path,
+            str($employee->name.'_cancelled_cheque')->slug('_')->append('.'.$ext)->toString()
+        );
     }
 
     public function destroy(Employee $employee): RedirectResponse
@@ -262,6 +290,23 @@ class EmployeeController extends Controller
         $employee->delete();
 
         return $this->flashSuccess('Employee deleted.', 'hrms.employees.index');
+    }
+
+    public function ifscLookup(Request $request): JsonResponse
+    {
+        $ifsc = $request->input('ifsc', $request->query('ifsc'));
+
+        if (! $ifsc) {
+            return response()->json([
+                'success' => false,
+                'message' => 'IFSC parameter is required.',
+            ], 422);
+        }
+
+        $result = $this->ifscLookupService->lookup((string) $ifsc);
+        $status = ! empty($result['success']) ? 200 : ($result['status_code'] ?? 422);
+
+        return response()->json($result, $status);
     }
 
     protected function validated(Request $request, ?Employee $employee = null): array
@@ -276,17 +321,39 @@ class EmployeeController extends Controller
             'employee_code' => 'nullable|string|max:40|unique:employees,employee_code,'.($employee?->id ?? 'NULL'),
             'name' => 'required|string|max:255',
             'email' => 'nullable|email|max:255',
+            'personal_email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:20',
+            'contact_number' => 'nullable|string|max:20',
+            'alternate_contact_number' => 'nullable|string|max:20',
             'joining_date' => 'nullable|date',
-            'date_of_birth' => 'nullable|date',
+            'date_of_birth' => 'nullable|date|before:today',
+            'father_name' => 'nullable|string|max:255',
+            'blood_group' => 'nullable|string|max:10',
+            'aadhaar_number' => 'nullable|string|max:20',
+            'pan_number' => 'nullable|string|max:20',
             'is_salesperson' => 'boolean',
             'status' => 'required|string|max:30',
             'address' => 'nullable|string',
+            'present_address' => 'nullable|string',
+            'permanent_address' => 'nullable|string',
+            'same_as_present_address' => 'nullable|boolean',
+            'emergency_contact_number' => 'nullable|string|max:20',
+            'emergency_contact_relationship' => 'nullable|string|max:80',
+            'bank_account_holder' => 'nullable|string|max:255',
+            'bank_name' => 'nullable|string|max:255',
+            'bank_branch' => 'nullable|string|max:255',
+            'bank_account_number' => 'nullable|string|max:40',
+            'bank_account_type' => 'nullable|string|max:40',
+            'bank_ifsc' => 'nullable|string|max:20',
+            'photo' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'cancelled_cheque' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:8192',
+            'education_certificates' => 'nullable|array',
+            'education_certificates.*' => 'file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240',
         ], [
             'user_id.unique' => 'This user account is already linked to another employee profile.',
         ]);
 
-        if ($employee && !empty($data['manager_id'])) {
+        if ($employee && ! empty($data['manager_id'])) {
             $managerId = (int) $data['manager_id'];
             if ($managerId === (int) $employee->id) {
                 throw ValidationException::withMessages([
@@ -294,7 +361,6 @@ class EmployeeController extends Controller
                 ]);
             }
 
-            // Check circular reporting
             $visited = [(int) $employee->id];
             $current = Employee::find($managerId);
             while ($current && $current->manager_id) {
@@ -312,6 +378,89 @@ class EmployeeController extends Controller
         $data['company_id'] = $data['company_id'] ?? auth()->user()?->company_id;
         $data['branch_id'] = $data['branch_id'] ?? auth()->user()?->branch_id;
 
+        if ($request->boolean('same_as_present_address') && filled($data['present_address'] ?? null)) {
+            $data['permanent_address'] = $data['present_address'];
+        }
+
+        if (filled($data['present_address'] ?? null) && blank($data['address'] ?? null)) {
+            $data['address'] = $data['present_address'];
+        }
+
+        if (filled($data['contact_number'] ?? null) && blank($data['phone'] ?? null)) {
+            $data['phone'] = $data['contact_number'];
+        }
+
+        if (filled($data['pan_number'] ?? null)) {
+            $data['pan_number'] = strtoupper(preg_replace('/\s+/', '', (string) $data['pan_number']));
+        }
+        if (filled($data['bank_ifsc'] ?? null)) {
+            $data['bank_ifsc'] = strtoupper(preg_replace('/\s+/', '', (string) $data['bank_ifsc']));
+        }
+        if (filled($data['aadhaar_number'] ?? null)) {
+            $data['aadhaar_number'] = preg_replace('/\s+/', '', (string) $data['aadhaar_number']);
+        }
+
+        unset(
+            $data['same_as_present_address'],
+            $data['photo'],
+            $data['cancelled_cheque'],
+            $data['education_certificates']
+        );
+
         return $data;
+    }
+
+    protected function storeEmployeeFiles(Request $request, Employee $employee): void
+    {
+        $disk = Storage::disk('local');
+        $base = 'employee_documents/'.$employee->id;
+        $updates = [];
+
+        if ($request->hasFile('photo')) {
+            if ($employee->photo_path && $disk->exists($employee->photo_path)) {
+                $disk->delete($employee->photo_path);
+            }
+            $updates['photo_path'] = $request->file('photo')->store($base.'/photo', 'local');
+        }
+
+        if ($request->hasFile('cancelled_cheque')) {
+            if ($employee->cancelled_cheque_path && $disk->exists($employee->cancelled_cheque_path)) {
+                $disk->delete($employee->cancelled_cheque_path);
+            }
+            $updates['cancelled_cheque_path'] = $request->file('cancelled_cheque')->store($base.'/cheque', 'local');
+
+            \App\Domains\Hrms\Models\EmployeeDocument::create([
+                'employee_id' => $employee->id,
+                'document_type' => 'Cancelled Cheque',
+                'file_path' => $updates['cancelled_cheque_path'],
+                'notes' => 'Uploaded with employee profile',
+            ]);
+        }
+
+        if (! empty($updates)) {
+            $employee->forceFill($updates)->save();
+        }
+
+        foreach ($request->file('education_certificates', []) as $file) {
+            if (! $file) {
+                continue;
+            }
+            $path = $file->store($base.'/education', 'local');
+            \App\Domains\Hrms\Models\EmployeeDocument::create([
+                'employee_id' => $employee->id,
+                'document_type' => 'Education Certificate',
+                'file_path' => $path,
+                'notes' => $file->getClientOriginalName(),
+            ]);
+        }
+    }
+
+    protected function authorizeEmployeeFileAccess(Employee $employee): void
+    {
+        $user = auth()->user();
+        $isOwner = $user && (int) $employee->user_id === (int) $user->id;
+        $hasPermission = $user && ($user->hasRole('super-admin') || $user->can('hrms.view') || $user->can('hrms.manage'));
+
+        abort_unless($isOwner || $hasPermission, 403, 'Unauthorized access to employee file.');
     }
 }

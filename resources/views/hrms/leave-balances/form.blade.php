@@ -1,13 +1,12 @@
 @extends('layouts.dms')
-@section('title', 'Allocate / Adjust Leave Balance')
+@section('title', 'Leave Management · Allocate Balance')
 @section('content')
-<x-ui.page-header title="Allocate / Adjust Leave Balance">
-<x-slot name="actions">
-    <x-ui.button variant="secondary" :href="route('hrms.leave-balances.index')">Back to Balances</x-ui.button>
-</x-slot>
-</x-ui.page-header>
+<x-hrms.leave-nav active="balances" />
 
-<x-ui.card>
+<x-ui.card title="Allocate / Adjust Leave Balance">
+    <div class="mb-4">
+        <a href="{{ route('hrms.leave-balances.index') }}" class="text-sm font-medium text-indigo-600 hover:underline">← Back to balances</a>
+    </div>
 <form method="POST" action="{{ route('hrms.leave-balances.store') }}" class="space-y-4 max-w-xl">
     @csrf
 

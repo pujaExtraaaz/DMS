@@ -896,7 +896,7 @@ function productTypeFinder(catalog) {
             return this.products.filter((product) => {
                 const name = String(product.name || '').toLowerCase();
                 const sku = String(product.sku || '').toLowerCase();
-                return name.includes(query) || sku.includes(query);
+                return name.startsWith(query) || sku.startsWith(query);
             }).slice(0, 20);
         },
         selectProduct(product) {

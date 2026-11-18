@@ -60,7 +60,7 @@ Route::prefix('orders')
 
         Route::get('/resolve-price', [OrderController::class, 'resolvePrice'])
             ->middleware(
-                'role_or_permission:super-admin|orders.view|orders.create|orders.book|orders.edit|orders.manage'
+                'role_or_permission:super-admin|orders.view|orders.create|orders.book|orders.edit|orders.manage|quotations.view|quotations.create|quotations.edit|quotations.manage|sales.view|sales.create|sales.edit|sales.manage'
             )
             ->name('resolve-price');
 

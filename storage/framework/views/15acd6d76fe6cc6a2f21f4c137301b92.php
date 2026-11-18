@@ -139,7 +139,14 @@
           initialTradePrice: '<?php echo e(old('trade_price', $item->trade_price ?? '')); ?>',
           initialSellingPrice: '<?php echo e(old('selling_price', $item->selling_price ?? '')); ?>',
           initialMrp: '<?php echo e(old('calculation_mrp', $item->calculation_mrp ?? '')); ?>',
-          initialTaxRate: '<?php echo e(old('tax_rate', $item->exists ? $item->tax_rate : '')); ?>',
+          initialTaxRate: <?php echo \Illuminate\Support\Js::from((function () use ($item) {
+              $raw = old('tax_rate', $item->exists ? $item->tax_rate : null);
+              if ($raw === null || $raw === '') {
+                  return '';
+              }
+
+              return rtrim(rtrim(number_format((float) $raw, 2, '.', ''), '0'), '.');
+          })())->toHtml() ?>,
           initialPurchaseTaxBasis: '<?php echo e(old('purchase_price_tax_basis', $item->purchase_price_tax_basis ?? 'exclusive')); ?>',
           initialAltPurchasePrice: '<?php echo e(old('alt_purchase_price', $item->alt_purchase_price ?? ($primaryAlt?->purchase_price ?? ''))); ?>',
           initialAltTradePrice: '<?php echo e(old('alt_trade_price', $item->alt_trade_price ?? ($primaryAlt?->trade_price ?? ''))); ?>',
@@ -1361,7 +1368,17 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
                 </div>
                 <div class="w-full sm:w-56">
                     <label for="tax_rate" class="block text-xs font-semibold text-slate-700 mb-1">GST Rate (%) <span class="text-red-500">*</span></label>
-                    <?php $taxRateOptions = $taxRates ?? collect(); ?>
+                    <?php
+                        $taxRateOptions = $taxRates ?? collect();
+                        $normalizeTaxRate = static function ($value): string {
+                            if ($value === null || $value === '') {
+                                return '';
+                            }
+
+                            return rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.');
+                        };
+                        $currentTaxRate = $normalizeTaxRate(old('tax_rate', $item->exists ? $item->tax_rate : null));
+                    ?>
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($taxRateOptions->isNotEmpty()): ?>
                         <select id="tax_rate"
                                 name="tax_rate"
@@ -1370,10 +1387,9 @@ unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendB
                                 class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
                             <option value="">Select GST rate</option>
                             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $taxRateOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $tr): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                                <option value="<?php echo e(rtrim(rtrim(number_format((float) $tr->rate, 2, '.', ''), '0'), '.')); ?>"
-                                    <?php if((string) old('tax_rate', $item->exists ? $item->tax_rate : '') === (string) $tr->rate
-                                        || (float) old('tax_rate', $item->exists ? $item->tax_rate : -1) === (float) $tr->rate): echo 'selected'; endif; ?>>
-                                    <?php echo e($tr->name); ?> (<?php echo e(rtrim(rtrim(number_format((float) $tr->rate, 2, '.', ''), '0'), '.')); ?>%)
+                                <?php $optionRate = $normalizeTaxRate($tr->rate); ?>
+                                <option value="<?php echo e($optionRate); ?>" <?php if($currentTaxRate !== '' && $currentTaxRate === $optionRate): echo 'selected'; endif; ?>>
+                                    <?php echo e($tr->name); ?> (<?php echo e($optionRate); ?>%)
                                 </option>
                             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                         </select>
@@ -2464,7 +2480,7 @@ function searchableUnitRow(uoms, initialId, onChange) {
         get filtered() {
             if (!this.search || !this.search.trim()) return this.uoms;
             const q = this.search.toLowerCase().trim();
-            return this.uoms.filter(u => u.name && u.name.toLowerCase().includes(q));
+            return this.uoms.filter(u => u.name && u.name.toLowerCase().startsWith(q));
         },
         open() {
             this.isOpen = true;
@@ -2653,6 +2669,14 @@ function productCatalogManager(config) {
         },
 
         init() {
+            // Keep GST select value aligned with option formatting (18.00 -> 18)
+            if (this.taxRate !== '' && this.taxRate !== null && this.taxRate !== undefined) {
+                const parsed = parseFloat(this.taxRate);
+                if (!Number.isNaN(parsed)) {
+                    this.taxRate = String(parseFloat(parsed.toFixed(2)));
+                }
+            }
+
             // Preload labels for initial selections
             if (this.selectedBaseUomId) {
                 const found = this.uoms.find(u => String(u.id) === String(this.selectedBaseUomId));
@@ -2766,8 +2790,8 @@ function productCatalogManager(config) {
             }
             const q = this.uomSearchQuery.toLowerCase().trim();
             return this.uoms.filter(u => {
-                return (u.name && u.name.toLowerCase().includes(q)) ||
-                       (u.code && u.code.toLowerCase().includes(q));
+                return (u.name && u.name.toLowerCase().startsWith(q)) ||
+                       (u.code && String(u.code).toLowerCase().startsWith(q));
             });
         },
         openUomDropdown() {
@@ -2808,8 +2832,8 @@ function productCatalogManager(config) {
             }
             const q = this.altUomSearchQuery.toLowerCase().trim();
             return list.filter(u => {
-                return (u.name && u.name.toLowerCase().includes(q)) ||
-                       (u.code && u.code.toLowerCase().includes(q));
+                return (u.name && u.name.toLowerCase().startsWith(q)) ||
+                       (u.code && String(u.code).toLowerCase().startsWith(q));
             });
         },
         openAltUomDropdown() {
@@ -2861,8 +2885,8 @@ function productCatalogManager(config) {
             }
             const q = this.brandSearchQuery.toLowerCase().trim();
             return this.brands.filter(b => {
-                return (b.name && b.name.toLowerCase().includes(q)) ||
-                       (b.code && b.code.toLowerCase().includes(q));
+                return (b.name && b.name.toLowerCase().startsWith(q)) ||
+                       (b.code && String(b.code).toLowerCase().startsWith(q));
             });
         },
         openBrandDropdown() {
@@ -2910,8 +2934,8 @@ function productCatalogManager(config) {
             }
             const q = this.categorySearchQuery.toLowerCase().trim();
             return list.filter(c => {
-                return (c.name && c.name.toLowerCase().includes(q)) ||
-                       (c.code && c.code.toLowerCase().includes(q));
+                return (c.name && c.name.toLowerCase().startsWith(q)) ||
+                       (c.code && String(c.code).toLowerCase().startsWith(q));
             });
         },
         openCategoryDropdown() {
@@ -2971,8 +2995,8 @@ function productCatalogManager(config) {
             }
             const q = this.subCategorySearchQuery.toLowerCase().trim();
             return list.filter(sc => {
-                return (sc.name && sc.name.toLowerCase().includes(q)) ||
-                       (sc.code && sc.code.toLowerCase().includes(q));
+                return (sc.name && sc.name.toLowerCase().startsWith(q)) ||
+                       (sc.code && String(sc.code).toLowerCase().startsWith(q));
             });
         },
         openSubCategoryDropdown() {

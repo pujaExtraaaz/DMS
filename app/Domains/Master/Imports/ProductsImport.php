@@ -62,7 +62,10 @@ class ProductsImport implements ToCollection, WithHeadingRow
 
     protected int $chunkSize = 150;
 
-    public function __construct(protected ?int $companyId = null) {}
+    public function __construct(
+        protected ?int $companyId = null,
+        protected ?string $progressId = null,
+    ) {}
 
     public function collection(Collection $rows): void
     {
@@ -555,9 +558,10 @@ class ProductsImport implements ToCollection, WithHeadingRow
 
     protected function matchBrand(array &$brandMap, Collection $brands, string $label): ?Brand
     {
-        $this->skuPrefix = 'PROD-'.$companyId.'-';
-        $this->nextSkuSeq = $this->maxSuffix('sku', $this->skuPrefix) + 1;
-        $this->nextSerialSeq = $this->maxSuffix('serial_no', 'PRD-GLOBAL-') + 1;
+        $label = trim($label);
+        if ($label === '') {
+            return null;
+        }
 
         $lower = strtolower($label);
         if (isset($brandMap[$lower])) {
@@ -620,22 +624,8 @@ class ProductsImport implements ToCollection, WithHeadingRow
 
     protected function matchSubCategory(array &$subCategoryMap, Collection $subCategories, ?Category $category, string $label): ?SubCategory
     {
-        $found = [];
-        foreach ($this->nameKeys($label) as $key) {
-            foreach ($this->categoryByName[$key] ?? [] as $id => $category) {
-                if ($unbrandedOnly && $category->brand_id !== null) {
-                    continue;
-                }
-                $found[$id] = $category;
-            }
-        }
-
-        return array_values($found);
-    }
-
-    protected function matchSubCategory(?Category $category, string $label): ?SubCategory
-    {
-        if (! $category || trim($label) === '') {
+        $label = trim($label);
+        if (! $category || $label === '') {
             return null;
         }
 
@@ -664,15 +654,9 @@ class ProductsImport implements ToCollection, WithHeadingRow
 
     protected function matchProductType(array &$productTypeMap, Collection $productTypes, string $label): ?ProductType
     {
-        return $this->findIndexed($this->typeIndex, $label);
-    }
-
-    protected function findIndexed(array $index, string $label): mixed
-    {
-        foreach ($this->nameKeys($label) as $key) {
-            if (array_key_exists($key, $index)) {
-                return $index[$key];
-            }
+        $label = trim($label);
+        if ($label === '') {
+            return null;
         }
 
         $lower = strtolower($label);
@@ -699,10 +683,22 @@ class ProductsImport implements ToCollection, WithHeadingRow
             $productTypeMap[$formatted] = $found;
         }
 
-        return array_values(array_unique(array_filter([
-            strtolower($name),
-            $formatted !== '' ? strtolower($formatted) : null,
-        ])));
+        return $found;
+    }
+
+    protected function namesEqual(string $left, string $right): bool
+    {
+        $left = strtolower(trim($left));
+        $right = strtolower(trim($right));
+        if ($left === '' || $right === '') {
+            return false;
+        }
+
+        if ($left === $right) {
+            return true;
+        }
+
+        return strtolower((string) NameCase::format($left)) === strtolower((string) NameCase::format($right));
     }
 
     protected function rawName(object $model): string

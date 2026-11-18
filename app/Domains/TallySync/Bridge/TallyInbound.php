@@ -55,12 +55,14 @@ class TallyInbound
     private int $cursorStart = 0;
 
     /**
+     * @param  'dms'|'books'  $target
      * @return array{created:int, updated:int, conflicts:int, skipped:int, alter_id:int}
      */
-    public function apply(string $key, string $xml): array
+    public function apply(string $key, string $xml, string $target = 'dms'): array
     {
         // Defend against Title Case middleware rewriting connector keys (Vouchers → vouchers).
         $key = strtolower(str_replace(' ', '_', trim($key)));
+        $target = strtolower(trim($target)) === 'books' ? 'books' : 'dms';
         $this->counts = ['created' => 0, 'updated' => 0, 'conflicts' => 0, 'skipped' => 0];
         $this->cursorStart = (int) DB::table('tally_sync_cursors')->where('collection', $key)->value('alter_id');
         $this->maxAlter = $this->cursorStart;
@@ -68,10 +70,11 @@ class TallyInbound
             return $this->report($key, $xml);
         }
 
-        // Books-only masters are not imported. Cursor still advances so polls stay incremental.
+        // Books-only masters are not imported into DMS. Cursor still advances so polls stay incremental.
         // DMS keys mirror outbound masters + vouchers for full connector bidirectional sync.
         $booksOnly = ['groups', 'cost_categories', 'voucher_types', 'bank_accounts'];
         $dmsKeys = ['stock_groups', 'units', 'godowns', 'ledgers', 'stock_items', 'cost_centres', 'vouchers'];
+        $booksKeys = ['groups', 'stock_groups', 'units', 'godowns', 'cost_categories', 'cost_centres', 'ledgers', 'bank_accounts', 'voucher_types', 'stock_items', 'vouchers'];
 
         $xml = self::sanitizeTallyXml($xml);
 
@@ -106,8 +109,16 @@ class TallyInbound
         }
 
         $organization = $this->organizationCompany();
-        if (in_array($key, $dmsKeys, true) && ! $organization) {
+        $booksCompany = $target === 'books' ? $this->company() : null;
+
+        if ($target === 'dms' && in_array($key, $dmsKeys, true) && ! $organization) {
             $this->conflict($key, null, null, 'Create a DMS company first. Tally imports land in DMS, then Books syncs from DMS.');
+
+            return $this->finish($key);
+        }
+
+        if ($target === 'books' && ! $booksCompany) {
+            $this->conflict($key, null, null, 'Create / provision a Books company first before importing Tally XML into acct_*.');
 
             return $this->finish($key);
         }
@@ -122,21 +133,33 @@ class TallyInbound
                 $this->maxAlter = max($this->maxAlter, $alter);
             }
 
-            if (in_array($key, $booksOnly, true)) {
-                $this->counts['skipped']++;
+            if ($target === 'dms') {
+                if (in_array($key, $booksOnly, true) || ! in_array($key, $dmsKeys, true)) {
+                    $this->counts['skipped']++;
+
+                    continue;
+                }
+
+                try {
+                    TallyAutoEnqueueObserver::withoutSync(function () use ($key, $node, $organization) {
+                        $this->oneDms($key, $node, $organization);
+                    });
+                } catch (\Throwable $exception) {
+                    $this->conflict($key, $this->text($node, 'GUID'), $this->text($node, 'NAME') ?: $node->getAttribute('NAME'), $exception->getMessage());
+                }
 
                 continue;
             }
 
-            if (! in_array($key, $dmsKeys, true)) {
+            if (! in_array($key, $booksKeys, true)) {
                 $this->counts['skipped']++;
 
                 continue;
             }
 
             try {
-                TallyAutoEnqueueObserver::withoutSync(function () use ($key, $node, $organization) {
-                    $this->oneDms($key, $node, $organization);
+                TallyAutoEnqueueObserver::withoutSync(function () use ($key, $node, $booksCompany) {
+                    $this->one($key, $node, $booksCompany);
                 });
             } catch (\Throwable $exception) {
                 $this->conflict($key, $this->text($node, 'GUID'), $this->text($node, 'NAME') ?: $node->getAttribute('NAME'), $exception->getMessage());
@@ -1561,11 +1584,14 @@ class TallyInbound
                     continue;
                 }
                 $ledgerName = $this->text($entry, 'LEDGERNAME');
-                $ledger = Ledger::query()->where('company_id', $company->id)->where('name', $ledgerName)->first();
+                $ledger = Ledger::query()
+                    ->where('company_id', $company->id)
+                    ->whereRaw('LOWER(name) = ?', [mb_strtolower($ledgerName)])
+                    ->first();
                 if (! $ledger) {
                     continue;
                 }
-                $amount = (float) str_replace(',', '', $this->text($entry, 'AMOUNT'));
+                $amount = $this->leadingNumber($this->text($entry, 'AMOUNT'));
                 $centreName = '';
                 $centreNode = $entry->getElementsByTagName('COSTCENTREALLOCATIONS.LIST')->item(0);
                 if ($centreNode instanceof \DOMElement) {
@@ -2077,7 +2103,13 @@ class TallyInbound
 
     private function leadingNumber(string $value): float
     {
-        if (preg_match('/-?\d+(?:\.\d+)?/', str_replace(',', '', $value), $match)) {
+        $value = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $value = str_replace([',', '₹', 'Rs.', 'Rs', 'INR', ' '], '', $value);
+        $value = preg_replace('/[^\d.\-]/', '', $value) ?? '';
+        if ($value === '' || $value === '-' || $value === '.') {
+            return 0.0;
+        }
+        if (preg_match('/^-?\d+(?:\.\d+)?/', $value, $match)) {
             return (float) $match[0];
         }
 

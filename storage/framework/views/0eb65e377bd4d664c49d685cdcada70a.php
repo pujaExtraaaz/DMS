@@ -1,7 +1,7 @@
 <?php $__env->startSection('title', 'Products'); ?>
 <?php $__env->startSection('content'); ?>
 <?php
-    $currentListingUrl = request()->getRequestUri();
+    $currentListingUrl = request()->getPathInfo().(request()->getQueryString() ? '?'.request()->getQueryString() : '');
 ?>
 <div id="listing-container" data-dynamic-container x-data="productIndex()">
     <?php if (isset($component)) { $__componentOriginal91a231a9270579fa1ae9246bd51fb785 = $component; } ?>
@@ -163,14 +163,14 @@ Edit <?php echo $__env->renderComponent(); ?>
 
         <?php if (isset($component)) { $__componentOriginala060c6a0206375167a5f0e5fbcb7b575 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginala060c6a0206375167a5f0e5fbcb7b575 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.table-toolbar','data' => ['search' => $search ?? request('search'),'searchPlaceholder' => 'Search Name, Part Number, Serial No, Model...','resetUrl' => route('masters.products.index')]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.table-toolbar','data' => ['search' => $search ?? request('search'),'searchPlaceholder' => 'Search by name or part number (starts with)...','resetUrl' => route('masters.products.index')]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('ui.table-toolbar'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['search' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($search ?? request('search')),'search-placeholder' => 'Search Name, Part Number, Serial No, Model...','reset-url' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('masters.products.index'))]); ?>
+<?php $component->withAttributes(['search' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($search ?? request('search')),'search-placeholder' => 'Search by name or part number (starts with)...','reset-url' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('masters.products.index'))]); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
              <?php $__env->slot('filters', null, []); ?> 
@@ -1468,7 +1468,15 @@ function productIndex() {
         if (!link || !link.href) return;
         try {
             const u = new URL(link.href, window.location.origin);
-            const livePathAndQuery = window.location.pathname + window.location.search;
+            const appBasePath = <?php echo json_encode(rtrim(request()->getBasePath(), '/'), 512) ?>;
+            let livePathAndQuery = window.location.pathname + window.location.search;
+            if (appBasePath && livePathAndQuery === appBasePath) {
+                livePathAndQuery = '/';
+            } else if (appBasePath && livePathAndQuery.startsWith(appBasePath + '/')) {
+                livePathAndQuery = livePathAndQuery.slice(appBasePath.length) || '/';
+            } else if (appBasePath && livePathAndQuery.startsWith(appBasePath + '?')) {
+                livePathAndQuery = '/' + livePathAndQuery.slice(appBasePath.length);
+            }
             u.searchParams.set('return_url', livePathAndQuery);
             link.href = u.toString();
         } catch (_) {}

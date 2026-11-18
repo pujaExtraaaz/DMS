@@ -21,6 +21,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 use App\Support\Traits\ExportsListing;
@@ -171,7 +172,9 @@ class ProductController extends Controller
             }
         }
 
-        $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no', 'hsn_code', 'series', 'model', 'product_type'], [
+        // Prefix search only (S → starts with S, So → starts with So).
+        // Match name / part number / serial — not mid-string or unrelated model fragments.
+        $this->applySearch($query, $request->input('search'), ['name', 'sku', 'serial_no'], [
             'serials' => ['serial_number'],
         ]);
 
@@ -1217,6 +1220,8 @@ class ProductController extends Controller
 
     /**
      * Allow redirect only to same-app relative or absolute URLs (open-redirect safe).
+     * Returns a path relative to the app root (no subdirectory prefix) so
+     * redirect() + APP_URL=http://host/dms does not produce /dms/dms/...
      */
     protected function safeInternalReturnUrl(mixed $url): ?string
     {
@@ -1231,7 +1236,7 @@ class ProductController extends Controller
 
         // Relative path starting with single /
         if (str_starts_with($url, '/')) {
-            return $url;
+            return $this->stripAppBasePath($url);
         }
 
         $parsed = parse_url($url);
@@ -1248,10 +1253,107 @@ class ProductController extends Controller
             $query = isset($parsed['query']) ? '?' . $parsed['query'] : '';
             $fragment = isset($parsed['fragment']) ? '#' . $parsed['fragment'] : '';
 
-            return $path . $query . $fragment;
+            return $this->stripAppBasePath($path . $query . $fragment);
         }
 
         return null;
+    }
+
+    /**
+     * Strip subdirectory base path (/dms) so Laravel url generation does not double it.
+     */
+    protected function stripAppBasePath(string $pathAndQuery): string
+    {
+        $bases = array_unique(array_filter([
+            rtrim((string) request()->getBasePath(), '/'),
+            rtrim((string) (parse_url((string) config('app.url'), PHP_URL_PATH) ?: ''), '/'),
+        ]));
+
+        foreach ($bases as $base) {
+            if ($base === '' || $base === '/') {
+                continue;
+            }
+
+            if ($pathAndQuery === $base) {
+                return '/';
+            }
+
+            if (str_starts_with($pathAndQuery, $base.'/')) {
+                return substr($pathAndQuery, strlen($base)) ?: '/';
+            }
+
+            // Also handle "...?query" when path equals base exactly
+            if (str_starts_with($pathAndQuery, $base.'?')) {
+                return '/'.substr($pathAndQuery, strlen($base));
+            }
+        }
+
+        return $pathAndQuery;
+    }
+
+    /**
+     * Ensure Brand → Category → Subcategory relationships are consistent.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function assertCatalogHierarchy(array &$data): void
+    {
+        $brandId = ! empty($data['brand_id']) ? (int) $data['brand_id'] : null;
+        $categoryId = ! empty($data['category_id']) ? (int) $data['category_id'] : null;
+        $subCategoryId = ! empty($data['sub_category_id']) ? (int) $data['sub_category_id'] : null;
+
+        if ($subCategoryId && ! $categoryId) {
+            $sub = SubCategory::query()->find($subCategoryId);
+            if ($sub?->category_id) {
+                $categoryId = (int) $sub->category_id;
+                $data['category_id'] = $categoryId;
+            }
+        }
+
+        if ($categoryId) {
+            $category = Category::query()->find($categoryId);
+            if (! $category) {
+                throw ValidationException::withMessages([
+                    'category_id' => 'Please select a valid category.',
+                ]);
+            }
+
+            if ($category->brand_id && $brandId && (int) $category->brand_id !== $brandId) {
+                throw ValidationException::withMessages([
+                    'category_id' => 'Selected category does not belong to the selected brand.',
+                ]);
+            }
+
+            // If category has a brand and product brand is empty, inherit it.
+            if (! $brandId && $category->brand_id) {
+                $brandId = (int) $category->brand_id;
+                $data['brand_id'] = $brandId;
+            }
+        }
+
+        if ($subCategoryId) {
+            $subCategory = SubCategory::query()->find($subCategoryId);
+            if (! $subCategory) {
+                throw ValidationException::withMessages([
+                    'sub_category_id' => 'Please select a valid subcategory.',
+                ]);
+            }
+
+            if (! $categoryId) {
+                throw ValidationException::withMessages([
+                    'category_id' => 'Please select a category before choosing a subcategory.',
+                ]);
+            }
+
+            if ((int) $subCategory->category_id !== $categoryId) {
+                throw ValidationException::withMessages([
+                    'sub_category_id' => 'Selected subcategory does not belong to the selected category.',
+                ]);
+            }
+        }
+
+        $data['category_id'] = $categoryId;
+        $data['sub_category_id'] = $subCategoryId;
     }
 
     protected function syncBaseUom(Product $product): void

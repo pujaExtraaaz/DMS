@@ -120,13 +120,13 @@ trait SortableAndSearchable
     }
 
     /**
-     * Apply case-insensitive multi-column search with whitespace trimming.
+     * Apply case-insensitive multi-column prefix search with whitespace trimming.
+     * Typing "S" matches values starting with S; "So" matches starting with So; and so on.
      *
-     * @param Builder $query
-     * @param string|null $term
-     * @param array $columns Direct columns on the main model
-     * @param array $relationColumns Relations mapped to their columns, e.g. ['customer' => ['name', 'phone']]
-     * @return void
+     * @param  Builder  $query
+     * @param  string|null  $term
+     * @param  array  $columns  Direct columns on the main model
+     * @param  array  $relationColumns  Relations mapped to their columns, e.g. ['customer' => ['name', 'phone']]
      */
     protected function applySearch(
         Builder $query,
@@ -139,40 +139,43 @@ trait SortableAndSearchable
             return;
         }
 
-        $query->where(function (Builder $q) use ($clean, $columns, $relationColumns) {
+        // Escape LIKE wildcards so user input is treated literally as a prefix.
+        $prefix = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $clean).'%';
+
+        $query->where(function (Builder $q) use ($prefix, $columns, $relationColumns) {
             $first = true;
             foreach ($columns as $column) {
                 if ($first) {
-                    $q->where($column, 'like', "%{$clean}%");
+                    $q->where($column, 'like', $prefix);
                     $first = false;
                 } else {
-                    $q->orWhere($column, 'like', "%{$clean}%");
+                    $q->orWhere($column, 'like', $prefix);
                 }
             }
 
             foreach ($relationColumns as $relation => $relCols) {
                 $cols = (array) $relCols;
                 if ($first) {
-                    $q->whereHas($relation, function (Builder $rq) use ($clean, $cols) {
-                        $rq->where(function (Builder $subQ) use ($clean, $cols) {
+                    $q->whereHas($relation, function (Builder $rq) use ($prefix, $cols) {
+                        $rq->where(function (Builder $subQ) use ($prefix, $cols) {
                             foreach ($cols as $idx => $c) {
                                 if ($idx === 0) {
-                                    $subQ->where($c, 'like', "%{$clean}%");
+                                    $subQ->where($c, 'like', $prefix);
                                 } else {
-                                    $subQ->orWhere($c, 'like', "%{$clean}%");
+                                    $subQ->orWhere($c, 'like', $prefix);
                                 }
                             }
                         });
                     });
                     $first = false;
                 } else {
-                    $q->orWhereHas($relation, function (Builder $rq) use ($clean, $cols) {
-                        $rq->where(function (Builder $subQ) use ($clean, $cols) {
+                    $q->orWhereHas($relation, function (Builder $rq) use ($prefix, $cols) {
+                        $rq->where(function (Builder $subQ) use ($prefix, $cols) {
                             foreach ($cols as $idx => $c) {
                                 if ($idx === 0) {
-                                    $subQ->where($c, 'like', "%{$clean}%");
+                                    $subQ->where($c, 'like', $prefix);
                                 } else {
-                                    $subQ->orWhere($c, 'like', "%{$clean}%");
+                                    $subQ->orWhere($c, 'like', $prefix);
                                 }
                             }
                         });

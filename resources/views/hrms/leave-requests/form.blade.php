@@ -1,13 +1,12 @@
 @extends('layouts.dms')
-@section('title', 'New Leave Request')
+@section('title', 'Leave Management · New Request')
 @section('content')
-<x-ui.page-header title="New Leave Request">
-<x-slot name="actions">
-    <x-ui.button variant="secondary" :href="route('hrms.leave-requests.index')">Back to Requests</x-ui.button>
-</x-slot>
-</x-ui.page-header>
+<x-hrms.leave-nav active="requests" />
 
-<x-ui.card>
+<x-ui.card title="New Leave Request">
+    <div class="mb-4">
+        <a href="{{ route('hrms.leave-requests.index') }}" class="text-sm font-medium text-indigo-600 hover:underline">← Back to requests</a>
+    </div>
 <form method="POST" action="{{ route('hrms.leave-requests.store') }}" class="space-y-4 max-w-xl">
     @csrf
 

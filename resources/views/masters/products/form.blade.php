@@ -99,7 +99,14 @@
           initialTradePrice: '{{ old('trade_price', $item->trade_price ?? '') }}',
           initialSellingPrice: '{{ old('selling_price', $item->selling_price ?? '') }}',
           initialMrp: '{{ old('calculation_mrp', $item->calculation_mrp ?? '') }}',
-          initialTaxRate: '{{ old('tax_rate', $item->exists ? $item->tax_rate : '') }}',
+          initialTaxRate: @js((function () use ($item) {
+              $raw = old('tax_rate', $item->exists ? $item->tax_rate : null);
+              if ($raw === null || $raw === '') {
+                  return '';
+              }
+
+              return rtrim(rtrim(number_format((float) $raw, 2, '.', ''), '0'), '.');
+          })()),
           initialPurchaseTaxBasis: '{{ old('purchase_price_tax_basis', $item->purchase_price_tax_basis ?? 'exclusive') }}',
           initialAltPurchasePrice: '{{ old('alt_purchase_price', $item->alt_purchase_price ?? ($primaryAlt?->purchase_price ?? '')) }}',
           initialAltTradePrice: '{{ old('alt_trade_price', $item->alt_trade_price ?? ($primaryAlt?->trade_price ?? '')) }}',
@@ -976,7 +983,17 @@
                 </div>
                 <div class="w-full sm:w-56">
                     <label for="tax_rate" class="block text-xs font-semibold text-slate-700 mb-1">GST Rate (%) <span class="text-red-500">*</span></label>
-                    @php $taxRateOptions = $taxRates ?? collect(); @endphp
+                    @php
+                        $taxRateOptions = $taxRates ?? collect();
+                        $normalizeTaxRate = static function ($value): string {
+                            if ($value === null || $value === '') {
+                                return '';
+                            }
+
+                            return rtrim(rtrim(number_format((float) $value, 2, '.', ''), '0'), '.');
+                        };
+                        $currentTaxRate = $normalizeTaxRate(old('tax_rate', $item->exists ? $item->tax_rate : null));
+                    @endphp
                     @if($taxRateOptions->isNotEmpty())
                         <select id="tax_rate"
                                 name="tax_rate"
@@ -985,10 +1002,9 @@
                                 class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
                             <option value="">Select GST rate</option>
                             @foreach($taxRateOptions as $tr)
-                                <option value="{{ rtrim(rtrim(number_format((float) $tr->rate, 2, '.', ''), '0'), '.') }}"
-                                    @selected((string) old('tax_rate', $item->exists ? $item->tax_rate : '') === (string) $tr->rate
-                                        || (float) old('tax_rate', $item->exists ? $item->tax_rate : -1) === (float) $tr->rate)>
-                                    {{ $tr->name }} ({{ rtrim(rtrim(number_format((float) $tr->rate, 2, '.', ''), '0'), '.') }}%)
+                                @php $optionRate = $normalizeTaxRate($tr->rate); @endphp
+                                <option value="{{ $optionRate }}" @selected($currentTaxRate !== '' && $currentTaxRate === $optionRate)>
+                                    {{ $tr->name }} ({{ $optionRate }}%)
                                 </option>
                             @endforeach
                         </select>
@@ -1718,7 +1734,7 @@ function searchableUnitRow(uoms, initialId, onChange) {
         get filtered() {
             if (!this.search || !this.search.trim()) return this.uoms;
             const q = this.search.toLowerCase().trim();
-            return this.uoms.filter(u => u.name && u.name.toLowerCase().includes(q));
+            return this.uoms.filter(u => u.name && u.name.toLowerCase().startsWith(q));
         },
         open() {
             this.isOpen = true;
@@ -1907,6 +1923,14 @@ function productCatalogManager(config) {
         },
 
         init() {
+            // Keep GST select value aligned with option formatting (18.00 -> 18)
+            if (this.taxRate !== '' && this.taxRate !== null && this.taxRate !== undefined) {
+                const parsed = parseFloat(this.taxRate);
+                if (!Number.isNaN(parsed)) {
+                    this.taxRate = String(parseFloat(parsed.toFixed(2)));
+                }
+            }
+
             // Preload labels for initial selections
             if (this.selectedBaseUomId) {
                 const found = this.uoms.find(u => String(u.id) === String(this.selectedBaseUomId));
@@ -2020,8 +2044,8 @@ function productCatalogManager(config) {
             }
             const q = this.uomSearchQuery.toLowerCase().trim();
             return this.uoms.filter(u => {
-                return (u.name && u.name.toLowerCase().includes(q)) ||
-                       (u.code && u.code.toLowerCase().includes(q));
+                return (u.name && u.name.toLowerCase().startsWith(q)) ||
+                       (u.code && String(u.code).toLowerCase().startsWith(q));
             });
         },
         openUomDropdown() {
@@ -2062,8 +2086,8 @@ function productCatalogManager(config) {
             }
             const q = this.altUomSearchQuery.toLowerCase().trim();
             return list.filter(u => {
-                return (u.name && u.name.toLowerCase().includes(q)) ||
-                       (u.code && u.code.toLowerCase().includes(q));
+                return (u.name && u.name.toLowerCase().startsWith(q)) ||
+                       (u.code && String(u.code).toLowerCase().startsWith(q));
             });
         },
         openAltUomDropdown() {
@@ -2115,8 +2139,8 @@ function productCatalogManager(config) {
             }
             const q = this.brandSearchQuery.toLowerCase().trim();
             return this.brands.filter(b => {
-                return (b.name && b.name.toLowerCase().includes(q)) ||
-                       (b.code && b.code.toLowerCase().includes(q));
+                return (b.name && b.name.toLowerCase().startsWith(q)) ||
+                       (b.code && String(b.code).toLowerCase().startsWith(q));
             });
         },
         openBrandDropdown() {
@@ -2164,8 +2188,8 @@ function productCatalogManager(config) {
             }
             const q = this.categorySearchQuery.toLowerCase().trim();
             return list.filter(c => {
-                return (c.name && c.name.toLowerCase().includes(q)) ||
-                       (c.code && c.code.toLowerCase().includes(q));
+                return (c.name && c.name.toLowerCase().startsWith(q)) ||
+                       (c.code && String(c.code).toLowerCase().startsWith(q));
             });
         },
         openCategoryDropdown() {
@@ -2225,8 +2249,8 @@ function productCatalogManager(config) {
             }
             const q = this.subCategorySearchQuery.toLowerCase().trim();
             return list.filter(sc => {
-                return (sc.name && sc.name.toLowerCase().includes(q)) ||
-                       (sc.code && sc.code.toLowerCase().includes(q));
+                return (sc.name && sc.name.toLowerCase().startsWith(q)) ||
+                       (sc.code && String(sc.code).toLowerCase().startsWith(q));
             });
         },
         openSubCategoryDropdown() {

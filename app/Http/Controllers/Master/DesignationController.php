@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Master;
 
 use App\Domains\Master\Models\Designation;
 use App\Domains\Master\Models\PartyContact;
+use App\Domains\PhoneDirectory\Models\PhoneDirectoryContact;
 use App\Http\Controllers\Controller;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class DesignationController extends Controller
@@ -149,8 +151,11 @@ class DesignationController extends Controller
                 'is_active' => $isActive,
             ]);
 
-            // Sync updated name to party contacts assigned to this designation
+            // Sync updated name to party contacts and phone directory contacts
             PartyContact::where('designation_id', $designation->id)->update(['role' => $name]);
+            if (Schema::hasColumn('phone_directory_contacts', 'designation_id')) {
+                PhoneDirectoryContact::where('designation_id', $designation->id)->update(['designation' => $name]);
+            }
         });
 
         return $this->flashSuccess('Designation updated successfully.', 'masters.designations.index');
@@ -160,10 +165,23 @@ class DesignationController extends Controller
     {
         $partyContactCount = $designation->partyContacts()->count();
         $employeeCount = $designation->employees()->count();
+        $phoneCount = Schema::hasColumn('phone_directory_contacts', 'designation_id')
+            ? $designation->phoneDirectoryContacts()->count()
+            : 0;
 
         // Check if in use
-        if ($partyContactCount > 0 || $employeeCount > 0) {
-            $inUseMsg = "Cannot delete designation '{$designation->name}' because it is currently assigned to {$partyContactCount} party contact(s) and {$employeeCount} employee(s). You can deactivate it instead.";
+        if ($partyContactCount > 0 || $employeeCount > 0 || $phoneCount > 0) {
+            $parts = [];
+            if ($partyContactCount > 0) {
+                $parts[] = "{$partyContactCount} party contact(s)";
+            }
+            if ($employeeCount > 0) {
+                $parts[] = "{$employeeCount} employee(s)";
+            }
+            if ($phoneCount > 0) {
+                $parts[] = "{$phoneCount} phone directory contact(s)";
+            }
+            $inUseMsg = "Cannot delete designation '{$designation->name}' because it is currently assigned to ".implode(' and ', $parts).'. You can deactivate it instead.';
 
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
@@ -296,8 +314,11 @@ class DesignationController extends Controller
                     'description' => $request->has('description') ? (trim((string) $request->input('description', '')) ?: null) : $designation->description,
                 ]);
 
-                // Sync party contacts role string
+                // Sync party contacts + phone directory display text
                 PartyContact::where('designation_id', $designation->id)->update(['role' => $name]);
+                if (Schema::hasColumn('phone_directory_contacts', 'designation_id')) {
+                    PhoneDirectoryContact::where('designation_id', $designation->id)->update(['designation' => $name]);
+                }
             });
 
             return response()->json([
@@ -322,12 +343,26 @@ class DesignationController extends Controller
     {
         $partyContactCount = $designation->partyContacts()->count();
         $employeeCount = $designation->employees()->count();
+        $phoneCount = Schema::hasColumn('phone_directory_contacts', 'designation_id')
+            ? $designation->phoneDirectoryContacts()->count()
+            : 0;
 
-        if ($partyContactCount > 0 || $employeeCount > 0) {
+        if ($partyContactCount > 0 || $employeeCount > 0 || $phoneCount > 0) {
+            $parts = [];
+            if ($partyContactCount > 0) {
+                $parts[] = "{$partyContactCount} party contact(s)";
+            }
+            if ($employeeCount > 0) {
+                $parts[] = "{$employeeCount} employee(s)";
+            }
+            if ($phoneCount > 0) {
+                $parts[] = "{$phoneCount} phone directory contact(s)";
+            }
+
             return response()->json([
                 'success' => false,
                 'in_use' => true,
-                'message' => "Cannot delete designation '{$designation->name}' because it is currently assigned to {$partyContactCount} party contact(s) and {$employeeCount} employee(s). You can deactivate it instead.",
+                'message' => "Cannot delete designation '{$designation->name}' because it is currently assigned to ".implode(' and ', $parts).'. You can deactivate it instead.',
                 'can_deactivate' => true,
             ], 422);
         }

@@ -12,18 +12,70 @@
     <!-- Left Column: Primary Details & Reporting Hierarchy -->
     <div class="space-y-6 lg:col-span-1">
         <x-ui.card title="Employee Details">
+            <div class="mb-4 flex items-center gap-3">
+                @if($employee->photo_path)
+                    <img src="{{ route('hrms.employees.photo', $employee) }}" alt="{{ $employee->name }}" class="h-16 w-16 rounded-xl border border-slate-200 object-cover bg-slate-50">
+                @else
+                    <div class="flex h-16 w-16 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-400">No photo</div>
+                @endif
+                <div>
+                    <div class="text-sm font-semibold text-slate-900">{{ $employee->name }}</div>
+                    <div class="text-xs text-slate-500 font-mono">{{ $employee->employee_code }}</div>
+                </div>
+            </div>
             <dl class="divide-y divide-slate-100 text-sm">
                 <div class="py-2 flex justify-between"><dt class="text-slate-500">Department</dt><dd class="font-medium">{{ $employee->department?->name ?? '—' }}</dd></div>
                 <div class="py-2 flex justify-between"><dt class="text-slate-500">Designation</dt><dd class="font-medium">{{ $employee->designation?->name ?? '—' }}</dd></div>
                 <div class="py-2 flex justify-between"><dt class="text-slate-500">Branch</dt><dd class="font-medium">{{ $employee->branch?->name ?? '—' }}</dd></div>
-                <div class="py-2 flex justify-between"><dt class="text-slate-500">Email</dt><dd class="font-medium">{{ $employee->email ?? '—' }}</dd></div>
-                <div class="py-2 flex justify-between"><dt class="text-slate-500">Phone</dt><dd class="font-medium">{{ $employee->phone ?? '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Official Email</dt><dd class="font-medium">{{ $employee->email ?? '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Official Phone</dt><dd class="font-medium">{{ $employee->phone ?? '—' }}</dd></div>
                 <div class="py-2 flex justify-between"><dt class="text-slate-500">Joining Date</dt><dd class="font-medium">{{ optional($employee->joining_date)->format('d M Y') ?? '—' }}</dd></div>
-                <div class="py-2 flex justify-between"><dt class="text-slate-500">Date of Birth</dt><dd class="font-medium">{{ optional($employee->date_of_birth)->format('d M Y') ?? '—' }}</dd></div>
                 <div class="py-2 flex justify-between"><dt class="text-slate-500">Linked User</dt><dd class="font-medium">{{ $employee->user?->name ?? 'None' }}</dd></div>
                 <div class="py-2 flex justify-between"><dt class="text-slate-500">Status</dt><dd><span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ $employee->status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800' }}">{{ ucfirst(str_replace('_', ' ', $employee->status)) }}</span></dd></div>
                 <div class="py-2 flex justify-between"><dt class="text-slate-500">Role</dt><dd class="font-medium">{{ $employee->is_salesperson ? 'Salesperson' : 'General Staff' }}</dd></div>
-                <div class="py-2"><dt class="text-slate-500 mb-1">Address</dt><dd class="font-medium text-slate-700 whitespace-pre-line">{{ $employee->address ?? '—' }}</dd></div>
+            </dl>
+        </x-ui.card>
+
+        <x-ui.card title="Personal Information">
+            <dl class="divide-y divide-slate-100 text-sm">
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Date of Birth</dt><dd class="font-medium">{{ optional($employee->date_of_birth)->format('d M Y') ?? '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Father's Name</dt><dd class="font-medium">{{ $employee->father_name ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Blood Group</dt><dd class="font-medium">{{ $employee->blood_group ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Aadhaar</dt><dd class="font-medium font-mono">{{ $employee->aadhaar_number ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">PAN</dt><dd class="font-medium font-mono">{{ $employee->pan_number ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Personal Email</dt><dd class="font-medium">{{ $employee->personal_email ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Contact</dt><dd class="font-medium">{{ $employee->contact_number ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Alternate Contact</dt><dd class="font-medium">{{ $employee->alternate_contact_number ?: '—' }}</dd></div>
+                <div class="py-2"><dt class="text-slate-500 mb-1">Present Address</dt><dd class="font-medium text-slate-700 whitespace-pre-line">{{ $employee->present_address ?: ($employee->address ?: '—') }}</dd></div>
+                <div class="py-2"><dt class="text-slate-500 mb-1">Permanent Address</dt><dd class="font-medium text-slate-700 whitespace-pre-line">{{ $employee->permanent_address ?: '—' }}</dd></div>
+            </dl>
+        </x-ui.card>
+
+        <x-ui.card title="Emergency Contact">
+            <dl class="divide-y divide-slate-100 text-sm">
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Number</dt><dd class="font-medium">{{ $employee->emergency_contact_number ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Relationship</dt><dd class="font-medium">{{ $employee->emergency_contact_relationship ?: '—' }}</dd></div>
+            </dl>
+        </x-ui.card>
+
+        <x-ui.card title="Bank Account">
+            <dl class="divide-y divide-slate-100 text-sm">
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Holder</dt><dd class="font-medium">{{ $employee->bank_account_holder ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Bank</dt><dd class="font-medium">{{ $employee->bank_name ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Branch</dt><dd class="font-medium">{{ $employee->bank_branch ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Account No.</dt><dd class="font-medium font-mono">{{ $employee->bank_account_number ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">Type</dt><dd class="font-medium">{{ $employee->bank_account_type ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between"><dt class="text-slate-500">IFSC</dt><dd class="font-medium font-mono">{{ $employee->bank_ifsc ?: '—' }}</dd></div>
+                <div class="py-2 flex justify-between">
+                    <dt class="text-slate-500">Cancelled Cheque</dt>
+                    <dd class="font-medium">
+                        @if($employee->cancelled_cheque_path)
+                            <a href="{{ route('hrms.employees.cancelled-cheque', $employee) }}" class="text-indigo-600 hover:underline">Download</a>
+                        @else
+                            —
+                        @endif
+                    </dd>
+                </div>
             </dl>
         </x-ui.card>
 
@@ -108,7 +160,12 @@
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
                             <label class="block text-xs font-medium text-slate-600 mb-1">Document Type *</label>
-                            <input type="text" name="document_type" required placeholder="E.G. Aadhaar, PAN, Contract, Degree" class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
+                            <select name="document_type" required class="block w-full rounded-md border-gray-300 text-xs shadow-sm">
+                                <option value="">Select type</option>
+                                @foreach(['Aadhaar Card','PAN Card','Photograph','Education Certificate','Cancelled Cheque','Offer Letter','Appointment Letter','Contract','Other'] as $docType)
+                                    <option value="{{ $docType }}">{{ $docType }}</option>
+                                @endforeach
+                            </select>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-slate-600 mb-1">Document Number</label>

@@ -1,18 +1,10 @@
 @extends('layouts.dms')
-@section('title', 'Leave Requests')
+@section('title', 'Leave Management · Requests')
 @section('content')
-<x-ui.page-header title="Leave Requests">
-<x-slot name="actions">
-    <div class="flex items-center gap-2">
-        <x-ui.button variant="secondary" :href="route('hrms.leave-balances.index')">Leave Balances</x-ui.button>
-        <x-ui.button variant="secondary" :href="route('hrms.leave-types.index')">Leave Types</x-ui.button>
-        <x-ui.button variant="primary" :href="route('hrms.leave-requests.create')">+ New Request</x-ui.button>
-    </div>
-</x-slot>
-</x-ui.page-header>
+<x-hrms.leave-nav active="requests" />
 
 <div id="listing-container" data-dynamic-container>
-    <x-ui.card>
+    <x-ui.card title="Leave Requests">
         <x-ui.table-toolbar
             placeholder="Search Leave Requests By Reason, Employee..."
             :searchValue="request('search')"

@@ -119,6 +119,7 @@ class DocumentNumberSeries extends Model
             'GRN' => 'Goods Receipt',
             'SO' => 'Sales Order',
             'INV' => 'Sales Invoice',
+            'QTN' => 'Sales Quotation',
         ];
     }
 }
