@@ -241,18 +241,20 @@ class MastersIndiaGspService
      */
     public function generateEWayBill(Invoice $invoice, array $extra = []): array
     {
-        $eligibility = $this->complianceService->evaluateEWayBillEligibility($invoice);
-        if (! empty($eligibility['missing_fields'])) {
-            throw new RuntimeException('Cannot generate E-Way Bill: ' . implode(', ', $eligibility['missing_fields']) . ' must be provided.');
+        // 1. Prevent duplicate generation if already generated
+        if ($invoice->isEWayBillGenerated() || ($invoice->eWayBill && in_array($invoice->eWayBill->status, ['generated', 'active'], true) && filled($invoice->eWayBill->eway_bill_no))) {
+            $existingNo = $invoice->eWayBill?->eway_bill_no ?: $invoice->eway_bill_no;
+            throw new RuntimeException("E-Way Bill has already been generated with number: {$existingNo}. Duplicate generation is not allowed.");
         }
 
-        if ($invoice->eWayBill && $invoice->eWayBill->status === 'generated' && filled($invoice->eWayBill->eway_bill_no)) {
-            throw new RuntimeException('E-Way Bill has already been generated with number: ' . $invoice->eWayBill->eway_bill_no);
+        // 2. Validate all required invoice and transport information
+        $validation = $this->complianceService->validateForEWayBillGeneration($invoice, $extra);
+        if (! $validation['valid']) {
+            $msg = implode(' ', $validation['errors']);
+            throw new RuntimeException("Validation Error: {$msg}");
         }
 
-        $eInvoice = $invoice->eInvoice;
-        $hasActiveIrn = $eInvoice && filled($eInvoice->irn) && $eInvoice->status !== 'cancelled';
-
+        // 3. Verify API configuration / credentials
         if (! $this->isConfigured()) {
             if ((bool) config('services.mastersindia.fallback_to_stub')) {
                 $stub = $this->stubEwayBill($invoice, 'Masters India credentials not configured; using deterministic stub.');
@@ -263,8 +265,11 @@ class MastersIndiaGspService
                 return $stub;
             }
 
-            throw new RuntimeException('Government Portal / Masters India GSP credentials are not configured. Please configure MASTERSINDIA_CLIENT_ID, MASTERSINDIA_CLIENT_SECRET, MASTERSINDIA_USERNAME, MASTERSINDIA_PASSWORD, and MASTERSINDIA_GSTIN in your environment.');
+            throw new RuntimeException('Configuration Error: Government Portal / Masters India GSP credentials are not configured in your environment. Please configure MASTERSINDIA_CLIENT_ID, MASTERSINDIA_CLIENT_SECRET, MASTERSINDIA_USERNAME, MASTERSINDIA_PASSWORD, and MASTERSINDIA_GSTIN in your environment.');
         }
+
+        $eInvoice = $invoice->eInvoice;
+        $hasActiveIrn = $eInvoice && filled($eInvoice->irn) && $eInvoice->status !== 'cancelled';
 
         try {
             if ($hasActiveIrn) {
@@ -272,34 +277,77 @@ class MastersIndiaGspService
                 $payload = array_merge($this->buildEwbByIrnPayload($invoice), $extra);
                 $endpoint = '/ei/api/ewayapi';
             } else {
-                // Direct E-Way Bill generation (for B2C, unregistered, or independent invoices)
+                // Direct E-Way Bill generation (for non-IRN invoices)
                 $payload = array_merge($this->buildDirectEwbPayload($invoice), $extra);
                 $endpoint = '/ewb/api/ewaybill';
             }
 
-            $response = $this->client()->post($endpoint, $payload);
+            try {
+                $response = $this->client()->post($endpoint, $payload);
+            } catch (\Illuminate\Http\Client\ConnectionException $connEx) {
+                $errMsg = 'API Connectivity Error: Unable to connect to Government Portal / Masters India API (' . $connEx->getMessage() . ').';
+                Log::error('MastersIndia EWB connection failed', ['endpoint' => $endpoint, 'error' => $connEx->getMessage()]);
+                $this->auditLogService->record($invoice, 'eway_bill_failed', null, ['error' => $errMsg]);
+                throw new RuntimeException($errMsg);
+            } catch (\Throwable $reqEx) {
+                if (str_starts_with($reqEx->getMessage(), 'Authentication Error:') || str_starts_with($reqEx->getMessage(), 'API Connectivity Error:')) {
+                    $this->auditLogService->record($invoice, 'eway_bill_failed', null, ['error' => $reqEx->getMessage()]);
+                    throw $reqEx;
+                }
+                $errMsg = 'API Connectivity Error: ' . $reqEx->getMessage();
+                $this->auditLogService->record($invoice, 'eway_bill_failed', null, ['error' => $errMsg]);
+                throw new RuntimeException($errMsg);
+            }
 
             if (! $response->ok()) {
-                $err = $response->json('message') ?? $response->body();
-                Log::warning('MastersIndia EWB call failed', ['endpoint' => $endpoint, 'status' => $response->status(), 'body' => $err]);
-
-                if ((bool) config('services.mastersindia.fallback_to_stub')) {
-                    $stub = $this->stubEwayBill($invoice, 'Upstream response ' . $response->status() . ': ' . $err);
-                    $this->auditLogService->record($invoice, 'eway_bill_fallback_stub', null, ['reason' => $err]);
-                    return $stub;
+                $errMsg = $this->extractErrorMessage($response, 'Government Portal Rejection');
+                if ($response->status() === 401 || $response->status() === 403) {
+                    $errMsg = 'Authentication Error: Invalid or expired API credentials / access token.';
                 }
-
-                $this->auditLogService->record($invoice, 'eway_bill_failed', null, ['error' => $err]);
-                throw new RuntimeException('Masters India E-Way Bill generation failed: ' . $err);
+                Log::warning('MastersIndia EWB call failed', ['endpoint' => $endpoint, 'status' => $response->status(), 'body' => $errMsg]);
+                $this->auditLogService->record($invoice, 'eway_bill_failed', null, ['error' => $errMsg]);
+                throw new RuntimeException($errMsg);
             }
 
             $body = $response->json();
-            $data = $body['Data'] ?? $body['data'] ?? $body;
+
+            // Handle HTTP 200 with portal-level rejection
+            if (is_array($body)) {
+                $isRejected = false;
+                $rejectMsg = '';
+
+                if (isset($body['status_cd']) && (string) $body['status_cd'] === '0') {
+                    $isRejected = true;
+                    $rejectMsg = $body['status_desc'] ?? $body['error']['message'] ?? $body['message'] ?? 'Government portal rejected E-Way Bill generation.';
+                } elseif (isset($body['status']) && in_array(strtolower((string) $body['status']), ['error', 'failed', 'false'], true)) {
+                    $isRejected = true;
+                    $rejectMsg = $body['message'] ?? $body['error'] ?? 'Government portal reported generation failure.';
+                }
+
+                if ($isRejected) {
+                    $errMsg = 'Government Portal Rejection: ' . $rejectMsg;
+                    $this->auditLogService->record($invoice, 'eway_bill_failed', null, ['error' => $errMsg]);
+                    throw new RuntimeException($errMsg);
+                }
+            }
+
+            $data = is_array($body) ? ($body['Data'] ?? $body['data'] ?? $body) : [];
+            $ewbNo = (string) ($data['EwbNo'] ?? $data['ewbNo'] ?? $data['eway_bill_no'] ?? $data['EwayBillNo'] ?? $data['ewayBillNo'] ?? $body['EwbNo'] ?? $body['eway_bill_no'] ?? '');
+
+            if (empty($ewbNo)) {
+                $rawMsg = is_array($body) ? json_encode($body) : (string) $body;
+                $errMsg = 'Government Portal Rejection: E-Way Bill Number was not returned in the API response: ' . $rawMsg;
+                $this->auditLogService->record($invoice, 'eway_bill_failed', null, ['error' => $errMsg]);
+                throw new RuntimeException($errMsg);
+            }
+
+            $ewbDate = $data['EwbDt'] ?? $data['ewbDt'] ?? $data['ewb_date'] ?? $data['eway_bill_date'] ?? Carbon::now()->toIso8601String();
+            $validUpto = $data['EwbValidTill'] ?? $data['ewbValidTill'] ?? $data['valid_upto'] ?? $data['valid_until'] ?? null;
 
             $result = [
-                'eway_bill_no' => (string) ($data['EwbNo'] ?? $data['ewbNo'] ?? $data['eway_bill_no'] ?? ''),
-                'ewb_date' => $data['EwbDt'] ?? $data['ewb_date'] ?? Carbon::now()->toIso8601String(),
-                'valid_upto' => $data['EwbValidTill'] ?? $data['valid_upto'] ?? null,
+                'eway_bill_no' => $ewbNo,
+                'ewb_date' => $ewbDate,
+                'valid_upto' => $validUpto,
                 'status' => 'generated',
                 'raw' => $body,
             ];
@@ -312,9 +360,6 @@ class MastersIndiaGspService
             return $result;
         } catch (\Throwable $e) {
             Log::error('MastersIndia EWB exception', ['error' => $e->getMessage()]);
-            if ((bool) config('services.mastersindia.fallback_to_stub')) {
-                return $this->stubEwayBill($invoice, 'Exception: ' . $e->getMessage());
-            }
             throw $e;
         }
     }
@@ -435,23 +480,63 @@ class MastersIndiaGspService
         $key = 'mastersindia:token:' . md5($clientId);
 
         return Cache::remember($key, now()->addMinutes(50), function () {
-            $resp = Http::baseUrl($this->baseUrl)
-                ->timeout((int) config('services.mastersindia.timeout', 30))
-                ->asJson()
-                ->post('/oauth/token', [
-                    'username' => config('services.mastersindia.username'),
-                    'password' => config('services.mastersindia.password'),
-                    'client_id' => config('services.mastersindia.client_id'),
-                    'client_secret' => config('services.mastersindia.client_secret'),
-                    'grant_type' => 'password',
-                ]);
-
-            if (! $resp->ok()) {
-                throw new RuntimeException('Masters India authentication failed: ' . $resp->body());
+            try {
+                $resp = Http::baseUrl($this->baseUrl)
+                    ->timeout((int) config('services.mastersindia.timeout', 30))
+                    ->asJson()
+                    ->post('/oauth/token', [
+                        'username' => config('services.mastersindia.username'),
+                        'password' => config('services.mastersindia.password'),
+                        'client_id' => config('services.mastersindia.client_id'),
+                        'client_secret' => config('services.mastersindia.client_secret'),
+                        'grant_type' => 'password',
+                    ]);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                throw new RuntimeException('API Connectivity Error: Unable to connect to Masters India authentication service: ' . $e->getMessage());
             }
 
-            return (string) ($resp->json('access_token') ?? $resp->json('data.access_token') ?? '');
+            if (! $resp->ok()) {
+                $body = $resp->json();
+                $err = is_array($body)
+                    ? ($body['error_description'] ?? $body['message'] ?? $body['error'] ?? $resp->body())
+                    : $resp->body();
+                throw new RuntimeException('Authentication Error: ' . $err);
+            }
+
+            $token = (string) ($resp->json('access_token') ?? $resp->json('data.access_token') ?? '');
+            if (empty($token)) {
+                throw new RuntimeException('Authentication Error: Access token was not returned in response.');
+            }
+
+            return $token;
         });
+    }
+
+    /**
+     * Extract human-readable error message from an HTTP error response.
+     */
+    protected function extractErrorMessage($response, string $defaultPrefix = 'Government Portal Rejection'): string
+    {
+        $body = $response->json();
+        if (is_array($body)) {
+            if (! empty($body['errors']) && is_array($body['errors'])) {
+                $flattened = collect($body['errors'])->flatten()->join(' ');
+                return "{$defaultPrefix}: {$flattened}";
+            }
+            if (! empty($body['error'])) {
+                $err = is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : (string) $body['error'];
+                return "{$defaultPrefix}: {$err}";
+            }
+            if (! empty($body['message'])) {
+                return "{$defaultPrefix}: " . $body['message'];
+            }
+            if (! empty($body['status_desc'])) {
+                return "{$defaultPrefix}: " . $body['status_desc'];
+            }
+        }
+
+        $raw = trim($response->body());
+        return "{$defaultPrefix}: " . ($raw ?: 'HTTP ' . $response->status());
     }
 
     /**
@@ -584,6 +669,8 @@ class MastersIndiaGspService
             default => '1',
         };
 
+        $cleanVehNo = $invoice->vehicle_no ? strtoupper(str_replace([' ', '-'], '', trim($invoice->vehicle_no))) : null;
+
         return [
             'Irn' => $eInv?->irn,
             'Distance' => (int) ($invoice->distance_km ?: 50),
@@ -592,13 +679,13 @@ class MastersIndiaGspService
             'TransName' => $invoice->transporter_name ?: null,
             'TransDocNo' => $docNo,
             'TransDocDt' => $docDate,
-            'VehNo' => $invoice->vehicle_no ?: null,
+            'VehNo' => $cleanVehNo,
             'VehType' => $invoice->vehicle_type ?: 'R',
         ];
     }
 
     /**
-     * Build direct E-Way Bill payload (for B2C / non-IRN invoices).
+     * Build direct E-Way Bill payload (for non-IRN invoices).
      */
     protected function buildDirectEwbPayload(Invoice $invoice): array
     {
@@ -608,12 +695,13 @@ class MastersIndiaGspService
             ?? Company::first();
 
         $customer = $invoice->customer;
-        $sellerGstin = (string) ($company?->gstin ?? config('services.mastersindia.gstin'));
-        $buyerGstin = (string) ($invoice->billingAddress?->gstin ?: ($customer?->gstin ?: 'URP'));
+        $sellerGstin = (string) ($company?->gstin ?: ($invoice->consignor_gstin ?: config('services.mastersindia.gstin')));
+        $rawBuyerGstin = (string) ($invoice->billingAddress?->gstin ?: ($invoice->consignee_gstin ?: ($customer?->gstin ?: '')));
+        $buyerGstin = trim($rawBuyerGstin) !== '' ? strtoupper(trim($rawBuyerGstin)) : 'URP';
 
-        $fromStateCode = $this->complianceService->resolveStateCode($company?->state, $sellerGstin);
-        $toStateCode = $this->complianceService->resolveStateCode(
-            $invoice->place_of_supply_state ?: ($invoice->delivery_state ?: ($customer?->state ?: '')),
+        $fromStateCode = (int) $this->complianceService->resolveStateCode($invoice->consignor_state ?: $company?->state, $sellerGstin);
+        $toStateCode = (int) $this->complianceService->resolveStateCode(
+            $invoice->delivery_state ?: ($invoice->shippingAddress?->state ?: ($customer?->state ?: '')),
             $buyerGstin
         );
 
@@ -628,6 +716,41 @@ class MastersIndiaGspService
             default => '1',
         };
 
+        $isIntra = $invoice->tax_type === 'intra' || ($invoice->tax_type === null && ($invoice->cgst_amount > 0 || $invoice->sgst_amount > 0));
+
+        $itemList = $invoice->items->map(function ($item, $i) use ($isIntra) {
+            $taxable = (float) ($item->taxable_amount ?? round((float) $item->line_total - (float) $item->tax_amount, 2));
+            $taxRate = (float) ($item->tax_rate ?? ($item->product?->tax_rate ?? 0));
+            $cgstRate = $isIntra ? ($taxRate / 2) : 0.0;
+            $sgstRate = $isIntra ? ($taxRate / 2) : 0.0;
+            $igstRate = ! $isIntra ? $taxRate : 0.0;
+
+            $uomCode = strtoupper((string) ($item->uom?->code ?: ($item->uom?->name ?: 'PCS')));
+            if ($uomCode === 'PIECES' || $uomCode === 'PIECE') $uomCode = 'PCS';
+
+            $hsn = preg_replace('/\D/', '', (string) ($item->hsn_code ?: ($item->product?->hsn_code ?: '85176200')));
+
+            return [
+                'itemNo' => $i + 1,
+                'productId' => (int) ($item->product_id ?: ($i + 1)),
+                'productName' => substr((string) ($item->product?->name ?: $item->item_name ?: 'Product'), 0, 100),
+                'productDesc' => substr((string) ($item->product?->description ?: ($item->product?->name ?: 'Item')), 0, 100),
+                'hsnCode' => (int) ($hsn ?: 85176200),
+                'quantity' => (float) $item->quantity,
+                'qtyUnit' => $uomCode,
+                'cgstRate' => $cgstRate,
+                'sgstRate' => $sgstRate,
+                'igstRate' => $igstRate,
+                'cessRate' => 0.0,
+                'taxableAmount' => $taxable,
+            ];
+        })->values()->all();
+
+        $fromPin = (int) preg_replace('/\D/', '', (string) ($invoice->consignor_pincode ?: ($company?->pincode ?: 400001)));
+        $toPin = (int) preg_replace('/\D/', '', (string) ($invoice->shippingAddress?->pincode ?: ($invoice->consignee_pincode ?: ($customer?->pincode ?: 400001))));
+
+        $cleanVehNo = $invoice->vehicle_no ? strtoupper(str_replace([' ', '-'], '', trim($invoice->vehicle_no))) : null;
+
         return [
             'supplyType' => 'O',
             'subSupplyType' => '1',
@@ -635,23 +758,26 @@ class MastersIndiaGspService
             'docNo' => $invoice->invoice_no,
             'docDate' => $invoice->invoice_date->format('d/m/Y'),
             'fromGstin' => $sellerGstin,
-            'fromTrdName' => $company?->name,
-            'fromAddr1' => substr((string) ($company?->address ?: 'Dispatch Office'), 0, 100),
-            'fromPlace' => $company?->city ?: ($company?->state ?: 'City'),
-            'fromPincode' => (int) ($company?->pincode ?: 400001),
-            'fromStateCode' => (int) $fromStateCode,
-            'actualFromStateCode' => (int) $fromStateCode,
+            'fromTrdName' => $company?->name ?: 'Seller',
+            'fromAddr1' => substr((string) ($invoice->consignor_address_line_1 ?: ($company?->address ?: 'Dispatch Office')), 0, 100),
+            'fromAddr2' => substr((string) ($invoice->consignor_address_line_2 ?: ''), 0, 100),
+            'fromPlace' => substr((string) ($invoice->consignor_city ?: ($company?->city ?: ($company?->state ?: 'City'))), 0, 50),
+            'fromPincode' => $fromPin,
+            'fromStateCode' => $fromStateCode,
+            'actualFromStateCode' => $fromStateCode,
             'toGstin' => $buyerGstin,
-            'toTrdName' => $customer?->name,
-            'toAddr1' => substr((string) ($invoice->shipping_address ?: ($customer?->address ?: 'Delivery Address')), 0, 100),
-            'toPlace' => $invoice->ship_to_place ?: ($invoice->destination ?: ($customer?->city ?: ($customer?->state ?: 'City'))),
-            'toPincode' => (int) ($invoice->shippingAddress?->pincode ?: ($customer?->pincode ?: 400001)),
-            'toStateCode' => (int) $toStateCode,
-            'actualToStateCode' => (int) $toStateCode,
+            'toTrdName' => substr((string) ($invoice->consignee_name ?: ($customer?->name ?: 'Customer')), 0, 100),
+            'toAddr1' => substr((string) ($invoice->shipping_address ?: ($invoice->consignee_address_line_1 ?: ($customer?->address ?: 'Delivery Address'))), 0, 100),
+            'toAddr2' => substr((string) ($invoice->consignee_address_line_2 ?: ''), 0, 100),
+            'toPlace' => substr((string) ($invoice->ship_to_place ?: ($invoice->consignee_city ?: ($invoice->destination ?: ($customer?->city ?: ($customer?->state ?: 'City'))))), 0, 50),
+            'toPincode' => $toPin,
+            'toStateCode' => $toStateCode,
+            'actualToStateCode' => $toStateCode,
             'totalValue' => (float) ($invoice->taxable_amount ?? $invoice->subtotal),
             'cgstValue' => (float) $invoice->cgst_amount,
             'sgstValue' => (float) $invoice->sgst_amount,
             'igstValue' => (float) $invoice->igst_amount,
+            'cessValue' => 0.0,
             'totInvValue' => (float) $invoice->grand_total,
             'transMode' => $portalTransMode,
             'transDistance' => (int) ($invoice->distance_km ?: 50),
@@ -659,8 +785,9 @@ class MastersIndiaGspService
             'transporterName' => $invoice->transporter_name ?: null,
             'transDocNo' => $docNo,
             'transDocDate' => $docDate,
-            'vehicleNo' => $invoice->vehicle_no ?: null,
+            'vehicleNo' => $cleanVehNo,
             'vehicleType' => $invoice->vehicle_type ?: 'R',
+            'itemList' => $itemList,
         ];
     }
 

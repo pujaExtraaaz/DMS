@@ -419,6 +419,7 @@ class ProductController extends Controller
             'returnUrl' => $this->safeInternalReturnUrl($request->query('return_url', old('return_url'))),
             'targetRow' => $request->query('target_row', old('target_row')),
             'orderId' => $request->query('order_id', old('order_id')),
+            'invoiceId' => $request->query('invoice_id', old('invoice_id')),
             ...$this->formData(new Product),
         ]);
     }
@@ -606,6 +607,7 @@ class ProductController extends Controller
             'returnUrl' => $this->safeInternalReturnUrl($request->query('return_url', old('return_url'))),
             'targetRow' => $request->query('target_row', old('target_row')),
             'orderId' => $request->query('order_id', old('order_id')),
+            'invoiceId' => $request->query('invoice_id', old('invoice_id')),
             ...$this->formData($product),
         ]);
     }
@@ -638,9 +640,57 @@ class ProductController extends Controller
         }
 
         $returnUrl = $this->safeInternalReturnUrl($request->input('return_url'));
+        $returnTo = $request->input('return_to');
+        $targetRow = $request->input('target_row');
+        $invoiceId = $request->input('invoice_id');
+
+        if ($returnTo === 'invoices.create') {
+            $params = [
+                'updated_product_id' => $product->id,
+                'returned_from' => 'product_edit',
+            ];
+            if ($targetRow !== null && $targetRow !== '') {
+                $params['target_row'] = $targetRow;
+            }
+
+            return redirect()->route('invoices.create', $params)
+                ->with('status', "Product '{$product->name}' updated successfully. You can continue preparing your tax invoice.")
+                ->with('success', "Product '{$product->name}' updated successfully. You can continue preparing your tax invoice.");
+        }
+
+        if ($returnTo === 'invoices.edit') {
+            if ($returnUrl) {
+                $separator = str_contains($returnUrl, '?') ? '&' : '?';
+                $redirectUrl = $returnUrl . $separator . 'updated_product_id=' . $product->id . '&returned_from=product_edit';
+                if ($targetRow !== null && $targetRow !== '') {
+                    $redirectUrl .= '&target_row=' . urlencode((string) $targetRow);
+                }
+
+                return redirect($redirectUrl)
+                    ->with('status', "Product '{$product->name}' updated successfully. You can continue editing the tax invoice.")
+                    ->with('success', "Product '{$product->name}' updated successfully. You can continue editing the tax invoice.");
+            } elseif ($invoiceId) {
+                $params = [
+                    'invoice' => $invoiceId,
+                    'updated_product_id' => $product->id,
+                    'returned_from' => 'product_edit',
+                ];
+                if ($targetRow !== null && $targetRow !== '') {
+                    $params['target_row'] = $targetRow;
+                }
+
+                return redirect()->route('invoices.edit', $params)
+                    ->with('status', "Product '{$product->name}' updated successfully. You can continue editing the tax invoice.")
+                    ->with('success', "Product '{$product->name}' updated successfully. You can continue editing the tax invoice.");
+            }
+        }
+
         if ($returnUrl) {
             $separator = str_contains($returnUrl, '?') ? '&' : '?';
-            $redirectUrl = $returnUrl . $separator . 'updated_product_id=' . $product->id;
+            $redirectUrl = $returnUrl . $separator . 'updated_product_id=' . $product->id . '&returned_from=product_edit';
+            if ($targetRow !== null && $targetRow !== '') {
+                $redirectUrl .= '&target_row=' . urlencode((string) $targetRow);
+            }
 
             return redirect($redirectUrl)
                 ->with('status', "Product '{$product->name}' updated successfully.")
@@ -853,6 +903,7 @@ class ProductController extends Controller
             'return_url' => 'nullable|string|max:500',
             'order_id' => 'nullable|integer',
             'target_row' => 'nullable|integer',
+            'invoice_id' => 'nullable|integer',
             'name' => [
                 'required',
                 'string',
@@ -1213,7 +1264,7 @@ class ProductController extends Controller
             $data['image_path'] = $request->file('image')->store('products', 'public');
         }
 
-        unset($data['return_to'], $data['return_url'], $data['order_id'], $data['target_row']);
+        unset($data['return_to'], $data['return_url'], $data['order_id'], $data['target_row'], $data['invoice_id']);
 
         return $data;
     }

@@ -222,4 +222,42 @@ class Invoice extends Model
     {
         return $this->hasOne(\App\Domains\Scheme\Models\SchemeAchievement::class);
     }
+
+    public function activityLogs(): \Illuminate\Database\Eloquent\Relations\MorphMany
+    {
+        return $this->morphMany(\App\Domains\Organization\Models\ActivityLog::class, 'subject')->latest();
+    }
+
+    public function isEInvoiceGenerated(): bool
+    {
+        if (in_array(strtolower((string) $this->einvoice_status), ['generated', 'active'], true)) {
+            return true;
+        }
+
+        return $this->eInvoice !== null
+            && in_array($this->eInvoice->status, ['generated', 'active'], true)
+            && filled($this->eInvoice->irn)
+            && strtolower((string) $this->einvoice_status) !== 'cancelled';
+    }
+
+    public function isEWayBillGenerated(): bool
+    {
+        if (in_array(strtolower((string) $this->eway_bill_status), ['generated', 'active'], true)) {
+            return true;
+        }
+
+        if (filled($this->eway_bill_no) && strtolower((string) $this->eway_bill_status) !== 'cancelled') {
+            return true;
+        }
+
+        return $this->eWayBill !== null
+            && in_array($this->eWayBill->status, ['generated', 'active'], true)
+            && filled($this->eWayBill->eway_bill_no)
+            && strtolower((string) $this->eway_bill_status) !== 'cancelled';
+    }
+
+    public function isStatutoryLocked(): bool
+    {
+        return $this->isEInvoiceGenerated() || $this->isEWayBillGenerated();
+    }
 }

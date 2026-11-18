@@ -533,7 +533,7 @@ class DocumentExporter
     /**
      * Export Single Sales Tax Invoice
      */
-    public static function exportSalesInvoice(Invoice $invoice, string $format, string $copyType = 'all', int $copies = 1): Response|StreamedResponse
+    public static function exportSalesInvoice(Invoice $invoice, string $format, string $copyType = 'original', int $copies = 1): Response|StreamedResponse
     {
         $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'eInvoice', 'eWayBill']);
         $company = Company::query()->find(auth()->user()?->company_id) ?? Company::query()->first();

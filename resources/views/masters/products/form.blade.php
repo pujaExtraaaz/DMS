@@ -6,6 +6,7 @@
     $effectiveReturnTo = $returnTo ?? request('return_to', old('return_to'));
     $effectiveReturnUrl = $returnUrl ?? request('return_url', old('return_url'));
     $effectiveOrderId = $orderId ?? request('order_id', old('order_id'));
+    $effectiveInvoiceId = $invoiceId ?? request('invoice_id', old('invoice_id'));
     $effectiveTargetRow = $targetRow ?? request('target_row', old('target_row'));
     $returnRoute = null;
     $returnLabel = 'Back';
@@ -17,6 +18,9 @@
         $returnLabel = 'Back to Edit Order';
     } elseif ($effectiveReturnTo === 'invoices.create') {
         $returnRoute = route('invoices.create', ['returned_from' => 'product_create']);
+        $returnLabel = 'Back to Tax Invoice';
+    } elseif ($effectiveReturnTo === 'invoices.edit') {
+        $returnRoute = $effectiveReturnUrl ?: ($effectiveInvoiceId ? route('invoices.edit', ['invoice' => $effectiveInvoiceId, 'returned_from' => 'product_edit']) : route('invoices.index'));
         $returnLabel = 'Back to Tax Invoice';
     } elseif (in_array($effectiveReturnTo, ['purchasing.invoices.create', 'purchase_invoice', 'purchases.invoices.create'], true)) {
         $returnRoute = route('purchasing.invoices.create', ['returned_from' => 'product_create']);
@@ -128,6 +132,9 @@
         <input type="hidden" name="return_to" value="{{ $effectiveReturnTo }}">
         @if($effectiveOrderId)
             <input type="hidden" name="order_id" value="{{ $effectiveOrderId }}">
+        @endif
+        @if($effectiveInvoiceId)
+            <input type="hidden" name="invoice_id" value="{{ $effectiveInvoiceId }}">
         @endif
         @if($effectiveTargetRow !== null && $effectiveTargetRow !== '')
             <input type="hidden" name="target_row" value="{{ $effectiveTargetRow }}">

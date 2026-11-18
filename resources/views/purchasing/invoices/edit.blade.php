@@ -433,9 +433,27 @@
                                     </template>
                             </td>
 
-                            <td class="p-3 align-top min-w-[70px] w-20 text-center text-xs font-semibold text-slate-600 pt-5">
-                                <input type="hidden" :name="`items[${i}][uom_id]`" :value="row.uom_id || ''">
-                                <span x-text="row.unit || '—'"></span>
+                            <td class="p-3 align-top min-w-[85px] w-24 text-center">
+                                <template x-if="!row.allow_unit_change">
+                                    <div class="relative">
+                                        <input type="hidden" :name="`items[${i}][uom_id]`" :value="row.uom_id || ''">
+                                        <span class="inline-flex items-center justify-center w-full h-[38px] px-2 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 rounded-md cursor-not-allowed select-none"
+                                              x-text="row.unit || '—'"
+                                              :title="row.product_id ? ('Unit locked to ' + (row.unit || 'configured unit')) : 'Select product'"></span>
+                                    </div>
+                                </template>
+                                <template x-if="row.allow_unit_change">
+                                    <div>
+                                        <select :name="`items[${i}][uom_id]`"
+                                                x-model="row.uom_id"
+                                                @change="onUomChange(i)"
+                                                class="block w-full rounded-md border-gray-300 text-xs font-semibold text-slate-700 h-[38px] px-2 bg-white shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                            <template x-for="u in (row.allowed_uoms || [])" :key="u.id">
+                                                <option :value="String(u.id)" x-text="u.code || u.name" :selected="String(u.id) === String(row.uom_id)"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                </template>
                             </td>
 
                             <td class="p-3 align-top min-w-[110px] w-28">
@@ -694,9 +712,13 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                         ? (entered || inclusive || storedBase)
                         : storedBase;
                     const isTracked = p ? (p.is_serial_tracked !== undefined ? Boolean(p.is_serial_tracked) : String(p.tracking_type || '').includes('serial')) : false;
+                    const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                     return {
                         product_id: it.product_id,
-                        unit: it.unit || (p ? (p.unit || 'PCS') : 'PCS'),
+                        uom_id: uomInfo.uom_id,
+                        unit: uomInfo.unit,
+                        allowed_uoms: uomInfo.allowed_uoms,
+                        allow_unit_change: uomInfo.allow_unit_change,
                         tracking_type: p ? (p.tracking_type || 'none') : 'none',
                         is_serial_tracked: isTracked,
                         quantity: Number(it.quantity) || 1,
@@ -718,11 +740,57 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
             this.recalc();
         },
 
+        resolveLineUom(productId, requestedUomId = null, fallbackUnit = null) {
+            const p = this.products.find(prod => String(prod.id) === String(productId));
+            if (!p) {
+                return {
+                    uom_id: requestedUomId ? String(requestedUomId) : '',
+                    unit: fallbackUnit || '—',
+                    allowed_uoms: [],
+                    allow_unit_change: false,
+                };
+            }
+
+            const allowedUoms = (p.allowed_uoms && p.allowed_uoms.length)
+                ? p.allowed_uoms
+                : [{
+                    id: String(p.base_uom_id || p.base_uom?.id || ''),
+                    code: p.unit || p.base_uom?.code || p.base_uom?.name || 'PCS',
+                    name: p.unit || p.base_uom?.name || p.base_uom?.code || 'PCS',
+                    is_base: true
+                }];
+
+            const allowUnitChange = Boolean(p.allow_unit_change ?? (allowedUoms.length > 1));
+            let matched = requestedUomId ? allowedUoms.find(u => String(u.id) === String(requestedUomId)) : null;
+            if (!matched) {
+                matched = allowedUoms.find(u => u.is_base) || allowedUoms[0];
+            }
+
+            return {
+                uom_id: matched ? String(matched.id) : (p.base_uom_id ? String(p.base_uom_id) : ''),
+                unit: matched ? (matched.code || matched.name) : (p.unit || p.base_uom?.name || p.base_uom?.code || 'PCS'),
+                allowed_uoms: allowedUoms,
+                allow_unit_change: allowUnitChange,
+            };
+        },
+
+        onUomChange(index) {
+            const row = this.items[index];
+            if (!row) return;
+            const selected = (row.allowed_uoms || []).find(u => String(u.id) === String(row.uom_id));
+            if (selected) {
+                row.unit = selected.code || selected.name;
+            }
+            this.recalc();
+        },
+
         addItem() {
             this.items.push({
                 product_id: '',
                 uom_id: '',
-                unit: '-',
+                unit: '—',
+                allowed_uoms: [],
+                allow_unit_change: false,
                 tracking_type: 'none',
                 is_serial_tracked: false,
                 quantity: 1,
@@ -859,6 +927,10 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
 
             const prodId = row.product_id;
             if (!prodId) {
+                row.uom_id = '';
+                row.unit = '—';
+                row.allowed_uoms = [];
+                row.allow_unit_change = false;
                 row.tracking_type = 'none';
                 row.is_serial_tracked = false;
                 row.serial_numbers = [];
@@ -869,8 +941,11 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
 
             const p = this.products.find(item => String(item.id) === String(prodId));
             if (p) {
-                row.uom_id = p.uom_id || p.base_uom_id || p.base_uom?.id || '';
-                row.unit = p.unit || p.base_uom?.code || p.base_uom?.name || 'PCS';
+                const uomInfo = this.resolveLineUom(p.id, p.uom_id || null, p.unit);
+                row.uom_id = uomInfo.uom_id || p.uom_id || p.base_uom_id || p.base_uom?.id || '';
+                row.unit = uomInfo.unit || p.unit || p.base_uom?.code || p.base_uom?.name || 'PCS';
+                row.allowed_uoms = uomInfo.allowed_uoms;
+                row.allow_unit_change = uomInfo.allow_unit_change;
                 row.tracking_type = p.tracking_type || 'none';
                 row.is_serial_tracked = p.is_serial_tracked !== undefined
                     ? Boolean(p.is_serial_tracked)
@@ -907,11 +982,24 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                             } else {
                                 this.syncSerials(index);
                             }
+                            if (dbProd.allowed_uoms && dbProd.allowed_uoms.length) {
+                                row.allowed_uoms = dbProd.allowed_uoms;
+                                row.allow_unit_change = Boolean(dbProd.allow_unit_change);
+                                if (!row.uom_id || !row.allowed_uoms.some(u => String(u.id) === String(row.uom_id))) {
+                                    const defU = row.allowed_uoms.find(u => u.is_base) || row.allowed_uoms[0];
+                                    row.uom_id = defU ? String(defU.id) : '';
+                                    row.unit = defU ? (defU.code || defU.name) : (dbProd.unit || 'PCS');
+                                }
+                            }
                             const cached = this.products.find(item => String(item.id) === String(dbProd.id));
                             if (cached) {
                                 cached.tracking_type = dbProd.tracking_type;
                                 cached.is_serial_tracked = dbProd.is_serial_tracked;
                                 cached.track_serial = dbProd.track_serial;
+                                if (dbProd.allowed_uoms) cached.allowed_uoms = dbProd.allowed_uoms;
+                                if (dbProd.allow_unit_change !== undefined) cached.allow_unit_change = dbProd.allow_unit_change;
+                                if (dbProd.base_uom_id) cached.base_uom_id = dbProd.base_uom_id;
+                                if (dbProd.unit) cached.unit = dbProd.unit;
                             }
                         }
                     }
@@ -1246,9 +1334,13 @@ function purchaseInvoiceEditForm(products, invoice, initialOrders, existingItems
                             const isTracked = (it.is_serial_tracked !== undefined && it.is_serial_tracked !== null)
                                 ? Boolean(it.is_serial_tracked)
                                 : (p ? Boolean(p.is_serial_tracked || (p.tracking_type && String(p.tracking_type).toLowerCase().includes('serial'))) : false);
+                            const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                             return {
                                 product_id: it.product_id,
-                                unit: p ? (p.unit || 'PCS') : 'PCS',
+                                uom_id: uomInfo.uom_id,
+                                unit: uomInfo.unit,
+                                allowed_uoms: uomInfo.allowed_uoms,
+                                allow_unit_change: uomInfo.allow_unit_change,
                                 tracking_type: p ? (p.tracking_type || 'none') : (it.tracking_type || 'none'),
                                 is_serial_tracked: isTracked,
                                 quantity: Number(it.quantity) || 1,
