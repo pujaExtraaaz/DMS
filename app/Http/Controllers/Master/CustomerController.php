@@ -1039,6 +1039,11 @@ class CustomerController extends Controller
         $result = $this->gstLookupService->search((string) $gstin);
         $status = ! empty($result['success']) ? 200 : ($result['status_code'] ?? 422);
 
+        if (! empty($result['success']) && isset($result['party'])) {
+            $taxpayerType = $result['party']['taxpayer_type'] ?? null;
+            $result['party']['gst_registration_type'] = Customer::normalizeGstRegistrationType($taxpayerType);
+        }
+
         return response()->json($result, $status);
     }
 
@@ -1076,6 +1081,7 @@ class CustomerController extends Controller
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
             'gstin' => 'nullable|string|max:20',
+            'gst_registration_type' => 'nullable|string|max:50',
             'pan' => 'nullable|string|max:20',
             'state' => 'nullable|string|max:100',
             'city' => 'nullable|string|max:100',
@@ -1108,6 +1114,9 @@ class CustomerController extends Controller
         $validated['company_id'] = $companyId;
         $validated['branch_id'] = auth()->user()?->branch_id;
         $validated['is_active'] = true;
+        if (isset($validated['gst_registration_type'])) {
+            $validated['gst_registration_type'] = Customer::normalizeGstRegistrationType($validated['gst_registration_type']);
+        }
 
         $city = $validated['city'] ?? null;
         unset($validated['city'], $validated['pan']);
@@ -1141,6 +1150,7 @@ class CustomerController extends Controller
                 'code' => $customer->code,
                 'party_type' => $customer->party_type,
                 'gstin' => $customer->gstin,
+                'gst_registration_type' => $customer->gst_registration_type,
                 'pan' => $customer->pan,
                 'state' => $customer->state,
                 'city' => $city,
@@ -1183,6 +1193,7 @@ class CustomerController extends Controller
             'gem_authorizations.*.documents' => 'nullable|array',
             'gem_authorizations.*.documents.*' => 'file|mimes:jpg,jpeg,png,webp,pdf|max:5120',
             'gstin' => 'nullable|string|max:20',
+            'gst_registration_type' => 'nullable|string|max:50',
             'pan' => 'nullable|string|max:20',
             'address' => 'nullable|string',
             'state' => 'nullable|string|max:100',
@@ -1348,6 +1359,9 @@ class CustomerController extends Controller
             default => $data['party_type'],
         };
         $data['is_active'] = $request->boolean('is_active');
+        $data['gst_registration_type'] = filled($data['gst_registration_type'] ?? null)
+            ? Customer::normalizeGstRegistrationType($data['gst_registration_type'])
+            : null;
         $data['customer_type_id'] = filled($data['customer_type_id'] ?? null) ? $data['customer_type_id'] : null;
         $data['udyam_number'] = filled($data['udyam_number'] ?? null) ? trim($data['udyam_number']) : null;
         $data['opened_on'] = filled($data['opened_on'] ?? null) ? $data['opened_on'] : null;

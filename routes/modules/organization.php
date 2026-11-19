@@ -23,6 +23,13 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::put('companies/{company}/cheque-books/{cheque_book}', [\App\Http\Controllers\Organization\ChequeBookController::class, 'update'])->name('companies.cheque-books.update');
     Route::delete('companies/{company}/cheque-books/{cheque_book}', [\App\Http\Controllers\Organization\ChequeBookController::class, 'destroy'])->name('companies.cheque-books.destroy');
     Route::post('companies/{company}/cheque-books/{cheque_book}/toggle-status', [\App\Http\Controllers\Organization\ChequeBookController::class, 'toggleStatus'])->name('companies.cheque-books.toggle-status');
+    Route::get('cheque-books', [\App\Http\Controllers\Organization\ChequeBookController::class, 'manage'])->name('cheque-books.index');
+    Route::post('cheque-books', [\App\Http\Controllers\Organization\ChequeBookController::class, 'store'])->name('cheque-books.store');
+    Route::put('cheque-books/{cheque_book}', [\App\Http\Controllers\Organization\ChequeBookController::class, 'update'])->name('cheque-books.update');
+    Route::delete('cheque-books/{cheque_book}', [\App\Http\Controllers\Organization\ChequeBookController::class, 'destroy'])->name('cheque-books.destroy');
+    Route::post('cheque-books/{cheque_book}/toggle-status', [\App\Http\Controllers\Organization\ChequeBookController::class, 'toggleStatus'])->name('cheque-books.toggle-status');
+    Route::get('cheque-books/available-numbers', [\App\Http\Controllers\Organization\ChequeBookController::class, 'availableNumbers'])->name('cheque-books.available-numbers');
+    Route::post('cheque-books/{cheque_book}/cancel-leaf', [\App\Http\Controllers\Organization\ChequeBookController::class, 'cancelLeaf'])->name('cheque-books.cancel-leaf');
     Route::get('branches/cities', [BranchController::class, 'cities'])->name('branches.cities');
     Route::post('branches/cities/quick-store', [BranchController::class, 'storeCity'])->name('branches.cities.quick-store');
     Route::post('branches/branch-types/quick-store', [BranchController::class, 'storeBranchType'])->name('branches.branch-types.quick-store');

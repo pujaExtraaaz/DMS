@@ -111,7 +111,7 @@ class ProductBrandDropdownValidationTest extends TestCase
         $this->assertEquals($this->brand->id, $product->brand_id);
     }
 
-    public function test_product_creation_succeeds_with_brand_missing(): void
+    public function test_product_creation_validates_mandatory_brand(): void
     {
         $response = $this->actingAs($this->user)->post(route('masters.products.store'), [
             'name' => 'Generic Unbranded Screen',
@@ -124,11 +124,7 @@ class ProductBrandDropdownValidationTest extends TestCase
             'is_active' => 1,
         ]);
 
-        $response->assertRedirect(route('masters.products.index'));
-
-        $product = Product::where('sku', 'SKU-GEN-01')->first();
-        $this->assertNotNull($product);
-        $this->assertNull($product->brand_id);
+        $response->assertSessionHasErrors(['brand_id' => 'Please select a brand for this product.']);
     }
 
     public function test_quick_category_modal_validates_mandatory_brand(): void
@@ -144,6 +140,74 @@ class ProductBrandDropdownValidationTest extends TestCase
             'success' => false,
             'message' => 'Please select a brand before creating a category.',
         ]);
+    }
+
+    public function test_product_update_succeeds_and_runs_catalog_hierarchy_check(): void
+    {
+        $product = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Existing Product',
+            'sku' => 'SKU-EXIST-01',
+            'serial_no' => 'SN-EXIST-01',
+            'brand_id' => $this->brand->id,
+            'category_id' => $this->category->id,
+            'base_uom_id' => $this->uom->id,
+            'tax_rate' => 18,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->user)->put(route('masters.products.update', $product), [
+            'name' => 'Updated Product Name',
+            'sku' => 'SKU-EXIST-01',
+            'brand_id' => $this->brand->id,
+            'category_id' => $this->category->id,
+            'base_uom_id' => $this->uom->id,
+            'alternate_uom_not_applicable' => 1,
+            'dimensions_not_applicable' => 1,
+            'tax_rate' => 18,
+            'is_active' => 1,
+        ]);
+
+        $response->assertRedirect(route('masters.products.index'));
+
+        $product->refresh();
+        $this->assertEquals('Updated Product Name', $product->name);
+        $this->assertEquals($this->brand->id, $product->brand_id);
+    }
+
+    public function test_product_update_validates_mismatched_catalog_hierarchy(): void
+    {
+        $otherBrand = Brand::create([
+            'company_id' => $this->company->id,
+            'name' => 'Samsung Electronics',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'company_id' => $this->company->id,
+            'name' => 'Existing Product 2',
+            'sku' => 'SKU-EXIST-02',
+            'serial_no' => 'SN-EXIST-02',
+            'brand_id' => $this->brand->id,
+            'category_id' => $this->category->id,
+            'base_uom_id' => $this->uom->id,
+            'tax_rate' => 18,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($this->user)->put(route('masters.products.update', $product), [
+            'name' => 'Mismatched Brand and Category',
+            'sku' => 'SKU-EXIST-02',
+            'brand_id' => $otherBrand->id,
+            'category_id' => $this->category->id, // belongs to $this->brand, not $otherBrand
+            'base_uom_id' => $this->uom->id,
+            'alternate_uom_not_applicable' => 1,
+            'dimensions_not_applicable' => 1,
+            'tax_rate' => 18,
+            'is_active' => 1,
+        ]);
+
+        $response->assertSessionHasErrors(['category_id' => 'Selected category does not belong to the selected brand.']);
     }
 }
 

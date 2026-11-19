@@ -800,21 +800,7 @@ class PurchaseOrderService
                 ]);
             }
 
-            $previous = (float) (SupplierPayable::query()
-                ->where('supplier_id', $supplierId)
-                ->orderByDesc('id')
-                ->value('balance') ?? 0);
-
-            SupplierPayable::create([
-                'supplier_id' => $supplierId,
-                'type' => 'invoice',
-                'reference_type' => $invoice->getMorphClass(),
-                'reference_id' => $invoice->id,
-                'debit' => $invoice->grand_total,
-                'credit' => 0,
-                'balance' => $previous + (float) $invoice->grand_total,
-                'notes' => "Purchase invoice {$invoice->invoice_no}",
-            ]);
+            $invoice->syncSupplierPayable();
 
             if ($odAccount) {
                 BankAccountTransaction::updateOrCreate(
@@ -1210,25 +1196,7 @@ class PurchaseOrderService
             }
 
             // Sync SupplierPayable
-            SupplierPayable::where('reference_type', $invoice->getMorphClass())
-                ->where('reference_id', $invoice->id)
-                ->delete();
-
-            $previous = (float) (SupplierPayable::query()
-                ->where('supplier_id', $supplierId)
-                ->orderByDesc('id')
-                ->value('balance') ?? 0);
-
-            SupplierPayable::create([
-                'supplier_id' => $supplierId,
-                'type' => 'invoice',
-                'reference_type' => $invoice->getMorphClass(),
-                'reference_id' => $invoice->id,
-                'debit' => $invoice->grand_total,
-                'credit' => 0,
-                'balance' => $previous + (float) $invoice->grand_total,
-                'notes' => "Purchase invoice {$invoice->invoice_no}",
-            ]);
+            $invoice->syncSupplierPayable();
 
             // Sync BankAccountTransaction (OD utilization)
             if ($odAccount) {
@@ -1331,10 +1299,13 @@ class PurchaseOrderService
             }
 
             // Financial posting only — physical stock is added via receiveMaterial().
-            $invoice->update([
-                'status' => 'posted',
-                'posted_at' => now(),
-            ]);
+            $attributes = ['status' => 'posted'];
+            if (\Illuminate\Support\Facades\Schema::hasColumn('purchase_invoices', 'posted_at')) {
+                $attributes['posted_at'] = now();
+            }
+            $invoice->update($attributes);
+
+            $invoice->syncSupplierPayable();
 
             return $invoice;
         });
@@ -1773,8 +1744,31 @@ class PurchaseOrderService
             return $poNo;
         }
 
+        if ($series && $series->isManualOverride()) {
+            $poNo = strtoupper(trim((string) ($data['po_no'] ?? '')));
+            if ($poNo !== '') {
+                $exists = PurchaseOrder::query()
+                    ->where('po_no', $poNo)
+                    ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                    ->exists();
+
+                if ($exists) {
+                    throw ValidationException::withMessages([
+                        'po_no' => 'This voucher number already exists.',
+                    ]);
+                }
+
+                return $poNo;
+            }
+        }
+
         if ($series) {
-            return $this->documentNumberService->nextFromSeries($series, $poDate, $companyId);
+            return $this->documentNumberService->nextFromSeries(
+                $series,
+                $poDate,
+                $companyId,
+                fn (string $no) => PurchaseOrder::query()->where('po_no', $no)->when($companyId, fn ($q) => $q->where('company_id', $companyId))->exists()
+            );
         }
 
         return $this->documentNumberService->next('PO', $poDate, 4, $companyId);
@@ -1807,8 +1801,31 @@ class PurchaseOrderService
             return $invoiceNo;
         }
 
+        if ($series && $series->isManualOverride()) {
+            $invoiceNo = strtoupper(trim((string) ($data['invoice_no'] ?? $data['invoice_number'] ?? '')));
+            if ($invoiceNo !== '') {
+                $exists = PurchaseInvoice::query()
+                    ->where('invoice_no', $invoiceNo)
+                    ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                    ->exists();
+
+                if ($exists) {
+                    throw ValidationException::withMessages([
+                        'invoice_no' => 'This voucher number already exists.',
+                    ]);
+                }
+
+                return $invoiceNo;
+            }
+        }
+
         if ($series) {
-            return $this->documentNumberService->nextFromSeries($series, $invoiceDate, $companyId);
+            return $this->documentNumberService->nextFromSeries(
+                $series,
+                $invoiceDate,
+                $companyId,
+                fn (string $no) => PurchaseInvoice::query()->where('invoice_no', $no)->when($companyId, fn ($q) => $q->where('company_id', $companyId))->exists()
+            );
         }
 
         return $this->documentNumberService->next('PI', $invoiceDate, 4, $companyId);

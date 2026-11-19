@@ -6,21 +6,18 @@ use App\Domains\Catalog\Models\Brand;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Master\Models\Product;
-use App\Domains\Master\Models\ProductPriceHistory;
 use App\Domains\Master\Models\ProductType;
 use App\Domains\Master\Models\ProductUom;
 use App\Domains\Master\Models\Uom;
-use App\Domains\Master\Models\UomMapping;
-use App\Domains\Master\Observers\ProductPriceObserver;
-use App\Domains\Master\Services\UomLookupService;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Sync\Support\SyncGuard;
-use App\Support\CodeGenerator;
 use App\Support\NameCase;
 use App\Support\WarrantyPeriod;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\Importable;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -28,7 +25,6 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 /**
  * Bulk import Products from CSV/XLSX.
  *
- * Optimized high-performance batch processing for 1000+ records.
  * Template columns (case-insensitive):
  *   name, part_number, model, product_type, brand, category, sub_category,
  *   uom_code, alternate_uom_code, conversion_factor, supply_type, hsn_code, tax_rate,
@@ -39,8 +35,11 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
  *   min_stock, reorder_level, specification, warranty, catalog_link, is_active
  *
  * Aliases: sku / part_no / partnumber → part_number; uom → uom_code.
- * Match on part number. An existing product is updated only when a value
- * changed; an identical row is skipped. Missing UOM code → failed with clear error.
+ * Match on part number. When the part number is blank, match on name and model
+ * so a second import updates the same product instead of creating another.
+ * An existing product is updated only when a value changed; an identical row
+ * is skipped. A UOM is used when it already exists and created from the sheet
+ * when it does not.
  * Brand, category, sub-category and product type are linked only when they
  * already exist. Unknown names are left blank and are not created.
  */
@@ -56,458 +55,768 @@ class ProductsImport implements ToCollection, WithHeadingRow
 
     public int $skipped = 0;
 
-    public int $failed = 0;
+    /** @var array<string, int> */
+    protected array $productsBySku = [];
 
-    public array $missingUoms = [];
+    /** @var array<string, int> */
+    protected array $productsByIdentity = [];
 
-    protected int $chunkSize = 150;
+    /** @var array<int, array<string, mixed>> */
+    protected array $productRows = [];
 
-    public function __construct(protected ?int $companyId = null) {}
+    /** @var array<string, Uom> */
+    protected array $uomNames = [];
+
+    /** @var array<int, array<string, mixed>> */
+    protected array $insertQueue = [];
+
+    /** @var array<string, array<int, array<string, mixed>>> */
+    protected array $pendingUoms = [];
+
+    /** @var array<string, array<string, mixed>> */
+    protected array $pendingBySku = [];
+
+    /** @var array<int, array<string, mixed>> */
+    protected array $updateQueue = [];
+
+    /** @var array<int, array<int, array<string, mixed>>> */
+    protected array $updateUoms = [];
+
+    protected int $progressTotal = 0;
+
+    protected int $progressDone = 0;
+
+    protected int $nextSkuSeq = 1;
+
+    protected int $nextSerialSeq = 1;
+
+    protected string $skuPrefix = 'PROD-0-';
+
+    /** @var array<string, Brand> */
+    protected array $brandIndex = [];
+
+    /** @var array<string, Category> */
+    protected array $categoryByBrand = [];
+
+    /** @var array<string, array<int, Category>> */
+    protected array $categoryByName = [];
+
+    /** @var array<string, SubCategory> */
+    protected array $subIndex = [];
+
+    /** @var array<string, ProductType> */
+    protected array $typeIndex = [];
+
+    public function __construct(
+        protected ?int $companyId = null,
+        protected ?string $progressId = null,
+    ) {}
 
     public function collection(Collection $rows): void
     {
-        if (function_exists('set_time_limit')) {
-            @set_time_limit(300);
+        if (! SyncGuard::isSyncing()) {
+            set_time_limit(0);
+            SyncGuard::run(fn () => $this->collection($rows));
+
+            return;
         }
-        @ini_set('memory_limit', '512M');
 
-        SyncGuard::run(function () use ($rows) {
-            ProductPriceObserver::$disabled = true;
+        DB::disableQueryLog();
+        $uomsByCode = Uom::query()->get()->keyBy(fn ($u) => strtoupper((string) $u->code));
+        foreach ($uomsByCode as $indexedUom) {
+            $this->rememberUomName($indexedUom);
+        }
+        $companyId = $this->companyId ?? (int) Company::query()->value('id');
+        $this->bootLookups();
+        $this->bootSequences((int) $companyId);
+        $this->progressTotal = $rows->count();
+        $this->progressDone = 0;
+        $this->reportProgress();
 
+        foreach ($rows as $index => $row) {
             try {
-                $this->processRows($rows);
+            $this->assertNotCancelled();
+            $rowNo = $index + 2;
+            $data = collect($row)->mapWithKeys(fn ($v, $k) => [strtolower((string) $k) => $v])->toArray();
+
+            $name = trim((string) ($data['name'] ?? ''));
+            if ($name === '') {
+                $this->skipped++;
+                $this->errors[] = ['row' => $rowNo, 'field' => 'name', 'message' => 'Name is required'];
+                continue;
+            }
+            $name = \App\Support\NameCase::format($name);
+
+            $uomRaw = trim((string) ($data['uom_code'] ?? $data['uom'] ?? ''));
+            $uom = $this->resolveUom($uomsByCode, $uomRaw);
+            if (! $uom) {
+                $this->skipped++;
+                $this->errors[] = ['row' => $rowNo, 'field' => 'uom_code', 'message' => 'UOM code is required'];
+                continue;
+            }
+
+            $providedSku = trim((string) ($data['part_number'] ?? $data['part_no'] ?? $data['partnumber'] ?? $data['sku'] ?? ''));
+            $sheetModel = trim((string) ($data['model'] ?? '')) ?: null;
+            $located = $this->locateProduct($providedSku, $name, $sheetModel);
+            $sku = $located
+                ? ($providedSku !== '' ? $providedSku : (string) ($located['sku'] ?? ''))
+                : ($providedSku !== '' ? $providedSku : $this->allocateSku());
+
+            $brand = $this->matchBrand((string) ($data['brand'] ?? ''));
+            $category = $this->matchCategory($brand, (string) ($data['category'] ?? ''));
+            $subCategory = $this->matchSubCategory($category, (string) ($data['sub_category'] ?? ''));
+            $productType = $this->matchProductType((string) ($data['product_type'] ?? ''));
+
+            $altUom = null;
+            $altRaw = trim((string) ($data['alternate_uom_code'] ?? ''));
+            if ($altRaw !== '') {
+                $altUom = $this->resolveUom($uomsByCode, $altRaw);
+                if (! $altUom) {
+                    $this->skipped++;
+                    $this->errors[] = ['row' => $rowNo, 'field' => 'alternate_uom_code', 'message' => 'Alternate UOM code is required'];
+                    continue;
+                }
+            }
+
+            $conversion = filled($data['conversion_factor'] ?? null)
+                ? (float) $data['conversion_factor']
+                : ($altUom ? 1.0 : 1.0);
+
+            $tracks = [];
+            if ($this->isTruthy($data['track_serial'] ?? null)) {
+                $tracks[] = 'serial';
+            }
+            if ($this->isTruthy($data['track_batch'] ?? null)) {
+                $tracks[] = 'batch';
+            }
+            if ($productType?->track_serial && ! in_array('serial', $tracks, true)) {
+                $tracks[] = 'serial';
+            }
+            $trackingType = empty($tracks) ? 'none' : implode(',', $tracks);
+
+            $warrantyText = trim((string) ($data['warranty'] ?? '')) ?: null;
+            $warrantyMonths = $warrantyText !== null ? WarrantyPeriod::months($warrantyText) : null;
+
+            $supplyType = strtolower(trim((string) ($data['supply_type'] ?? 'goods')));
+            if (! in_array($supplyType, ['capital_goods', 'goods', 'services'], true)) {
+                $supplyType = 'goods';
+            }
+
+            $taxBasis = strtolower(trim((string) ($data['purchase_price_tax_basis'] ?? 'exclusive')));
+            if (! in_array($taxBasis, ['exclusive', 'inclusive'], true)) {
+                $taxBasis = 'exclusive';
+            }
+
+            $costing = strtolower(trim((string) ($data['costing_method'] ?? 'avg_cost')));
+            if (! array_key_exists($costing, Product::COSTING_METHODS)) {
+                $costing = 'avg_cost';
+            }
+
+            $market = strtolower(trim((string) ($data['market_valuation_method'] ?? 'avg_price')));
+            if (! array_key_exists($market, Product::MARKET_VALUATION_METHODS)) {
+                $market = 'avg_price';
+            }
+
+            $weightUnit = strtoupper(trim((string) ($data['weight_unit'] ?? 'KG')));
+            if (! in_array($weightUnit, ['KG', 'GRAMS'], true)) {
+                $weightUnit = 'KG';
+            }
+
+            $isActive = array_key_exists('is_active', $data) && $data['is_active'] !== null && $data['is_active'] !== ''
+                ? $this->isTruthy($data['is_active'])
+                : true;
+
+            $payload = [
+                'company_id' => $companyId,
+                'name' => $name,
+                'sku' => $sku,
+                'model' => trim((string) ($data['model'] ?? '')) ?: null,
+                'product_type_id' => $productType?->id,
+                'product_type' => $productType?->name,
+                'hsn_code' => trim((string) ($data['hsn_code'] ?? '')) ?: null,
+                'base_uom_id' => $uom->id,
+                'alternate_uom_id' => $altUom?->id,
+                'conversion_factor' => $altUom ? max(0.0001, $conversion) : 1,
+                'brand_id' => $brand?->id,
+                'category_id' => $category?->id,
+                'sub_category_id' => $subCategory?->id,
+                'supply_type' => $supplyType,
+                'tax_rate' => (float) ($data['tax_rate'] ?? 0),
+                'purchase_price' => (float) ($data['purchase_price'] ?? 0),
+                'selling_price' => (float) ($data['selling_price'] ?? 0),
+                'trade_price' => (float) ($data['trade_price'] ?? $data['selling_price'] ?? 0),
+                'calculation_mrp' => (float) ($data['mrp'] ?? 0),
+                'purchase_price_tax_basis' => $taxBasis,
+                'alt_purchase_price' => filled($data['alt_purchase_price'] ?? null) ? (float) $data['alt_purchase_price'] : null,
+                'alt_trade_price' => filled($data['alt_trade_price'] ?? null) ? (float) $data['alt_trade_price'] : null,
+                'alt_selling_price' => filled($data['alt_selling_price'] ?? null) ? (float) $data['alt_selling_price'] : null,
+                'alt_calculation_mrp' => filled($data['alt_mrp'] ?? null) ? (float) $data['alt_mrp'] : null,
+                'costing_method' => $costing,
+                'market_valuation_method' => $market,
+                'height_cm' => filled($data['height_cm'] ?? null) ? (float) $data['height_cm'] : null,
+                'length_cm' => filled($data['length_cm'] ?? null) ? (float) $data['length_cm'] : null,
+                'width_cm' => filled($data['width_cm'] ?? null) ? (float) $data['width_cm'] : null,
+                'net_weight' => filled($data['net_weight'] ?? null) ? (float) $data['net_weight'] : null,
+                'weight_unit' => filled($data['net_weight'] ?? null) || filled($data['weight_unit'] ?? null) ? $weightUnit : null,
+                'min_stock' => filled($data['min_stock'] ?? null) ? (float) $data['min_stock'] : 0,
+                'reorder_level' => filled($data['reorder_level'] ?? null) ? (float) $data['reorder_level'] : 0,
+                'specification' => trim((string) ($data['specification'] ?? '')) ?: null,
+                'warranty' => $warrantyText,
+                'warranty_months' => $warrantyMonths,
+                'catalog_link' => trim((string) ($data['catalog_link'] ?? '')) ?: null,
+                'series' => trim((string) ($data['series'] ?? '')) ?: null,
+                'color_variant' => trim((string) ($data['color_variant'] ?? '')) ?: null,
+                'sender_warranty_months' => filled($data['sender_warranty_months'] ?? null) ? (int) $data['sender_warranty_months'] : null,
+                'customer_warranty_months' => filled($data['customer_warranty_months'] ?? null) ? (int) $data['customer_warranty_months'] : null,
+                'discount_percent' => (float) ($data['discount_percent'] ?? 0),
+                'discount_type' => 'percent',
+                'discount_value' => (float) ($data['discount_percent'] ?? 0),
+                'selling_discount_type' => 'percent',
+                'selling_discount_value' => 0,
+                'tracking_type' => $trackingType,
+                'is_active' => $isActive,
+            ];
+
+            $uomRows = [[
+                'uom_id' => $uom->id,
+                'conversion_factor' => 1,
+                'is_base' => 1,
+                'label' => 'Base',
+                'selling_price' => $payload['selling_price'],
+                'trade_price' => $payload['trade_price'],
+                'purchase_price' => $payload['purchase_price'],
+                'mrp' => $payload['calculation_mrp'],
+                'is_default_sales' => 1,
+                'is_active' => 1,
+            ]];
+            if ($altUom) {
+                $uomRows[] = [
+                    'uom_id' => $altUom->id,
+                    'conversion_factor' => max(0.0001, $conversion),
+                    'is_base' => 0,
+                    'label' => 'Alternate',
+                    'selling_price' => (float) ($data['alt_selling_price'] ?? $payload['selling_price']),
+                    'trade_price' => (float) ($data['alt_trade_price'] ?? $payload['trade_price']),
+                    'purchase_price' => (float) ($data['alt_purchase_price'] ?? $payload['purchase_price']),
+                    'mrp' => (float) ($data['alt_mrp'] ?? $payload['calculation_mrp']),
+                    'is_default_sales' => 0,
+                    'is_active' => 1,
+                ];
+            }
+
+            if ($located && ! empty($located['pending'])) {
+                if (! $this->arrayChanged($located, $payload)) {
+                    $this->skipped++;
+
+                    continue;
+                }
+                $this->replacePending($located['sku'], $payload, $uomRows, $name);
+                $this->updated++;
+
+                continue;
+            }
+
+            if ($located) {
+                if (! $this->arrayChanged($located, $payload)) {
+                    $this->skipped++;
+
+                    continue;
+                }
+                $this->queueUpdate((int) $located['id'], $payload, $uomRows);
+                $this->updated++;
+
+                continue;
+            }
+
+            $payload['serial_no'] = $this->allocateSerial();
+            $this->queueInsert($payload, $uomRows, $name);
+            $this->created++;
             } finally {
-                ProductPriceObserver::$disabled = false;
-            }
-        });
-    }
-
-    protected function processRows(Collection $rows): void
-    {
-        // Preload masters into memory
-        $uoms = Uom::query()->get();
-        $mappings = UomMapping::with('uom')->get();
-        $brands = Brand::query()->get();
-        $categories = Category::query()->get();
-        $subCategories = SubCategory::query()->get();
-        $productTypes = ProductType::query()->get();
-        $companyId = $this->companyId ?? Company::query()->value('id');
-
-        // Build normalized hash maps for fast O(1) matching
-        $brandMap = [];
-        foreach ($brands as $brand) {
-            $raw = strtolower(trim($this->rawName($brand)));
-            if ($raw !== '') {
-                $brandMap[$raw] = $brand;
-                $brandMap[strtolower((string) NameCase::format($raw))] = $brand;
-            }
-        }
-
-        $categoryMap = [];
-        foreach ($categories as $category) {
-            $raw = strtolower(trim($this->rawName($category)));
-            if ($raw !== '') {
-                $categoryMap[$raw][] = $category;
-                $formatted = strtolower((string) NameCase::format($raw));
-                if ($formatted !== $raw) {
-                    $categoryMap[$formatted][] = $category;
+                $this->progressDone++;
+                if ($this->progressDone === $this->progressTotal || $this->progressDone % 50 === 0) {
+                    $this->reportProgress();
                 }
             }
         }
 
-        $subCategoryMap = [];
-        foreach ($subCategories as $subCategory) {
-            $raw = strtolower(trim($this->rawName($subCategory)));
-            if ($raw !== '') {
-                $key = $subCategory->category_id.'|'.$raw;
-                $subCategoryMap[$key] = $subCategory;
-                $subCategoryMap[$subCategory->category_id.'|'.strtolower((string) NameCase::format($raw))] = $subCategory;
+        $this->flushInserts();
+        $this->flushUpdates();
+        $this->reportProgress();
+    }
+
+    protected function resolveUom(Collection $uomsByCode, string $raw): ?Uom
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        foreach ($this->uomCandidates($raw) as $candidate) {
+            $code = strtoupper($candidate);
+            if (isset($uomsByCode[$code])) {
+                return $uomsByCode[$code];
             }
         }
 
-        $productTypeMap = [];
-        foreach ($productTypes as $productType) {
-            $raw = strtolower(trim($this->rawName($productType)));
-            if ($raw !== '') {
-                $productTypeMap[$raw] = $productType;
-                $productTypeMap[strtolower((string) NameCase::format($raw))] = $productType;
+        foreach ($this->uomCandidates($raw) as $candidate) {
+            $nameKey = strtolower($candidate);
+            if (isset($this->uomNames[$nameKey])) {
+                return $this->uomNames[$nameKey];
             }
-            if (filled($productType->code)) {
-                $productTypeMap[strtolower(trim($productType->code))] = $productType;
+            $formatted = strtolower((string) NameCase::format($candidate));
+            if ($formatted !== '' && isset($this->uomNames[$formatted])) {
+                return $this->uomNames[$formatted];
             }
         }
 
-        // Cache for raw UOM string resolution
-        $uomCache = [];
+        $code = $this->uomCodeFromSheet($raw);
+        if ($code === '') {
+            return null;
+        }
+        if (isset($uomsByCode[$code])) {
+            return $uomsByCode[$code];
+        }
 
-        // Fast sequence counters for auto-generated codes
-        $serialScope = $companyId ? (string) $companyId : 'GLOBAL';
-        $serialNeedle = "PRD-{$serialScope}-";
-        $currentSerialSeq = $this->getMaxSequence('products', 'serial_no', $serialNeedle);
+        try {
+            $uom = Uom::create([
+                'code' => $code,
+                'name' => $this->uomNameFromSheet($raw, $code),
+                'is_active' => true,
+            ]);
+        } catch (QueryException) {
+            $uom = Uom::query()->whereRaw('UPPER(code) = ?', [$code])->first();
+            if (! $uom) {
+                return null;
+            }
+        }
 
-        $skuScope = $companyId ? (string) $companyId : 'GLOBAL';
-        $skuNeedle = "PROD-{$skuScope}-";
-        $currentSkuSeq = $this->getMaxSequence('products', 'sku', $skuNeedle);
+        $uomsByCode->put(strtoupper((string) $uom->code), $uom);
+        $this->rememberUomName($uom);
 
-        $todayDate = date('Y-m-d');
+        return $uom;
+    }
+
+    protected function rememberUomName(Uom $uom): void
+    {
+        $stored = strtolower(trim((string) ($uom->getRawOriginal('name') ?? '')));
+        if ($stored === '') {
+            return;
+        }
+        $this->uomNames[$stored] ??= $uom;
+        $formatted = strtolower((string) NameCase::format($stored));
+        if ($formatted !== '') {
+            $this->uomNames[$formatted] ??= $uom;
+        }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function uomCandidates(string $raw): array
+    {
+        $raw = trim($raw);
+        $parts = [$raw];
+        if (preg_match('/^(.+?)\s*\((.+)\)\s*$/', $raw, $matches)) {
+            $parts[] = trim($matches[1]);
+            $parts[] = trim($matches[2]);
+        }
+
+        return array_values(array_unique(array_filter($parts, fn ($part) => $part !== '')));
+    }
+
+    protected function uomCodeFromSheet(string $raw): string
+    {
+        $preferred = [];
+        if (preg_match('/^(.+?)\s*\((.+)\)\s*$/', trim($raw), $matches)) {
+            $preferred[] = trim($matches[1]);
+            $preferred[] = trim($matches[2]);
+        }
+        $preferred[] = trim($raw);
+
+        foreach ($preferred as $token) {
+            $code = strtoupper(preg_replace('/\s+/', ' ', $token) ?? '');
+            if ($code !== '' && strlen($code) <= 20) {
+                return $code;
+            }
+        }
+
+        $compact = strtoupper(preg_replace('/[^A-Z0-9\-]/', '', $raw) ?? '');
+
+        return substr($compact, 0, 20);
+    }
+
+    protected function uomNameFromSheet(string $raw, string $code): string
+    {
+        $raw = trim($raw);
+        if (preg_match('/^(.+?)\s*\((.+)\)\s*$/', $raw, $matches)) {
+            $left = trim($matches[1]);
+            $right = trim($matches[2]);
+            if (strtoupper($left) === $code && $right !== '') {
+                return $right;
+            }
+            if (strtoupper($right) === $code && $left !== '') {
+                return $left;
+            }
+        }
+
+        return $raw !== '' ? $raw : $code;
+    }
+
+    protected function bootLookups(): void
+    {
+        foreach (Brand::query()->get() as $brand) {
+            foreach ($this->nameKeys($this->rawName($brand)) as $key) {
+                $this->brandIndex[$key] ??= $brand;
+            }
+        }
+
+        foreach (Category::query()->get() as $category) {
+            foreach ($this->nameKeys($this->rawName($category)) as $key) {
+                $this->categoryByBrand[($category->brand_id ?? '0').'|'.$key] ??= $category;
+                $this->categoryByName[$key][$category->id] = $category;
+            }
+        }
+
+        foreach (SubCategory::query()->get() as $subCategory) {
+            foreach ($this->nameKeys($this->rawName($subCategory)) as $key) {
+                $this->subIndex[$subCategory->category_id.'|'.$key] ??= $subCategory;
+            }
+        }
+
+        foreach (ProductType::query()->get() as $type) {
+            foreach ($this->nameKeys($this->rawName($type)) as $key) {
+                $this->typeIndex[$key] ??= $type;
+            }
+        }
+    }
+
+    protected function bootSequences(int $companyId): void
+    {
+        $this->skuPrefix = 'PROD-'.$companyId.'-';
+        $this->nextSkuSeq = $this->maxSuffix('sku', $this->skuPrefix) + 1;
+        $this->nextSerialSeq = $this->maxSuffix('serial_no', 'PRD-GLOBAL-') + 1;
+
+        $columns = array_values(array_unique(array_merge(
+            ['id', 'sku', 'name', 'model', 'serial_no'],
+            $this->comparedColumns(),
+        )));
+        $loaded = 0;
+        foreach (DB::table('products')->whereNull('deleted_at')->select($columns)->cursor() as $row) {
+            if (++$loaded % 200 === 0) {
+                $this->assertNotCancelled();
+            }
+            $attrs = (array) $row;
+            $id = (int) $row->id;
+            $this->productRows[$id] = $attrs;
+            $key = strtolower(trim((string) $row->sku));
+            if ($key !== '') {
+                $this->productsBySku[$key] = $id;
+            }
+            $this->productsByIdentity[$this->identityKey((string) $row->name, $row->model)] ??= $id;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function locateProduct(string $sku, string $name, ?string $model): ?array
+    {
+        if ($sku !== '') {
+            $found = $this->rowForSku($sku);
+            if ($found) {
+                return $found;
+            }
+        }
+
+        $identity = $this->identityKey($name, $model);
+        $id = $this->productsByIdentity[$identity] ?? null;
+        if ($id === -1) {
+            $pendingSku = null;
+            foreach ($this->pendingBySku as $pending) {
+                if ($this->identityKey((string) $pending['name'], $pending['model'] ?? null) === $identity) {
+                    $pendingSku = (string) $pending['sku'];
+                    break;
+                }
+            }
+            if ($pendingSku !== null && isset($this->pendingBySku[strtolower($pendingSku)])) {
+                return $this->pendingBySku[strtolower($pendingSku)] + ['pending' => true, 'sku' => $pendingSku];
+            }
+        }
+        if (is_int($id) && $id > 0 && isset($this->productRows[$id])) {
+            return $this->productRows[$id];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function rowForSku(string $sku): ?array
+    {
+        $key = strtolower($sku);
+        if (! array_key_exists($key, $this->productsBySku)) {
+            return null;
+        }
+        $id = $this->productsBySku[$key];
+        if ($id === -1 && isset($this->pendingBySku[$key])) {
+            return $this->pendingBySku[$key] + ['pending' => true, 'sku' => $this->pendingBySku[$key]['sku']];
+        }
+        if (is_int($id) && $id > 0 && isset($this->productRows[$id])) {
+            return $this->productRows[$id];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $uomRows
+     */
+    protected function queueInsert(array $payload, array $uomRows, string $name): void
+    {
+        $payload['is_active'] = ! empty($payload['is_active']) ? 1 : 0;
+        $now = now()->toDateTimeString();
+        $payload['created_at'] = $now;
+        $payload['updated_at'] = $now;
+        $skuKey = strtolower((string) $payload['sku']);
+        $this->insertQueue[] = $payload;
+        $this->pendingBySku[$skuKey] = $payload;
+        $this->pendingUoms[$skuKey] = $uomRows;
+        $this->productsBySku[$skuKey] = -1;
+        $this->productsByIdentity[$this->identityKey($name, $payload['model'] ?? null)] = -1;
+        if (count($this->insertQueue) >= 400) {
+            $this->flushInserts();
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $uomRows
+     */
+    protected function replacePending(string $sku, array $payload, array $uomRows, string $name): void
+    {
+        $payload['is_active'] = ! empty($payload['is_active']) ? 1 : 0;
+        $skuKey = strtolower($sku);
+        $payload['sku'] = $this->pendingBySku[$skuKey]['sku'] ?? $sku;
+        $payload['serial_no'] = $this->pendingBySku[$skuKey]['serial_no'] ?? $payload['serial_no'] ?? $this->allocateSerial();
+        $payload['created_at'] = $this->pendingBySku[$skuKey]['created_at'] ?? now()->toDateTimeString();
+        $payload['updated_at'] = now()->toDateTimeString();
+        foreach ($this->insertQueue as $index => $queued) {
+            if (strtolower((string) $queued['sku']) === $skuKey) {
+                $this->insertQueue[$index] = $payload;
+                break;
+            }
+        }
+        $this->pendingBySku[$skuKey] = $payload;
+        $this->pendingUoms[$skuKey] = $uomRows;
+        $this->productsByIdentity[$this->identityKey($name, $payload['model'] ?? null)] = -1;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $uomRows
+     */
+    protected function queueUpdate(int $id, array $payload, array $uomRows): void
+    {
+        $existing = $this->productRows[$id] ?? [];
+        $payload['id'] = $id;
+        $payload['serial_no'] = $existing['serial_no'] ?? ($payload['serial_no'] ?? null);
+        $payload['created_at'] = $existing['created_at'] ?? now()->toDateTimeString();
+        $payload['is_active'] = ! empty($payload['is_active']) ? 1 : 0;
+        $payload['updated_at'] = now()->toDateTimeString();
+        $this->updateQueue[$id] = $payload;
+        $this->updateUoms[$id] = $uomRows;
+        $this->productRows[$id] = array_merge($this->productRows[$id] ?? [], $payload);
+        $skuKey = strtolower((string) $payload['sku']);
+        if ($skuKey !== '') {
+            $this->productsBySku[$skuKey] = $id;
+        }
+        $this->productsByIdentity[$this->identityKey((string) $payload['name'], $payload['model'] ?? null)] = $id;
+        if (count($this->updateQueue) >= 400) {
+            $this->flushUpdates();
+        }
+    }
+
+    protected function flushInserts(): void
+    {
+        $this->assertNotCancelled();
+        if ($this->insertQueue === []) {
+            return;
+        }
+
+        foreach (array_chunk($this->insertQueue, 200) as $chunk) {
+            DB::table('products')->insert($chunk);
+        }
+
+        $skus = array_column($this->insertQueue, 'sku');
+        $ids = DB::table('products')->whereIn('sku', $skus)->pluck('id', 'sku');
+        $now = now()->toDateTimeString();
+        $today = now()->toDateString();
         $userId = auth()->id();
+        $uomRows = [];
+        $histories = [];
 
-        // Process rows in chunks with database transactions
-        $chunks = $rows->chunk($this->chunkSize);
-
-        foreach ($chunks as $chunk) {
-            // Preload existing products for this chunk to eliminate N+1 queries
-            $chunkSkus = [];
-            foreach ($chunk as $row) {
-                $skuVal = trim((string) ($row['part_number'] ?? $row['part_no'] ?? $row['partnumber'] ?? $row['sku'] ?? ''));
-                if ($skuVal !== '') {
-                    $chunkSkus[strtolower($skuVal)] = $skuVal;
-                }
+        foreach ($this->insertQueue as $payload) {
+            $id = (int) ($ids[$payload['sku']] ?? 0);
+            if ($id === 0) {
+                continue;
             }
-
-            $existingProductsMap = collect();
-            if (! empty($chunkSkus)) {
-                $existingProducts = Product::query()
-                    ->whereIn('sku', array_values($chunkSkus))
-                    ->get();
-
-                foreach ($existingProducts as $existingP) {
-                    $existingProductsMap->put(strtolower(trim($existingP->sku)), $existingP);
-                }
+            $skuKey = strtolower((string) $payload['sku']);
+            $this->productsBySku[$skuKey] = $id;
+            $this->productsByIdentity[$this->identityKey((string) $payload['name'], $payload['model'] ?? null)] = $id;
+            $this->productRows[$id] = $payload + ['id' => $id];
+            unset($this->pendingBySku[$skuKey]);
+            foreach ($this->pendingUoms[$skuKey] ?? [] as $uom) {
+                $uomRows[] = $uom + [
+                    'product_id' => $id,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
             }
+            unset($this->pendingUoms[$skuKey]);
+            $histories[] = [
+                'product_id' => $id,
+                'uom_id' => $payload['base_uom_id'],
+                'trade_price' => $payload['trade_price'],
+                'selling_price' => $payload['selling_price'],
+                'purchase_price' => $payload['purchase_price'],
+                'mrp' => $payload['calculation_mrp'],
+                'effective_from' => $today,
+                'effective_to' => null,
+                'change_reason' => 'created',
+                'source' => 'create',
+                'created_by' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
 
-            // Execute chunk inside transaction for high performance and integrity
-            DB::transaction(function () use (
-                $chunk,
-                &$existingProductsMap,
-                $uoms,
-                $mappings,
-                &$uomCache,
-                &$brandMap,
-                $brands,
-                &$categoryMap,
-                $categories,
-                &$subCategoryMap,
-                $subCategories,
-                &$productTypeMap,
-                $productTypes,
-                $companyId,
-                $serialScope,
-                &$currentSerialSeq,
-                $skuScope,
-                &$currentSkuSeq,
-                $todayDate,
-                $userId
-            ) {
-                $now = date('Y-m-d H:i:s');
-                $productUomBatch = [];
-                $priceHistoryBatch = [];
+        foreach (array_chunk($uomRows, 400) as $chunk) {
+            DB::table('product_uoms')->insert($chunk);
+        }
+        foreach (array_chunk($histories, 400) as $chunk) {
+            DB::table('product_price_histories')->insert($chunk);
+        }
 
-                foreach ($chunk as $index => $row) {
-                    $rowNo = is_numeric($index) ? ((int) $index + 2) : 2;
-                    $data = collect($row)->mapWithKeys(fn ($v, $k) => [strtolower((string) $k) => $v])->toArray();
+        $this->insertQueue = [];
+    }
 
-                    $sku = trim((string) ($data['part_number'] ?? $data['part_no'] ?? $data['partnumber'] ?? $data['sku'] ?? ''));
-                    $rawUom = trim((string) ($data['uom_code'] ?? $data['uom'] ?? ''));
+    protected function flushUpdates(): void
+    {
+        $this->assertNotCancelled();
+        if ($this->updateQueue === []) {
+            return;
+        }
 
-                    $name = trim((string) ($data['name'] ?? ''));
-                    if ($name === '') {
-                        $this->recordFailure($rowNo, 'name', 'Name is required', $sku ?: 'N/A', $rawUom ?: 'N/A');
-                        continue;
-                    }
-                    $name = \App\Support\NameCase::format($name);
+        $rows = array_values($this->updateQueue);
+        $updateColumns = array_values(array_diff(array_keys($rows[0]), ['id', 'created_at', 'serial_no']));
+        foreach (array_chunk($rows, 200) as $chunk) {
+            DB::table('products')->upsert($chunk, ['id'], $updateColumns);
+        }
 
-                    if ($rawUom === '') {
-                        $this->recordMissingUom($rowNo, '', 'uom_code', $sku ?: $name);
-                        continue;
-                    }
+        $now = now()->toDateTimeString();
+        $uomRows = [];
+        foreach ($this->updateUoms as $productId => $rowsForProduct) {
+            foreach ($rowsForProduct as $uom) {
+                $uomRows[] = $uom + [
+                    'product_id' => $productId,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+        if ($uomRows !== []) {
+            $uomColumns = array_values(array_diff(array_keys($uomRows[0]), ['product_id', 'uom_id', 'created_at']));
+            foreach (array_chunk($uomRows, 400) as $chunk) {
+                DB::table('product_uoms')->upsert($chunk, ['product_id', 'uom_id'], $uomColumns);
+            }
+        }
 
-                    // Fast UOM resolution with memoization
-                    if (array_key_exists($rawUom, $uomCache)) {
-                        $uom = $uomCache[$rawUom];
-                    } else {
-                        $uom = UomLookupService::resolve($rawUom, $uoms, $mappings);
-                        $uomCache[$rawUom] = $uom;
-                    }
+        $this->updateQueue = [];
+        $this->updateUoms = [];
+    }
 
-                    if (! $uom) {
-                        $this->recordMissingUom($rowNo, $rawUom, 'uom_code', $sku ?: $name);
-                        continue;
-                    }
+    /**
+     * @param  array<string, mixed>  $existing
+     * @param  array<string, mixed>  $payload
+     */
+    protected function arrayChanged(array $existing, array $payload): bool
+    {
+        foreach ($payload as $key => $incoming) {
+            if (in_array($key, ['created_at', 'updated_at', 'serial_no'], true)) {
+                continue;
+            }
+            if ($this->canonical($key, $existing[$key] ?? null) !== $this->canonical($key, $incoming)) {
+                return true;
+            }
+        }
 
-                    if ($sku === '') {
-                        $currentSkuSeq++;
-                        $sku = sprintf('PROD-%s-%05d', $skuScope, $currentSkuSeq);
-                    }
+        return false;
+    }
 
-                    $brand = $this->matchBrand($brandMap, $brands, (string) ($data['brand'] ?? ''));
-                    $category = $this->matchCategory($categoryMap, $categories, $brand, (string) ($data['category'] ?? ''));
-                    $subCategory = $this->matchSubCategory($subCategoryMap, $subCategories, $category, (string) ($data['sub_category'] ?? ''));
-                    $productType = $this->matchProductType($productTypeMap, $productTypes, (string) ($data['product_type'] ?? ''));
+    /**
+     * @return array<int, string>
+     */
+    protected function comparedColumns(): array
+    {
+        return [
+            'company_id', 'name', 'sku', 'model', 'product_type_id', 'product_type', 'hsn_code',
+            'base_uom_id', 'alternate_uom_id', 'conversion_factor', 'brand_id', 'category_id', 'sub_category_id',
+            'supply_type', 'tax_rate', 'purchase_price', 'selling_price', 'trade_price', 'calculation_mrp',
+            'purchase_price_tax_basis', 'alt_purchase_price', 'alt_trade_price', 'alt_selling_price', 'alt_calculation_mrp',
+            'costing_method', 'market_valuation_method', 'height_cm', 'length_cm', 'width_cm', 'net_weight', 'weight_unit',
+            'min_stock', 'reorder_level', 'specification', 'warranty', 'warranty_months', 'catalog_link', 'series',
+            'color_variant', 'sender_warranty_months', 'customer_warranty_months', 'discount_percent', 'discount_type',
+            'discount_value', 'selling_discount_type', 'selling_discount_value', 'tracking_type', 'is_active',
+        ];
+    }
 
-                    $altUom = null;
-                    $rawAltUom = trim((string) ($data['alternate_uom_code'] ?? ''));
-                    if ($rawAltUom !== '') {
-                        if (array_key_exists($rawAltUom, $uomCache)) {
-                            $altUom = $uomCache[$rawAltUom];
-                        } else {
-                            $altUom = UomLookupService::resolve($rawAltUom, $uoms, $mappings);
-                            $uomCache[$rawAltUom] = $altUom;
-                        }
+    protected function identityKey(string $name, ?string $model): string
+    {
+        $name = strtolower((string) NameCase::format(trim($name)));
+        $model = strtolower((string) NameCase::format(trim((string) $model)));
 
-                        if (! $altUom) {
-                            $this->recordMissingUom($rowNo, $rawAltUom, 'alternate_uom_code', $sku);
-                            continue;
-                        }
-                    }
+        return $name.'|'.$model;
+    }
 
-                    $conversion = filled($data['conversion_factor'] ?? null)
-                        ? (float) $data['conversion_factor']
-                        : ($altUom ? 1.0 : 1.0);
+    protected function assertNotCancelled(): void
+    {
+        if ($this->progressId === null || $this->progressId === '') {
+            return;
+        }
 
-                    $tracks = [];
-                    if ($this->isTruthy($data['track_serial'] ?? null)) {
-                        $tracks[] = 'serial';
-                    }
-                    if ($this->isTruthy($data['track_batch'] ?? null)) {
-                        $tracks[] = 'batch';
-                    }
-                    if ($productType?->track_serial && ! in_array('serial', $tracks, true)) {
-                        $tracks[] = 'serial';
-                    }
-                    $trackingType = empty($tracks) ? 'none' : implode(',', $tracks);
-
-                    $warrantyText = trim((string) ($data['warranty'] ?? '')) ?: null;
-                    $warrantyMonths = $warrantyText !== null ? WarrantyPeriod::months($warrantyText) : null;
-
-                    $supplyType = strtolower(trim((string) ($data['supply_type'] ?? 'goods')));
-                    if (! in_array($supplyType, ['capital_goods', 'goods', 'services'], true)) {
-                        $supplyType = 'goods';
-                    }
-
-                    $taxBasis = strtolower(trim((string) ($data['purchase_price_tax_basis'] ?? 'exclusive')));
-                    if (! in_array($taxBasis, ['exclusive', 'inclusive'], true)) {
-                        $taxBasis = 'exclusive';
-                    }
-
-                    $costing = strtolower(trim((string) ($data['costing_method'] ?? 'avg_cost')));
-                    if (! array_key_exists($costing, Product::COSTING_METHODS)) {
-                        $costing = 'avg_cost';
-                    }
-
-                    $market = strtolower(trim((string) ($data['market_valuation_method'] ?? 'avg_price')));
-                    if (! array_key_exists($market, Product::MARKET_VALUATION_METHODS)) {
-                        $market = 'avg_price';
-                    }
-
-                    $weightUnit = strtoupper(trim((string) ($data['weight_unit'] ?? 'KG')));
-                    if (! in_array($weightUnit, ['KG', 'GRAMS'], true)) {
-                        $weightUnit = 'KG';
-                    }
-
-                    $isActive = array_key_exists('is_active', $data) && $data['is_active'] !== null && $data['is_active'] !== ''
-                        ? $this->isTruthy($data['is_active'])
-                        : true;
-
-                    // Fast check against preloaded products for this batch
-                    $lowerSku = strtolower($sku);
-                    $existing = $existingProductsMap->get($lowerSku);
-
-                    $payload = [
-                        'company_id' => $companyId,
-                        'name' => $name,
-                        'sku' => $sku,
-                        'model' => trim((string) ($data['model'] ?? '')) ?: null,
-                        'product_type_id' => $productType?->id,
-                        'product_type' => $productType?->name,
-                        'hsn_code' => trim((string) ($data['hsn_code'] ?? '')) ?: null,
-                        'base_uom_id' => $uom->id,
-                        'alternate_uom_id' => $altUom?->id,
-                        'conversion_factor' => $altUom ? max(0.0001, $conversion) : 1,
-                        'brand_id' => $brand?->id,
-                        'category_id' => $category?->id,
-                        'sub_category_id' => $subCategory?->id,
-                        'supply_type' => $supplyType,
-                        'tax_rate' => (float) ($data['tax_rate'] ?? 0),
-                        'purchase_price' => (float) ($data['purchase_price'] ?? 0),
-                        'selling_price' => (float) ($data['selling_price'] ?? 0),
-                        'trade_price' => (float) ($data['trade_price'] ?? $data['selling_price'] ?? 0),
-                        'calculation_mrp' => (float) ($data['mrp'] ?? 0),
-                        'purchase_price_tax_basis' => $taxBasis,
-                        'alt_purchase_price' => filled($data['alt_purchase_price'] ?? null) ? (float) $data['alt_purchase_price'] : null,
-                        'alt_trade_price' => filled($data['alt_trade_price'] ?? null) ? (float) $data['alt_trade_price'] : null,
-                        'alt_selling_price' => filled($data['alt_selling_price'] ?? null) ? (float) $data['alt_selling_price'] : null,
-                        'alt_calculation_mrp' => filled($data['alt_mrp'] ?? null) ? (float) $data['alt_mrp'] : null,
-                        'costing_method' => $costing,
-                        'market_valuation_method' => $market,
-                        'height_cm' => filled($data['height_cm'] ?? null) ? (float) $data['height_cm'] : null,
-                        'length_cm' => filled($data['length_cm'] ?? null) ? (float) $data['length_cm'] : null,
-                        'width_cm' => filled($data['width_cm'] ?? null) ? (float) $data['width_cm'] : null,
-                        'net_weight' => filled($data['net_weight'] ?? null) ? (float) $data['net_weight'] : null,
-                        'weight_unit' => filled($data['net_weight'] ?? null) || filled($data['weight_unit'] ?? null) ? $weightUnit : null,
-                        'min_stock' => filled($data['min_stock'] ?? null) ? (float) $data['min_stock'] : 0,
-                        'reorder_level' => filled($data['reorder_level'] ?? null) ? (float) $data['reorder_level'] : 0,
-                        'specification' => trim((string) ($data['specification'] ?? '')) ?: null,
-                        'warranty' => $warrantyText,
-                        'warranty_months' => $warrantyMonths,
-                        'catalog_link' => trim((string) ($data['catalog_link'] ?? '')) ?: null,
-                        'series' => trim((string) ($data['series'] ?? '')) ?: null,
-                        'color_variant' => trim((string) ($data['color_variant'] ?? '')) ?: null,
-                        'sender_warranty_months' => filled($data['sender_warranty_months'] ?? null) ? (int) $data['sender_warranty_months'] : null,
-                        'customer_warranty_months' => filled($data['customer_warranty_months'] ?? null) ? (int) $data['customer_warranty_months'] : null,
-                        'discount_percent' => (float) ($data['discount_percent'] ?? 0),
-                        'discount_type' => 'percent',
-                        'discount_value' => (float) ($data['discount_percent'] ?? 0),
-                        'selling_discount_type' => 'percent',
-                        'selling_discount_value' => 0,
-                        'tracking_type' => $trackingType,
-                        'is_active' => $isActive,
-                    ];
-
-                    $isNew = false;
-                    $priceChanged = false;
-
-                    try {
-                        if ($existing) {
-                            if (! $this->payloadChanged($existing, $payload)) {
-                                $this->skipped++;
-                                continue;
-                            }
-                            $priceChanged = (
-                                (float) $existing->selling_price !== (float) $payload['selling_price'] ||
-                                (float) $existing->purchase_price !== (float) $payload['purchase_price'] ||
-                                (float) $existing->trade_price !== (float) $payload['trade_price'] ||
-                                (float) $existing->calculation_mrp !== (float) $payload['calculation_mrp']
-                            );
-                            $existing->update($payload);
-                            $product = $existing;
-                            $this->updated++;
-                            $existingProductsMap->put($lowerSku, $product);
-                        } else {
-                            $isNew = true;
-                            $currentSerialSeq++;
-                            $payload['serial_no'] = sprintf('PRD-%s-%05d', $serialScope, $currentSerialSeq);
-                            $product = Product::create($payload);
-                            $this->created++;
-                            $existingProductsMap->put($lowerSku, $product);
-                        }
-                    } catch (QueryException $e) {
-                        $this->recordFailure(
-                            $rowNo,
-                            'part_number',
-                            'Could not save this product because it conflicts with an existing record.',
-                            $sku,
-                            $rawUom
-                        );
-
-                        continue;
-                    }
-
-                    // Record price history for new products or updated pricing in batch
-                    if ($isNew || $priceChanged) {
-                        $priceHistoryBatch[] = [
-                            'product_id' => $product->id,
-                            'uom_id' => $product->base_uom_id,
-                            'trade_price' => $product->trade_price,
-                            'selling_price' => $product->selling_price,
-                            'purchase_price' => $product->purchase_price,
-                            'mrp' => $product->calculation_mrp,
-                            'effective_from' => $todayDate,
-                            'effective_to' => null,
-                            'change_reason' => $isNew ? 'created' : 'auto-updated on save',
-                            'source' => $isNew ? 'create' : 'update',
-                            'created_by' => $userId,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
-                    }
-
-                    // Queue ProductUom rows for fast batch upsert
-                    $productUomBatch[$product->id.'|'.$uom->id] = [
-                        'product_id' => $product->id,
-                        'uom_id' => $uom->id,
-                        'conversion_factor' => 1,
-                        'is_base' => true,
-                        'label' => 'Base',
-                        'selling_price' => $product->selling_price,
-                        'trade_price' => $product->trade_price,
-                        'purchase_price' => $product->purchase_price,
-                        'mrp' => $product->calculation_mrp,
-                        'is_default_sales' => true,
-                        'is_active' => true,
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ];
-
-                    if ($altUom) {
-                        $productUomBatch[$product->id.'|'.$altUom->id] = [
-                            'product_id' => $product->id,
-                            'uom_id' => $altUom->id,
-                            'conversion_factor' => max(0.0001, $conversion),
-                            'is_base' => false,
-                            'label' => 'Alternate',
-                            'selling_price' => (float) ($data['alt_selling_price'] ?? $product->selling_price),
-                            'trade_price' => (float) ($data['alt_trade_price'] ?? $product->trade_price),
-                            'purchase_price' => (float) ($data['alt_purchase_price'] ?? $product->purchase_price),
-                            'mrp' => (float) ($data['alt_mrp'] ?? $product->calculation_mrp),
-                            'is_default_sales' => false,
-                            'is_active' => true,
-                            'created_at' => $now,
-                            'updated_at' => $now,
-                        ];
-                    }
-                }
-
-                // Batch insert ProductPriceHistory records for this chunk
-                if (! empty($priceHistoryBatch)) {
-                    ProductPriceHistory::insert($priceHistoryBatch);
-                }
-
-                // Batch upsert ProductUom records for this chunk in one query
-                if (! empty($productUomBatch)) {
-                    ProductUom::upsert(
-                        array_values($productUomBatch),
-                        ['product_id', 'uom_id'],
-                        [
-                            'conversion_factor',
-                            'is_base',
-                            'label',
-                            'selling_price',
-                            'trade_price',
-                            'purchase_price',
-                            'mrp',
-                            'is_default_sales',
-                            'is_active',
-                            'updated_at',
-                        ]
-                    );
-                }
-            });
+        $path = Storage::disk('local')->path('imports/progress/'.$this->progressId.'.cancel');
+        clearstatcache(true, $path);
+        if (is_file($path) || connection_aborted()) {
+            throw new ImportCancelledException();
         }
     }
 
-    public function getMissingUoms(): array
+    protected function reportProgress(): void
     {
-        return $this->missingUoms;
-    }
-
-    protected function getMaxSequence(string $table, string $column, string $prefix): int
-    {
-        $driver = DB::connection()->getDriverName();
-        if ($driver === 'mysql') {
-            $val = DB::table($table)
-                ->where($column, 'like', $prefix.'%')
-                ->selectRaw("MAX(CAST(SUBSTRING_INDEX({$column}, '-', -1) AS UNSIGNED)) as m")
-                ->value('m');
-
-            return (int) $val;
+        if ($this->progressId === null || $this->progressId === '') {
+            return;
         }
 
-        $existing = DB::table($table)->where($column, 'like', $prefix.'%')->pluck($column);
+        $percent = $this->progressTotal === 0
+            ? 100
+            : (int) floor(($this->progressDone / $this->progressTotal) * 100);
+
+        Storage::disk('local')->put('imports/progress/'.$this->progressId.'.json', json_encode([
+            'processed' => $this->progressDone,
+            'total' => $this->progressTotal,
+            'percent' => min(100, $percent),
+            'status' => $this->progressDone >= $this->progressTotal && $this->progressTotal > 0 ? 'done' : 'running',
+            'created' => $this->created,
+            'updated' => $this->updated,
+            'skipped' => $this->skipped,
+        ]));
+    }
+
+    protected function maxSuffix(string $column, string $prefix): int
+    {
         $max = 0;
-        foreach ($existing as $val) {
-            $suffix = \Illuminate\Support\Str::afterLast((string) $val, '-');
-            if (is_numeric($suffix)) {
+        foreach (DB::table('products')->where($column, 'like', $prefix.'%')->pluck($column) as $value) {
+            $suffix = Str::afterLast((string) $value, '-');
+            if (ctype_digit($suffix)) {
                 $max = max($max, (int) $suffix);
             }
         }
@@ -515,110 +824,57 @@ class ProductsImport implements ToCollection, WithHeadingRow
         return $max;
     }
 
-    protected function recordFailure(int $rowNo, string $field, string $message, ?string $identifier = null, ?string $importedUom = null): void
+    protected function allocateSku(): string
     {
-        $this->failed++;
-        $this->errors[] = [
-            'row' => $rowNo,
-            'product_identifier' => $identifier ?: 'N/A',
-            'imported_uom' => $importedUom ?: 'N/A',
-            'field' => $field,
-            'message' => $message,
-        ];
+        do {
+            $sku = sprintf('%s%05d', $this->skuPrefix, $this->nextSkuSeq);
+            $this->nextSkuSeq++;
+        } while (isset($this->productsBySku[strtolower($sku)]));
+
+        $this->productsBySku[strtolower($sku)] = 0;
+
+        return $sku;
     }
 
-    protected function recordMissingUom(int $rowNo, string $rawUom, string $field, ?string $identifier = null): void
+    protected function allocateSerial(): string
     {
-        $rawTrimmed = trim($rawUom);
-        if ($rawTrimmed !== '') {
-            if (! isset($this->missingUoms[$rawTrimmed])) {
-                $this->missingUoms[$rawTrimmed] = [
-                    'imported_uom' => $rawTrimmed,
-                    'count' => 0,
-                    'sample_rows' => [],
-                    'suggested_code' => UomLookupService::suggestCode($rawTrimmed),
-                    'suggested_name' => UomLookupService::suggestName($rawTrimmed),
-                ];
-            }
-            $this->missingUoms[$rawTrimmed]['count']++;
-            if (count($this->missingUoms[$rawTrimmed]['sample_rows']) < 5) {
-                $this->missingUoms[$rawTrimmed]['sample_rows'][] = $rowNo;
-            }
-        }
-
-        $message = $rawTrimmed === ''
-            ? ($field === 'alternate_uom_code' ? 'Alternate UOM code is invalid' : 'UOM is required')
-            : "Unknown UOM '{$rawTrimmed}'. Please map this UOM to an existing record or add it to UOM Master.";
-
-        $this->recordFailure($rowNo, $field, $message, $identifier, $rawTrimmed ?: 'BLANK');
+        return sprintf('PRD-GLOBAL-%05d', $this->nextSerialSeq++);
     }
 
-    protected function matchBrand(array &$brandMap, Collection $brands, string $label): ?Brand
+    protected function matchBrand(string $label): ?Brand
     {
-        $this->skuPrefix = 'PROD-'.$companyId.'-';
-        $this->nextSkuSeq = $this->maxSuffix('sku', $this->skuPrefix) + 1;
-        $this->nextSerialSeq = $this->maxSuffix('serial_no', 'PRD-GLOBAL-') + 1;
-
-        $lower = strtolower($label);
-        if (isset($brandMap[$lower])) {
-            return $brandMap[$lower];
-        }
-
-        $formatted = strtolower((string) NameCase::format($label));
-        if (isset($brandMap[$formatted])) {
-            return $brandMap[$formatted];
-        }
-
-        $found = $brands->first(fn (Brand $brand) => $this->namesEqual($this->rawName($brand), $label));
-        if (! $found) {
-            $found = Brand::query()->where('name', NameCase::format($label))->first()
-                ?? Brand::query()->whereRaw('LOWER(TRIM(name)) = ?', [$lower])->first();
-            if ($found) {
-                $brands->push($found);
-            }
-        }
-
-        if ($found) {
-            $brandMap[$lower] = $found;
-            $brandMap[$formatted] = $found;
-        }
-
-        return $found;
+        return $this->findIndexed($this->brandIndex, $label);
     }
 
-    protected function matchCategory(array &$categoryMap, Collection $categories, ?Brand $brand, string $label): ?Category
+    protected function matchCategory(?Brand $brand, string $label): ?Category
     {
         $label = trim($label);
         if ($label === '') {
             return null;
         }
 
-        $lower = strtolower($label);
-        $formatted = strtolower((string) NameCase::format($label));
-
-        $candidates = $categoryMap[$lower] ?? $categoryMap[$formatted] ?? null;
-        if ($candidates === null) {
-            $named = $categories->filter(fn (Category $c) => $this->namesEqual($this->rawName($c), $label))->values();
-            $candidates = $named->all();
-            $categoryMap[$lower] = $candidates;
-            $categoryMap[$formatted] = $candidates;
-        }
-
         if ($brand) {
-            foreach ($candidates as $c) {
-                if ((int) $c->brand_id === (int) $brand->id) {
-                    return $c;
+            foreach ($this->nameKeys($label) as $key) {
+                $underBrand = $this->categoryByBrand[$brand->id.'|'.$key] ?? null;
+                if ($underBrand) {
+                    return $underBrand;
                 }
             }
-            $unbranded = array_values(array_filter($candidates, fn (Category $c) => $c->brand_id === null));
+
+            $unbranded = $this->namedCategories($label, true);
 
             return count($unbranded) === 1 ? $unbranded[0] : null;
         }
 
-        return count($candidates) === 1 ? $candidates[0] : null;
+        $named = $this->namedCategories($label, false);
+
+        return count($named) === 1 ? $named[0] : null;
     }
 
-    protected function matchSubCategory(array &$subCategoryMap, Collection $subCategories, ?Category $category, string $label): ?SubCategory
+    /**
+     * @return array<int, Category>
+     */
+    protected function namedCategories(string $label, bool $unbrandedOnly): array
     {
         $found = [];
         foreach ($this->nameKeys($label) as $key) {
@@ -639,30 +895,17 @@ class ProductsImport implements ToCollection, WithHeadingRow
             return null;
         }
 
-        $key = $category->id.'|'.strtolower($label);
-        if (isset($subCategoryMap[$key])) {
-            return $subCategoryMap[$key];
+        foreach ($this->nameKeys($label) as $key) {
+            $match = $this->subIndex[$category->id.'|'.$key] ?? null;
+            if ($match) {
+                return $match;
+            }
         }
 
-        $formattedKey = $category->id.'|'.strtolower((string) NameCase::format($label));
-        if (isset($subCategoryMap[$formattedKey])) {
-            return $subCategoryMap[$formattedKey];
-        }
-
-        $found = $subCategories->first(function (SubCategory $subCategory) use ($category, $label) {
-            return (int) $subCategory->category_id === (int) $category->id
-                && $this->namesEqual($this->rawName($subCategory), $label);
-        });
-
-        if ($found) {
-            $subCategoryMap[$key] = $found;
-            $subCategoryMap[$formattedKey] = $found;
-        }
-
-        return $found;
+        return null;
     }
 
-    protected function matchProductType(array &$productTypeMap, Collection $productTypes, string $label): ?ProductType
+    protected function matchProductType(string $label): ?ProductType
     {
         return $this->findIndexed($this->typeIndex, $label);
     }
@@ -675,29 +918,20 @@ class ProductsImport implements ToCollection, WithHeadingRow
             }
         }
 
-        $lower = strtolower($label);
-        if (isset($productTypeMap[$lower])) {
-            return $productTypeMap[$lower];
+        return null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function nameKeys(string $name): array
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return [];
         }
 
-        $formatted = strtolower((string) NameCase::format($label));
-        if (isset($productTypeMap[$formatted])) {
-            return $productTypeMap[$formatted];
-        }
-
-        $found = $productTypes->first(fn (ProductType $type) => $this->namesEqual($this->rawName($type), $label));
-        if (! $found) {
-            $found = ProductType::query()->where('name', NameCase::format($label))->first()
-                ?? ProductType::query()->whereRaw('LOWER(TRIM(name)) = ?', [$lower])->first();
-            if ($found) {
-                $productTypes->push($found);
-            }
-        }
-
-        if ($found) {
-            $productTypeMap[$lower] = $found;
-            $productTypeMap[$formatted] = $found;
-        }
+        $formatted = trim((string) NameCase::format($name));
 
         return array_values(array_unique(array_filter([
             strtolower($name),

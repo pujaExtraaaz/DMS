@@ -85,7 +85,7 @@ return new class extends Migration
         string $referencedColumn,
         string $onDelete
     ): void {
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $column) || ! Schema::hasTable($referencedTable)) {
+        if (DB::getDriverName() !== 'mysql' || ! Schema::hasTable($table) || ! Schema::hasColumn($table, $column) || ! Schema::hasTable($referencedTable)) {
             return;
         }
 

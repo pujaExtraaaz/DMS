@@ -1,7 +1,7 @@
 @if($can('payments.view', 'payments.create', 'cheques.view', 'credit-notes.view'))
     @php
         $sNum = $num();
-        $sectionActive = $is('payments.*', 'cheques.*', 'credit-notes.*', 'outstanding.*', 'reconciliation.*');
+        $sectionActive = $is('payments.*', 'cheques.*', 'credit-notes.*', 'outstanding.*', 'reconciliation.*', 'cheque-books.*', 'organization.cheque-books.*');
     @endphp
     <div
         data-sidebar-section="receivables"
@@ -70,6 +70,7 @@
             <a href="{{ route('payments.index') }}" class="{{ $itemClass }} {{ $linkClass(['payments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Payment Receipts</span></a>
             @if($can('cheques.view', 'cheques.create', 'payments.manage'))
                 <a href="{{ route('cheques.index') }}" class="{{ $itemClass }} {{ $linkClass(['cheques.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Cheque Register</span></a>
+                <a href="{{ route('cheque-books.index') }}" class="{{ $itemClass }} {{ $linkClass(['cheque-books.*', 'organization.cheque-books.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Cheque Books</span></a>
             @endif
             @if($can('credit-notes.view', 'credit-notes.create', 'payments.manage'))
                 <a href="{{ route('credit-notes.index') }}" class="{{ $itemClass }} {{ $linkClass(['credit-notes.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Credit Notes</span></a>

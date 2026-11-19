@@ -80,6 +80,8 @@ return [
                 ['label' => 'Cash Forecasts', 'route' => 'books.tally.banking.forecasts', 'active' => ['books.tally.banking.forecasts*'], 'keywords' => 'forecast treasury'],
                 ['label' => 'NEFT / RTGS / UPI', 'route' => 'books.tally.banking.electronic-payments', 'active' => ['books.tally.banking.electronic-payments*'], 'keywords' => 'neft rtgs upi'],
                 ['label' => 'Cheques', 'route' => 'books.tally.banking.cheques', 'active' => ['books.tally.banking.cheques*'], 'keywords' => 'cheque'],
+                ['label' => 'Cheque Register', 'route' => 'cheques.index', 'active' => ['cheques.*'], 'keywords' => 'cheque register bounce clear deposit'],
+                ['label' => 'Cheque Books', 'route' => 'cheque-books.index', 'active' => ['cheque-books.*', 'organization.cheque-books.*'], 'keywords' => 'cheque books leaves range'],
                 ['label' => 'Bank Rules', 'route' => 'books.tally.banking.rules', 'active' => ['books.tally.banking.rules*'], 'keywords' => 'categorization rules'],
                 ['label' => 'Signatory Limits', 'route' => 'books.tally.banking.signatories', 'active' => ['books.tally.banking.signatories*'], 'keywords' => 'signatory'],
             ],

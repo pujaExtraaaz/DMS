@@ -72,11 +72,20 @@ class QuotationController extends Controller
 
     public function create(): View
     {
+        $companyId = auth()->user()?->company_id;
+        $qtnSeries = $this->quotationService->resolveSeries($companyId);
+        $nextNumber = ($qtnSeries && ($qtnSeries->isAutomatic() || $qtnSeries->isManualOverride()))
+            ? $this->quotationService->peekNumber($companyId)
+            : null;
+
         return view('sales.quotations.form', [
             'item' => new Quotation([
                 'quotation_date' => now()->toDateString(),
                 'status' => 'draft',
+                'quotation_no' => $nextNumber,
             ]),
+            'qtnSeries' => $qtnSeries,
+            'nextNumber' => $nextNumber,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
             'products' => Product::with('baseUom')->where('is_active', true)->where('is_hidden', false)->orderBy('name')->get(),
         ]);
@@ -105,9 +114,13 @@ class QuotationController extends Controller
     public function edit(Quotation $quotation): View
     {
         $quotation->load(['items']);
+        $companyId = auth()->user()?->company_id;
+        $qtnSeries = $this->quotationService->resolveSeries($companyId);
 
         return view('sales.quotations.form', [
             'item' => $quotation,
+            'qtnSeries' => $qtnSeries,
+            'nextNumber' => null,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
             'products' => Product::with('baseUom')
                 ->where('is_active', true)
@@ -157,6 +170,7 @@ class QuotationController extends Controller
     protected function validated(Request $request): array
     {
         return $request->validate([
+            'quotation_no' => 'nullable|string|max:50',
             'customer_id' => 'required|exists:customers,id',
             'quotation_date' => 'required|date',
             'valid_until' => 'nullable|date|after_or_equal:quotation_date',

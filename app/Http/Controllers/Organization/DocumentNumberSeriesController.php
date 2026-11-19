@@ -66,14 +66,21 @@ class DocumentNumberSeriesController extends Controller
                 'include_financial_year' => true,
                 'financial_year_style' => 'yy_yy',
                 'separator' => '-',
-                'padding' => 3,
+                'padding' => 4,
+                'starting_number' => 1,
+                'prefix_zero' => true,
                 'numbering_method' => DocumentNumberSeries::METHOD_AUTOMATIC,
                 'restart_each_fy' => true,
                 'is_active' => true,
                 'document_type' => 'PO',
+                'restart_rules' => [],
+                'prefix_rules' => [],
+                'suffix_rules' => [],
             ]),
             'companies' => Company::where('is_active', true)->orderBy('name')->get(),
             'documentTypes' => DocumentNumberSeries::documentTypes(),
+            'numberingMethods' => DocumentNumberSeries::numberingMethods(),
+            'periodicities' => DocumentNumberSeries::periodicities(),
         ]);
     }
 
@@ -91,6 +98,8 @@ class DocumentNumberSeriesController extends Controller
             'item' => $document_number_series,
             'companies' => Company::where('is_active', true)->orderBy('name')->get(),
             'documentTypes' => DocumentNumberSeries::documentTypes(),
+            'numberingMethods' => DocumentNumberSeries::numberingMethods(),
+            'periodicities' => DocumentNumberSeries::periodicities(),
         ]);
     }
 
@@ -121,9 +130,14 @@ class DocumentNumberSeriesController extends Controller
             'financial_year_style' => ['required', 'string', Rule::in(['yy_yy', 'YYYY-YY', 'name'])],
             'separator' => 'nullable|string|max:5',
             'padding' => 'required|integer|min:1|max:8',
-            'numbering_method' => ['required', 'string', Rule::in(['automatic', 'manual'])],
+            'starting_number' => 'nullable|integer|min:1',
+            'prefix_zero' => 'nullable|boolean',
+            'numbering_method' => ['required', 'string', Rule::in(array_keys(DocumentNumberSeries::numberingMethods()))],
             'restart_each_fy' => 'nullable|boolean',
             'is_active' => 'nullable|boolean',
+            'restart_rules' => 'nullable|array',
+            'prefix_rules' => 'nullable|array',
+            'suffix_rules' => 'nullable|array',
         ]);
 
         $data['include_financial_year'] = $request->boolean('include_financial_year');
@@ -136,6 +150,12 @@ class DocumentNumberSeriesController extends Controller
             : null;
         $data['separator'] = $data['separator'] ?? '-';
         $data['name'] = $data['name'] ?: (DocumentNumberSeries::documentTypes()[$data['document_type']] ?? $data['document_type']);
+        $data['starting_number'] = max(1, (int) ($request->input('starting_number') ?: 1));
+        $data['prefix_zero'] = $request->has('prefix_zero') ? $request->boolean('prefix_zero') : true;
+
+        $data['restart_rules'] = $this->cleanAndValidateRules($request->input('restart_rules', []), 'restart_rules');
+        $data['prefix_rules'] = $this->cleanAndValidateRules($request->input('prefix_rules', []), 'prefix_rules');
+        $data['suffix_rules'] = $this->cleanAndValidateRules($request->input('suffix_rules', []), 'suffix_rules');
 
         $duplicate = DocumentNumberSeries::query()
             ->where('document_type', $data['document_type'])
@@ -154,5 +174,82 @@ class DocumentNumberSeriesController extends Controller
         }
 
         return $data;
+    }
+
+    protected function cleanAndValidateRules(?array $rules, string $attribute): ?array
+    {
+        if (empty($rules) || ! is_array($rules)) {
+            return null;
+        }
+
+        $cleaned = [];
+        foreach ($rules as $index => $rule) {
+            $from = ! empty($rule['applicable_from']) ? \Illuminate\Support\Carbon::parse($rule['applicable_from'])->toDateString() : null;
+            $to = ! empty($rule['applicable_to']) ? \Illuminate\Support\Carbon::parse($rule['applicable_to'])->toDateString() : null;
+
+            if (! $from) {
+                continue;
+            }
+
+            if ($to && $to < $from) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    "{$attribute}.{$index}.applicable_to" => 'Applicable To must not be earlier than Applicable From.',
+                ]);
+            }
+
+            $entry = [
+                'applicable_from' => $from,
+                'applicable_to' => $to,
+            ];
+
+            if ($attribute === 'restart_rules') {
+                $entry['starting_number'] = max(1, (int) ($rule['starting_number'] ?? 1));
+                $periodicity = strtolower(trim((string) ($rule['periodicity'] ?? 'yearly')));
+                if (! in_array($periodicity, ['daily', 'weekly', 'monthly', 'yearly', 'never'], true)) {
+                    $periodicity = 'yearly';
+                }
+                $entry['periodicity'] = $periodicity;
+            } elseif ($attribute === 'prefix_rules') {
+                $entry['prefix'] = strtoupper(trim((string) ($rule['prefix'] ?? '')));
+            } elseif ($attribute === 'suffix_rules') {
+                $entry['suffix'] = trim((string) ($rule['suffix'] ?? ''));
+            }
+
+            $cleaned[] = $entry;
+        }
+
+        if (empty($cleaned)) {
+            return null;
+        }
+
+        // Validate no overlapping date ranges
+        $count = count($cleaned);
+        for ($i = 0; $i < $count; $i++) {
+            $aFrom = $cleaned[$i]['applicable_from'];
+            $aTo = $cleaned[$i]['applicable_to'] ?? '9999-12-31';
+
+            for ($j = $i + 1; $j < $count; $j++) {
+                $bFrom = $cleaned[$j]['applicable_from'];
+                $bTo = $cleaned[$j]['applicable_to'] ?? '9999-12-31';
+
+                $overlapStart = max($aFrom, $bFrom);
+                $overlapEnd = min($aTo, $bTo);
+
+                if ($overlapStart <= $overlapEnd) {
+                    $label = match ($attribute) {
+                        'restart_rules' => 'Restart numbering',
+                        'prefix_rules' => 'Prefix details',
+                        'suffix_rules' => 'Suffix details',
+                        default => $attribute,
+                    };
+
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        $attribute => "{$label} date ranges must not overlap: {$aFrom} to ".($cleaned[$i]['applicable_to'] ?? 'open')." conflicts with {$bFrom} to ".($cleaned[$j]['applicable_to'] ?? 'open').'.',
+                    ]);
+                }
+            }
+        }
+
+        return $cleaned;
     }
 }

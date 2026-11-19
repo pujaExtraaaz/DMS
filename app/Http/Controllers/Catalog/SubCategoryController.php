@@ -24,8 +24,23 @@ class SubCategoryController extends Controller
 
     public function index(Request $request): View|Response
     {
-        $query = SubCategory::query()->with('category')
-            ->when($request->filled('category_id'), fn ($q) => $q->where('category_id', $request->category_id))
+        $brandId = $request->input('brand_id');
+        $categoryId = $request->input('category_id');
+
+        if (! empty($brandId) && ! empty($categoryId)) {
+            $selectedCategory = Category::find($categoryId);
+            if (! $selectedCategory || (int) $selectedCategory->brand_id !== (int) $brandId) {
+                $categoryId = null;
+            }
+        }
+
+        $query = SubCategory::query()->with(['category.brand', 'category'])
+            ->when($brandId, function ($q) use ($brandId) {
+                $q->whereHas('category', function ($cq) use ($brandId) {
+                    $cq->where('brand_id', $brandId);
+                });
+            })
+            ->when($categoryId, fn ($q) => $q->where('category_id', $categoryId))
             ->when($request->filled('status'), function ($q) use ($request) {
                 if ($request->status === 'active') {
                     $q->where('is_active', true);
@@ -54,12 +69,20 @@ class SubCategoryController extends Controller
 
         $items = $query->paginate(15)->withQueryString();
 
+        $categoriesQuery = Category::where('is_active', true)->orderBy('name');
+        if (! empty($brandId)) {
+            $categoriesQuery->where('brand_id', $brandId);
+        }
+        $categories = $categoriesQuery->get();
+
         return view('masters.sub-categories.index', [
             'items' => $items,
             'search' => $request->string('search'),
             'status' => $request->string('status'),
-            'categoryId' => $request->input('category_id'),
-            'categories' => Category::where('is_active', true)->orderBy('name')->get(),
+            'brandId' => $brandId,
+            'categoryId' => $categoryId,
+            'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'categories' => $categories,
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
         ]);

@@ -30,14 +30,141 @@ class ProductTypeController extends Controller
             return $this->list();
         }
 
+        // 1. Resolve raw filter inputs
+        $rawBrandId = $request->input('brand_id');
+        $rawCategoryId = $request->input('category_id');
+        $rawSubCategoryId = $request->input('sub_category_id', $request->input('subcategory_id'));
+        $rawProductTypeId = $request->input('product_type_id', $request->input('type_id'));
+
+        // 2. Fetch all active brands & validate selected brand
+        $allBrands = Brand::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $brandId = ($rawBrandId && $allBrands->contains('id', (int) $rawBrandId)) ? (int) $rawBrandId : null;
+
+        // 3. Resolve categories belonging to the selected brand (or all active if no brand)
+        $allCategories = Category::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'brand_id']);
+        if ($brandId) {
+            $categoriesForBrand = $allCategories->filter(fn ($c) => (int) $c->brand_id === (int) $brandId);
+            if ($categoriesForBrand->isEmpty()) {
+                $categoryIdsWithProducts = Product::query()
+                    ->where('brand_id', $brandId)
+                    ->whereNotNull('category_id')
+                    ->distinct()
+                    ->pluck('category_id')
+                    ->all();
+                $categoriesForBrand = $allCategories->filter(fn ($c) => in_array($c->id, $categoryIdsWithProducts, true));
+            }
+            $categories = $categoriesForBrand->values();
+        } else {
+            $categories = $allCategories;
+        }
+
+        // Validate and reset category selection if invalid for selected brand
+        $categoryId = ($rawCategoryId && $categories->contains('id', (int) $rawCategoryId)) ? (int) $rawCategoryId : null;
+        if ($rawCategoryId && ! $categoryId) {
+            $rawSubCategoryId = null;
+            $rawProductTypeId = null;
+        }
+
+        // 4. Resolve subcategories belonging to the selected category
+        $allSubCategories = SubCategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'category_id']);
+        if ($categoryId) {
+            $subCategories = $allSubCategories->filter(fn ($sc) => (int) $sc->category_id === (int) $categoryId)->values();
+        } elseif ($brandId) {
+            $categoryIdsForBrand = $categories->pluck('id')->all();
+            $subCategories = $allSubCategories->filter(fn ($sc) => in_array($sc->category_id, $categoryIdsForBrand, true))->values();
+        } else {
+            $subCategories = $allSubCategories;
+        }
+
+        // Validate and reset subcategory selection if invalid for selected category
+        $subCategoryId = ($rawSubCategoryId && $subCategories->contains('id', (int) $rawSubCategoryId)) ? (int) $rawSubCategoryId : null;
+        if ($rawSubCategoryId && ! $subCategoryId) {
+            $rawProductTypeId = null;
+        }
+
+        $selectedSubCategory = $subCategoryId ? SubCategory::query()->find($subCategoryId) : null;
+        $hasHierarchyFilter = (bool) ($brandId || $categoryId || $subCategoryId);
+
+        // 5. Resolve matching product types based on the selected hierarchy
+        $allProductTypes = ProductType::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'code']);
+
+        if ($hasHierarchyFilter) {
+            $typeIdsQuery = Product::query()
+                ->where(function ($q) {
+                    $q->whereNotNull('product_type_id')
+                      ->orWhereNotNull('product_type');
+                })
+                ->when($brandId, fn ($q) => $q->where('brand_id', $brandId))
+                ->when($categoryId, fn ($q) => $q->where('category_id', $categoryId));
+
+            if ($subCategoryId) {
+                $typeIdsQuery->where(function ($q) use ($subCategoryId, $selectedSubCategory, $categoryId) {
+                    $q->where('sub_category_id', $subCategoryId);
+                    if ($selectedSubCategory) {
+                        $name = trim($selectedSubCategory->name);
+                        $q->orWhere(function ($subQ) use ($name, $categoryId) {
+                            $subQ->whereNull('sub_category_id')
+                                ->where(function ($textQ) use ($name) {
+                                    $textQ->where('name', 'like', "%{$name}%")
+                                        ->orWhere('model', 'like', "%{$name}%");
+                                });
+                            if ($categoryId) {
+                                $subQ->where('category_id', $categoryId);
+                            }
+                        });
+                    }
+                });
+            }
+
+            $matchingTypeIds = $typeIdsQuery->distinct()->pluck('product_type_id')->filter()->all();
+            $typesForFilter = $allProductTypes->filter(fn ($pt) => in_array($pt->id, $matchingTypeIds, true))->values();
+            if ($typesForFilter->isEmpty()) {
+                $typesForFilter = $allProductTypes;
+            }
+        } else {
+            $typesForFilter = $allProductTypes;
+        }
+
+        // Validate and reset product type selection if invalid for selected hierarchy
+        $productTypeId = ($rawProductTypeId && $typesForFilter->contains('id', (int) $rawProductTypeId)) ? (int) $rawProductTypeId : null;
+
+        // 6. Build Product Types query with accurate assigned products count under selected hierarchy
         $query = ProductType::query()
-            ->withCount('products')
+            ->withCount(['products' => function ($q) use ($brandId, $categoryId, $subCategoryId, $selectedSubCategory) {
+                $q->when($brandId, fn ($bq) => $bq->where('brand_id', $brandId))
+                  ->when($categoryId, fn ($cq) => $cq->where('category_id', $categoryId));
+
+                if ($subCategoryId) {
+                    $q->where(function ($subQ) use ($subCategoryId, $selectedSubCategory, $categoryId) {
+                        $subQ->where('sub_category_id', $subCategoryId);
+                        if ($selectedSubCategory) {
+                            $name = trim($selectedSubCategory->name);
+                            $subQ->orWhere(function ($textQ) use ($name, $categoryId) {
+                                $textQ->whereNull('sub_category_id')
+                                    ->where(function ($matchQ) use ($name) {
+                                        $matchQ->where('name', 'like', "%{$name}%")
+                                            ->orWhere('model', 'like', "%{$name}%");
+                                    });
+                                if ($categoryId) {
+                                    $textQ->where('category_id', $categoryId);
+                                }
+                            });
+                        }
+                    });
+                }
+            }])
             ->when($request->filled('status'), function ($q) use ($request) {
                 if ($request->status === 'active') {
                     $q->where('is_active', true);
                 } elseif ($request->status === 'inactive') {
                     $q->where('is_active', false);
                 }
+            })
+            ->when($productTypeId, function ($q) use ($productTypeId) {
+                $q->where('id', $productTypeId);
+            })
+            ->when($hasHierarchyFilter && ! $productTypeId && $typesForFilter->isNotEmpty(), function ($q) use ($typesForFilter) {
+                $q->whereIn('id', $typesForFilter->pluck('id'));
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'code', 'description']);
@@ -62,9 +189,74 @@ class ProductTypeController extends Controller
 
         $items = $query->paginate(15)->withQueryString();
 
+        // 7. Build Product Report Query (Matching Products in Master)
+        $productsQuery = Product::query()
+            ->with(['brand', 'category', 'subCategory', 'productType', 'baseUom'])
+            ->when($brandId, fn ($q) => $q->where('brand_id', $brandId))
+            ->when($categoryId, fn ($q) => $q->where('category_id', $categoryId));
+
+        if ($subCategoryId) {
+            $productsQuery->where(function ($q) use ($subCategoryId, $selectedSubCategory, $categoryId) {
+                $q->where('sub_category_id', $subCategoryId);
+                if ($selectedSubCategory) {
+                    $name = trim($selectedSubCategory->name);
+                    $q->orWhere(function ($subQ) use ($name, $categoryId) {
+                        $subQ->whereNull('sub_category_id')
+                            ->where(function ($textQ) use ($name) {
+                                $textQ->where('name', 'like', "%{$name}%")
+                                    ->orWhere('model', 'like', "%{$name}%");
+                            });
+                        if ($categoryId) {
+                            $subQ->where('category_id', $categoryId);
+                        }
+                    });
+                }
+            });
+        }
+
+        if ($productTypeId) {
+            $productsQuery->where(function ($q) use ($productTypeId) {
+                $q->where('product_type_id', $productTypeId);
+                $pt = ProductType::query()->find($productTypeId);
+                if ($pt) {
+                    $q->orWhereRaw('LOWER(TRIM(COALESCE(product_type, ""))) = ?', [mb_strtolower(trim($pt->name))]);
+                }
+            });
+        } else {
+            // Requirement C: Products without an assigned product type must not appear in filtered results
+            $productsQuery->where(function ($q) {
+                $q->whereNotNull('product_type_id')
+                  ->orWhereNotNull('product_type');
+            });
+        }
+
+        if ($request->filled('search')) {
+            $searchTerm = trim((string) $request->input('search'));
+            $productsQuery->where(function ($q) use ($searchTerm) {
+                $q->where('name', 'like', "%{$searchTerm}%")
+                  ->orWhere('sku', 'like', "%{$searchTerm}%")
+                  ->orWhere('model', 'like', "%{$searchTerm}%");
+            });
+        }
+
+        if ($request->filled('status')) {
+            if ($request->status === 'active') {
+                $productsQuery->where('is_active', true);
+            } elseif ($request->status === 'inactive') {
+                $productsQuery->where('is_active', false);
+            }
+        }
+
+        $reportProductsCount = (clone $productsQuery)->count();
+        $reportProducts = $productsQuery->orderBy('name')->paginate(15, ['*'], 'products_page')->withQueryString();
+
         $totalCount = ProductType::count();
         $activeCount = ProductType::where('is_active', true)->count();
         $inactiveCount = ProductType::where('is_active', false)->count();
+        $totalAssignedProducts = Product::where(function ($q) {
+            $q->whereNotNull('product_type_id')
+              ->orWhereNotNull('product_type');
+        })->count();
 
         return view('masters.product-types.index', [
             'items' => $items,
@@ -77,6 +269,21 @@ class ProductTypeController extends Controller
             'inactiveCount' => $inactiveCount,
             'previewCode' => CodeGenerator::forProductType(),
             'catalog' => $this->catalogChoices(),
+            // Cascading filters data
+            'brands' => $allBrands,
+            'categories' => $categories,
+            'subCategories' => $subCategories,
+            'typesForFilter' => $typesForFilter,
+            'brandId' => $brandId,
+            'categoryId' => $categoryId,
+            'subCategoryId' => $subCategoryId,
+            'productTypeId' => $productTypeId,
+            'hasHierarchyFilter' => $hasHierarchyFilter,
+            'selectedSubCategory' => $selectedSubCategory,
+            // Report data
+            'reportProducts' => $reportProducts,
+            'reportProductsCount' => $reportProductsCount,
+            'totalAssignedProducts' => $totalAssignedProducts,
         ]);
     }
 
@@ -520,17 +727,51 @@ class ProductTypeController extends Controller
      */
     protected function catalogChoices(): array
     {
+        $subCategories = SubCategory::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'category_id']);
+        $subCatsByCategory = $subCategories->groupBy('category_id');
+
+        $products = Product::query()
+            ->where(function ($q) {
+                $q->whereNotNull('product_type_id')
+                  ->orWhereNotNull('product_type');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'sku', 'model', 'brand_id', 'category_id', 'sub_category_id', 'product_type_id', 'product_type'])
+            ->map(function ($p) use ($subCatsByCategory) {
+                $subId = $p->sub_category_id;
+                if (! $subId && $p->category_id && isset($subCatsByCategory[$p->category_id])) {
+                    foreach ($subCatsByCategory[$p->category_id] as $sc) {
+                        if (stripos($p->name, $sc->name) !== false || ($p->model && stripos($p->model, $sc->name) !== false)) {
+                            $subId = $sc->id;
+                            break;
+                        }
+                    }
+                }
+                return [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'sku' => $p->sku ?: '',
+                    'brand_id' => $p->brand_id,
+                    'category_id' => $p->category_id,
+                    'sub_category_id' => $subId,
+                    'product_type_id' => $p->product_type_id,
+                ];
+            });
+
+        $links = $products->map(fn ($p) => [
+            'product_type_id' => $p['product_type_id'],
+            'brand_id' => $p['brand_id'],
+            'category_id' => $p['category_id'],
+            'sub_category_id' => $p['sub_category_id'],
+        ])->unique()->values();
+
         return [
-            'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
-            'categories' => Category::query()->orderBy('name')->get(['id', 'name', 'brand_id']),
-            'subCategories' => SubCategory::query()->orderBy('name')->get(['id', 'name', 'category_id']),
-            'types' => ProductType::query()->orderBy('name')->get(['id', 'name', 'track_serial']),
-            'links' => Product::query()
-                ->whereNotNull('product_type_id')
-                ->get(['product_type_id', 'brand_id', 'category_id', 'sub_category_id']),
-            'products' => Product::query()
-                ->orderBy('name')
-                ->get(['id', 'name', 'sku', 'brand_id', 'category_id', 'sub_category_id', 'product_type_id']),
+            'brands' => Brand::query()->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'categories' => Category::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'brand_id']),
+            'subCategories' => $subCategories,
+            'types' => ProductType::query()->where('is_active', true)->orderBy('name')->get(['id', 'name', 'track_serial']),
+            'links' => $links,
+            'products' => $products,
         ];
     }
 }
