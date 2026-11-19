@@ -217,10 +217,30 @@ class Ledger extends AccountingModel
     {
         $group = $this->accountGroup;
         $guard = 0;
+        // Name hints cover Tally-imported groups that never received standard codes.
+        $nameHints = [
+            // Broader hints so Tally subgroups / alternate spellings still classify for voucher rules.
+            'CREDITORS' => ['sundry creditor', 'creditor'],
+            'DEBTORS' => ['sundry debtor', 'debtor'],
+            'PURCHASE' => ['purchase account', 'purchase accounts'],
+            'SALES' => ['sales account', 'sales accounts'],
+            'DUTIES' => ['duties', 'duties & taxes', 'duties and taxes'],
+            'BANK' => ['bank account', 'bank od', 'bank occ'],
+            'CASH' => ['cash-in-hand', 'cash in hand'],
+        ];
 
         while ($group && $guard < 50) {
-            if (in_array($group->code, $codes, true)) {
+            if ($group->code && in_array($group->code, $codes, true)) {
                 return true;
+            }
+
+            $groupName = strtolower((string) $group->name);
+            foreach ($codes as $code) {
+                foreach ($nameHints[$code] ?? [] as $hint) {
+                    if (str_contains($groupName, $hint)) {
+                        return true;
+                    }
+                }
             }
 
             $group = $group->parent;

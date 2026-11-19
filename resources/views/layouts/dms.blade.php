@@ -69,8 +69,8 @@
     <div
         x-data="{
             sidebarOpen: false,
-            // In Accounting Books, always start collapsed (server also paints lg:w-[72px]).
-            sidebarCollapsed: {{ books_show_aside() ? 'true' : 'localStorage.getItem(\'dmsSidebarCollapsed\') === \'true\'' }},
+            // Keep DMS sidebar expanded when Accounting Books aside opens (secondary panel).
+            sidebarCollapsed: {{ books_show_aside() ? 'false' : 'localStorage.getItem(\'dmsSidebarCollapsed\') === \'true\'' }},
             sidebarAnimate: false,
             booksAsideCollapsed: false,
             hasBooksAside: {{ books_show_aside() ? 'true' : 'false' }},
@@ -99,11 +99,11 @@
             },
             init() {
                 this.booksAsideCollapsed = false;
-                const stored = localStorage.getItem('dmsSidebarCollapsed');
                 if (this.hasBooksAside) {
-                    this.sidebarCollapsed = stored === null ? true : stored === 'true';
+                    // Primary nav stays labeled; books-aside is the secondary panel.
+                    this.sidebarCollapsed = false;
                 } else {
-                    this.sidebarCollapsed = stored === 'true';
+                    this.sidebarCollapsed = localStorage.getItem('dmsSidebarCollapsed') === 'true';
                     this.sidebarAnimate = true;
                 }
 

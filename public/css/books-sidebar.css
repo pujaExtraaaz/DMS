@@ -24,12 +24,47 @@
   aside.dms-sidebar.books-rail-collapsed {
     width: 72px;
     min-width: 72px;
+    max-width: 72px;
+    overflow-x: hidden;
   }
 
   aside.dms-sidebar.books-rail-open {
     width: 16rem;
     min-width: 16rem;
   }
+}
+
+/* Books pages: keep rail icons capped even without layouts/dms inline styles */
+aside.dms-sidebar svg {
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+  max-width: 1.15rem !important;
+  max-height: 1.15rem !important;
+  flex-shrink: 0 !important;
+}
+aside.dms-sidebar .sidebar-item-icon {
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+  max-width: 1.15rem !important;
+  max-height: 1.15rem !important;
+}
+aside.dms-sidebar .sidebar-section-icon {
+  width: 1rem !important;
+  height: 1rem !important;
+  max-width: 1rem !important;
+  max-height: 1rem !important;
+}
+aside.dms-sidebar .sidebar-chevron {
+  width: 0.875rem !important;
+  height: 0.875rem !important;
+  max-width: 0.875rem !important;
+  max-height: 0.875rem !important;
+}
+
+/* Prevent expanded section HTML from painting inside the 80px rail before Alpine */
+aside.dms-sidebar.books-rail-collapsed [x-show="!$root.sidebarCollapsed"],
+aside.dms-sidebar[data-collapsed="true"] [x-show="!$root.sidebarCollapsed"] {
+  display: none !important;
 }
 
 .books-aside.is-collapsed {

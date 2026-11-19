@@ -9,6 +9,19 @@ body.books-shell .content.books-dms {
   padding: 0 !important;
   overflow: visible !important;
   background: transparent !important;
+  position: relative;
+  z-index: 0;
+}
+body.books-shell .books-aside {
+  position: relative;
+  z-index: 30;
+  flex-shrink: 0;
+}
+body.books-shell > #app > .relative.z-0.flex.flex-1,
+body.books-shell #app > div.relative.z-0 {
+  min-width: 0;
+  position: relative;
+  z-index: 0;
 }
 .books-dms {
   --books-accent: #4f46e5;

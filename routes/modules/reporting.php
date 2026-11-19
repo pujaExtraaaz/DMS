@@ -11,7 +11,9 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->name('dashboard');
 
 Route::prefix('reports')->name('reports.')->middleware('role_or_permission:super-admin|reports.view|reports.create|reports.edit|reports.manage')->group(function () {
+    Route::get('/quotations', [ReportController::class, 'quotations'])->name('quotations');
     Route::get('/sales', [ReportController::class, 'sales'])->name('sales');
+    Route::get('/purchase-orders', [ReportController::class, 'purchaseOrders'])->name('purchase-orders');
     Route::get('/stock', [ReportController::class, 'stock'])->name('stock');
     Route::get('/payments', [ReportController::class, 'payments'])->name('payments');
     Route::get('/outstanding', [ReportController::class, 'outstanding'])->name('outstanding');

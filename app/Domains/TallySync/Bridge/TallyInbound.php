@@ -54,6 +54,16 @@ class TallyInbound
 
     private int $cursorStart = 0;
 
+    /** When true (artisan --force), Tally wins over localNewer master conflicts. */
+    private bool $forceOverwrite = false;
+
+    public function setForceOverwrite(bool $force): self
+    {
+        $this->forceOverwrite = $force;
+
+        return $this;
+    }
+
     /**
      * @param  'dms'|'books'  $target
      * @return array{created:int, updated:int, conflicts:int, skipped:int, alter_id:int}
@@ -72,23 +82,11 @@ class TallyInbound
 
         // Books-only masters are not imported into DMS. Cursor still advances so polls stay incremental.
         // DMS keys mirror outbound masters + vouchers for full connector bidirectional sync.
-        $booksOnly = ['groups', 'cost_categories', 'voucher_types', 'bank_accounts'];
-        $dmsKeys = ['stock_groups', 'units', 'godowns', 'ledgers', 'stock_items', 'cost_centres', 'vouchers'];
-        $booksKeys = ['groups', 'stock_groups', 'units', 'godowns', 'cost_categories', 'cost_centres', 'ledgers', 'bank_accounts', 'voucher_types', 'stock_items', 'vouchers'];
+        $booksOnly = ['groups', 'cost_categories', 'voucher_types', 'bank_accounts', 'currencies'];
+        $dmsKeys = ['stock_groups', 'units', 'godowns', 'ledgers', 'stock_items', 'cost_centres', 'vouchers', 'pay_heads'];
+        $booksKeys = ['groups', 'stock_groups', 'units', 'godowns', 'cost_categories', 'cost_centres', 'ledgers', 'bank_accounts', 'voucher_types', 'stock_items', 'vouchers', 'currencies', 'pay_heads'];
 
         $xml = self::sanitizeTallyXml($xml);
-
-        $dom = new \DOMDocument;
-        $loaded = @$dom->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT | LIBXML_PARSEHUGE);
-        if (! $loaded) {
-            $this->conflict($key, null, null, 'Tally XML parse failed (often &#4; Primary markers). Payload was sanitized but still invalid.');
-            // Still advance chunked windows so one bad slice cannot block the rest of the company forever.
-            if (in_array($key, ['vouchers', 'ledgers', 'stock_items', 'groups'], true)) {
-                return $this->finish($key);
-            }
-
-            return $this->counts + ['alter_id' => $this->maxAlter];
-        }
 
         $tag = match ($key) {
             'groups' => 'GROUP',
@@ -97,10 +95,11 @@ class TallyInbound
             'godowns' => 'GODOWN',
             'cost_categories' => 'COSTCATEGORY',
             'cost_centres' => 'COSTCENTRE',
-            'ledgers', 'bank_accounts' => 'LEDGER',
+            'ledgers', 'bank_accounts', 'pay_heads' => 'LEDGER',
             'voucher_types' => 'VOUCHERTYPE',
             'stock_items' => 'STOCKITEM',
             'vouchers' => 'VOUCHER',
+            'currencies' => 'CURRENCY',
             default => '',
         };
 
@@ -123,50 +122,127 @@ class TallyInbound
             return $this->finish($key);
         }
 
+        $dom = new \DOMDocument;
+        $loaded = @$dom->loadXML($xml, LIBXML_NONET | LIBXML_COMPACT | LIBXML_PARSEHUGE);
+        if (! $loaded) {
+            // Truncated / malformed exports (common on large Tally ZIP dumps): import complete entity blocks.
+            return $this->applyChunked($key, $tag, $xml, $target, $organization, $booksCompany, $booksOnly, $dmsKeys, $booksKeys);
+        }
+
         foreach ($dom->getElementsByTagName($tag) as $node) {
             if (! $node instanceof \DOMElement || $node->parentNode?->nodeName === $tag || $node->parentNode?->nodeName === 'CMPINFO') {
                 continue;
             }
-            $alter = (int) $this->text($node, 'ALTERID');
-            // Voucher cursors are calendar Ymd values — never advance them from Tally AlterID.
-            if ($key !== 'vouchers') {
-                $this->maxAlter = max($this->maxAlter, $alter);
-            }
+            $this->importNode($key, $node, $target, $organization, $booksCompany, $booksOnly, $dmsKeys, $booksKeys);
+        }
 
-            if ($target === 'dms') {
-                if (in_array($key, $booksOnly, true) || ! in_array($key, $dmsKeys, true)) {
-                    $this->counts['skipped']++;
+        return $this->finish($key);
+    }
 
-                    continue;
-                }
+    /**
+     * Import complete top-level entity XML blocks when the full document cannot be parsed.
+     *
+     * @param  list<string>  $booksOnly
+     * @param  list<string>  $dmsKeys
+     * @param  list<string>  $booksKeys
+     * @return array{created:int, updated:int, conflicts:int, skipped:int, alter_id:int}
+     */
+    private function applyChunked(
+        string $key,
+        string $tag,
+        string $xml,
+        string $target,
+        ?\App\Domains\Organization\Models\Company $organization,
+        ?Company $booksCompany,
+        array $booksOnly,
+        array $dmsKeys,
+        array $booksKeys,
+    ): array {
+        $pattern = '/<'.preg_quote($tag, '/').'\b[^>]*>.*?<\/'.preg_quote($tag, '/').'>/is';
+        $matched = preg_match_all($pattern, $xml, $matches);
+        if (! $matched) {
+            $this->conflict($key, null, null, 'Tally XML parse failed and no complete <'.$tag.'> blocks could be recovered.');
 
-                try {
-                    TallyAutoEnqueueObserver::withoutSync(function () use ($key, $node, $organization) {
-                        $this->oneDms($key, $node, $organization);
-                    });
-                } catch (\Throwable $exception) {
-                    $this->conflict($key, $this->text($node, 'GUID'), $this->text($node, 'NAME') ?: $node->getAttribute('NAME'), $exception->getMessage());
-                }
+            return $this->finish($key);
+        }
+
+        $this->conflict(
+            $key,
+            null,
+            null,
+            'Full XML document was malformed/truncated; recovered '.$matched.' complete <'.$tag.'> block(s) and imported those.'
+        );
+
+        foreach ($matches[0] as $block) {
+            $wrapper = '<?xml version="1.0" encoding="UTF-8"?><ROOT>'.$block.'</ROOT>';
+            $piece = new \DOMDocument;
+            if (! @$piece->loadXML($wrapper, LIBXML_NONET | LIBXML_COMPACT | LIBXML_PARSEHUGE)) {
+                $this->counts['conflicts']++;
 
                 continue;
             }
+            $node = $piece->getElementsByTagName($tag)->item(0);
+            if (! $node instanceof \DOMElement) {
+                continue;
+            }
+            $this->importNode($key, $node, $target, $organization, $booksCompany, $booksOnly, $dmsKeys, $booksKeys);
+        }
 
-            if (! in_array($key, $booksKeys, true)) {
+        return $this->finish($key);
+    }
+
+    /**
+     * @param  list<string>  $booksOnly
+     * @param  list<string>  $dmsKeys
+     * @param  list<string>  $booksKeys
+     */
+    private function importNode(
+        string $key,
+        \DOMElement $node,
+        string $target,
+        ?\App\Domains\Organization\Models\Company $organization,
+        ?Company $booksCompany,
+        array $booksOnly,
+        array $dmsKeys,
+        array $booksKeys,
+    ): void {
+        $alter = (int) $this->text($node, 'ALTERID');
+        // Voucher cursors are calendar Ymd values — never advance them from Tally AlterID.
+        if ($key !== 'vouchers') {
+            $this->maxAlter = max($this->maxAlter, $alter);
+        }
+
+        if ($target === 'dms') {
+            if (in_array($key, $booksOnly, true) || ! in_array($key, $dmsKeys, true)) {
                 $this->counts['skipped']++;
 
-                continue;
+                return;
             }
 
             try {
-                TallyAutoEnqueueObserver::withoutSync(function () use ($key, $node, $booksCompany) {
-                    $this->one($key, $node, $booksCompany);
+                TallyAutoEnqueueObserver::withoutSync(function () use ($key, $node, $organization) {
+                    $this->oneDms($key, $node, $organization);
                 });
             } catch (\Throwable $exception) {
                 $this->conflict($key, $this->text($node, 'GUID'), $this->text($node, 'NAME') ?: $node->getAttribute('NAME'), $exception->getMessage());
             }
+
+            return;
         }
 
-        return $this->finish($key);
+        if (! in_array($key, $booksKeys, true)) {
+            $this->counts['skipped']++;
+
+            return;
+        }
+
+        try {
+            TallyAutoEnqueueObserver::withoutSync(function () use ($key, $node, $booksCompany) {
+                $this->one($key, $node, $booksCompany);
+            });
+        } catch (\Throwable $exception) {
+            $this->conflict($key, $this->text($node, 'GUID'), $this->text($node, 'NAME') ?: $node->getAttribute('NAME'), $exception->getMessage());
+        }
     }
 
     private function oneDms(string $key, \DOMElement $node, \App\Domains\Organization\Models\Company $organization): void
@@ -191,6 +267,7 @@ class TallyInbound
             'ledgers' => $this->dmsCustomer($organization, $node, $name),
             'stock_items' => $this->dmsProduct($organization, $node, $name),
             'cost_centres' => $this->dmsBranch($organization, $node, $name),
+            'pay_heads' => $this->dmsPayHead($organization, $node, $name),
             default => $this->counts['skipped']++,
         };
     }
@@ -448,7 +525,8 @@ class TallyInbound
     private function dmsCustomer(\App\Domains\Organization\Models\Company $organization, \DOMElement $node, string $name): void
     {
         $parent = strtolower($this->text($node, 'PARENT'));
-        if (! str_contains($parent, 'debtor') && ! str_contains($parent, 'creditor')) {
+        $role = $this->partyRoleFromParent($parent);
+        if ($role === null) {
             $this->counts['skipped']++;
 
             return;
@@ -456,13 +534,13 @@ class TallyInbound
 
         $customer = \App\Domains\Master\Models\Customer::query()
             ->where('company_id', $organization->id)
-            ->where('name', $name)
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
             ->first();
 
         $attributes = [
             'company_id' => $organization->id,
             'name' => $name,
-            'party_type' => str_contains($parent, 'creditor')
+            'party_type' => $role === 'supplier'
                 ? \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS
                 : \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_DEBTORS,
             'phone' => $this->truncateField($this->firstPhone($this->text($node, 'LEDGERPHONE')), 20),
@@ -548,20 +626,107 @@ class TallyInbound
 
         $attrs = [
             'customer_id' => $customer->id,
-            'bank_name' => $bankName ?: 'Bank',
-            'account_number' => $account ?: null,
-            'ifsc_code' => $ifsc ?: null,
-            'account_holder_name' => $customer->name,
+            'bank_name' => $this->truncateField($bankName ?: 'Bank', 120) ?: 'Bank',
+            'account_number' => $this->truncateField($account ?: null, 64),
+            'ifsc_code' => $this->truncateField($ifsc !== '' ? strtoupper(preg_replace('/\s+/', '', $ifsc) ?? $ifsc) : null, 20),
+            'account_holder_name' => $this->truncateField($customer->name, 120),
             'is_primary' => true,
             'is_active' => true,
         ];
 
-        if ($existing) {
-            $existing->fill($attrs)->save();
+        try {
+            if ($existing) {
+                $existing->fill($attrs)->save();
+            } else {
+                \App\Domains\Master\Models\PartyBankAccount::query()->create($attrs);
+                $this->counts['created']++;
+            }
+        } catch (\Throwable $exception) {
+            $this->conflict('ledgers', $this->text($node, 'GUID'), $customer->name, 'Bank details skipped: '.$exception->getMessage());
+        }
+    }
+
+    private function dmsPayHead(\App\Domains\Organization\Models\Company $organization, \DOMElement $node, string $name): void
+    {
+        $parent = strtolower($this->text($node, 'PARENT'));
+        // Payroll export LEDGERs are pay-head candidates; only skip clear party/cash ledgers.
+        if ($this->partyRoleFromParent($parent) !== null || str_contains($parent, 'bank') || str_contains($parent, 'cash')) {
+            $this->counts['skipped']++;
+
+            return;
+        }
+        if (! $this->looksLikePayHead($parent, $name) && ! str_contains($parent, 'indirect') && ! str_contains($parent, 'direct')) {
+            $this->counts['skipped']++;
+
+            return;
+        }
+
+        $type = str_contains($parent, 'deduct') || str_contains(strtolower($name), 'deduct') || str_contains(strtolower($name), 'pf') || str_contains(strtolower($name), 'esi')
+            ? \App\Domains\Hrms\Models\PayHead::TYPE_DEDUCTION
+            : \App\Domains\Hrms\Models\PayHead::TYPE_EARNING;
+
+        $code = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', $name) ?: 'PH', 0, 20));
+        $payHead = \App\Domains\Hrms\Models\PayHead::query()
+            ->where('company_id', $organization->id)
+            ->where(function ($q) use ($name, $code) {
+                $q->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+                    ->orWhere('code', $code);
+            })
+            ->first();
+
+        $attrs = [
+            'company_id' => $organization->id,
+            'name' => $name,
+            'code' => $code,
+            'type' => $type,
+            'is_system' => false,
+            'is_active' => true,
+        ];
+
+        if ($payHead) {
+            $payHead->fill($attrs)->save();
+            $this->counts['updated']++;
         } else {
-            \App\Domains\Master\Models\PartyBankAccount::query()->create($attrs);
+            \App\Domains\Hrms\Models\PayHead::query()->create($attrs);
             $this->counts['created']++;
         }
+    }
+
+    private function partyRoleFromParent(string $parent): ?string
+    {
+        $parent = strtolower(trim($parent));
+        if ($parent === '') {
+            return null;
+        }
+        if (str_contains($parent, 'creditor') || str_contains($parent, 'payable') || str_contains($parent, 'supplier')) {
+            return 'supplier';
+        }
+        if (str_contains($parent, 'debtor') || str_contains($parent, 'receivable') || str_contains($parent, 'customer')) {
+            return 'customer';
+        }
+
+        return null;
+    }
+
+    private function looksLikePayHead(string $parent, string $name): bool
+    {
+        $hay = strtolower($parent.' '.$name);
+
+        return str_contains($hay, 'pay head')
+            || str_contains($hay, 'payhead')
+            || str_contains($hay, 'earning')
+            || str_contains($hay, 'deduction')
+            || str_contains($hay, 'salary')
+            || str_contains($hay, 'payroll')
+            || str_contains($hay, 'basic')
+            || str_contains($hay, 'allowance')
+            || str_contains($hay, 'provident')
+            || str_contains($hay, ' employee ')
+            || str_contains($hay, 'esi')
+            || str_contains($hay, 'pf ')
+            || str_ends_with($hay, ' pf')
+            || str_contains($hay, 'gratuity')
+            || str_contains($hay, 'bonus');
     }
 
     private function dmsProduct(\App\Domains\Organization\Models\Company $organization, \DOMElement $node, string $name): void
@@ -773,8 +938,10 @@ class TallyInbound
             'cost_categories' => $this->named($company, CostCategory::class, 'books_cost_category', $node, $name, []),
             'cost_centres' => $this->costCentre($company, $node, $name),
             'ledgers', 'bank_accounts' => $this->ledger($company, $node, $name),
+            'pay_heads' => $this->booksPayHead($company, $node, $name),
             'voucher_types' => $this->voucherTypeMaster($company, $node, $name),
             'stock_items' => $this->stockItem($company, $node, $name),
+            'currencies' => $this->currency($company, $node, $name),
             'vouchers' => $this->voucherOrStockJournal($company, $node),
             default => null,
         };
@@ -799,12 +966,134 @@ class TallyInbound
             default => AccountNature::Liability,
         };
 
-        return $this->named($company, AccountGroup::class, 'books_group', $node, $name, [
+        $values = [
             'parent_id' => $this->parentId(AccountGroup::class, $company, $this->text($node, 'PARENT')),
             'nature' => $nature,
             'affects_gross_profit' => $this->yes($this->text($node, 'AFFECTSGROSSPROFIT')),
             'is_active' => true,
-        ]);
+        ];
+        $code = $this->inferStandardGroupCode($name);
+        if ($code !== null) {
+            $values['code'] = $code;
+        }
+
+        return $this->named($company, AccountGroup::class, 'books_group', $node, $name, $values);
+    }
+
+    private function inferStandardGroupCode(string $name): ?string
+    {
+        $n = strtolower(trim(preg_replace('/\s+/', ' ', $name) ?? $name));
+
+        return match (true) {
+            str_contains($n, 'sundry creditor') || ($n !== 'creditors' && str_ends_with($n, 'creditors')) || $n === 'creditors' => 'CREDITORS',
+            str_contains($n, 'sundry debtor') || ($n !== 'debtors' && str_ends_with($n, 'debtors')) || $n === 'debtors' => 'DEBTORS',
+            str_contains($n, 'purchase account') => 'PURCHASE',
+            str_contains($n, 'sales account') => 'SALES',
+            str_contains($n, 'duties') && str_contains($n, 'tax') => 'DUTIES',
+            $n === 'duties & taxes' || $n === 'duties and taxes' => 'DUTIES',
+            str_contains($n, 'bank account') || str_contains($n, 'bank od') || str_contains($n, 'bank occ') => 'BANK',
+            str_contains($n, 'cash-in-hand') || str_contains($n, 'cash in hand') => 'CASH',
+            str_contains($n, 'stock-in-hand') || str_contains($n, 'stock in hand') => 'STOCK',
+            str_contains($n, 'fixed asset') => 'FIXED_ASSETS',
+            str_contains($n, 'capital account') => 'CAPITAL',
+            default => null,
+        };
+    }
+
+    private function currency(Company $company, \DOMElement $node, string $name): ?\Tally\Models\Currency
+    {
+        $code = strtoupper(trim($this->text($node, 'ORIGINALNAME') ?: $this->text($node, 'MAILINGNAME') ?: $name));
+        $code = preg_replace('/[^A-Z0-9]/', '', $code) ?: 'INR';
+        $code = substr($code, 0, 10);
+        $symbol = $this->text($node, 'EXPANDEDSYMBOL') ?: $this->text($node, 'SYMBOL') ?: $code;
+        $decimals = (int) ($this->text($node, 'DECIMALPLACES') ?: 2);
+        $isBase = $this->yes($this->text($node, 'ISUPDATINGCOMPANYINFO')) || strtoupper($code) === 'INR';
+
+        $existing = \Tally\Models\Currency::query()
+            ->where('company_id', $company->id)
+            ->where(function ($q) use ($name, $code) {
+                $q->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+                    ->orWhere('code', $code);
+            })
+            ->first();
+
+        $attrs = [
+            'company_id' => $company->id,
+            'name' => $name !== '' ? $name : $code,
+            'code' => $code,
+            'symbol' => $this->truncateField($symbol, 16) ?: $code,
+            'decimal_places' => max(0, min(6, $decimals)),
+            'exchange_rate' => 1,
+            'is_base' => $isBase,
+        ];
+
+        if ($existing) {
+            $existing->fill($attrs)->save();
+            $this->counts['updated']++;
+
+            return $existing;
+        }
+
+        $created = \Tally\Models\Currency::query()->create($attrs);
+        $this->counts['created']++;
+
+        return $created;
+    }
+
+    private function booksPayHead(Company $company, \DOMElement $node, string $name): ?\Tally\Models\PayHead
+    {
+        $parent = strtolower($this->text($node, 'PARENT'));
+        if ($this->partyRoleFromParent($parent) !== null || str_contains($parent, 'bank') || str_contains($parent, 'cash')) {
+            $this->counts['skipped']++;
+
+            return null;
+        }
+        if (! $this->looksLikePayHead($parent, $name) && ! str_contains($parent, 'indirect') && ! str_contains($parent, 'direct')) {
+            $this->counts['skipped']++;
+
+            return null;
+        }
+
+        $nature = str_contains($parent, 'deduct') || str_contains(strtolower($name), 'deduct') ? 'deduction' : 'earning';
+        // acct_pay_heads.ledger_id is NOT NULL — link (or create) the matching Books ledger.
+        $ledger = $this->findLedgerByName($company, $name);
+        if (! $ledger) {
+            $ledger = $this->ledger($company, $node, $name);
+        }
+        if (! $ledger) {
+            $this->conflict('pay_heads', $this->text($node, 'GUID'), $name, 'Pay head skipped: matching ledger could not be created.');
+            $this->counts['skipped']++;
+
+            return null;
+        }
+
+        $existing = \Tally\Models\PayHead::query()
+            ->where('company_id', $company->id)
+            ->where(function ($q) use ($name, $ledger) {
+                $q->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+                    ->orWhere('ledger_id', $ledger->id);
+            })
+            ->first();
+        $attrs = [
+            'company_id' => $company->id,
+            'ledger_id' => $ledger->id,
+            'name' => $name,
+            'nature' => $nature,
+            'calculation' => 'flat',
+            'rate_or_amount' => abs($this->leadingNumber($this->text($node, 'OPENINGBALANCE'))),
+        ];
+
+        if ($existing) {
+            $existing->fill($attrs)->save();
+            $this->counts['updated']++;
+
+            return $existing;
+        }
+
+        $created = \Tally\Models\PayHead::query()->create($attrs);
+        $this->counts['created']++;
+
+        return $created;
     }
 
     private function unit(Company $company, \DOMElement $node, string $name): Unit
@@ -838,10 +1127,29 @@ class TallyInbound
     private function ledger(Company $company, \DOMElement $node, string $name): ?Ledger
     {
         $parentName = $this->text($node, 'PARENT') ?: 'Primary';
+        $parentCode = $this->inferStandardGroupCode($parentName);
+        $parentNature = match ($parentCode) {
+            'CREDITORS', 'CAPITAL' => AccountNature::Liability,
+            'DEBTORS', 'BANK', 'CASH', 'STOCK', 'FIXED_ASSETS' => AccountNature::Asset,
+            'PURCHASE' => AccountNature::Expense,
+            'SALES' => AccountNature::Income,
+            'DUTIES' => AccountNature::Liability,
+            default => AccountNature::Asset,
+        };
         $parent = AccountGroup::query()->firstOrCreate(
             ['company_id' => $company->id, 'name' => $parentName],
-            ['nature' => AccountNature::Asset, 'is_active' => true, 'sort_order' => 0]
+            [
+                'nature' => $parentNature,
+                'is_active' => true,
+                'sort_order' => 0,
+                'code' => $parentCode,
+            ]
         );
+        if ($parentCode && ! $parent->code) {
+            // Fill missing standard codes without renaming system groups that already have one.
+            $parent->code = $parentCode;
+            $parent->save();
+        }
         $opening = (float) str_replace(',', '', $this->text($node, 'OPENINGBALANCE'));
         $gst = strtolower($this->text($node, 'GSTREGISTRATIONTYPE'));
         $gstType = match (true) {
@@ -874,12 +1182,14 @@ class TallyInbound
         ]);
 
         $this->bankAccount($ledger, $node);
+        $this->rememberLedgerOpening($ledger);
 
         $parentLower = strtolower($parentName);
-        if (str_contains($parentLower, 'debtor') || str_contains($parentLower, 'creditor')) {
+        $partyRole = $this->partyRoleFromParent($parentLower);
+        if ($partyRole !== null) {
             $party = Party::query()->firstOrNew(['company_id' => $company->id, 'ledger_id' => $ledger->id]);
             $party->fill([
-                'type' => str_contains($parentLower, 'creditor') ? 'supplier' : 'customer',
+                'type' => $partyRole === 'supplier' ? 'supplier' : 'customer',
                 'legal_name' => $name,
                 'phone' => $ledger->phone,
                 'email' => $ledger->email,
@@ -900,6 +1210,24 @@ class TallyInbound
         return $ledger;
     }
 
+    private function rememberLedgerOpening(Ledger $ledger): void
+    {
+        $year = FinancialYear::query()
+            ->where('company_id', $ledger->company_id)
+            ->orderBy('start_date')
+            ->orderBy('id')
+            ->first();
+        if (! $year) {
+            return;
+        }
+
+        try {
+            app(\Tally\Accounting\LedgerOpeningBook::class)->remember($ledger, $year);
+        } catch (\Throwable $exception) {
+            $this->conflict('ledgers', null, $ledger->name, 'Opening balance row skipped: '.$exception->getMessage());
+        }
+    }
+
     private function stockItem(Company $company, \DOMElement $node, string $name): Product
     {
         $unitName = $this->text($node, 'BASEUNITS') ?: 'Nos';
@@ -916,36 +1244,65 @@ class TallyInbound
             ]);
         }
         $groupName = $this->text($node, 'PARENT') ?: 'Primary';
-        $groupId = ProductGroup::query()->firstOrCreate(
-            ['company_id' => $company->id, 'name' => $groupName],
-            ['is_active' => true]
-        )->id;
+        try {
+            $groupId = ProductGroup::query()->firstOrCreate(
+                ['company_id' => $company->id, 'name' => $groupName],
+                ['is_active' => true]
+            )->id;
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            $groupId = (int) ProductGroup::query()
+                ->where('company_id', $company->id)
+                ->whereRaw('LOWER(name) = ?', [mb_strtolower($groupName)])
+                ->value('id');
+            if ($groupId <= 0) {
+                throw new \RuntimeException('Product group collision for '.$groupName.' could not be recovered.');
+            }
+        }
         $opening = $this->leadingNumber($this->text($node, 'OPENINGBALANCE'));
+        $openingRate = $this->leadingNumber($this->text($node, 'OPENINGRATE'));
+        $purchaseRate = $this->leadingNumber($this->text($node, 'STANDARDCOST'));
+        $salesRate = $this->leadingNumber($this->text($node, 'STANDARDPRICE'));
+        if ($purchaseRate <= 0 && $openingRate > 0) {
+            $purchaseRate = $openingRate;
+        }
+        if ($salesRate <= 0 && $openingRate > 0) {
+            $salesRate = $openingRate;
+        }
         $supply = stripos($this->text($node, 'GSTTYPEOFSUPPLY'), 'service') !== false ? 'service' : 'goods';
-        [$hsnId, $taxRateId] = $this->resolveHsnAndTax($company, $node, $supply);
-
-        $partNo = $this->text($node, 'PARTNO') ?: $this->text($node, 'ADDITIONALNAME');
-        $code = $partNo !== '' ? $partNo : strtoupper(substr(preg_replace('/[^A-Za-z0-9]+/', '', $name) ?: 'ITEM', 0, 20));
-        while (Product::query()->where('company_id', $company->id)->where('code', $code)->exists()) {
-            $code = substr($code, 0, 16).random_int(10, 99);
+        try {
+            [$hsnId, $taxRateId] = $this->resolveHsnAndTax($company, $node, $supply);
+        } catch (\Throwable $exception) {
+            $this->conflict('stock_items', $this->text($node, 'GUID'), $name, 'Tax/HSN skipped: '.$exception->getMessage());
+            [$hsnId, $taxRateId] = [null, null];
         }
 
-        $product = $this->named($company, Product::class, 'books_stock_item', $node, $name, [
+        $existing = $this->findMaster(Product::class, 'books_stock_item', $node, $company, $name, 'name');
+        $values = [
             'product_group_id' => $groupId,
             'primary_unit_id' => $unit->id,
-            'code' => $code,
             'description' => $this->text($node, 'DESCRIPTION') ?: null,
             'type_of_supply' => $supply,
             'hsn_sac_id' => $hsnId,
             'tax_rate_id' => $taxRateId,
             'opening_quantity' => $opening,
-            'opening_rate' => $this->leadingNumber($this->text($node, 'OPENINGRATE')),
+            'opening_rate' => $openingRate,
             'opening_value' => abs($this->leadingNumber($this->text($node, 'OPENINGVALUE'))),
-            'purchase_rate' => $this->leadingNumber($this->text($node, 'STANDARDCOST')),
-            'sales_rate' => $this->leadingNumber($this->text($node, 'STANDARDPRICE')),
+            'purchase_rate' => $purchaseRate,
+            'sales_rate' => $salesRate,
+            'reorder_level' => 0,
             'track_batch' => $this->yes($this->text($node, 'ISBATCHWISEON')),
             'is_active' => true,
-        ]);
+        ];
+        if (! $existing) {
+            $partNo = $this->text($node, 'PARTNO') ?: $this->text($node, 'ADDITIONALNAME');
+            $code = $partNo !== '' ? $partNo : strtoupper(substr(preg_replace('/[^A-Za-z0-9]+/', '', $name) ?: 'ITEM', 0, 20));
+            while (Product::query()->where('company_id', $company->id)->where('code', $code)->exists()) {
+                $code = substr($code, 0, 16).random_int(10, 99);
+            }
+            $values['code'] = $code;
+        }
+
+        $product = $this->named($company, Product::class, 'books_stock_item', $node, $name, $values);
 
         $this->syncGodownOpeningsFromStockItem($product, $company, $node);
 
@@ -990,19 +1347,48 @@ class TallyInbound
                 ['company_id' => $company->id, 'code' => 'GST'],
                 ['name' => 'GST', 'is_active' => true]
             );
+            $rateCode = 'GST'.rtrim(rtrim(number_format($igst, 2, '.', ''), '0'), '.');
+            $rateCode = str_replace('.', '', $rateCode);
+            if ($rateCode === 'GST') {
+                $rateCode = 'GST0';
+            }
             $rateName = 'GST '.rtrim(rtrim(number_format($igst, 2, '.', ''), '0'), '.').'%';
-            $taxRate = TaxRate::query()->firstOrCreate(
-                ['company_id' => $company->id, 'name' => $rateName],
-                [
-                    'tax_category_id' => $category->id,
-                    'code' => 'GST'.str_replace('.', '', (string) $igst),
+            $attrs = [
+                'tax_category_id' => $category->id,
+                'name' => $rateName,
+                'cgst_rate' => $cgst > 0 ? $cgst : round($igst / 2, 4),
+                'sgst_rate' => $sgst > 0 ? $sgst : round($igst / 2, 4),
+                'igst_rate' => $igst,
+                'cess_rate' => 0,
+                'is_active' => true,
+            ];
+            // Unique key is company_id + code (not name) — look up by code to avoid GST18 collisions.
+            try {
+                $taxRate = TaxRate::query()->firstOrCreate(
+                    ['company_id' => $company->id, 'code' => $rateCode],
+                    $attrs
+                );
+            } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+                $taxRate = TaxRate::query()
+                    ->where('company_id', $company->id)
+                    ->where('code', $rateCode)
+                    ->first()
+                    ?: TaxRate::query()
+                        ->where('company_id', $company->id)
+                        ->whereRaw('LOWER(name) = ?', [mb_strtolower($rateName)])
+                        ->first();
+                if (! $taxRate) {
+                    throw new \RuntimeException('Tax rate collision for '.$rateCode.' could not be recovered.');
+                }
+            }
+            if ((float) $taxRate->igst_rate !== (float) $igst && $igst > 0) {
+                $taxRate->fill([
+                    'name' => $rateName,
                     'cgst_rate' => $cgst > 0 ? $cgst : round($igst / 2, 4),
                     'sgst_rate' => $sgst > 0 ? $sgst : round($igst / 2, 4),
                     'igst_rate' => $igst,
-                    'cess_rate' => 0,
-                    'is_active' => true,
-                ]
-            );
+                ])->save();
+            }
             $taxRateId = $taxRate->id;
         }
 
@@ -1064,6 +1450,30 @@ class TallyInbound
             ];
         }
 
+        // Fallback: item-level opening when Tally has no per-godown batch rows.
+        if ($rows === []) {
+            $qty = abs($this->leadingNumber($this->text($node, 'OPENINGBALANCE')));
+            if ($qty > 0) {
+                $godown = Godown::query()
+                    ->where('company_id', $company->id)
+                    ->orderBy('id')
+                    ->first()
+                    ?: Godown::query()->create([
+                        'company_id' => $company->id,
+                        'name' => 'Main Location',
+                        'is_active' => true,
+                    ]);
+                $rate = $this->leadingNumber($this->text($node, 'OPENINGRATE'));
+                $rows[] = [
+                    'godown_id' => $godown->id,
+                    'batch_name' => '',
+                    'quantity' => $qty,
+                    'rate' => $rate,
+                    'value' => abs($this->leadingNumber($this->text($node, 'OPENINGVALUE'))) ?: round($qty * $rate, 2),
+                ];
+            }
+        }
+
         if ($rows === []) {
             return;
         }
@@ -1098,9 +1508,11 @@ class TallyInbound
         if (
             str_contains($lower, 'quotation')
             || str_contains($lower, 'delivery note')
+            || str_contains($lower, 'delivery chall') // covers Tally typo "Delivery Challlan"
             || str_contains($lower, 'sales order')
             || str_contains($lower, 'purchase order')
         ) {
+            // Commercial docs land in DMS; skip Books accounting duplicate.
             $this->counts['skipped']++;
 
             return null;
@@ -1136,7 +1548,7 @@ class TallyInbound
 
             return null;
         }
-        if ($existing && $existing->status === VoucherStatus::Posted) {
+        if ($existing && $existing->status === VoucherStatus::Posted && ! $this->forceOverwrite) {
             $this->counts['skipped']++;
 
             return $existing;
@@ -1289,7 +1701,7 @@ class TallyInbound
 
         $partyName = $this->text($node, 'PARTYLEDGERNAME') ?: $this->text($node, 'PARTYNAME');
         $supplier = $partyName !== ''
-            ? Ledger::query()->where('company_id', $company->id)->where('name', $partyName)->first()
+            ? $this->findLedgerByName($company, $partyName)
             : null;
 
         $lines = [];
@@ -1436,10 +1848,14 @@ class TallyInbound
             return null;
         }
         if ($existing && $existing->status === VoucherStatus::Posted) {
-            $link = $this->linkRow($existing, 'books_voucher');
-            $localNewer = $link && $existing->updated_at && $link->updated_at && $existing->updated_at->gt($link->updated_at);
-            if ($localNewer) {
-                $this->conflict('vouchers', $this->text($node, 'GUID'), $number, 'Books and Tally both changed '.$number.'. Neither side was overwritten.');
+            // Posted Books vouchers are immutable in VoucherEngine — never mutate them.
+            // With --force, skip quietly (no dual-write conflict spam on re-import).
+            if (! $this->forceOverwrite) {
+                $link = $this->linkRow($existing, 'books_voucher');
+                $localNewer = $link && $existing->updated_at && $link->updated_at && $existing->updated_at->gt($link->updated_at);
+                if ($localNewer) {
+                    $this->conflict('vouchers', $this->text($node, 'GUID'), $number, 'Books and Tally both changed '.$number.'. Neither side was overwritten.');
+                }
             }
             $this->counts['skipped']++;
 
@@ -1461,7 +1877,8 @@ class TallyInbound
         }
 
         $partyName = $this->text($node, 'PARTYLEDGERNAME');
-        $party = $partyName !== '' ? Ledger::query()->where('company_id', $company->id)->where('name', $partyName)->first() : null;
+        $party = $partyName !== '' ? $this->findLedgerByName($company, $partyName) : null;
+        $updateTarget = $existing && $existing->isDraft() ? $existing : null;
         $saved = app(VoucherEngine::class)->save($company, $branch, $year, $user, $type, [
             'voucher_date' => $date,
             'voucher_number' => $number,
@@ -1477,12 +1894,28 @@ class TallyInbound
             'is_invoice' => $this->yes($this->text($node, 'ISINVOICE')),
             'entries' => $entries,
             'allocations' => $this->voucherBillAllocationRows($company, $node, $entries),
-        ], true, $existing && $existing->isDraft() ? $existing : null, $number !== '' ? $number : null);
+        ], true, $updateTarget, $number !== '' ? $number : null);
 
         $this->inventoryLines($saved, $company, $node);
         $this->persistInboundBillAllocations($saved, $company, $node);
 
         return $saved;
+    }
+
+    private function findLedgerByName(Company $company, string $name): ?Ledger
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', $name) ?? $name);
+        if ($name === '') {
+            return null;
+        }
+
+        return Ledger::query()
+            ->where('company_id', $company->id)
+            ->where(function ($query) use ($name) {
+                $query->where('name', $name)
+                    ->orWhereRaw('LOWER(name) = ?', [mb_strtolower($name)]);
+            })
+            ->first();
     }
 
     /**
@@ -1497,7 +1930,7 @@ class TallyInbound
 
             return $existing;
         }
-        if ($existing && $this->localNewer($existing, $tallyType)) {
+        if ($existing && ! $this->forceOverwrite && $this->localNewer($existing, $tallyType)) {
             $this->conflict($tallyType, $this->text($node, 'GUID'), $name, 'Books and Tally both changed '.$name.'. Neither side was overwritten.');
             $this->counts['skipped']++;
 
@@ -1516,10 +1949,25 @@ class TallyInbound
             return $existing;
         }
 
-        $created = $class::query()->create($values);
-        $this->counts['created']++;
+        try {
+            $created = $class::query()->create($values);
+            $this->counts['created']++;
 
-        return $created;
+            return $created;
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            // Concurrent/re-import race: fetch the colliding row and update it instead of aborting.
+            $fallback = $class::query()
+                ->where('company_id', $company->id)
+                ->whereRaw('LOWER('.$nameColumn.') = ?', [mb_strtolower($name)])
+                ->first();
+            if ($fallback) {
+                $fallback->fill($values)->save();
+                $this->counts['updated']++;
+
+                return $fallback;
+            }
+            throw new \RuntimeException('Unique constraint on '.$class.' for '.$name.' and row could not be recovered.');
+        }
     }
 
     /**
@@ -1538,7 +1986,16 @@ class TallyInbound
             }
         }
 
-        return $class::query()->where('company_id', $company->id)->where($nameColumn, $name)->first();
+        $normalized = preg_replace('/\s+/u', ' ', trim($name)) ?? trim($name);
+
+        return $class::query()
+            ->where('company_id', $company->id)
+            ->where(function ($query) use ($nameColumn, $name, $normalized) {
+                $query->where($nameColumn, $name)
+                    ->orWhere($nameColumn, $normalized)
+                    ->orWhereRaw('LOWER('.$nameColumn.') = ?', [mb_strtolower($normalized)]);
+            })
+            ->first();
     }
 
     private function findVoucher(Company $company, \DOMElement $node, VoucherType $type, string $number, ?string $date): ?Voucher
@@ -1584,10 +2041,7 @@ class TallyInbound
                     continue;
                 }
                 $ledgerName = $this->text($entry, 'LEDGERNAME');
-                $ledger = Ledger::query()
-                    ->where('company_id', $company->id)
-                    ->whereRaw('LOWER(name) = ?', [mb_strtolower($ledgerName)])
-                    ->first();
+                $ledger = $this->findLedgerByName($company, $ledgerName);
                 if (! $ledger) {
                     continue;
                 }
@@ -1847,15 +2301,40 @@ class TallyInbound
             return;
         }
 
-        BankAccount::query()->updateOrCreate(
-            ['ledger_id' => $ledger->id],
-            [
+        // Incomplete bank rows must not abort the whole ledger import.
+        if ($account === '' || $ifsc === '') {
+            return;
+        }
+
+        $ifsc = strtoupper(preg_replace('/\s+/', '', $ifsc) ?? $ifsc);
+        if (strlen($ifsc) > 20) {
+            $ifsc = substr($ifsc, 0, 20);
+        }
+
+        try {
+            // Prefer ledger_id; fall back to company+account when unique index is on account_number.
+            $existing = BankAccount::query()->where('ledger_id', $ledger->id)->first()
+                ?: BankAccount::query()
+                    ->where('company_id', $ledger->company_id)
+                    ->where('account_number', $account)
+                    ->first();
+
+            $attrs = [
                 'company_id' => $ledger->company_id,
-                'bank_name' => $bankName !== '' ? $bankName : $ledger->name,
-                'account_number' => $account !== '' ? $account : null,
-                'ifsc' => $ifsc !== '' ? $ifsc : null,
-            ]
-        );
+                'ledger_id' => $ledger->id,
+                'bank_name' => $this->truncateField($bankName !== '' ? $bankName : $ledger->name, 120) ?: $ledger->name,
+                'account_number' => $this->truncateField($account, 64) ?: $account,
+                'ifsc' => $ifsc,
+            ];
+
+            if ($existing) {
+                $existing->fill($attrs)->save();
+            } else {
+                BankAccount::query()->create($attrs);
+            }
+        } catch (\Throwable $exception) {
+            $this->conflict('ledgers', $this->text($node, 'GUID'), $ledger->name, 'Bank details skipped: '.$exception->getMessage());
+        }
     }
 
     private function company(): ?Company
@@ -1906,7 +2385,13 @@ class TallyInbound
             return null;
         }
 
-        return $class::query()->where('company_id', $company->id)->where('name', $name)->value('id');
+        return $class::query()
+            ->where('company_id', $company->id)
+            ->where(function ($query) use ($name) {
+                $query->where('name', $name)
+                    ->orWhereRaw('LOWER(name) = ?', [mb_strtolower($name)]);
+            })
+            ->value('id');
     }
 
     private function localNewer(Model $model, string $type): bool
@@ -1933,9 +2418,10 @@ class TallyInbound
             $name === '' => null,
             str_contains($name, 'sales order'), str_contains($name, 'purchase order'),
             str_contains($name, 'quotation'), str_contains($name, 'delivery note'),
+            str_contains($name, 'delivery chall'),
             str_contains($name, 'receipt note'), str_contains($name, 'material in') => null, // outbound DMS / dedicated importers
-            str_contains($name, 'credit note') => VoucherType::CreditNote,
-            str_contains($name, 'debit note') => VoucherType::DebitNote,
+            str_contains($name, 'credit note'), str_contains($name, 'sale return'), str_contains($name, 'sales return') => VoucherType::CreditNote,
+            str_contains($name, 'debit note'), str_contains($name, 'purchase return') => VoucherType::DebitNote,
             str_contains($name, 'stock journal') => null, // handled as StockTransaction
             str_contains($name, 'material out'),
             str_contains($name, 'rejection'),
@@ -1947,6 +2433,7 @@ class TallyInbound
             str_contains($name, 'receipt') => VoucherType::Receipt,
             str_contains($name, 'contra') => VoucherType::Contra,
             str_contains($name, 'transfer') => VoucherType::Transfer,
+            str_contains($name, 'gst tax invoice'), str_contains($name, 'tax invoice'),
             str_contains($name, 'sales') => VoucherType::Sales,
             str_contains($name, 'purchase') => VoucherType::Purchase,
             default => null,
@@ -2173,8 +2660,6 @@ class TallyInbound
 
     private function conflict(string $collection, ?string $remote, ?string $name, string $reason): void
     {
-        $this->counts['conflicts']++;
-
         $collection = substr($collection, 0, 40);
         $remote = $remote ? substr($remote, 0, 120) : null;
         $name = $name ? substr($name, 0, 200) : null;
@@ -2195,8 +2680,11 @@ class TallyInbound
                 'updated_at' => now(),
             ]);
 
+            // Do not inflate stage conflict counters on re-import of the same open row.
             return;
         }
+
+        $this->counts['conflicts']++;
 
         DB::table('tally_sync_conflicts')->insert([
             'collection' => $collection,
