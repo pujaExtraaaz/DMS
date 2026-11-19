@@ -178,19 +178,7 @@ class ProductController extends Controller
             'serials' => ['serial_number'],
         ]);
 
-        if ($export = $this->exportIfRequested($request, $query, 'Products', 'Products', ['Name', 'Part Number', 'Model', 'Brand', 'Category', 'Subcategory', 'Product Type', 'Base UOM', 'GST Rate', 'Status', 'Visibility'], fn ($item) => [
-            $item->name,
-            $item->sku ?: '',
-            $item->model ?: '',
-            $item->brand?->name ?? '',
-            $item->category?->name ?? '',
-            $item->subCategory?->name ?? '',
-            $item->productType?->name ?? $item->product_type ?? '',
-            $item->baseUom?->name ?? '',
-            $item->tax_rate !== null ? (string) $item->tax_rate : '',
-            $item->is_active ? 'Active' : 'Inactive',
-            $item->is_hidden ? 'Hidden' : 'Visible',
-        ])) {
+        if ($export = $this->exportProducts($request, $query)) {
             return $export;
         }
 
@@ -279,6 +267,8 @@ class ProductController extends Controller
             'canViewHidden' => $canViewHidden,
             'canHideProduct' => $canHideProduct,
             'canUnhideProduct' => $canUnhideProduct,
+            'exportColumnGroups' => $this->getExportColumnGroups(),
+            'defaultExportColumns' => $this->getDefaultExportColumnKeys(),
         ]);
     }
 
@@ -1557,5 +1547,366 @@ class ProductController extends Controller
             'total_in_transit' => (float) ($data['in_transit_stock'] ?? 0),
             'summary' => $data,
         ]);
+    }
+
+
+    /**
+     * Handle customized product data export (Excel, CSV, PDF) with selectable columns.
+     */
+    protected function exportProducts(Request $request, \Illuminate\Database\Eloquent\Builder $query): ?Response
+    {
+        if (! $request->filled('export')) {
+            return null;
+        }
+
+        $format = strtolower($request->string('export')->toString());
+        if (! in_array($format, ['csv', 'xlsx', 'excel', 'pdf'], true)) {
+            return null;
+        }
+
+        $columnDefinitions = $this->getExportColumnDefinitions();
+
+        // Determine requested columns
+        $requestedCols = $request->input('columns');
+        if (is_string($requestedCols)) {
+            $requestedCols = array_filter(array_map('trim', explode(',', $requestedCols)));
+        } elseif (! is_array($requestedCols)) {
+            $requestedCols = [];
+        }
+
+        if (! empty($requestedCols)) {
+            // Keep user-specified order, retaining only recognized valid columns (case-insensitive)
+            $selectedKeys = [];
+            foreach ($requestedCols as $col) {
+                $colKey = strtolower(trim((string) $col));
+                if (isset($columnDefinitions[$colKey]) && ! in_array($colKey, $selectedKeys, true)) {
+                    $selectedKeys[] = $colKey;
+                }
+            }
+            if (empty($selectedKeys)) {
+                $selectedKeys = $this->getDefaultExportColumnKeys();
+            }
+        } else {
+            $selectedKeys = $this->getDefaultExportColumnKeys();
+        }
+
+        // Eager load related models to prevent N+1 queries
+        $query->with(['baseUom', 'alternateUom', 'brand', 'category', 'subCategory', 'productType']);
+
+        $products = $query->get();
+        $productIds = $products->pluck('id')->all();
+
+        // Batch stock computation if stock columns are requested
+        $stockSummary = [];
+        if (! empty($productIds) && array_intersect($selectedKeys, ['available_stock', 'in_transit_stock', 'total_stock'])) {
+            $stockSummary = app(\App\Domains\Inventory\Services\InTransitStockService::class)->getAggregatedStockForProducts($productIds);
+        }
+
+        // Batch opening stock lookup if requested
+        $openingStocks = [];
+        if (! empty($productIds) && in_array('opening_stock', $selectedKeys, true)) {
+            $openingStocks = DB::table('stock_movements')
+                ->whereIn('product_id', $productIds)
+                ->where('type', 'opening')
+                ->groupBy('product_id')
+                ->select('product_id', DB::raw('SUM(quantity) as total'))
+                ->pluck('total', 'product_id')
+                ->all();
+        }
+
+        // Build header labels in requested order
+        $headers = [];
+        foreach ($selectedKeys as $key) {
+            $headers[] = $columnDefinitions[$key]['label'];
+        }
+
+        // Build rows
+        $rows = [];
+        foreach ($products as $p) {
+            $row = [];
+            foreach ($selectedKeys as $key) {
+                $row[] = $columnDefinitions[$key]['resolver']($p, $stockSummary, $openingStocks);
+            }
+            $rows[] = $row;
+        }
+
+        if ($format === 'csv') {
+            return \App\Support\DocumentExporter::exportCsv('Products-'.now()->format('Ymd-His').'.csv', $headers, $rows);
+        }
+
+        return \App\Support\DocumentExporter::exportTabular('Products', 'Products', $headers, $rows, $format);
+    }
+
+    /**
+     * Return grouped export columns schema for UI presentation.
+     */
+    public function getExportColumnGroups(): array
+    {
+        return [
+            'basic' => [
+                'title' => 'Basic Details',
+                'fields' => [
+                    'name' => ['label' => 'Product Name', 'default' => true],
+                    'sku' => ['label' => 'Part Number (SKU)', 'default' => true],
+                    'series' => ['label' => 'Series', 'default' => false],
+                    'model' => ['label' => 'Model', 'default' => true],
+                    'serial_no' => ['label' => 'Serial Number', 'default' => true],
+                    'description' => ['label' => 'Description', 'default' => false],
+                    'is_active' => ['label' => 'Status', 'default' => true],
+                    'is_hidden' => ['label' => 'Visibility', 'default' => false],
+                ],
+            ],
+            'classification' => [
+                'title' => 'Classification',
+                'fields' => [
+                    'brand' => ['label' => 'Brand', 'default' => true],
+                    'category' => ['label' => 'Category', 'default' => true],
+                    'sub_category' => ['label' => 'Subcategory', 'default' => true],
+                    'product_type' => ['label' => 'Product Type', 'default' => true],
+                    'supply_type' => ['label' => 'Type of Supply', 'default' => false],
+                ],
+            ],
+            'units' => [
+                'title' => 'Units',
+                'fields' => [
+                    'base_uom' => ['label' => 'Base UOM', 'default' => true],
+                    'alternate_uom' => ['label' => 'Alternative UOM', 'default' => false],
+                    'conversion_factor' => ['label' => 'Conversion Factor', 'default' => false],
+                ],
+            ],
+            'details' => [
+                'title' => 'Product Details',
+                'fields' => [
+                    'hsn_code' => ['label' => 'HSN Code', 'default' => true],
+                    'dimension_cm' => ['label' => 'Dimensions (CM)', 'default' => false],
+                    'dimension_in' => ['label' => 'Dimensions (Inches)', 'default' => false],
+                    'net_weight' => ['label' => 'Net Weight', 'default' => false],
+                    'specification' => ['label' => 'Specification', 'default' => false],
+                    'color_variant' => ['label' => 'Color Variant', 'default' => false],
+                ],
+            ],
+            'pricing' => [
+                'title' => 'Tax & Pricing',
+                'fields' => [
+                    'tax_rate' => ['label' => 'GST Rate', 'default' => true],
+                    'purchase_price' => ['label' => 'Purchase Price', 'default' => false],
+                    'trade_price' => ['label' => 'Trade Price', 'default' => false],
+                    'selling_price' => ['label' => 'Selling Price', 'default' => true],
+                    'mrp' => ['label' => 'MRP', 'default' => true],
+                    'purchase_price_tax_basis' => ['label' => 'Purchase Tax Basis', 'default' => false],
+                    'discount' => ['label' => 'Discount', 'default' => false],
+                ],
+            ],
+            'inventory' => [
+                'title' => 'Inventory',
+                'fields' => [
+                    'opening_stock' => ['label' => 'Opening Stock', 'default' => false],
+                    'available_stock' => ['label' => 'Available Stock', 'default' => true],
+                    'in_transit_stock' => ['label' => 'In-Transit Stock', 'default' => false],
+                    'total_stock' => ['label' => 'Total Stock', 'default' => true],
+                    'min_stock' => ['label' => 'Min Stock', 'default' => false],
+                    'reorder_level' => ['label' => 'Reorder Level', 'default' => false],
+                ],
+            ],
+            'additional' => [
+                'title' => 'Additional Details',
+                'fields' => [
+                    'costing_method' => ['label' => 'Costing Method', 'default' => false],
+                    'warranty' => ['label' => 'Warranty', 'default' => false],
+                    'warranty_terms' => ['label' => 'Warranty Terms', 'default' => false],
+                    'image' => ['label' => 'Product Image', 'default' => false],
+                    'tracking_type' => ['label' => 'Tracking Type', 'default' => false],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Return column keys, labels and data resolver callbacks.
+     */
+    public function getExportColumnDefinitions(): array
+    {
+        return [
+            'name' => [
+                'label' => 'Product Name',
+                'resolver' => fn (Product $p) => $p->name,
+            ],
+            'sku' => [
+                'label' => 'Part Number',
+                'resolver' => fn (Product $p) => $p->sku ?: '',
+            ],
+            'series' => [
+                'label' => 'Series',
+                'resolver' => fn (Product $p) => $p->series ?: '',
+            ],
+            'model' => [
+                'label' => 'Model',
+                'resolver' => fn (Product $p) => $p->model ?: ($p->models ?: ''),
+            ],
+            'serial_no' => [
+                'label' => 'Serial Number',
+                'resolver' => fn (Product $p) => $p->serial_no ?: '',
+            ],
+            'description' => [
+                'label' => 'Description',
+                'resolver' => fn (Product $p) => $p->description ?: '',
+            ],
+            'is_active' => [
+                'label' => 'Status',
+                'resolver' => fn (Product $p) => $p->is_active ? 'Active' : 'Inactive',
+            ],
+            'is_hidden' => [
+                'label' => 'Visibility',
+                'resolver' => fn (Product $p) => $p->is_hidden ? 'Hidden' : 'Visible',
+            ],
+            'brand' => [
+                'label' => 'Brand',
+                'resolver' => fn (Product $p) => $p->brand?->name ?? '',
+            ],
+            'category' => [
+                'label' => 'Category',
+                'resolver' => fn (Product $p) => $p->category?->name ?? '',
+            ],
+            'sub_category' => [
+                'label' => 'Subcategory',
+                'resolver' => fn (Product $p) => $p->subCategory?->name ?? '',
+            ],
+            'product_type' => [
+                'label' => 'Product Type',
+                'resolver' => fn (Product $p) => $p->productType?->name ?? ($p->product_type ?? ''),
+            ],
+            'supply_type' => [
+                'label' => 'Type of Supply',
+                'resolver' => fn (Product $p) => Product::SUPPLY_TYPES[$p->supply_type] ?? ucfirst((string) ($p->supply_type ?? '')),
+            ],
+            'base_uom' => [
+                'label' => 'Base UOM',
+                'resolver' => fn (Product $p) => $p->baseUom?->name ?? '',
+            ],
+            'alternate_uom' => [
+                'label' => 'Alternative UOM',
+                'resolver' => fn (Product $p) => $p->alternateUom?->name ?? '',
+            ],
+            'conversion_factor' => [
+                'label' => 'Conversion Factor',
+                'resolver' => fn (Product $p) => $p->conversion_factor !== null ? (string) (float) $p->conversion_factor : '',
+            ],
+            'hsn_code' => [
+                'label' => 'HSN Code',
+                'resolver' => fn (Product $p) => $p->hsn_code ?: '',
+            ],
+            'dimension_cm' => [
+                'label' => 'Dimensions (CM)',
+                'resolver' => fn (Product $p) => ($p->length_cm || $p->width_cm || $p->height_cm) ? "{$p->length_cm} x {$p->width_cm} x {$p->height_cm} cm" : '',
+            ],
+            'dimension_in' => [
+                'label' => 'Dimensions (Inches)',
+                'resolver' => fn (Product $p) => ($p->length_in || $p->width_in || $p->height_in) ? "{$p->length_in} x {$p->width_in} x {$p->height_in} in" : '',
+            ],
+            'net_weight' => [
+                'label' => 'Net Weight',
+                'resolver' => fn (Product $p) => $p->net_weight !== null ? ((float) $p->net_weight . ' ' . ($p->weight_unit ?: 'kg')) : '',
+            ],
+            'specification' => [
+                'label' => 'Specification',
+                'resolver' => fn (Product $p) => $p->specification ?: '',
+            ],
+            'color_variant' => [
+                'label' => 'Color Variant',
+                'resolver' => fn (Product $p) => $p->color_variant ?: '',
+            ],
+            'tax_rate' => [
+                'label' => 'GST Rate',
+                'resolver' => fn (Product $p) => $p->tax_rate !== null ? (float) $p->tax_rate . '%' : '',
+            ],
+            'purchase_price' => [
+                'label' => 'Purchase Price',
+                'resolver' => fn (Product $p) => $p->purchase_price !== null ? number_format((float) $p->purchase_price, 2, '.', '') : '',
+            ],
+            'trade_price' => [
+                'label' => 'Trade Price',
+                'resolver' => fn (Product $p) => $p->trade_price !== null ? number_format((float) $p->trade_price, 2, '.', '') : '',
+            ],
+            'selling_price' => [
+                'label' => 'Selling Price',
+                'resolver' => fn (Product $p) => $p->selling_price !== null ? number_format((float) $p->selling_price, 2, '.', '') : '',
+            ],
+            'mrp' => [
+                'label' => 'MRP',
+                'resolver' => fn (Product $p) => ($p->calculation_mrp ?? $p->mrp) !== null ? number_format((float) ($p->calculation_mrp ?? $p->mrp), 2, '.', '') : '',
+            ],
+            'purchase_price_tax_basis' => [
+                'label' => 'Purchase Tax Basis',
+                'resolver' => fn (Product $p) => Product::PURCHASE_TAX_BASES[$p->purchase_price_tax_basis] ?? ucfirst((string) ($p->purchase_price_tax_basis ?? '')),
+            ],
+            'discount' => [
+                'label' => 'Discount',
+                'resolver' => fn (Product $p) => $p->discount_value ? ($p->discount_type === 'percent' ? "{$p->discount_value}%" : "₹ {$p->discount_value}") : ($p->discount_percent ? "{$p->discount_percent}%" : ''),
+            ],
+            'opening_stock' => [
+                'label' => 'Opening Stock',
+                'resolver' => fn (Product $p, $stockSummary, $openingStocks) => number_format((float) ($openingStocks[$p->id] ?? 0), 2, '.', ''),
+            ],
+            'available_stock' => [
+                'label' => 'Available Stock',
+                'resolver' => fn (Product $p, $stockSummary) => number_format((float) ($stockSummary[$p->id]['physical_stock'] ?? 0), 2, '.', ''),
+            ],
+            'in_transit_stock' => [
+                'label' => 'In-Transit Stock',
+                'resolver' => fn (Product $p, $stockSummary) => number_format((float) ($stockSummary[$p->id]['in_transit_stock'] ?? 0), 2, '.', ''),
+            ],
+            'total_stock' => [
+                'label' => 'Total Stock',
+                'resolver' => fn (Product $p, $stockSummary) => number_format((float) ($stockSummary[$p->id]['total_expected_stock'] ?? 0), 2, '.', ''),
+            ],
+            'min_stock' => [
+                'label' => 'Min Stock',
+                'resolver' => fn (Product $p) => $p->min_stock !== null ? (string) (float) $p->min_stock : '',
+            ],
+            'reorder_level' => [
+                'label' => 'Reorder Level',
+                'resolver' => fn (Product $p) => $p->reorder_level !== null ? (string) (float) $p->reorder_level : '',
+            ],
+            'costing_method' => [
+                'label' => 'Costing Method',
+                'resolver' => fn (Product $p) => Product::COSTING_METHODS[$p->costing_method] ?? ucfirst(str_replace('_', ' ', (string) ($p->costing_method ?? ''))),
+            ],
+            'warranty' => [
+                'label' => 'Warranty',
+                'resolver' => fn (Product $p) => $p->warranty ?: ($p->warranty_months ? "{$p->warranty_months} Months" : ''),
+            ],
+            'warranty_terms' => [
+                'label' => 'Warranty Terms',
+                'resolver' => fn (Product $p) => $p->warranty_terms ?: '',
+            ],
+            'image' => [
+                'label' => 'Product Image',
+                'resolver' => fn (Product $p) => $p->image_path ? asset('storage/' . $p->image_path) : ($p->catalog_link ?: ''),
+            ],
+            'tracking_type' => [
+                'label' => 'Tracking Type',
+                'resolver' => fn (Product $p) => ! empty($p->tracking_types) ? implode(', ', array_map('ucfirst', $p->tracking_types)) : ucfirst((string) ($p->tracking_type ?? 'None')),
+            ],
+        ];
+    }
+
+    /**
+     * Default columns when none are explicitly selected.
+     */
+    public function getDefaultExportColumnKeys(): array
+    {
+        return [
+            'name',
+            'sku',
+            'model',
+            'brand',
+            'category',
+            'sub_category',
+            'product_type',
+            'base_uom',
+            'tax_rate',
+            'is_active',
+            'is_hidden',
+        ];
     }
 }

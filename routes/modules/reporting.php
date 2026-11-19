@@ -10,6 +10,18 @@ Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
 
+Route::get('/group-dashboard', [\App\Http\Controllers\Reporting\GroupDashboardController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('group-dashboard');
+
+Route::get('/group-dashboard/drilldown', [\App\Http\Controllers\Reporting\GroupDashboardController::class, 'drilldown'])
+    ->middleware(['auth', 'verified'])
+    ->name('group-dashboard.drilldown');
+
+Route::get('/group-dashboard/export', [\App\Http\Controllers\Reporting\GroupDashboardController::class, 'export'])
+    ->middleware(['auth', 'verified'])
+    ->name('group-dashboard.export');
+
 Route::prefix('reports')->name('reports.')->middleware('role_or_permission:super-admin|reports.view|reports.create|reports.edit|reports.manage')->group(function () {
     Route::get('/sales', [ReportController::class, 'sales'])->name('sales');
     Route::get('/stock', [ReportController::class, 'stock'])->name('stock');

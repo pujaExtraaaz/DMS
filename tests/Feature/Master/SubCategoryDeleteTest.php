@@ -289,21 +289,21 @@ class SubCategoryDeleteTest extends TestCase
         $searchResponse = $this->actingAs($this->adminUser)
             ->get(route('masters.sub-categories.index', ['search' => 'Alpha']));
         $searchResponse->assertStatus(200);
-        $searchResponse->assertSee('ALPHA SUBCATEGORY');
-        $searchResponse->assertDontSee('BETA SUBCATEGORY');
+        $searchResponse->assertSee($subCategory1->name);
+        $searchResponse->assertDontSee($subCategory2->name);
 
         // 2. Filter by status
         $statusResponse = $this->actingAs($this->adminUser)
             ->get(route('masters.sub-categories.index', ['status' => 'inactive']));
         $statusResponse->assertStatus(200);
-        $statusResponse->assertSee('BETA SUBCATEGORY');
-        $statusResponse->assertDontSee('ALPHA SUBCATEGORY');
+        $statusResponse->assertSee($subCategory2->name);
+        $statusResponse->assertDontSee($subCategory1->name);
 
         // 3. Filter by category
         $catResponse = $this->actingAs($this->adminUser)
             ->get(route('masters.sub-categories.index', ['category_id' => $this->category->id]));
         $catResponse->assertStatus(200);
-        $catResponse->assertSee('ALPHA SUBCATEGORY');
+        $catResponse->assertSee($subCategory1->name);
     }
 }
 

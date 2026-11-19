@@ -63,7 +63,45 @@
         <input type="hidden" name="company_id" value="{{ old('company_id', $item->company_id) }}">
     @endif
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        @if($item->exists)
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Quotation No.</label>
+                <input type="text" value="{{ $item->quotation_no }}" class="block w-full rounded-lg border-gray-300 bg-slate-100 text-slate-600 text-sm cursor-not-allowed font-mono" readonly disabled>
+                <p class="mt-1 text-xs text-slate-500">Voucher number is locked.</p>
+            </div>
+        @elseif(isset($qtnSeries) && $qtnSeries && $qtnSeries->isManual())
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Quotation No. *</label>
+                <input type="text" name="quotation_no" value="{{ old('quotation_no') }}" placeholder="Enter quotation number" class="block w-full rounded-lg border-gray-300 text-sm uppercase" required>
+                <p class="mt-1 text-xs text-amber-600">Manual voucher numbering is active.</p>
+            </div>
+        @elseif(isset($qtnSeries) && $qtnSeries && $qtnSeries->isManualOverride())
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Quotation No. (Manual Override)</label>
+                <input type="text" name="quotation_no" value="{{ old('quotation_no', $nextNumber) }}" placeholder="{{ $nextNumber ?? 'Leave blank to auto-generate' }}" class="block w-full rounded-lg border-gray-300 text-sm uppercase font-mono">
+                <p class="mt-1 text-xs text-indigo-600">Auto-suggested. You may edit or keep default.</p>
+            </div>
+        @elseif(isset($qtnSeries) && $qtnSeries && $qtnSeries->isMultiUserAuto())
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Quotation No.</label>
+                <input type="text" value="[Auto-generated on Save]" class="block w-full rounded-lg border-gray-300 bg-slate-50 text-slate-500 text-sm cursor-not-allowed font-mono" readonly disabled>
+                <p class="mt-1 text-xs text-emerald-600">Multi-user Auto sequence: {{ $qtnSeries->preview() }}</p>
+            </div>
+        @elseif(isset($qtnSeries) && $qtnSeries && $qtnSeries->isAutomatic())
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Quotation No.</label>
+                <input type="text" value="{{ $nextNumber ?? $qtnSeries->preview() }}" class="block w-full rounded-lg border-gray-300 bg-slate-50 text-slate-500 text-sm cursor-not-allowed font-mono" readonly disabled>
+                <p class="mt-1 text-xs text-sky-600">Automatic numbering: {{ $qtnSeries->preview() }}</p>
+            </div>
+        @else
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Quotation No.</label>
+                <input type="text" name="quotation_no" value="{{ old('quotation_no') }}" placeholder="Auto-generated if blank" class="block w-full rounded-lg border-gray-300 text-sm uppercase font-mono">
+                <p class="mt-1 text-xs text-slate-500">Leave blank to auto-generate.</p>
+            </div>
+        @endif
+
         <div class="space-y-1">
             <label for="customer_id" class="block text-sm font-medium text-gray-700">Customer <span class="text-red-500">*</span></label>
             <select id="customer_id" name="customer_id" x-model="customerId" @change="onCustomerChange()" required

@@ -103,6 +103,9 @@ class PaymentController extends Controller
             'bank_ledger_id' => 'nullable|integer|required_if:method,bank',
             'paid_at' => 'nullable|date',
             'notes' => 'nullable|string',
+            'cheque_no' => 'nullable|string|max:50',
+            'cheque_date' => 'nullable|date',
+            'cheque_bank_name' => 'nullable|string|max:255',
         ]);
 
         $validated['bank_ledger_id'] = $validated['method'] === 'bank'
@@ -146,6 +149,31 @@ class PaymentController extends Controller
             ]);
 
             $this->outstandingLedgerService->recordPayment($payment);
+
+            if ($validated['method'] === 'cheque' && filled($validated['cheque_no'] ?? null)) {
+                try {
+                    app(\App\Domains\Payment\Services\ChequeService::class)->create([
+                        'company_id' => auth()->user()?->company_id,
+                        'cheque_type' => \App\Domains\Payment\Models\Cheque::TYPE_RECEIVED,
+                        'direction' => 'received_from_client',
+                        'cheque_no' => $validated['cheque_no'],
+                        'customer_id' => $invoice->customer_id,
+                        'amount' => $validated['amount'],
+                        'cheque_date' => $validated['cheque_date'] ?? ($validated['paid_at'] ? date('Y-m-d', strtotime($validated['paid_at'])) : now()->toDateString()),
+                        'bank_name' => $validated['cheque_bank_name'] ?? null,
+                        'purpose' => 'collection',
+                        'status' => \App\Domains\Payment\Models\Cheque::STATUS_RECEIVED,
+                        'reference_voucher' => $payment->payment_no,
+                        'voucher_type' => 'Payment',
+                        'voucher_id' => $payment->id,
+                        'payment_id' => $payment->id,
+                        'notes' => $validated['notes'] ?? null,
+                    ]);
+                } catch (\Throwable $e) {
+                    // Log or handle non-fatal cheque register recording
+                    \Illuminate\Support\Facades\Log::warning('Cheque recording failed for payment '.$payment->payment_no.': '.$e->getMessage());
+                }
+            }
         });
 
         return $this->flashSuccess('Payment recorded successfully.', 'payments.index');

@@ -17,13 +17,35 @@
         >
             <x-slot name="filters">
                 <select
+                    name="brand_id"
+                    id="sub_category_brand_filter"
+                    data-dynamic-filter
+                    onchange="
+                        const catSelect = document.getElementById('sub_category_category_filter') || document.querySelector('select[name=\'category_id\']');
+                        if (catSelect) {
+                            const selectedOpt = catSelect.options[catSelect.selectedIndex];
+                            if (this.value && selectedOpt && selectedOpt.dataset.brandId && String(selectedOpt.dataset.brandId) !== String(this.value)) {
+                                catSelect.value = '';
+                            }
+                        }
+                    "
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">All Brands</option>
+                    @foreach($brands ?? [] as $b)
+                        <option value="{{ $b->id }}" @selected(($brandId ?? request('brand_id')) == $b->id)>{{ $b->name }}</option>
+                    @endforeach
+                </select>
+
+                <select
                     name="category_id"
+                    id="sub_category_category_filter"
                     data-dynamic-filter
                     class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
                 >
                     <option value="">Category: All</option>
                     @foreach($categories ?? [] as $cat)
-                        <option value="{{ $cat->id }}" @selected(request('category_id') == $cat->id)>{{ $cat->name }}</option>
+                        <option value="{{ $cat->id }}" data-brand-id="{{ $cat->brand_id }}" @selected(($categoryId ?? request('category_id')) == $cat->id)>{{ $cat->name }}</option>
                     @endforeach
                 </select>
 

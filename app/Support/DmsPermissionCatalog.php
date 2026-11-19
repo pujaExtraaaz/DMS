@@ -127,6 +127,11 @@ class DmsPermissionCatalog
             'products.unhide',
             'designations.activate',
             'designations.deactivate',
+            'group_dashboard.view',
+            'group_dashboard.combined.view',
+            'group_dashboard.profit_loss.view',
+            'group_dashboard.inter_company.view',
+            'group_dashboard.export',
         ];
     }
 

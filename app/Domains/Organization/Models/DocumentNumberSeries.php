@@ -10,7 +10,21 @@ class DocumentNumberSeries extends Model
 {
     public const METHOD_AUTOMATIC = 'automatic';
 
+    public const METHOD_AUTOMATIC_MANUAL_OVERRIDE = 'automatic_manual_override';
+
     public const METHOD_MANUAL = 'manual';
+
+    public const METHOD_MULTI_USER_AUTO = 'multi_user_auto';
+
+    public const PERIODICITY_DAILY = 'daily';
+
+    public const PERIODICITY_WEEKLY = 'weekly';
+
+    public const PERIODICITY_MONTHLY = 'monthly';
+
+    public const PERIODICITY_YEARLY = 'yearly';
+
+    public const PERIODICITY_NEVER = 'never';
 
     protected $fillable = [
         'company_id',
@@ -22,8 +36,13 @@ class DocumentNumberSeries extends Model
         'financial_year_style',
         'separator',
         'padding',
+        'starting_number',
+        'prefix_zero',
         'numbering_method',
         'restart_each_fy',
+        'restart_rules',
+        'prefix_rules',
+        'suffix_rules',
         'is_active',
     ];
 
@@ -34,6 +53,11 @@ class DocumentNumberSeries extends Model
             'restart_each_fy' => 'boolean',
             'is_active' => 'boolean',
             'padding' => 'integer',
+            'starting_number' => 'integer',
+            'prefix_zero' => 'boolean',
+            'restart_rules' => 'array',
+            'prefix_rules' => 'array',
+            'suffix_rules' => 'array',
         ];
     }
 
@@ -49,7 +73,47 @@ class DocumentNumberSeries extends Model
 
     public function isAutomatic(): bool
     {
-        return ! $this->isManual();
+        return $this->numbering_method === self::METHOD_AUTOMATIC;
+    }
+
+    public function isManualOverride(): bool
+    {
+        return $this->numbering_method === self::METHOD_AUTOMATIC_MANUAL_OVERRIDE;
+    }
+
+    public function isMultiUserAuto(): bool
+    {
+        return $this->numbering_method === self::METHOD_MULTI_USER_AUTO;
+    }
+
+    public function allowsManualEntry(): bool
+    {
+        return in_array($this->numbering_method, [self::METHOD_MANUAL, self::METHOD_AUTOMATIC_MANUAL_OVERRIDE], true);
+    }
+
+    public function requiresManualEntry(): bool
+    {
+        return $this->numbering_method === self::METHOD_MANUAL;
+    }
+
+    public function generatesAutomatically(): bool
+    {
+        return in_array($this->numbering_method, [
+            self::METHOD_AUTOMATIC,
+            self::METHOD_AUTOMATIC_MANUAL_OVERRIDE,
+            self::METHOD_MULTI_USER_AUTO,
+        ], true);
+    }
+
+    public function methodName(): string
+    {
+        return match ($this->numbering_method) {
+            self::METHOD_AUTOMATIC => 'Automatic',
+            self::METHOD_AUTOMATIC_MANUAL_OVERRIDE => 'Automatic (Manual Override)',
+            self::METHOD_MANUAL => 'Manual',
+            self::METHOD_MULTI_USER_AUTO => 'Multi-user Auto',
+            default => ucfirst(str_replace('_', ' ', (string) $this->numbering_method)),
+        };
     }
 
     public function financialYearCode(?FinancialYear $fy = null, ?Carbon $date = null): string
@@ -87,28 +151,154 @@ class DocumentNumberSeries extends Model
             ?? FinancialYear::query()->where('is_current', true)->when($this->company_id, fn ($q) => $q->where('company_id', $this->company_id))->first();
     }
 
+    public function resolvePrefix(?Carbon $date = null): string
+    {
+        $date ??= now();
+        $dateStr = $date->toDateString();
+
+        if (! empty($this->prefix_rules) && is_array($this->prefix_rules)) {
+            $sorted = collect($this->prefix_rules)
+                ->filter(function ($rule) use ($dateStr) {
+                    $from = ! empty($rule['applicable_from']) ? Carbon::parse($rule['applicable_from'])->toDateString() : null;
+                    $to = ! empty($rule['applicable_to']) ? Carbon::parse($rule['applicable_to'])->toDateString() : null;
+                    if (! $from) {
+                        return false;
+                    }
+                    if ($from > $dateStr) {
+                        return false;
+                    }
+                    if ($to && $to < $dateStr) {
+                        return false;
+                    }
+
+                    return true;
+                })
+                ->sortByDesc('applicable_from')
+                ->first();
+
+            if ($sorted && isset($sorted['prefix']) && trim((string) $sorted['prefix']) !== '') {
+                return trim((string) $sorted['prefix']);
+            }
+        }
+
+        return trim((string) ($this->prefix ?? ''));
+    }
+
+    public function resolveSuffix(?Carbon $date = null): string
+    {
+        $date ??= now();
+        $dateStr = $date->toDateString();
+
+        if (! empty($this->suffix_rules) && is_array($this->suffix_rules)) {
+            $sorted = collect($this->suffix_rules)
+                ->filter(function ($rule) use ($dateStr) {
+                    $from = ! empty($rule['applicable_from']) ? Carbon::parse($rule['applicable_from'])->toDateString() : null;
+                    $to = ! empty($rule['applicable_to']) ? Carbon::parse($rule['applicable_to'])->toDateString() : null;
+                    if (! $from) {
+                        return false;
+                    }
+                    if ($from > $dateStr) {
+                        return false;
+                    }
+                    if ($to && $to < $dateStr) {
+                        return false;
+                    }
+
+                    return true;
+                })
+                ->sortByDesc('applicable_from')
+                ->first();
+
+            if ($sorted && isset($sorted['suffix']) && trim((string) $sorted['suffix']) !== '') {
+                return trim((string) $sorted['suffix']);
+            }
+        }
+
+        return trim((string) ($this->suffix ?? ''));
+    }
+
+    public function resolveRestartRule(?Carbon $date = null): ?array
+    {
+        $date ??= now();
+        $dateStr = $date->toDateString();
+
+        if (! empty($this->restart_rules) && is_array($this->restart_rules)) {
+            return collect($this->restart_rules)
+                ->filter(function ($rule) use ($dateStr) {
+                    $from = ! empty($rule['applicable_from']) ? Carbon::parse($rule['applicable_from'])->toDateString() : null;
+                    $to = ! empty($rule['applicable_to']) ? Carbon::parse($rule['applicable_to'])->toDateString() : null;
+                    if (! $from) {
+                        return false;
+                    }
+                    if ($from > $dateStr) {
+                        return false;
+                    }
+                    if ($to && $to < $dateStr) {
+                        return false;
+                    }
+
+                    return true;
+                })
+                ->sortByDesc('applicable_from')
+                ->first();
+        }
+
+        return null;
+    }
+
     public function formatNumber(int $number, ?FinancialYear $fy = null, ?Carbon $date = null): string
     {
+        $date ??= now();
         $sep = $this->separator !== null && $this->separator !== '' ? $this->separator : '-';
         $parts = [];
-        $prefix = trim((string) $this->prefix);
-        if ($prefix !== '') {
-            $parts[] = strtoupper($prefix);
-        }
-        if ($this->include_financial_year) {
-            $parts[] = $this->financialYearCode($fy, $date);
-        }
-        $padding = max(1, min(8, (int) $this->padding));
-        $parts[] = sprintf('%0'.$padding.'d', max(0, $number));
-        $body = implode($sep, $parts);
-        $suffix = trim((string) ($this->suffix ?? ''));
 
-        return $suffix === '' ? $body : $body.$suffix;
+        $activePrefix = $this->resolvePrefix($date);
+        if ($activePrefix !== '') {
+            $parts[] = strtoupper($activePrefix);
+        }
+
+        if ($this->include_financial_year) {
+            $fyCode = $this->financialYearCode($fy, $date);
+            $cleanPrefix = strtoupper(str_replace(['-', '/'], '', $activePrefix));
+            $cleanFy = strtoupper(str_replace(['-', '/'], '', $fyCode));
+            if ($activePrefix === '' || (! str_contains($cleanPrefix, $cleanFy))) {
+                $parts[] = $fyCode;
+            }
+        }
+
+        $width = max(1, min(8, (int) ($this->padding ?? 4)));
+        $prefixZero = $this->prefix_zero ?? true;
+
+        if ($prefixZero) {
+            $parts[] = sprintf('%0'.$width.'d', max(0, $number));
+        } else {
+            $parts[] = (string) max(0, $number);
+        }
+
+        $body = implode($sep, $parts);
+        $activeSuffix = $this->resolveSuffix($date);
+
+        return $activeSuffix === '' ? $body : $body.$activeSuffix;
     }
 
     public function preview(?Carbon $date = null): string
     {
-        return $this->formatNumber(1, null, $date);
+        $date ??= now();
+        $restartRule = $this->resolveRestartRule($date);
+        $startingNo = max(1, (int) ($restartRule['starting_number'] ?? $this->starting_number ?? 1));
+
+        return $this->formatNumber($startingNo, null, $date);
+    }
+
+    public static function periodicities(): array
+    {
+        return [
+            self::PERIODICITY_DAILY => 'Daily',
+            self::PERIODICITY_WEEKLY => 'Weekly',
+            self::PERIODICITY_MONTHLY => 'Monthly',
+            self::PERIODICITY_YEARLY => 'Yearly',
+            self::PERIODICITY_NEVER => 'Never',
+        ];
     }
 
     public static function documentTypes(): array
@@ -119,7 +309,29 @@ class DocumentNumberSeries extends Model
             'GRN' => 'Goods Receipt',
             'SO' => 'Sales Order',
             'INV' => 'Sales Invoice',
-            'QTN' => 'Sales Quotation',
+            'QTN' => 'Quotation',
+        ];
+    }
+
+    public static function numberingMethods(): array
+    {
+        return [
+            self::METHOD_AUTOMATIC => [
+                'name' => 'Automatic',
+                'description' => 'Generate voucher numbers automatically using the configured prefix, separator and sequence.',
+            ],
+            self::METHOD_AUTOMATIC_MANUAL_OVERRIDE => [
+                'name' => 'Automatic (Manual Override)',
+                'description' => 'Generate numbers automatically by default, but allow authorized users to enter or modify the voucher number manually.',
+            ],
+            self::METHOD_MANUAL => [
+                'name' => 'Manual',
+                'description' => 'Require users to enter the voucher number themselves.',
+            ],
+            self::METHOD_MULTI_USER_AUTO => [
+                'name' => 'Multi-user Auto',
+                'description' => 'Generate unique voucher numbers automatically for multiple users creating vouchers simultaneously.',
+            ],
         ];
     }
 }
