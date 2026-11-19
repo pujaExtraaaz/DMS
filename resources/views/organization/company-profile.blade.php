@@ -424,19 +424,38 @@
             {{-- Banking & Payments Section --}}
             <div class="space-y-4">
                 <div class="flex items-center justify-between">
-                    <h3 class="text-sm font-semibold text-slate-700">Banking &amp; Payments</h3>
-                    <button type="button"
-                            @click="addAccount()"
-                            class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
-                        + ADD
-                    </button>
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-700">Banking &amp; Payments</h3>
+                        <p class="text-xs text-slate-500">Configure bank accounts and manage linked cheque books.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <a href="{{ route('cheque-books.index') }}"
+                           class="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 transition shadow-2xs">
+                            <svg class="h-3.5 w-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                            Manage Cheque Books
+                        </a>
+                        <button type="button"
+                                @click="addAccount()"
+                                class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
+                            + ADD
+                        </button>
+                    </div>
                 </div>
 
                 <div class="space-y-4">
                     <template x-for="(account, index) in bankAccounts" :key="index">
                         <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
                             <div class="flex items-center justify-between">
-                                <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Bank Account #${index + 1}`"></span>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Bank Account #${index + 1}`"></span>
+                                    <template x-if="account.bank_account_no">
+                                        <a :href="'{{ route('cheque-books.index') }}?bank_account_no=' + encodeURIComponent(account.bank_account_no)"
+                                           class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition">
+                                            <span>Cheque Books</span>
+                                            <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                        </a>
+                                    </template>
+                                </div>
                                 <button type="button"
                                         x-show="bankAccounts.length > 1"
                                         @click="removeAccount(index)"

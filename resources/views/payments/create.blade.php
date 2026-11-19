@@ -15,6 +15,7 @@
 <option value="cash">Cash</option>
 <option value="upi">UPI</option>
 <option value="bank">Bank</option>
+<option value="cheque">Cheque</option>
 <option value="other">Other</option>
 </x-ui.select>
 <div x-show="method === 'bank'" x-cloak>
@@ -31,6 +32,21 @@
     @else
         <p class="text-xs text-slate-500">The receipt is posted to this bank ledger for bank reports and reconciliation.</p>
     @endif
+</div>
+<div x-show="method === 'cheque'" x-cloak class="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-3">
+    <h4 class="text-xs font-semibold text-indigo-900 uppercase tracking-wider">Cheque Information</h4>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+            <x-ui.input name="cheque_no" label="Cheque Number" :value="old('cheque_no')" placeholder="e.g. 000124" />
+        </div>
+        <div>
+            <x-ui.input name="cheque_date" label="Cheque Date" type="date" :value="old('cheque_date', now()->toDateString())" />
+        </div>
+    </div>
+    <div>
+        <x-ui.input name="cheque_bank_name" label="Drawee Bank Name & Branch" :value="old('cheque_bank_name')" placeholder="e.g. HDFC Bank, MG Road" />
+    </div>
+    <p class="text-xs text-slate-500">A corresponding entry will automatically be created in the <strong>Cheque Register</strong>.</p>
 </div>
 <x-ui.input name="paid_at" label="Paid At" type="datetime-local" :value="old('paid_at', now()->format('Y-m-d\TH:i'))" />
 <x-ui.input name="notes" label="Notes" :value="old('notes')" />

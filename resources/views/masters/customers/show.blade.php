@@ -253,6 +253,10 @@
                     <dd class="mt-0.5 font-mono font-medium text-slate-900">{{ $customer->gstin ?: '—' }}</dd>
                 </div>
                 <div>
+                    <dt class="text-xs font-semibold text-slate-500 tracking-wider">GST Registration Type</dt>
+                    <dd class="mt-0.5 font-medium text-slate-900">{{ $customer->gst_registration_type ?: '—' }}</dd>
+                </div>
+                <div>
                     <dt class="text-xs font-semibold text-slate-500 tracking-wider">PAN</dt>
                     <dd class="mt-0.5 font-mono font-medium text-slate-900">{{ $customer->pan ?: '—' }}</dd>
                 </div>

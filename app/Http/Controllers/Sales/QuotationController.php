@@ -79,15 +79,23 @@ class QuotationController extends Controller
     public function create(): View
     {
         $company = Company::defaultCompany();
+        $companyId = $company?->id ?: auth()->user()?->company_id;
+        $qtnSeries = $this->quotationService->resolveSeries($companyId ? (int) $companyId : null);
+        $nextNumber = ($qtnSeries && ($qtnSeries->isAutomatic() || $qtnSeries->isManualOverride()))
+            ? $this->quotationService->peekNumber($companyId ? (int) $companyId : null)
+            : null;
 
-        return view('sales.quotations.form', $this->formData(new Quotation([
+        $item = new Quotation([
             'quotation_date' => now()->toDateString(),
             'valid_until' => now()->addDays(10)->toDateString(),
             'status' => 'draft',
+            'quotation_no' => $nextNumber,
             'special_instructions' => $this->quotationService->defaultSpecialInstructions(),
             'terms_conditions' => $this->quotationService->defaultTerms($company),
             'company_id' => $company?->id,
-        ])));
+        ]);
+
+        return view('sales.quotations.form', $this->formData($item));
     }
 
     public function store(Request $request): RedirectResponse
@@ -227,17 +235,22 @@ class QuotationController extends Controller
         })->values();
 
         $companyId = $item->company_id ?: Company::defaultCompanyId() ?: auth()->user()?->company_id;
-        $numberSeries = $this->documentNumberService->resolveSeries('QTN', $companyId ? (int) $companyId : null);
+        $numberSeries = $this->quotationService->resolveSeries($companyId ? (int) $companyId : null);
+        $nextNumber = ($numberSeries && ($numberSeries->isAutomatic() || $numberSeries->isManualOverride()))
+            ? $this->quotationService->peekNumber($companyId ? (int) $companyId : null)
+            : null;
 
         return [
             'item' => $item,
+            'qtnSeries' => $numberSeries,
+            'numberSeries' => $numberSeries,
+            'nextNumber' => $nextNumber,
             'customers' => Customer::where('is_active', true)->orderBy('name')->get(),
             'products' => $products,
             'productPayload' => $productPayload,
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
             'defaultSpecialInstructions' => $this->quotationService->defaultSpecialInstructions(),
             'defaultTerms' => $this->quotationService->defaultTerms($item->resolveCompany()),
-            'numberSeries' => $numberSeries,
             'isManualNumbering' => (bool) ($numberSeries && $numberSeries->isManual()),
         ];
     }
@@ -245,9 +258,9 @@ class QuotationController extends Controller
     protected function validated(Request $request): array
     {
         return $request->validate([
+            'quotation_no' => 'nullable|string|max:50',
             'customer_id' => 'required|exists:customers,id',
             'company_id' => 'nullable|exists:companies,id',
-            'quotation_no' => 'nullable|string|max:50',
             'quotation_date' => 'required|date',
             'valid_until' => 'nullable|date|after_or_equal:quotation_date',
             'title' => 'nullable|string|max:255',

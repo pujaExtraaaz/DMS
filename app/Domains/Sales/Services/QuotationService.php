@@ -55,9 +55,12 @@ class QuotationService
                 $data['created_by_name'] ?? $actor->name
             );
 
+            $companyId = $company?->id ?? $actor->company_id ?? $customer->company_id ?? null;
+            $quotationNo = $this->resolveQuotationNumber($data, $companyId);
+
             $quotation = Quotation::create([
                 'company_id' => $company?->id,
-                'quotation_no' => $this->resolveQuotationNumber($data, $company?->id),
+                'quotation_no' => $quotationNo,
                 'customer_id' => $customer->id,
                 'salesperson_id' => $actor->id,
                 'quotation_date' => $data['quotation_date'],
@@ -81,6 +84,89 @@ class QuotationService
 
             return $quotation->load(['customer', 'company', 'items.product', 'items.uom']);
         });
+    }
+
+    public function resolveSeries(?int $companyId = null): ?\App\Domains\Organization\Models\DocumentNumberSeries
+    {
+        return $this->documentNumberService->resolveSeries('QTN', $companyId);
+    }
+
+    public function peekNumber(?int $companyId = null, ?\Illuminate\Support\Carbon $date = null): ?string
+    {
+        return $this->documentNumberService->peekFromSeries('QTN', $date, $companyId);
+    }
+
+    public function resolveQuotationNumber(array $data, ?int $companyId = null): string
+    {
+        $series = $this->resolveSeries($companyId);
+        $date = ! empty($data['quotation_date']) ? \Illuminate\Support\Carbon::parse($data['quotation_date']) : now();
+        $provided = strtoupper(trim((string) ($data['quotation_no'] ?? '')));
+
+        if ($series) {
+            if ($series->isManual()) {
+                if ($provided === '') {
+                    throw ValidationException::withMessages([
+                        'quotation_no' => 'Quotation number is required when numbering is set to manual.',
+                    ]);
+                }
+
+                $exists = Quotation::query()->where('quotation_no', $provided)->exists();
+                if ($exists) {
+                    throw ValidationException::withMessages([
+                        'quotation_no' => 'This quotation number already exists.',
+                    ]);
+                }
+
+                return $provided;
+            }
+
+            if ($series->isManualOverride()) {
+                if ($provided !== '') {
+                    $exists = Quotation::query()->where('quotation_no', $provided)->exists();
+                    if ($exists) {
+                        throw ValidationException::withMessages([
+                            'quotation_no' => 'This quotation number already exists.',
+                        ]);
+                    }
+
+                    return $provided;
+                }
+
+                return $this->documentNumberService->nextFromSeries(
+                    $series,
+                    $date,
+                    $companyId,
+                    fn (string $no) => Quotation::query()->where('quotation_no', $no)->exists()
+                );
+            }
+
+            return $this->documentNumberService->nextFromSeries(
+                $series,
+                $date,
+                $companyId,
+                fn (string $no) => Quotation::query()->where('quotation_no', $no)->exists()
+            );
+        }
+
+        if ($provided !== '') {
+            $exists = Quotation::query()->where('quotation_no', $provided)->exists();
+            if ($exists) {
+                throw ValidationException::withMessages([
+                    'quotation_no' => 'This quotation number already exists.',
+                ]);
+            }
+
+            return $provided;
+        }
+
+        $attempts = 0;
+        do {
+            $candidate = $this->documentNumberService->next('QTN', $date, 4, $companyId);
+            $exists = Quotation::query()->where('quotation_no', $candidate)->exists();
+            $attempts++;
+        } while ($exists && $attempts < 50);
+
+        return $candidate;
     }
 
     public function update(Quotation $quotation, array $data, User $actor): Quotation
@@ -287,41 +373,6 @@ class QuotationService
         return array_values($grouped);
     }
 
-    protected function resolveQuotationNumber(array $data, ?int $companyId): string
-    {
-        $series = $this->documentNumberService->resolveSeries('QTN', $companyId);
-        $quoteDate = ! empty($data['quotation_date'])
-            ? Carbon::parse($data['quotation_date'])
-            : now();
-
-        if ($series && $series->isManual()) {
-            $quotationNo = strtoupper(trim((string) ($data['quotation_no'] ?? '')));
-            if ($quotationNo === '') {
-                throw ValidationException::withMessages([
-                    'quotation_no' => 'Voucher number is required when Sales Quotation numbering is set to manual.',
-                ]);
-            }
-
-            $exists = Quotation::query()
-                ->where('quotation_no', $quotationNo)
-                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
-                ->exists();
-
-            if ($exists) {
-                throw ValidationException::withMessages([
-                    'quotation_no' => 'This voucher number already exists.',
-                ]);
-            }
-
-            return $quotationNo;
-        }
-
-        if ($series) {
-            return $this->documentNumberService->nextFromSeries($series, $quoteDate, $companyId);
-        }
-
-        return $this->documentNumberService->next('QTN', $quoteDate, 4, $companyId);
-    }
 
     public function defaultSpecialInstructions(): string
     {

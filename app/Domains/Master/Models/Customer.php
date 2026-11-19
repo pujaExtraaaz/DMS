@@ -40,11 +40,14 @@ class Customer extends Model
         'location_link',
         'address',
         'gstin',
+        'gst_registration_type',
         'state',
         'pincode',
         'credit_limit',
         'credit_days',
         'credit_status',
+        'risk_status',
+        'cheque_bounce_count',
         'credit_period_basis',
         'interest_rate',
         'payment_terms',
@@ -65,6 +68,75 @@ class Customer extends Model
         self::PARTY_TYPE_SUNDRY_CREDITORS => 'Sundry Creditors',
         self::PARTY_TYPE_BOTH => 'Both',
     ];
+
+    public const GST_REGISTRATION_TYPES = [
+        'Regular',
+        'Composition',
+        'Casual Taxable Person',
+        'Non-Resident Taxable Person',
+        'Input Service Distributor (ISD)',
+        'SEZ Unit',
+        'SEZ Developer',
+        'TDS Deductor',
+        'TCS Collector',
+        'UIN Holder',
+        'Unregistered',
+    ];
+
+    /**
+     * Normalize raw or API registration type strings into standard Party Master categories.
+     */
+    public static function normalizeGstRegistrationType(?string $value): ?string
+    {
+        if (blank($value)) {
+            return null;
+        }
+
+        $trimmed = trim((string) $value);
+        $upper = mb_strtoupper($trimmed);
+
+        foreach (self::GST_REGISTRATION_TYPES as $type) {
+            if (mb_strtoupper($type) === $upper) {
+                return $type;
+            }
+        }
+
+        if (str_contains($upper, 'COMPOSITION')) {
+            return 'Composition';
+        }
+        if (str_contains($upper, 'CASUAL')) {
+            return 'Casual Taxable Person';
+        }
+        if (str_contains($upper, 'NON-RESIDENT') || str_contains($upper, 'NON RESIDENT')) {
+            return 'Non-Resident Taxable Person';
+        }
+        if (str_contains($upper, 'ISD') || str_contains($upper, 'INPUT SERVICE DISTRIBUTOR')) {
+            return 'Input Service Distributor (ISD)';
+        }
+        if (str_contains($upper, 'SEZ DEVELOPER')) {
+            return 'SEZ Developer';
+        }
+        if (str_contains($upper, 'SEZ')) {
+            return 'SEZ Unit';
+        }
+        if (str_contains($upper, 'TDS')) {
+            return 'TDS Deductor';
+        }
+        if (str_contains($upper, 'TCS')) {
+            return 'TCS Collector';
+        }
+        if (str_contains($upper, 'UIN') || str_contains($upper, 'EMBASSY') || str_contains($upper, 'UN BODY')) {
+            return 'UIN Holder';
+        }
+        if (str_contains($upper, 'UNREGISTERED')) {
+            return 'Unregistered';
+        }
+        if (str_contains($upper, 'REGULAR')) {
+            return 'Regular';
+        }
+
+        return $trimmed;
+    }
 
     protected $appends = ['pan', 'party_type_label', 'party_type_key'];
 

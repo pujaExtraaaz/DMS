@@ -108,7 +108,7 @@ class CompanyViewAndDeleteTest extends TestCase
         $response->assertSee('Apex Technologies Pvt Ltd');
         $response->assertSee('Apex Technologies Private Limited');
         $response->assertSee('APEX01');
-        $response->assertSee('Apex Holdings Group');
+        $response->assertDontSee('Business Group');
         $response->assertSee('Active');
         $response->assertSee('27AAAAA0000A1Z5');
         $response->assertSee('AAAAA0000A');

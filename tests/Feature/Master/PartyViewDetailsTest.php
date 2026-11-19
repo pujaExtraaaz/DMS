@@ -188,7 +188,7 @@ class PartyViewDetailsTest extends TestCase
         $response->assertSeeText('500,000.00');
         $response->assertSeeText('30 Days');
         $response->assertSeeText('18.00%');
-        $response->assertSeeText('30 Days Net From Invoice Date');
+        $response->assertSeeText('30 Days Net from Invoice Date');
 
         // 6. Verify Address details
         $response->assertSeeText('Central Hub & Warehouse');

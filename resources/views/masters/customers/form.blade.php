@@ -304,8 +304,25 @@
                             <p x-show="gstLookupInfo.center_jurisdiction"><span class="text-slate-500">Center jurisdiction:</span> <span x-text="gstLookupInfo.center_jurisdiction"></span></p>
                             <p x-show="gstLookupInfo.nature_of_business" class="sm:col-span-2"><span class="text-slate-500">Nature of business:</span> <span x-text="gstLookupInfo.nature_of_business"></span></p>
                         </div>
-                        <p class="text-slate-500">Trade name is saved with the party. The other GST registration details are shown for review.</p>
+                        <p class="text-slate-500">Trade name and GST registration type are saved with the party. The other GST registration details are shown for review.</p>
                     </div>
+                </div>
+
+                <div>
+                    <label for="gst_registration_type" class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GST Registration Type</label>
+                    <select name="gst_registration_type"
+                            id="gst_registration_type"
+                            x-model="form.gst_registration_type"
+                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Select GST Registration Type</option>
+                        @foreach(\App\Domains\Master\Models\Customer::GST_REGISTRATION_TYPES as $type)
+                            <option value="{{ $type }}" @selected(old('gst_registration_type', $item->gst_registration_type) === $type)>{{ $type }}</option>
+                        @endforeach
+                    </select>
+                    <p class="mt-1 text-[11px] text-slate-500">Optional. Auto-filled from GST records when fetched, or select manually.</p>
+                    @error('gst_registration_type')
+                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                    @enderror
                 </div>
 
                 <div>
@@ -2627,6 +2644,7 @@ function partyFormController() {
             name: {!! json_encode(old('name', $item->name ?? '')) !!},
             trade_name: {!! json_encode(old('trade_name', $item->trade_name ?? '')) !!},
             gstin: {!! json_encode(old('gstin', $item->gstin ?? '')) !!},
+            gst_registration_type: {!! json_encode(old('gst_registration_type', $item->gst_registration_type ?? '')) !!},
             party_type: {!! json_encode($selectedPartyType) !!},
             pan: {!! json_encode(old('pan', $item->pan ?? '')) !!},
             phone: {!! json_encode(old('phone', $item->phone ?? '')) !!},
@@ -3211,6 +3229,44 @@ function partyFormController() {
             }
         },
 
+        mapGstRegistrationType(rawType) {
+            if (!rawType) return '';
+            const clean = String(rawType).trim();
+            if (!clean) return '';
+            const upper = clean.toUpperCase();
+
+            const options = [
+                'Regular',
+                'Composition',
+                'Casual Taxable Person',
+                'Non-Resident Taxable Person',
+                'Input Service Distributor (ISD)',
+                'SEZ Unit',
+                'SEZ Developer',
+                'TDS Deductor',
+                'TCS Collector',
+                'UIN Holder',
+                'Unregistered'
+            ];
+
+            const exactMatch = options.find(opt => opt.toUpperCase() === upper);
+            if (exactMatch) return exactMatch;
+
+            if (upper.includes('COMPOSITION')) return 'Composition';
+            if (upper.includes('CASUAL')) return 'Casual Taxable Person';
+            if (upper.includes('NON-RESIDENT') || upper.includes('NON RESIDENT')) return 'Non-Resident Taxable Person';
+            if (upper.includes('ISD') || upper.includes('INPUT SERVICE DISTRIBUTOR')) return 'Input Service Distributor (ISD)';
+            if (upper.includes('SEZ DEVELOPER')) return 'SEZ Developer';
+            if (upper.includes('SEZ')) return 'SEZ Unit';
+            if (upper.includes('TDS')) return 'TDS Deductor';
+            if (upper.includes('TCS')) return 'TCS Collector';
+            if (upper.includes('UIN') || upper.includes('EMBASSY') || upper.includes('UN BODY')) return 'UIN Holder';
+            if (upper.includes('UNREGISTERED')) return 'Unregistered';
+            if (upper.includes('REGULAR')) return 'Regular';
+
+            return clean;
+        },
+
         applyExtractedGstinFields(extracted = null, gstin = '') {
             const source = extracted || {};
             const derivedPan = (source.pan || (gstin.length >= 12 ? gstin.substring(2, 12) : '') || '').trim();
@@ -3415,6 +3471,10 @@ function partyFormController() {
                     if (data.party.pincode) this.form.pincode = String(data.party.pincode).trim();
                     if (data.party.address || data.party.address_line_1) {
                         this.form.address = String(data.party.address || data.party.address_line_1).trim();
+                    }
+                    const matchedRegType = this.mapGstRegistrationType(data.party.gst_registration_type || data.party.taxpayer_type);
+                    if (matchedRegType) {
+                        this.form.gst_registration_type = matchedRegType;
                     }
 
                     const appliedKey = [

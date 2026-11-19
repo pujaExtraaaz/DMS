@@ -265,7 +265,7 @@ class ProductPageStatePreservationTest extends TestCase
 
         $response = $this->actingAs($this->user)->put(route('masters.products.update', $product), $updatePayload);
 
-        $expectedRedirect = $returnUrl . '&updated_product_id=' . $product->id;
+        $expectedRedirect = $returnUrl . '&updated_product_id=' . $product->id . '&returned_from=product_edit';
         $response->assertRedirect($expectedRedirect);
         $response->assertSessionHas('status', "Product 'Steel Coupling 50mm Heavy Duty' updated successfully.");
 
@@ -319,6 +319,7 @@ class ProductPageStatePreservationTest extends TestCase
         $payload = [
             'name' => 'Safe Redirect Test Product',
             'sku' => 'SRTP-001',
+            'brand_id' => $this->brand->id,
             'base_uom_id' => $this->uom->id,
             'alternate_uom_not_applicable' => 1,
             'dimensions_not_applicable' => 1,

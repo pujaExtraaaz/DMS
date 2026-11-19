@@ -212,6 +212,74 @@ class PurchaseInvoice extends Model
                 $invoice->qr_token = (string) \Illuminate\Support\Str::uuid();
             }
         });
+
+        static::saved(function (PurchaseInvoice $invoice) {
+            if ($invoice->status === 'posted') {
+                $invoice->syncSupplierPayable();
+            } elseif (in_array($invoice->status, ['draft', 'cancelled'], true)) {
+                SupplierPayable::where('reference_type', $invoice->getMorphClass())
+                    ->where('reference_id', $invoice->id)
+                    ->delete();
+            }
+        });
+
+        static::deleted(function (PurchaseInvoice $invoice) {
+            SupplierPayable::where('reference_type', $invoice->getMorphClass())
+                ->where('reference_id', $invoice->id)
+                ->delete();
+        });
+    }
+
+    public function supplierPayable(): \Illuminate\Database\Eloquent\Relations\MorphOne
+    {
+        return $this->morphOne(SupplierPayable::class, 'reference');
+    }
+
+    public function syncSupplierPayable(): ?SupplierPayable
+    {
+        if ($this->status !== 'posted') {
+            SupplierPayable::where('reference_type', $this->getMorphClass())
+                ->where('reference_id', $this->id)
+                ->delete();
+
+            return null;
+        }
+
+        $payable = SupplierPayable::where('reference_type', $this->getMorphClass())
+            ->where('reference_id', $this->id)
+            ->first();
+
+        $previous = (float) (SupplierPayable::query()
+            ->where('supplier_id', $this->supplier_id)
+            ->when($payable, fn ($q) => $q->where('id', '!=', $payable->id))
+            ->orderByDesc('id')
+            ->value('balance') ?? 0);
+
+        $notes = "Purchase invoice {$this->invoice_no}";
+
+        if ($payable) {
+            $payable->update([
+                'supplier_id' => $this->supplier_id,
+                'type' => 'invoice',
+                'debit' => $this->grand_total,
+                'credit' => 0,
+                'balance' => $previous + (float) $this->grand_total,
+                'notes' => $notes,
+            ]);
+
+            return $payable;
+        }
+
+        return SupplierPayable::create([
+            'supplier_id' => $this->supplier_id,
+            'type' => 'invoice',
+            'reference_type' => $this->getMorphClass(),
+            'reference_id' => $this->id,
+            'debit' => $this->grand_total,
+            'credit' => 0,
+            'balance' => $previous + (float) $this->grand_total,
+            'notes' => $notes,
+        ]);
     }
 
     public function getTotalAmountAttribute(): float

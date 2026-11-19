@@ -8,6 +8,7 @@ use App\Domains\Delivery\Models\Delivery;
 use App\Domains\Inventory\Models\Purchase;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
+use App\Domains\Purchasing\Models\SupplierPayable;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Inventory\Models\StockMovement;
 use App\Domains\Master\Models\Customer;
@@ -530,22 +531,182 @@ class ReportController extends Controller
         $entries = collect();
         $customer = null;
         $opening = 0.0;
+        $totalDebit = 0.0;
+        $totalCredit = 0.0;
+        $closing = 0.0;
 
         if ($customerId) {
             $customer = Customer::findOrFail($customerId);
 
-            $opening = (float) (OutstandingLedger::query()
-                ->where('customer_id', $customerId)
-                ->whereDate('created_at', '<', $dateFrom)
-                ->orderByDesc('id')
-                ->value('balance') ?? 0);
+            // Ensure any posted purchase invoices without a supplier_payable entry are synchronized
+            PurchaseInvoice::query()
+                ->where('supplier_id', $customerId)
+                ->where('status', 'posted')
+                ->whereDoesntHave('supplierPayable')
+                ->each(fn (PurchaseInvoice $pi) => $pi->syncSupplierPayable());
 
-            $entries = OutstandingLedger::query()
-                ->where('customer_id', $customerId)
-                ->whereDate('created_at', '>=', $dateFrom)
-                ->whereDate('created_at', '<=', $dateTo)
-                ->orderBy('id')
+            $rawEntries = collect();
+
+            // 1. Posted Purchase Invoices for supplier
+            $purchaseInvoices = PurchaseInvoice::query()
+                ->where('supplier_id', $customerId)
+                ->where('status', 'posted')
                 ->get();
+
+            foreach ($purchaseInvoices as $pi) {
+                $txDate = $pi->invoice_date ? $pi->invoice_date->toDateString() : $pi->created_at->toDateString();
+                $voucherNo = $pi->invoice_no ?? $pi->invoice_number ?? ($pi->supplier_invoice_no ?? "PI-{$pi->id}");
+                $particulars = $pi->notes ?: "Purchase invoice {$voucherNo}";
+
+                $rawEntries->push([
+                    'id' => 'pi_'.$pi->id,
+                    'sort_date' => $txDate,
+                    'date' => $pi->invoice_date ?? $pi->created_at,
+                    'voucher_number' => $voucherNo,
+                    'particulars' => $particulars,
+                    'voucher_type' => 'Purchase Invoice',
+                    'debit' => 0.0,
+                    'credit' => (float) $pi->grand_total,
+                ]);
+            }
+
+            // 2. Non-invoice Supplier Payables (payments to supplier, debit notes, etc.)
+            $otherPayables = SupplierPayable::query()
+                ->where('supplier_id', $customerId)
+                ->where('type', '!=', 'invoice')
+                ->get();
+
+            foreach ($otherPayables as $sp) {
+                $txDate = $sp->created_at->toDateString();
+                $voucherType = match ($sp->type) {
+                    'payment' => 'Payment',
+                    'debit_note' => 'Debit Note',
+                    'credit_note' => 'Credit Note',
+                    default => ucfirst(str_replace('_', ' ', $sp->type)),
+                };
+                $debit = (float) ($sp->debit > 0 ? $sp->debit : 0);
+                $credit = (float) ($sp->credit > 0 ? $sp->credit : 0);
+                if ($sp->type === 'payment' && $debit == 0 && $credit > 0) {
+                    $debit = $credit;
+                    $credit = 0;
+                }
+
+                $rawEntries->push([
+                    'id' => 'sp_'.$sp->id,
+                    'sort_date' => $txDate,
+                    'date' => $sp->created_at,
+                    'voucher_number' => $sp->notes ?: "SP-{$sp->id}",
+                    'particulars' => $sp->notes ?: $voucherType,
+                    'voucher_type' => $voucherType,
+                    'debit' => $debit,
+                    'credit' => $credit,
+                ]);
+            }
+
+            // 3. Outstanding Ledger Entries (sales invoices, customer receipts, credit notes, adjustments)
+            $outstanding = OutstandingLedger::query()
+                ->where('customer_id', $customerId)
+                ->with('reference')
+                ->get();
+
+            foreach ($outstanding as $ol) {
+                $ref = $ol->reference;
+                $txDate = match (true) {
+                    $ref instanceof Invoice => $ref->invoice_date?->toDateString() ?? $ol->created_at->toDateString(),
+                    $ref instanceof Payment => $ref->paid_at?->toDateString() ?? $ol->created_at->toDateString(),
+                    $ref instanceof \App\Domains\Payment\Models\CreditNote => $ref->credit_note_date?->toDateString() ?? $ol->created_at->toDateString(),
+                    default => $ol->created_at->toDateString(),
+                };
+
+                $voucherNo = match (true) {
+                    $ref instanceof Invoice => $ref->invoice_no ?? $ref->invoice_number ?? "INV-{$ref->id}",
+                    $ref instanceof Payment => $ref->payment_no ?? "PAY-{$ref->id}",
+                    $ref instanceof \App\Domains\Payment\Models\CreditNote => $ref->credit_note_no ?? "CN-{$ref->id}",
+                    default => "LED-{$ol->id}",
+                };
+
+                $voucherType = match ($ol->type) {
+                    'invoice' => 'Sales Invoice',
+                    'payment' => 'Payment',
+                    'credit_note' => 'Credit Note',
+                    'settlement' => 'Settlement',
+                    'adjustment' => 'Adjustment',
+                    default => ucfirst(str_replace('_', ' ', $ol->type)),
+                };
+
+                $rawEntries->push([
+                    'id' => 'ol_'.$ol->id,
+                    'sort_date' => $txDate,
+                    'date' => $ref?->invoice_date ?? $ref?->paid_at ?? $ref?->credit_note_date ?? $ol->created_at,
+                    'voucher_number' => $voucherNo,
+                    'particulars' => $ol->notes ?: "{$voucherType} {$voucherNo}",
+                    'voucher_type' => $voucherType,
+                    'debit' => (float) $ol->debit,
+                    'credit' => (float) $ol->credit,
+                ]);
+            }
+
+            // Chronological sort
+            $rawEntries = $rawEntries->sortBy(fn ($item) => $item['sort_date'] . '_' . $item['id'])->values();
+
+            $isSupplier = $customer->party_type === Customer::PARTY_TYPE_SUNDRY_CREDITORS
+                || $customer->party_type === 'supplier'
+                || ($customer->isSupplier() && ! $customer->isCustomerParty());
+
+            $priorEntries = $rawEntries->filter(fn ($t) => $t['sort_date'] < $dateFrom);
+            $periodEntries = $rawEntries->filter(fn ($t) => $t['sort_date'] >= $dateFrom && $t['sort_date'] <= $dateTo);
+
+            $opening = (float) $priorEntries->sum(fn ($t) => $isSupplier ? ($t['credit'] - $t['debit']) : ($t['debit'] - $t['credit']));
+            $runningBalance = $opening;
+
+            $entries = $periodEntries->map(function ($t) use (&$runningBalance, &$totalDebit, &$totalCredit, $isSupplier) {
+                $debit = (float) $t['debit'];
+                $credit = (float) $t['credit'];
+                $totalDebit += $debit;
+                $totalCredit += $credit;
+
+                $runningBalance += $isSupplier ? ($credit - $debit) : ($debit - $credit);
+
+                return (object) [
+                    'id' => $t['id'],
+                    'date' => $t['date'],
+                    'created_at' => $t['date'],
+                    'voucher_number' => $t['voucher_number'],
+                    'particulars' => $t['particulars'],
+                    'notes' => $t['particulars'],
+                    'voucher_type' => $t['voucher_type'],
+                    'type' => $t['voucher_type'],
+                    'debit' => $debit,
+                    'credit' => $credit,
+                    'balance' => $runningBalance,
+                ];
+            })->values();
+
+            $closing = $runningBalance;
+
+            $export = strtolower((string) $request->input('export'));
+            if (in_array($export, ['csv', 'pdf'], true)) {
+                $headers = ['Date', 'Voucher Number', 'Particulars', 'Voucher Type', 'Debit', 'Credit', 'Balance'];
+                $exportRows = $entries->map(fn ($r) => [
+                    $r->date instanceof \DateTimeInterface ? $r->date->format('d M Y') : (string) $r->date,
+                    $r->voucher_number,
+                    $r->particulars,
+                    $r->voucher_type,
+                    $r->debit > 0 ? number_format($r->debit, 2) : '',
+                    $r->credit > 0 ? number_format($r->credit, 2) : '',
+                    number_format($r->balance, 2),
+                ])->all();
+                $filename = 'party-statement-'.($customer->code ?? $customer->id).'-'.now()->format('Ymd-His').'.'.$export;
+
+                return $export === 'csv'
+                    ? ReportExporter::csv($filename, $headers, $exportRows)
+                    : ReportExporter::pdf($filename, 'Party Statement: '.$customer->name, $headers, $exportRows, [
+                        'Party' => $customer->name,
+                        'Period' => trim(($dateFrom ?? '').' → '.($dateTo ?? ''), ' →'),
+                        'Opening Balance' => number_format($opening, 2),
+                        'Closing Balance' => number_format($closing, 2),
+                    ]);
+            }
         }
 
         $export = strtolower((string) $request->input('export'));
@@ -583,6 +744,9 @@ class ReportController extends Controller
             'customer' => $customer,
             'entries' => $entries,
             'opening' => $opening,
+            'totalDebit' => $totalDebit,
+            'totalCredit' => $totalCredit,
+            'closing' => $closing,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
             'integrity' => $this->reportIntegrityHints(),

@@ -38,7 +38,7 @@ return new class extends Migration
         Schema::create('cheques', function (Blueprint $table) {
             $table->id();
             $table->string('cheque_no', 50);
-            $table->foreignId('customer_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('customer_id')->nullable()->constrained()->cascadeOnDelete();
             $table->enum('purpose', ['security', 'pdc'])->default('pdc');
             $table->enum('direction', [
                 'received_from_client',
@@ -67,7 +67,7 @@ return new class extends Migration
         Schema::create('cheque_bounces', function (Blueprint $table) {
             $table->id();
             $table->foreignId('cheque_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('customer_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('customer_id')->nullable()->constrained()->cascadeOnDelete();
             $table->date('bounced_on');
             $table->string('reason')->nullable();
             $table->decimal('charges', 12, 2)->default(0);

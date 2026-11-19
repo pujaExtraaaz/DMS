@@ -188,14 +188,22 @@ class ConsolidatedReportService
             ])
             ->whereBetween('invoice_date', [$fromDate, $toDate]);
 
-        // Filter by company IDs
+        // Filter by company IDs: prioritize direct company_id, fallback to warehouse/customer only when company_id is null
         $hasCompanyColumn = Schema::hasColumn('invoices', 'company_id');
         $query->where(function (Builder $q) use ($companyIds, $hasCompanyColumn) {
             if ($hasCompanyColumn) {
-                $q->whereIn('invoices.company_id', $companyIds);
+                $q->whereIn('invoices.company_id', $companyIds)
+                    ->orWhere(function ($fallback) use ($companyIds) {
+                        $fallback->whereNull('invoices.company_id')
+                            ->where(function ($sub) use ($companyIds) {
+                                $sub->whereHas('order.warehouse', fn ($wq) => $wq->whereIn('company_id', $companyIds))
+                                    ->orWhereHas('customer', fn ($cq) => $cq->whereIn('company_id', $companyIds));
+                            });
+                    });
+            } else {
+                $q->whereHas('order.warehouse', fn ($wq) => $wq->whereIn('company_id', $companyIds))
+                    ->orWhereHas('customer', fn ($cq) => $cq->whereIn('company_id', $companyIds));
             }
-            $q->orWhereHas('order.warehouse', fn ($wq) => $wq->whereIn('company_id', $companyIds))
-                ->orWhereHas('customer', fn ($cq) => $cq->whereIn('company_id', $companyIds));
         });
 
         if ($excludeCancelled) {
@@ -239,13 +247,18 @@ class ConsolidatedReportService
             ])
             ->whereBetween('invoice_date', [$fromDate, $toDate]);
 
-        // Filter by company IDs
+        // Filter by company IDs: prioritize direct company_id, fallback to warehouse only when company_id is null
         $hasCompanyColumn = Schema::hasColumn('purchase_invoices', 'company_id');
         $query->where(function (Builder $q) use ($companyIds, $hasCompanyColumn) {
             if ($hasCompanyColumn) {
-                $q->whereIn('purchase_invoices.company_id', $companyIds);
+                $q->whereIn('purchase_invoices.company_id', $companyIds)
+                    ->orWhere(function ($fallback) use ($companyIds) {
+                        $fallback->whereNull('purchase_invoices.company_id')
+                            ->whereHas('warehouse', fn ($wq) => $wq->whereIn('company_id', $companyIds));
+                    });
+            } else {
+                $q->whereHas('warehouse', fn ($wq) => $wq->whereIn('company_id', $companyIds));
             }
-            $q->orWhereHas('warehouse', fn ($wq) => $wq->whereIn('company_id', $companyIds));
         });
 
         if ($excludeCancelled) {
@@ -292,11 +305,22 @@ class ConsolidatedReportService
                 ->sum('grand_total');
         }
 
+        if (Schema::hasTable('acct_vouchers')) {
+            $voucherCreditNotes = (float) DB::table('acct_vouchers')
+                ->whereIn('company_id', $companyIds)
+                ->where('voucher_type', 'credit_note')
+                ->where('status', 'posted')
+                ->whereBetween('voucher_date', [$fromDate, $toDate])
+                ->sum('total_credit');
+            $creditNotesTotal = max($creditNotesTotal, $voucherCreditNotes);
+        }
+
         $netSales = max(0.0, $grossSales - $creditNotesTotal);
         $outstanding = max(0.0, $grossSales - $collected - $creditNotesTotal);
 
         return [
             'total_sales' => $grossSales,
+            'sales_returns' => $creditNotesTotal,
             'net_sales' => $netSales,
             'total_invoices' => $invoiceCount,
             'taxable_amount' => $taxable,
@@ -331,10 +355,46 @@ class ConsolidatedReportService
             }
         }
 
-        $outstandingPayables = max(0.0, $totalPurchases - $paidAmount);
+        // Calculate Debit Notes (Purchase Returns) in this period
+        $debitNotesTotal = 0.0;
+        if (Schema::hasTable('supplier_payables')) {
+            $dpQuery = DB::table('supplier_payables')
+                ->where('type', 'debit_note')
+                ->whereDate('created_at', '>=', $fromDate)
+                ->whereDate('created_at', '<=', $toDate);
+
+            if (Schema::hasColumn('supplier_payables', 'company_id')) {
+                $dpQuery->whereIn('company_id', $companyIds);
+            } elseif (Schema::hasColumn('supplier_payables', 'supplier_id')) {
+                $supplierIds = Customer::query()->whereIn('company_id', $companyIds)->pluck('id');
+                $dpQuery->whereIn('supplier_id', $supplierIds);
+            }
+
+            if (Schema::hasColumn('supplier_payables', 'debit')) {
+                $debitNotesTotal += (float) $dpQuery->sum('debit');
+            } elseif (Schema::hasColumn('supplier_payables', 'amount')) {
+                $debitNotesTotal += (float) $dpQuery->sum('amount');
+            }
+        }
+
+        if (Schema::hasTable('acct_vouchers')) {
+            $voucherDebitNotes = (float) DB::table('acct_vouchers')
+                ->whereIn('company_id', $companyIds)
+                ->where('voucher_type', 'debit_note')
+                ->where('status', 'posted')
+                ->whereBetween('voucher_date', [$fromDate, $toDate])
+                ->sum('total_debit');
+            $debitNotesTotal = max($debitNotesTotal, $voucherDebitNotes);
+        }
+
+        $netPurchases = max(0.0, $totalPurchases - $debitNotesTotal);
+        $outstandingPayables = max(0.0, $totalPurchases - $paidAmount - $debitNotesTotal);
 
         return [
             'total_purchases' => $totalPurchases,
+            'purchase_returns' => $debitNotesTotal,
+            'debit_notes_total' => $debitNotesTotal,
+            'net_purchases' => $netPurchases,
             'total_invoices' => $invoiceCount,
             'taxable_amount' => $taxable,
             'tax_amount' => $taxAmount,
@@ -481,22 +541,171 @@ class ConsolidatedReportService
     {
         $interCompanyVolume = 0.0;
         $interCompanyTxCount = 0;
+        $matchedCount = 0;
+        $unmatchedCount = 0;
+        $unmatchedVolume = 0.0;
+        $internalReceivables = 0.0;
+        $internalPayables = 0.0;
+        $internalSales = 0.0;
+        $internalPurchases = 0.0;
+        $items = collect();
 
-        if (Schema::hasTable('inter_company_transactions') && count($companyIds) > 1) {
-            $txs = InterCompanyTransaction::query()
-                ->whereIn('from_company_id', $companyIds)
-                ->whereIn('to_company_id', $companyIds)
-                ->whereBetween('transaction_date', [$fromDate, $toDate])
-                ->where('status', '!=', 'Cancelled')
-                ->get();
+        if (count($companyIds) > 1) {
+            $companies = Company::whereIn('id', $companyIds)->get()->keyBy('id');
+            $companiesByGstin = $companies->filter(fn ($c) => filled($c->gstin))->keyBy('gstin');
 
-            $interCompanyVolume = (float) $txs->sum('net_amount');
-            $interCompanyTxCount = $txs->count();
+            // 1. Direct InterCompanyTransaction table records
+            if (Schema::hasTable('inter_company_transactions')) {
+                $txs = InterCompanyTransaction::query()
+                    ->with(['fromCompany', 'toCompany'])
+                    ->whereIn('from_company_id', $companyIds)
+                    ->whereIn('to_company_id', $companyIds)
+                    ->whereBetween('transaction_date', [$fromDate, $toDate])
+                    ->where('status', '!=', 'Cancelled')
+                    ->orderByDesc('transaction_date')
+                    ->get();
+
+                foreach ($txs as $tx) {
+                    $amount = (float) $tx->net_amount;
+                    $isSettled = strtolower((string) $tx->status) === 'settled';
+                    $isApproved = in_array(strtolower((string) $tx->status), ['approved', 'settled'], true);
+                    $outstanding = $isSettled ? 0.0 : $amount;
+
+                    $matchStatus = $isApproved ? 'Matched' : 'Pending Verification';
+
+                    if ($isApproved) {
+                        $interCompanyVolume += $amount;
+                        $interCompanyTxCount++;
+                        $matchedCount++;
+                    } else {
+                        $unmatchedCount++;
+                        $unmatchedVolume += $amount;
+                    }
+
+                    $internalReceivables += $outstanding;
+                    $internalPayables += $outstanding;
+                    $internalSales += $amount;
+                    $internalPurchases += $amount;
+
+                    $items->push([
+                        'id' => 'tx_' . $tx->id,
+                        'source' => 'inter_company_register',
+                        'transaction_no' => $tx->transaction_no,
+                        'transaction_date' => $tx->transaction_date ? (is_string($tx->transaction_date) ? $tx->transaction_date : $tx->transaction_date->format('Y-m-d')) : $fromDate,
+                        'transaction_type' => $tx->transaction_type ?: 'Inter-Company Transfer',
+                        'selling_company_id' => $tx->from_company_id,
+                        'selling_company_name' => $tx->fromCompany?->name ?? 'Company A',
+                        'purchasing_company_id' => $tx->to_company_id,
+                        'purchasing_company_name' => $tx->toCompany?->name ?? 'Company B',
+                        'amount' => (float) $tx->amount,
+                        'net_amount' => $amount,
+                        'outstanding_amount' => $outstanding,
+                        'status' => $tx->status ?: 'Pending',
+                        'match_status' => $matchStatus,
+                        'reference_invoice' => $tx->reference_invoice ?: '—',
+                        'narration' => $tx->narration ?: 'Direct Inter-Company Transaction',
+                    ]);
+                }
+            }
+
+            // 2. Scan Sales Invoices where Customer matches a Sister Concern
+            $knownTxInvoices = $items->pluck('reference_invoice')->filter()->all();
+
+            $salesQuery = Invoice::query()
+                ->with(['company', 'customer'])
+                ->whereIn('company_id', $companyIds)
+                ->whereBetween('invoice_date', [$fromDate, $toDate])
+                ->where('status', '!=', 'cancelled');
+
+            $invoices = $salesQuery->get();
+
+            foreach ($invoices as $inv) {
+                if (in_array($inv->invoice_no, $knownTxInvoices, true)) {
+                    continue;
+                }
+
+                $customer = $inv->customer;
+                if (! $customer) {
+                    continue;
+                }
+
+                // Check if customer corresponds to another sister concern
+                $targetCo = null;
+                if (filled($customer->gstin) && isset($companiesByGstin[$customer->gstin]) && $companiesByGstin[$customer->gstin]->id !== $inv->company_id) {
+                    $targetCo = $companiesByGstin[$customer->gstin];
+                } elseif (filled($customer->name)) {
+                    $cName = strtolower(trim($customer->name));
+                    $targetCo = $companies->first(fn ($c) => $c->id !== $inv->company_id && strtolower(trim($c->name)) === $cName);
+                }
+
+                if ($targetCo) {
+                    $amount = (float) $inv->grand_total;
+                    $paid = (float) ($inv->paid_amount ?? 0.0);
+                    $outstanding = max(0.0, $amount - $paid);
+
+                    // Check if corresponding purchase invoice exists in target company
+                    $matchingPurchase = PurchaseInvoice::query()
+                        ->where('company_id', $targetCo->id)
+                        ->where('status', '!=', 'cancelled')
+                        ->where(function ($q) use ($inv, $amount) {
+                            $q->where('supplier_invoice_no', $inv->invoice_no)
+                                ->orWhere(function ($sub) use ($inv, $amount) {
+                                    $sub->whereBetween('invoice_date', [
+                                        $inv->invoice_date->copy()->subDays(3)->toDateString(),
+                                        $inv->invoice_date->copy()->addDays(3)->toDateString(),
+                                    ])->whereRaw('ABS(grand_total - ?) < 1.0', [$amount]);
+                                });
+                        })
+                        ->first();
+
+                    $matchStatus = $matchingPurchase ? 'Matched' : 'Unmatched';
+                    if ($matchingPurchase) {
+                        $interCompanyVolume += $amount;
+                        $interCompanyTxCount++;
+                        $matchedCount++;
+                    } else {
+                        $unmatchedCount++;
+                        $unmatchedVolume += $amount;
+                    }
+
+                    $internalReceivables += $outstanding;
+                    $internalPayables += $outstanding;
+                    $internalSales += $amount;
+                    $internalPurchases += $amount;
+
+                    $items->push([
+                        'id' => 'inv_' . $inv->id,
+                        'source' => 'sales_invoice',
+                        'transaction_no' => $inv->invoice_no,
+                        'transaction_date' => $inv->invoice_date ? $inv->invoice_date->format('Y-m-d') : $fromDate,
+                        'transaction_type' => 'Internal Sales',
+                        'selling_company_id' => $inv->company_id,
+                        'selling_company_name' => $inv->company?->name ?? 'Selling Company',
+                        'purchasing_company_id' => $targetCo->id,
+                        'purchasing_company_name' => $targetCo->name,
+                        'amount' => (float) $inv->subtotal,
+                        'net_amount' => $amount,
+                        'outstanding_amount' => $outstanding,
+                        'status' => ucfirst((string) $inv->status),
+                        'match_status' => $matchStatus,
+                        'reference_invoice' => $inv->invoice_no,
+                        'narration' => 'Internal Sale to Sister Concern ' . $targetCo->name,
+                    ]);
+                }
+            }
         }
 
         return [
             'volume' => $interCompanyVolume,
             'count' => $interCompanyTxCount,
+            'sales_volume' => $internalSales,
+            'purchases_volume' => $internalPurchases,
+            'receivables' => $internalReceivables,
+            'payables' => $internalPayables,
+            'matched_count' => $matchedCount,
+            'unmatched_count' => $unmatchedCount,
+            'unmatched_volume' => $unmatchedVolume,
+            'all_transactions' => $items->values()->all(),
         ];
     }
 
@@ -618,19 +827,22 @@ class ConsolidatedReportService
      * Compute Group-wide or Business-wise Comparison Matrix with Profitability.
      *
      * @param Collection<int, Company> $companies
+     * @param string $eliminationMode 'after' or 'before'
      * @return array{
      *     companies: array<int, array>,
      *     combined: array,
-     *     inter_company: array{volume: float, count: int}
+     *     inter_company: array
      * }
      */
-    public function getComparisonMatrix(Collection $companies, string $fromDate, string $toDate): array
+    public function getComparisonMatrix(Collection $companies, string $fromDate, string $toDate, string $eliminationMode = 'after'): array
     {
         $companyRows = [];
         $sumGrossSales = 0.0;
         $sumCreditNotes = 0.0;
         $sumNetSales = 0.0;
         $sumPurchases = 0.0;
+        $sumDebitNotes = 0.0;
+        $sumNetPurchases = 0.0;
         $sumExpenses = 0.0;
         $sumReceivables = 0.0;
         $sumPayables = 0.0;
@@ -644,9 +856,11 @@ class ConsolidatedReportService
             $creditNotes = (float) $sales['credit_notes_total'];
             $netSales = (float) $sales['net_sales'];
             $purchaseVal = (float) $purchases['total_purchases'];
+            $debitNotes = (float) ($purchases['purchase_returns'] ?? 0.0);
+            $netPurchases = (float) ($purchases['net_purchases'] ?? max(0.0, $purchaseVal - $debitNotes));
             $expenseVal = (float) $expenses['total_expenses'];
 
-            $grossProfit = $netSales - $purchaseVal;
+            $grossProfit = $netSales - $netPurchases;
             $netProfit = $grossProfit - $expenseVal;
 
             $receivables = (float) $sales['outstanding_amount'];
@@ -659,6 +873,8 @@ class ConsolidatedReportService
             $sumCreditNotes += $creditNotes;
             $sumNetSales += $netSales;
             $sumPurchases += $purchaseVal;
+            $sumDebitNotes += $debitNotes;
+            $sumNetPurchases += $netPurchases;
             $sumExpenses += $expenseVal;
             $sumReceivables += $receivables;
             $sumPayables += $payables;
@@ -675,6 +891,8 @@ class ConsolidatedReportService
                 'credit_notes' => $creditNotes,
                 'net_sales' => $netSales,
                 'purchases' => $purchaseVal,
+                'debit_notes' => $debitNotes,
+                'net_purchases' => $netPurchases,
                 'expenses' => $expenseVal,
                 'gross_profit' => $grossProfit,
                 'gross_margin' => $grossMargin,
@@ -690,12 +908,27 @@ class ConsolidatedReportService
         // Inter-company elimination
         $interCompany = $this->detectInterCompanyTransactions($companies->pluck('id')->all(), $fromDate, $toDate);
         $eliminatedAmount = (float) ($interCompany['volume'] ?? 0.0);
+        $interCompanyReceivables = (float) ($interCompany['receivables'] ?? 0.0);
+        $interCompanyPayables = (float) ($interCompany['payables'] ?? 0.0);
 
-        // Combined Net External Positions
-        $combinedGrossSales = max(0.0, $sumGrossSales - $eliminatedAmount);
-        $combinedNetSales = max(0.0, $sumNetSales - $eliminatedAmount);
-        $combinedPurchases = max(0.0, $sumPurchases - $eliminatedAmount);
-        $combinedGrossProfit = $combinedNetSales - $combinedPurchases;
+        if ($eliminationMode === 'after') {
+            $combinedGrossSales = max(0.0, $sumGrossSales - $eliminatedAmount);
+            $combinedNetSales = max(0.0, $sumNetSales - $eliminatedAmount);
+            $combinedPurchases = max(0.0, $sumPurchases - $eliminatedAmount);
+            $combinedNetPurchases = max(0.0, $sumNetPurchases - $eliminatedAmount);
+            $combinedReceivables = max(0.0, $sumReceivables - $interCompanyReceivables);
+            $combinedPayables = max(0.0, $sumPayables - $interCompanyPayables);
+        } else {
+            // Before elimination: pure aggregation
+            $combinedGrossSales = $sumGrossSales;
+            $combinedNetSales = $sumNetSales;
+            $combinedPurchases = $sumPurchases;
+            $combinedNetPurchases = $sumNetPurchases;
+            $combinedReceivables = $sumReceivables;
+            $combinedPayables = $sumPayables;
+        }
+
+        $combinedGrossProfit = $combinedNetSales - $combinedNetPurchases;
         $combinedNetProfit = $combinedGrossProfit - $sumExpenses;
 
         $combinedGrossMargin = $combinedNetSales > 0 ? round(($combinedGrossProfit / $combinedNetSales) * 100, 2) : 0.0;
@@ -708,16 +941,25 @@ class ConsolidatedReportService
             'unadjusted_sales' => $sumGrossSales,
             'credit_notes' => $sumCreditNotes,
             'net_sales' => $combinedNetSales,
+            'unadjusted_net_sales' => $sumNetSales,
             'purchases' => $combinedPurchases,
             'unadjusted_purchases' => $sumPurchases,
+            'debit_notes' => $sumDebitNotes,
+            'net_purchases' => $combinedNetPurchases,
+            'unadjusted_net_purchases' => $sumNetPurchases,
             'expenses' => $sumExpenses,
             'gross_profit' => $combinedGrossProfit,
             'gross_margin' => $combinedGrossMargin,
             'net_profit' => $combinedNetProfit,
             'net_margin' => $combinedNetMargin,
-            'receivables' => $sumReceivables,
-            'payables' => $sumPayables,
+            'receivables' => $combinedReceivables,
+            'unadjusted_receivables' => $sumReceivables,
+            'payables' => $combinedPayables,
+            'unadjusted_payables' => $sumPayables,
             'inter_company_eliminated' => $eliminatedAmount,
+            'inter_company_receivables_eliminated' => $interCompanyReceivables,
+            'inter_company_payables_eliminated' => $interCompanyPayables,
+            'elimination_mode' => $eliminationMode,
         ];
 
         return [
@@ -728,11 +970,200 @@ class ConsolidatedReportService
     }
 
     /**
+     * Get Quarterly Comparisons (Q1, Q2, Q3, Q4) for the companies.
+     */
+    public function getQuarterlyComparison(Collection $companies, ?int $fyStartYear = null): array
+    {
+        $today = now();
+        $fyStartYear = $fyStartYear ?? ($today->month >= 4 ? $today->year : $today->year - 1);
+
+        $quarters = [
+            'Q1' => ['label' => 'Q1 (Apr-Jun)', 'start' => "{$fyStartYear}-04-01", 'end' => "{$fyStartYear}-06-30"],
+            'Q2' => ['label' => 'Q2 (Jul-Sep)', 'start' => "{$fyStartYear}-07-01", 'end' => "{$fyStartYear}-09-30"],
+            'Q3' => ['label' => 'Q3 (Oct-Dec)', 'start' => "{$fyStartYear}-10-01", 'end' => "{$fyStartYear}-12-31"],
+            'Q4' => ['label' => 'Q4 (Jan-Mar)', 'start' => ($fyStartYear + 1) . "-01-01", 'end' => ($fyStartYear + 1) . "-03-31"],
+        ];
+
+        $results = [];
+        foreach ($quarters as $key => $q) {
+            $matrix = $this->getComparisonMatrix($companies, $q['start'], $q['end']);
+            $results[$key] = [
+                'quarter' => $key,
+                'label' => $q['label'],
+                'start_date' => $q['start'],
+                'end_date' => $q['end'],
+                'companies' => $matrix['companies'],
+                'combined' => $matrix['combined'],
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Get Year-Over-Year Comparison across configured Financial Years.
+     */
+    public function getYearlyComparison(Collection $companies, array $financialYears): array
+    {
+        $results = [];
+        foreach (array_slice($financialYears, 0, 3) as $fy) {
+            $startsOn = $fy['starts_on'] ?: '';
+            $endsOn = $fy['ends_on'] ?: '';
+            if (empty($startsOn) || empty($endsOn)) {
+                continue;
+            }
+
+            $matrix = $this->getComparisonMatrix($companies, $startsOn, $endsOn);
+            $results[$fy['name']] = [
+                'name' => $fy['name'],
+                'starts_on' => $startsOn,
+                'ends_on' => $endsOn,
+                'is_current' => $fy['is_current'] ?? false,
+                'companies' => $matrix['companies'],
+                'combined' => $matrix['combined'],
+            ];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Compute Monthly Sales and Purchases comparing Company A vs Company B and Combined.
+     */
+    public function getMonthlyTrendsWithCompanies(Collection $companies, string $fromDate, string $toDate): array
+    {
+        $start = Carbon::parse($fromDate)->startOfMonth();
+        $end = Carbon::parse($toDate)->endOfMonth();
+
+        $companyIds = $companies->pluck('id')->all();
+        $invoices = $this->buildSalesQuery($companyIds, $fromDate, $toDate, null, null, true)
+            ->get(['id', 'company_id', 'invoice_date', 'grand_total']);
+
+        $purchases = $this->buildPurchasesQuery($companyIds, $fromDate, $toDate, null, null, true)
+            ->get(['id', 'company_id', 'invoice_date', 'grand_total']);
+
+        $trends = [];
+        $current = $start->copy();
+
+        while ($current->lte($end)) {
+            $monthKey = $current->format('Y-m');
+            $monthLabel = $current->format('M Y');
+
+            $mInvoices = $invoices->filter(fn ($i) => $i->invoice_date && $i->invoice_date->format('Y-m') === $monthKey);
+            $mPurchases = $purchases->filter(fn ($p) => $p->invoice_date && $p->invoice_date->format('Y-m') === $monthKey);
+
+            $companyData = [];
+            foreach ($companies as $co) {
+                $coSales = (float) $mInvoices->filter(fn ($i) => (int) $i->company_id === (int) $co->id)->sum('grand_total');
+                $coPurchases = (float) $mPurchases->filter(fn ($p) => (int) $p->company_id === (int) $co->id)->sum('grand_total');
+                $companyData[$co->id] = [
+                    'company_name' => $co->name,
+                    'code' => $co->code,
+                    'sales' => $coSales,
+                    'purchases' => $coPurchases,
+                    'net' => $coSales - $coPurchases,
+                ];
+            }
+
+            $totalSales = (float) $mInvoices->sum('grand_total');
+            $totalPurchases = (float) $mPurchases->sum('grand_total');
+
+            $trends[] = [
+                'month_key' => $monthKey,
+                'month_label' => $monthLabel,
+                'sales' => $totalSales,
+                'purchases' => $totalPurchases,
+                'net' => $totalSales - $totalPurchases,
+                'company_breakdown' => $companyData,
+            ];
+
+            $current->addMonth();
+        }
+
+        return $trends;
+    }
+
+    /**
+     * Get Drilldown rows for a specific KPI type.
+     */
+    public function getDrilldownData(Collection $companies, string $type, string $fromDate, string $toDate, ?string $search = null): array
+    {
+        $companyIds = $companies->pluck('id')->all();
+
+        switch ($type) {
+            case 'sales':
+                $query = $this->buildSalesQuery($companyIds, $fromDate, $toDate, $search, null, false)
+                    ->orderByDesc('invoice_date');
+                return $query->limit(200)->get()->map(function (Invoice $inv) {
+                    $paid = (float) ($inv->paid_amount ?? 0.0);
+                    $total = (float) $inv->grand_total;
+                    return [
+                        'company' => $inv->company?->name ?? 'Company',
+                        'number' => $inv->invoice_no,
+                        'date' => $inv->invoice_date?->format('d/m/Y') ?? '—',
+                        'party' => $inv->customer?->name ?? '—',
+                        'gstin' => $inv->customer?->gstin ?? '—',
+                        'taxable' => (float) $inv->subtotal,
+                        'tax' => (float) $inv->tax_amount,
+                        'total' => $total,
+                        'paid' => $paid,
+                        'outstanding' => max(0.0, $total - $paid),
+                        'status' => ucfirst((string) $inv->status),
+                    ];
+                })->all();
+
+            case 'purchases':
+                $query = $this->buildPurchasesQuery($companyIds, $fromDate, $toDate, $search, null, false)
+                    ->orderByDesc('invoice_date');
+                return $query->limit(200)->get()->map(function (PurchaseInvoice $pi) {
+                    $total = (float) $pi->grand_total;
+                    $paid = $pi->status === 'paid' ? $total : (float) ($pi->paid_amount ?? 0.0);
+                    return [
+                        'company' => $pi->company?->name ?? $pi->warehouse?->company?->name ?? 'Company',
+                        'number' => $pi->invoice_no,
+                        'supplier_number' => $pi->supplier_invoice_no ?: '—',
+                        'date' => $pi->invoice_date?->format('d/m/Y') ?? '—',
+                        'party' => $pi->supplier?->name ?? '—',
+                        'gstin' => $pi->supplier?->gstin ?? '—',
+                        'taxable' => (float) $pi->subtotal,
+                        'tax' => (float) $pi->tax_amount,
+                        'total' => $total,
+                        'paid' => $paid,
+                        'outstanding' => max(0.0, $total - $paid),
+                        'status' => ucfirst((string) $pi->status),
+                    ];
+                })->all();
+
+            case 'expenses':
+                $summary = $this->computeExpensesSummary($companyIds, $fromDate, $toDate);
+                $rows = [];
+                foreach ($summary['breakdown'] as $key => $item) {
+                    $rows[] = [
+                        'category' => $item['label'],
+                        'count' => $item['count'],
+                        'amount' => $item['amount'],
+                    ];
+                }
+                return $rows;
+
+            case 'inter_company':
+                $ic = $this->detectInterCompanyTransactions($companyIds, $fromDate, $toDate);
+                return $ic['all_transactions'] ?? [];
+
+            default:
+                return [];
+        }
+    }
+
+    /**
      * Resolve Filter Dates by Period Type (FY, Monthly, Quarterly, Yearly, Custom).
      */
     public function resolveDateRange(\Illuminate\Http\Request $request, array $fyData): array
     {
-        $periodType = $request->input('period_type', 'current_fy');
+        $periodType = $request->input('period_type');
+        if (! $periodType) {
+            $periodType = ($request->filled('from_date') && $request->filled('to_date')) ? 'custom' : 'current_fy';
+        }
         $currentFy = $fyData['current'];
         $years = $fyData['years'];
 
