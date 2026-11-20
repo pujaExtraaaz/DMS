@@ -4,6 +4,7 @@
 <x-ui.page-header :title="$employee->name" :description="'Employee Code: ' . $employee->employee_code">
 <x-slot name="actions">
     <x-ui.button variant="secondary" :href="route('hrms.employees.index')">Back to Employees</x-ui.button>
+    <x-ui.button variant="secondary" :href="route('hrms.salary-structures.history', $employee)">Salary history</x-ui.button>
     <x-ui.button variant="primary" :href="route('hrms.employees.edit', $employee)">Edit Profile</x-ui.button>
 </x-slot>
 </x-ui.page-header>

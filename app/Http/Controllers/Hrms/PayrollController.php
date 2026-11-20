@@ -9,6 +9,6 @@ class PayrollController extends Controller
 {
     public function index(): RedirectResponse
     {
-        return redirect()->route('hrms.salary-structures.index');
+        return redirect()->route('hrms.payroll-runs.index');
     }
 }

@@ -1132,15 +1132,15 @@ class ReportController extends Controller
     }
 
     /**
-     * Default report period: financial year that contains the latest sales invoice
-     * (imported Tally data often sits in a past FY while is_current is the calendar year).
+     * Honor explicit date filters; otherwise use the active (is_current) financial year
+     * so the global Period switcher drives every report.
      *
      * @return array{0:string,1:string}
      */
     protected function resolveDateRange(Request $request): array
     {
         if ($request->filled('date_from') || $request->filled('date_to')) {
-            $fallback = $this->defaultDateRange();
+            $fallback = $this->defaultDateRange($request);
 
             return [
                 $request->input('date_from', $fallback[0]),
@@ -1148,32 +1148,23 @@ class ReportController extends Controller
             ];
         }
 
-        return $this->defaultDateRange();
+        return $this->defaultDateRange($request);
     }
 
     /**
      * @return array{0:string,1:string}
      */
-    protected function defaultDateRange(): array
+    protected function defaultDateRange(?Request $request = null): array
     {
+        $request ??= request();
         $companyId = auth()->user()?->company_id;
-        $latestInvoice = Invoice::query()
-            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
-            ->whereNotNull('invoice_date')
-            ->max('invoice_date');
-
         $fyQuery = FinancialYear::query()
             ->when($companyId, fn ($q) => $q->where('company_id', $companyId));
 
         $fy = null;
-        if ($latestInvoice) {
-            $fy = (clone $fyQuery)
-                ->whereDate('starts_on', '<=', $latestInvoice)
-                ->whereDate('ends_on', '>=', $latestInvoice)
-                ->orderByDesc('starts_on')
-                ->first();
+        if ($request->filled('fy_id')) {
+            $fy = (clone $fyQuery)->whereKey((int) $request->input('fy_id'))->first();
         }
-
         $fy ??= (clone $fyQuery)->where('is_current', true)->first()
             ?? (clone $fyQuery)->orderByDesc('starts_on')->first();
 
@@ -1183,6 +1174,11 @@ class ReportController extends Controller
                 Carbon::parse($fy->ends_on)->toDateString(),
             ];
         }
+
+        $latestInvoice = Invoice::query()
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            ->whereNotNull('invoice_date')
+            ->max('invoice_date');
 
         if ($latestInvoice) {
             $d = Carbon::parse($latestInvoice);

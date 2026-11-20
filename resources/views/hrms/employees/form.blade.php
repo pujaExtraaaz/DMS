@@ -65,6 +65,7 @@
 <x-ui.card title="Official Information">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <x-ui.input name="employee_code" label="Employee Code" :value="old('employee_code', $item->employee_code)" />
+        <x-ui.input name="biometric_code" label="Biometric / eSSL Code" :value="old('biometric_code', $item->biometric_code)" />
         <x-ui.input name="name" label="Name" :value="old('name', $item->name)" required />
         <x-ui.input name="email" label="Official Email" type="email" :value="old('email', $item->email)" />
         <x-ui.input name="phone" label="Official Phone" :value="old('phone', $item->phone)" />

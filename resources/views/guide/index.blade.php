@@ -11,48 +11,28 @@
         6 => '#d97706',
         7 => '#e11d48',
         8 => '#ea580c',
-        9 => '#c026d3',
-        10 => '#0f172a',
-        11 => '#0e7490',
+        9 => '#db2777',
+        10 => '#c026d3',
+        11 => '#0f172a',
+        12 => '#475569',
+        13 => '#0e7490',
     ];
+    $moduleCount = count($modules);
 @endphp
 
 <style>
     .gd { --gd-ink: #0f172a; --gd-muted: #64748b; color: var(--gd-ink); }
-    .gd-hero {
-        background:
-            radial-gradient(1200px 220px at 100% 0%, rgba(99, 102, 241, .35), transparent 55%),
-            linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-        border-radius: 18px;
-        color: #fff;
-        padding: 28px 28px 22px;
-        box-shadow: 0 18px 40px rgba(15, 23, 42, .12);
-    }
-    .gd-kicker {
-        margin: 0;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: .22em;
-        text-transform: uppercase;
-        color: #a5b4fc;
-    }
-    .gd-hero h2 { margin: 8px 0 0; font-size: 28px; line-height: 1.2; font-weight: 650; letter-spacing: -.02em; }
-    .gd-lead, .gd-purpose, .gd-step p {
+    .gd-purpose, .gd-step p {
         margin: 0;
         text-align: justify;
         text-justify: inter-word;
         hyphens: auto;
         line-height: 1.75;
     }
-    .gd-lead { margin-top: 12px; max-width: 78ch; color: #e2e8f0; font-size: 14.5px; }
     .gd-nav-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .gd-nav-grid a {
-        display: flex; align-items: center; gap: 8px; min-height: 44px;
-        border-radius: 12px; text-decoration: none; color: inherit;
-    }
     .gd-nav {
         position: sticky; top: 0; z-index: 20;
-        background: rgba(255,255,255,.94);
+        background: rgba(255,255,255,.96);
         border: 1px solid #e2e8f0;
         border-radius: 16px;
         padding: 8px;
@@ -60,7 +40,9 @@
         backdrop-filter: blur(8px);
     }
     .gd-nav-grid a {
-        flex-direction: column; justify-content: center; gap: 1px;
+        display: flex; flex-direction: column; justify-content: center; align-items: center;
+        gap: 1px; min-height: 44px;
+        border-radius: 12px; text-decoration: none;
         background: #f8fafc; color: #334155;
         padding: 6px 4px; text-align: center;
     }
@@ -75,7 +57,7 @@
         border-radius: 18px;
         overflow: hidden;
         box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
-        scroll-margin-top: 92px;
+        scroll-margin-top: 8px;
     }
     .gd-card-head {
         display: grid;
@@ -127,36 +109,67 @@
         border: 1px solid color-mix(in srgb, var(--gd) 22%, white);
     }
     .gd-section { margin-top: 22px; padding-top: 16px; border-top: 1px solid #f1f5f9; }
+    .gd-section-top {
+        display: flex; flex-wrap: wrap; align-items: flex-start;
+        justify-content: space-between; gap: 10px;
+    }
     .gd-section h4 { margin: 4px 0 0; font-size: 16px; line-height: 1.3; font-weight: 700; color: #0f172a; }
     .gd-section .gd-purpose { margin-top: 8px; }
-    @media (min-width: 720px) {
-        .gd-nav-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .gd-open {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 12px; font-weight: 700; text-decoration: none;
+        color: var(--gd);
+        background: color-mix(in srgb, var(--gd) 10%, white);
+        border: 1px solid color-mix(in srgb, var(--gd) 24%, white);
+        border-radius: 999px; padding: 6px 12px; white-space: nowrap;
     }
-    @media (min-width: 1180px) {
-        .gd-nav-grid { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+    .gd-open:hover { background: color-mix(in srgb, var(--gd) 16%, white); }
+    @media (min-width: 720px) {
+        .gd-nav-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1100px) {
+        .gd-nav-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    }
+    @media (min-width: 1400px) {
+        .gd-nav-grid { grid-template-columns: repeat({{ min($moduleCount, 13) }}, minmax(0, 1fr)); }
     }
     @media (max-width: 640px) {
-        .gd-hero, .gd-body { padding-left: 16px; padding-right: 16px; }
+        .gd-body { padding-left: 16px; padding-right: 16px; }
         .gd-card-head { grid-template-columns: auto 1fr; padding: 16px; }
         .gd-count { grid-column: 2; justify-self: start; }
-        .gd-hero h2 { font-size: 22px; }
     }
 </style>
 
-<div class="gd" id="guide-root" x-data="{ active: 1 }">
+<div
+    class="gd"
+    id="guide-root"
+    x-data="{
+        active: {{ (int) ($modules[0]['number'] ?? 1) }},
+        scrolling: false,
+        goTo(num, event) {
+            if (event) event.preventDefault();
+            const scroller = document.querySelector('main.dms-content');
+            const target = document.getElementById('module-' + num);
+            const nav = this.$el.querySelector('.gd-nav');
+            if (!scroller || !target) return;
+            this.active = num;
+            this.scrolling = true;
+            const navH = nav ? nav.getBoundingClientRect().height : 0;
+            const top = target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - navH - 10;
+            scroller.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+            history.replaceState(null, '', '#module-' + num);
+            clearTimeout(this._scrollUnlock);
+            this._scrollUnlock = setTimeout(() => { this.scrolling = false; }, 500);
+        }
+    }"
+>
     <div class="gd-stack">
-        <section class="gd-hero">
-            <p class="gd-kicker">Section 12</p>
-            <h2>How the whole project runs</h2>
-            <p class="gd-lead">Work moves in one direction. Set up the company, build masters, purchase into stock, sell, deliver, collect, then read the same activity in Accounting Books. Each module below opens into its screens, and each screen has the steps to finish that work. A posted invoice or stock document is cancelled or reversed. It is never deleted.</p>
-        </section>
-
         <nav class="gd-nav" aria-label="Guide modules">
             <div class="gd-nav-grid">
                 @foreach ($modules as $module)
                     <a href="#module-{{ $module['number'] }}"
-                       style="--gd: {{ $tones[$module['number']] }}"
-                       @click="active = {{ $module['number'] }}"
+                       style="--gd: {{ $tones[$module['number']] ?? '#475569' }}"
+                       @click="goTo({{ $module['number'] }}, $event)"
                        :class="active === {{ $module['number'] }} ? 'is-on' : ''">
                         <small>{{ str_pad((string) $module['number'], 2, '0', STR_PAD_LEFT) }}</small>
                         <span>{{ $module['title'] }}</span>
@@ -166,14 +179,15 @@
         </nav>
 
         @foreach ($modules as $module)
-            <section class="gd-card" id="module-{{ $module['number'] }}" data-guide-module="{{ $module['number'] }}" style="--gd: {{ $tones[$module['number']] }}">
+            @php $tone = $tones[$module['number']] ?? '#475569'; @endphp
+            <section class="gd-card" id="module-{{ $module['number'] }}" data-guide-module="{{ $module['number'] }}" style="--gd: {{ $tone }}">
                 <header class="gd-card-head">
                     <span class="gd-badge">{{ str_pad((string) $module['number'], 2, '0', STR_PAD_LEFT) }}</span>
                     <div>
                         <p>Module {{ $module['number'] }}</p>
                         <h3>{{ $module['title'] }}</h3>
                     </div>
-                    <span class="gd-count">{{ count($module['sections'] ?? $module['screens']) }} screens</span>
+                    <span class="gd-count">{{ count($module['sections'] ?? []) }} screens</span>
                 </header>
                 <div class="gd-body">
                     <p class="gd-purpose">{{ $module['purpose'] }}</p>
@@ -184,9 +198,20 @@
                         @endforeach
                     </ul>
                     @foreach ($module['sections'] as $section)
+                        @php
+                            $openRoute = $section['route'] ?? null;
+                            $canOpen = is_string($openRoute) && $openRoute !== '' && \Illuminate\Support\Facades\Route::has($openRoute);
+                        @endphp
                         <section class="gd-section">
-                            <p class="gd-label">Screen</p>
-                            <h4>{{ $section['title'] }}</h4>
+                            <div class="gd-section-top">
+                                <div>
+                                    <p class="gd-label" style="margin:0">Screen</p>
+                                    <h4>{{ $section['title'] }}</h4>
+                                </div>
+                                @if ($canOpen)
+                                    <a class="gd-open" href="{{ route($openRoute) }}">Open screen →</a>
+                                @endif
+                            </div>
                             <p class="gd-purpose">{{ $section['summary'] }}</p>
                             <ol class="gd-steps">
                                 @foreach ($section['steps'] as $index => $step)
@@ -218,23 +243,35 @@
         const sections = Array.prototype.slice.call(document.querySelectorAll('[data-guide-module]'));
         if (!root || !scroller || !sections.length || !window.Alpine) return;
 
-        const update = function () {
+        const data = Alpine.$data(root);
+        if (!data) return;
+
+        const syncActive = function () {
+            if (data.scrolling) return;
             const nav = root.querySelector('.gd-nav');
-            const line = scroller.getBoundingClientRect().top + (nav ? nav.offsetHeight : 0) + 8;
+            const line = scroller.getBoundingClientRect().top + (nav ? nav.getBoundingClientRect().height : 0) + 12;
             let current = Number(sections[0].getAttribute('data-guide-module'));
             sections.forEach(function (section) {
                 if (section.getBoundingClientRect().top <= line) {
                     current = Number(section.getAttribute('data-guide-module'));
                 }
             });
-            const data = Alpine.$data(root);
-            if (data && data.active !== current) data.active = current;
+            if (data.active !== current) data.active = current;
         };
 
         if (scroller.__guideNavScroll) scroller.removeEventListener('scroll', scroller.__guideNavScroll);
-        scroller.__guideNavScroll = update;
-        scroller.addEventListener('scroll', update, { passive: true });
-        update();
+        scroller.__guideNavScroll = syncActive;
+        scroller.addEventListener('scroll', syncActive, { passive: true });
+
+        // Deep-link on load: #module-N
+        const hash = (location.hash || '').match(/^#module-(\d+)$/);
+        if (hash) {
+            requestAnimationFrame(function () {
+                data.goTo(Number(hash[1]));
+            });
+        } else {
+            syncActive();
+        }
     }
     document.addEventListener('alpine:initialized', bindGuideNav);
     if (window.Alpine) bindGuideNav();

@@ -202,6 +202,7 @@ class FinancialYearController extends Controller
         });
 
         Cache::forget('current_fy_pill');
+        Cache::forget('current_fy_pill_'.$companyId);
 
         if ($request->wantsJson()) {
             return response()->json([
@@ -214,12 +215,15 @@ class FinancialYearController extends Controller
             ->with('success', "Financial year '{$fyName}' deleted successfully.");
     }
 
-    public function setCurrent(FinancialYear $financial_year): RedirectResponse
+    public function setCurrent(Request $request, FinancialYear $financial_year): RedirectResponse
     {
-        if ($financial_year->is_closed) {
-            return back()->with('error', 'Cannot mark a closed financial year as current. Re-open it first.');
+        $user = $request->user();
+        if ($user && ! $user->hasAnyRole(['super-admin', 'owner', 'client-admin']) && $user->company_id
+            && (int) $financial_year->company_id !== (int) $user->company_id) {
+            return back()->with('error', 'Unauthorized: This financial year belongs to another company.');
         }
 
+        // Closed years remain selectable for viewing/reporting; posting guards use is_closed.
         DB::transaction(function () use ($financial_year) {
             FinancialYear::where('company_id', $financial_year->company_id)
                 ->where('id', '!=', $financial_year->id)
@@ -228,8 +232,42 @@ class FinancialYearController extends Controller
         });
 
         Cache::forget('current_fy_pill');
+        Cache::forget('current_fy_pill_'.$financial_year->company_id);
 
-        return $this->flashSuccess("Current period switched to {$financial_year->name}.", 'organization.financial-years.index');
+        $message = $financial_year->is_closed
+            ? "Viewing closed period {$financial_year->name}."
+            : "Current period switched to {$financial_year->name}.";
+
+        return $this->redirectWithPeriod($request, $financial_year)->with('status', $message);
+    }
+
+    /**
+     * Stay on the current page and apply the selected FY date range when the URL uses date filters.
+     */
+    protected function redirectWithPeriod(Request $request, FinancialYear $financial_year): RedirectResponse
+    {
+        $target = (string) ($request->input('redirect') ?: url()->previous() ?: route('dashboard'));
+        $parts = parse_url($target);
+
+        if ($parts === false || empty($parts['path'])) {
+            return redirect()->route('dashboard')->with('status', "Current period switched to {$financial_year->name}.");
+        }
+
+        $query = [];
+        if (! empty($parts['query'])) {
+            parse_str($parts['query'], $query);
+        }
+
+        $query['fy_id'] = $financial_year->id;
+        $query['date_from'] = optional($financial_year->starts_on)->toDateString();
+        $query['date_to'] = optional($financial_year->ends_on)->toDateString();
+        unset($query['export'], $query['page']);
+
+        $url = ($parts['scheme'] ?? null) && ($parts['host'] ?? null)
+            ? ($parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '').$parts['path'])
+            : $parts['path'];
+
+        return redirect()->to($url.'?'.http_build_query($query));
     }
 
     public function close(FinancialYear $financial_year): RedirectResponse
@@ -269,6 +307,7 @@ class FinancialYearController extends Controller
         });
 
         Cache::forget('current_fy_pill');
+        Cache::forget('current_fy_pill_'.$financial_year->company_id);
 
         return $this->flashSuccess("Financial year {$financial_year->name} closed. New postings are blocked; historical view/print remains available.", 'organization.financial-years.index');
     }
@@ -282,6 +321,7 @@ class FinancialYearController extends Controller
         ]);
 
         Cache::forget('current_fy_pill');
+        Cache::forget('current_fy_pill_'.$financial_year->company_id);
 
         return $this->flashSuccess("Financial year {$financial_year->name} re-opened.", 'organization.financial-years.index');
     }

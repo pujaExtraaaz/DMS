@@ -62,6 +62,9 @@
                                 <x-ui.badge :variant="$item->is_active ? 'success' : 'secondary'">{{ $item->is_active ? 'Active' : 'Inactive' }}</x-ui.badge>
                             </td>
                             <td class="px-3 py-2 text-right space-x-2">
+                                @if($item->employee_id)
+                                    <x-ui.button variant="secondary" size="sm" :href="route('hrms.salary-structures.history', $item->employee_id)">History</x-ui.button>
+                                @endif
                                 <x-ui.button variant="secondary" size="sm" :href="route('hrms.salary-structures.edit', $item)">Edit</x-ui.button>
                                 <form method="POST" action="{{ route('hrms.salary-structures.destroy', $item) }}" class="inline" onsubmit="return confirm('Delete this salary structure?')">
                                     @csrf @method('DELETE')

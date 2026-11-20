@@ -170,21 +170,7 @@
                     </div>
 
                     <div class="flex items-center gap-2 sm:gap-4">
-                        {{-- Current Financial Year pill (Tally F2 equivalent) --}}
-                        @php
-                            $currentFy = \Illuminate\Support\Facades\Cache::remember('current_fy_pill', 60, function () {
-                                return \App\Domains\Organization\Models\FinancialYear::where('is_current', true)->first();
-                            });
-                        @endphp
-                        @if($currentFy)
-                            <a href="{{ route('organization.financial-years.index') }}"
-                                title="Change / Close Period"
-                                class="hidden md:inline-flex items-center gap-1.5 rounded-lg border {{ $currentFy->is_closed ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700' }} px-3 py-1.5 text-xs font-semibold">
-                                <span class="opacity-70">Period:</span>
-                                <span>{{ $currentFy->name }}</span>
-                                @if($currentFy->is_closed)<span class="rounded bg-red-600 px-1 text-[10px] text-white">CLOSED</span>@endif
-                            </a>
-                        @endif
+                        @include('partials.period-switcher')
 
                         <button
                             type="button"

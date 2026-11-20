@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Hrms;
 use App\Domains\Hrms\Models\Attendance;
 use App\Domains\Hrms\Models\Department;
 use App\Domains\Hrms\Models\Employee;
+use App\Domains\Hrms\Services\AttendanceCalculator;
 use App\Http\Controllers\Controller;
 use App\Support\AuditLogService;
 use App\Support\Traits\SortableAndSearchable;
@@ -19,7 +20,10 @@ class AttendanceController extends Controller
 {
     use SortableAndSearchable;
 
-    public function __construct(protected AuditLogService $auditLogService) {}
+    public function __construct(
+        protected AuditLogService $auditLogService,
+        protected AttendanceCalculator $attendanceCalculator
+    ) {}
 
     public function index(Request $request): View|StreamedResponse
     {
@@ -117,15 +121,19 @@ class AttendanceController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validatedData($request);
-        $data['recorded_by'] = auth()->id();
-
-        $attendance = Attendance::updateOrCreate(
-            [
-                'employee_id' => $data['employee_id'],
-                'attendance_date' => $data['attendance_date'],
-            ],
-            $data
+        $employee = Employee::findOrFail($data['employee_id']);
+        $attendance = $this->attendanceCalculator->upsertDay(
+            $employee,
+            Carbon::parse($data['attendance_date']),
+            $data['check_in'] ?? null,
+            $data['check_out'] ?? null,
+            'manual'
         );
+        $attendance->update([
+            'notes' => $data['notes'] ?? $attendance->notes,
+            'recorded_by' => auth()->id(),
+            'status' => $data['status'] ?? $attendance->status,
+        ]);
 
         $this->auditLogService->record($attendance, 'saved');
 
@@ -189,29 +197,22 @@ class AttendanceController extends Controller
 
         DB::transaction(function () use ($data) {
             foreach ($data['records'] as $record) {
-                $hoursWorked = null;
-                if (! empty($record['check_in']) && ! empty($record['check_out'])) {
-                    $in = Carbon::parse($record['check_in']);
-                    $out = Carbon::parse($record['check_out']);
-                    if ($out->greaterThan($in)) {
-                        $hoursWorked = round($in->diffInMinutes($out) / 60, 2);
-                    }
+                $employee = Employee::find($record['employee_id']);
+                if (! $employee) {
+                    continue;
                 }
-
-                Attendance::updateOrCreate(
-                    [
-                        'employee_id' => $record['employee_id'],
-                        'attendance_date' => $data['attendance_date'],
-                    ],
-                    [
-                        'status' => $record['status'],
-                        'check_in' => $record['check_in'] ?? null,
-                        'check_out' => $record['check_out'] ?? null,
-                        'hours_worked' => $hoursWorked,
-                        'notes' => $record['notes'] ?? null,
-                        'recorded_by' => auth()->id(),
-                    ]
+                $attendance = $this->attendanceCalculator->upsertDay(
+                    $employee,
+                    Carbon::parse($data['attendance_date']),
+                    $record['check_in'] ?? null,
+                    $record['check_out'] ?? null,
+                    'manual'
                 );
+                $attendance->update([
+                    'status' => $record['status'] ?? $attendance->status,
+                    'notes' => $record['notes'] ?? null,
+                    'recorded_by' => auth()->id(),
+                ]);
             }
         });
 

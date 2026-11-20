@@ -18,6 +18,9 @@
                 @endif
             </form>
         @endif
+        <x-ui.button variant="secondary" :href="route('hrms.regularisations.index')">Regularisations</x-ui.button>
+        <x-ui.button variant="secondary" :href="route('hrms.punch-conflicts.index')">Conflicts</x-ui.button>
+        <x-ui.button variant="secondary" :href="route('hrms.essl.index')">eSSL</x-ui.button>
         <x-ui.button variant="secondary" :href="route('hrms.attendances.bulk')">Bulk Daily Sheet</x-ui.button>
         <x-ui.button variant="primary" :href="route('hrms.attendances.create')">+ Record Attendance</x-ui.button>
     </div>

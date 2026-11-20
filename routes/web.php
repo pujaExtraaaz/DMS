@@ -18,6 +18,9 @@ if (config('tally_sync.enabled') && config('tally_sync.expose_connector_api', tr
     require __DIR__.'/modules/tally-connector-public.php';
 }
 
+// eSSL punch ingest API (token-gated). Always registered so office agents can push when enabled.
+require __DIR__.'/modules/essl-public.php';
+
 Route::get('/invoice/qr/{type}/{token}', [
     \App\Http\Controllers\InvoiceQrController::class,
     'show',
@@ -43,7 +46,8 @@ Route::middleware('auth')->group(function () {
     foreach (glob(__DIR__.'/modules/*.php') as $moduleRoutes) {
         if (str_ends_with($moduleRoutes, 'payment-public.php')
             || str_ends_with($moduleRoutes, 'crm-public.php')
-            || str_ends_with($moduleRoutes, 'tally-connector-public.php')) {
+            || str_ends_with($moduleRoutes, 'tally-connector-public.php')
+            || str_ends_with($moduleRoutes, 'essl-public.php')) {
             continue;
         }
         require $moduleRoutes;

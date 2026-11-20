@@ -1,9 +1,14 @@
 @props([
-    'active' => 'structures', // structures | heads
+    'active' => 'runs',
 ])
 
 @php
     $tabs = [
+        'runs' => [
+            'label' => 'Payroll Runs',
+            'route' => route('hrms.payroll-runs.index'),
+            'match' => request()->routeIs('hrms.payroll-runs.*'),
+        ],
         'structures' => [
             'label' => 'Salary Structures',
             'route' => route('hrms.salary-structures.index'),
@@ -14,18 +19,25 @@
             'route' => route('hrms.pay-heads.index'),
             'match' => request()->routeIs('hrms.pay-heads.*'),
         ],
+        'compoff' => [
+            'label' => 'Comp-off',
+            'route' => route('hrms.comp-off.index'),
+            'match' => request()->routeIs('hrms.comp-off.*'),
+        ],
     ];
 
     $creates = [
+        'runs' => ['label' => 'New Run', 'href' => route('hrms.payroll-runs.create'), 'title' => 'Create payroll run'],
         'structures' => ['label' => 'New Structure', 'href' => route('hrms.salary-structures.create'), 'title' => 'Create salary structure'],
         'heads' => ['label' => 'Add Pay Head', 'href' => route('hrms.pay-heads.create'), 'title' => 'Create pay head'],
+        'compoff' => ['label' => 'Credit Comp-off', 'href' => route('hrms.comp-off.index'), 'title' => 'Credit compensatory off'],
     ];
 
     $current = collect($tabs)->search(fn ($tab, $key) => $active === $key || ($tab['match'] ?? false));
     if ($current === false) {
-        $current = 'structures';
+        $current = 'runs';
     }
-    $createBtn = $creates[$current] ?? $creates['structures'];
+    $createBtn = $creates[$current] ?? $creates['runs'];
 @endphp
 
 <div class="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

@@ -193,6 +193,51 @@ final class BooksCompany
         return $acctId ? Company::query()->find($acctId) : null;
     }
 
+    /**
+     * Mirror DMS organization financial years into Books acct_financial_years
+     * so Journal / Contra vouchers can resolve FY by voucher date.
+     */
+    public static function syncFinancialYearsFromOrganization(OrganizationCompany $organization): void
+    {
+        $books = self::forOrganization($organization->id);
+        if (! $books) {
+            return;
+        }
+
+        $years = \App\Domains\Organization\Models\FinancialYear::query()
+            ->where('company_id', $organization->id)
+            ->orderBy('starts_on')
+            ->get();
+
+        foreach ($years as $year) {
+            $start = $year->starts_on->toDateString();
+            $end = $year->ends_on->toDateString();
+            $existing = FinancialYear::query()
+                ->where('company_id', $books->id)
+                ->whereDate('start_date', $start)
+                ->whereDate('end_date', $end)
+                ->first();
+
+            if ($existing) {
+                $existing->update([
+                    'name' => FinancialYear::labelForPeriod($year->starts_on, $year->ends_on),
+                    'is_active' => ! $year->is_closed,
+                    'is_closed' => (bool) $year->is_closed,
+                ]);
+                continue;
+            }
+
+            FinancialYear::query()->create([
+                'company_id' => $books->id,
+                'name' => FinancialYear::labelForPeriod($year->starts_on, $year->ends_on),
+                'start_date' => $start,
+                'end_date' => $end,
+                'is_active' => ! $year->is_closed,
+                'is_closed' => (bool) $year->is_closed,
+            ]);
+        }
+    }
+
     public static function organizationId(int $acctCompanyId): ?int
     {
         $id = DB::table('accounting_company_links')

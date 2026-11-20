@@ -76,7 +76,7 @@ class PayrollTest extends TestCase
             ],
         ]);
 
-        $response->assertRedirect(route('hrms.salary-structures.index'));
+        $response->assertRedirect(route('hrms.salary-structures.history', $employee));
 
         $structure = SalaryStructure::where('employee_id', $employee->id)->first();
         $this->assertNotNull($structure);

@@ -1,9 +1,9 @@
 @if($can('hrms.view', 'hrms.manage', 'crm.view', 'crm.manage', 'tally.view', 'tally.manage'))
     @php
         $sNum = $num();
-        $sectionActive = $is('hrms.*') || $is('crm.*') || $is('tally.*');
+        $sectionActive = $is('hrms.*') || $is('crm.*') || $is('tally.*') || $is('ess.*');
         $primaryRoute = $can('hrms.view', 'hrms.manage')
-            ? route('hrms.employees.index')
+            ? route('hrms.dashboard')
             : route('crm.leads.index');
     @endphp
     <div
@@ -71,14 +71,25 @@
         {{-- Submenu (Expanded Only) --}}
         <div x-show="open && !$root.sidebarCollapsed" x-cloak class="space-y-0.5">
             @if($can('hrms.view', 'hrms.manage'))
+                <a href="{{ route('hrms.dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.dashboard', 'hrms.reports.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>HR Dashboard</span></a>
                 <a href="{{ route('hrms.employees.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.employees.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Employees</span></a>
-                <a href="{{ route('hrms.payroll.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.payroll.*', 'hrms.salary-structures.*', 'hrms.pay-heads.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Payroll</span></a>
+                <a href="{{ route('hrms.payroll.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.payroll.*', 'hrms.payroll-runs.*', 'hrms.salary-structures.*', 'hrms.pay-heads.*', 'hrms.comp-off.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Payroll</span></a>
                 <a href="{{ route('hrms.departments.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.departments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Departments</span></a>
                 <a href="{{ route('hrms.designations.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.designations.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Designations</span></a>
                 <a href="{{ route('hrms.managers.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.managers.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Managers</span></a>
-                <a href="{{ route('hrms.attendances.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.attendances.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Attendance</span></a>
-                <a href="{{ route('hrms.leave-management.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.leave-management.*', 'hrms.leave-requests.*', 'hrms.leave-balances.*', 'hrms.leave-types.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leave Management</span></a>
+                <a href="{{ route('hrms.attendances.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.attendances.*', 'hrms.shifts.*', 'hrms.regularisations.*', 'hrms.essl.*', 'hrms.punch-conflicts.*', 'hrms.reports.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Attendance</span></a>
+                <a href="{{ route('hrms.regularisations.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.regularisations.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Regularisations</span></a>
+                <a href="{{ route('hrms.punch-conflicts.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.punch-conflicts.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Punch Conflicts</span></a>
+                <a href="{{ route('hrms.shifts.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.shifts.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Shifts</span></a>
+                <a href="{{ route('hrms.holidays.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.holidays.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Holidays</span></a>
+                <a href="{{ route('hrms.leave-management.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.leave-management.*', 'hrms.leave-requests.*', 'hrms.leave-balances.*', 'hrms.leave-types.*', 'hrms.leave-policies.*', 'hrms.leave-encashments.*', 'hrms.comp-off.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leave Management</span></a>
+                <a href="{{ route('hrms.comp-off.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.comp-off.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Comp-off Credit</span></a>
+                <a href="{{ route('hrms.reports.attendance-register') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.reports.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>HR Reports</span></a>
+                <a href="{{ route('hrms.essl.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.essl.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>eSSL Sync</span></a>
                 <a href="{{ route('hrms.expense-claims.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.expense-claims.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Claims</span></a>
+            @endif
+            @if(auth()->user()?->employee)
+                <a href="{{ route('ess.home') }}" class="{{ $itemClass }} {{ $linkClass(['ess.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>My ESS</span></a>
             @endif
             @if($can('crm.view', 'crm.manage'))
                 <a href="{{ route('crm.leads.index') }}" class="{{ $itemClass }} {{ $linkClass(['crm.leads.index', 'crm.leads.show', 'crm.leads.edit', 'crm.leads.create', 'crm.leads.bulk-upload*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leads (CRM)</span></a>

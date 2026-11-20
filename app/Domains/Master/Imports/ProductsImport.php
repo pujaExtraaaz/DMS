@@ -137,23 +137,23 @@ class ProductsImport implements ToCollection, WithHeadingRow
             try {
             $this->assertNotCancelled();
             $rowNo = $index + 2;
-            $data = collect($row)->mapWithKeys(fn ($v, $k) => [strtolower((string) $k) => $v])->toArray();
+                    $data = collect($row)->mapWithKeys(fn ($v, $k) => [strtolower((string) $k) => $v])->toArray();
 
-            $name = trim((string) ($data['name'] ?? ''));
-            if ($name === '') {
+                    $name = trim((string) ($data['name'] ?? ''));
+                    if ($name === '') {
                 $this->skipped++;
                 $this->errors[] = ['row' => $rowNo, 'field' => 'name', 'message' => 'Name is required'];
-                continue;
-            }
-            $name = \App\Support\NameCase::format($name);
+                        continue;
+                    }
+                    $name = \App\Support\NameCase::format($name);
 
             $uomRaw = trim((string) ($data['uom_code'] ?? $data['uom'] ?? ''));
             $uom = $this->resolveUom($uomsByCode, $uomRaw);
-            if (! $uom) {
+                    if (! $uom) {
                 $this->skipped++;
                 $this->errors[] = ['row' => $rowNo, 'field' => 'uom_code', 'message' => 'UOM code is required'];
-                continue;
-            }
+                        continue;
+                    }
 
             $providedSku = trim((string) ($data['part_number'] ?? $data['part_no'] ?? $data['partnumber'] ?? $data['sku'] ?? ''));
             $sheetModel = trim((string) ($data['model'] ?? '')) ?: null;
@@ -167,115 +167,115 @@ class ProductsImport implements ToCollection, WithHeadingRow
             $subCategory = $this->matchSubCategory($category, (string) ($data['sub_category'] ?? ''));
             $productType = $this->matchProductType((string) ($data['product_type'] ?? ''));
 
-            $altUom = null;
+                    $altUom = null;
             $altRaw = trim((string) ($data['alternate_uom_code'] ?? ''));
             if ($altRaw !== '') {
                 $altUom = $this->resolveUom($uomsByCode, $altRaw);
-                if (! $altUom) {
+                        if (! $altUom) {
                     $this->skipped++;
                     $this->errors[] = ['row' => $rowNo, 'field' => 'alternate_uom_code', 'message' => 'Alternate UOM code is required'];
-                    continue;
-                }
-            }
+                            continue;
+                        }
+                    }
 
-            $conversion = filled($data['conversion_factor'] ?? null)
-                ? (float) $data['conversion_factor']
-                : ($altUom ? 1.0 : 1.0);
+                    $conversion = filled($data['conversion_factor'] ?? null)
+                        ? (float) $data['conversion_factor']
+                        : ($altUom ? 1.0 : 1.0);
 
-            $tracks = [];
-            if ($this->isTruthy($data['track_serial'] ?? null)) {
-                $tracks[] = 'serial';
-            }
-            if ($this->isTruthy($data['track_batch'] ?? null)) {
-                $tracks[] = 'batch';
-            }
-            if ($productType?->track_serial && ! in_array('serial', $tracks, true)) {
-                $tracks[] = 'serial';
-            }
-            $trackingType = empty($tracks) ? 'none' : implode(',', $tracks);
+                    $tracks = [];
+                    if ($this->isTruthy($data['track_serial'] ?? null)) {
+                        $tracks[] = 'serial';
+                    }
+                    if ($this->isTruthy($data['track_batch'] ?? null)) {
+                        $tracks[] = 'batch';
+                    }
+                    if ($productType?->track_serial && ! in_array('serial', $tracks, true)) {
+                        $tracks[] = 'serial';
+                    }
+                    $trackingType = empty($tracks) ? 'none' : implode(',', $tracks);
 
-            $warrantyText = trim((string) ($data['warranty'] ?? '')) ?: null;
-            $warrantyMonths = $warrantyText !== null ? WarrantyPeriod::months($warrantyText) : null;
+                    $warrantyText = trim((string) ($data['warranty'] ?? '')) ?: null;
+                    $warrantyMonths = $warrantyText !== null ? WarrantyPeriod::months($warrantyText) : null;
 
-            $supplyType = strtolower(trim((string) ($data['supply_type'] ?? 'goods')));
-            if (! in_array($supplyType, ['capital_goods', 'goods', 'services'], true)) {
-                $supplyType = 'goods';
-            }
+                    $supplyType = strtolower(trim((string) ($data['supply_type'] ?? 'goods')));
+                    if (! in_array($supplyType, ['capital_goods', 'goods', 'services'], true)) {
+                        $supplyType = 'goods';
+                    }
 
-            $taxBasis = strtolower(trim((string) ($data['purchase_price_tax_basis'] ?? 'exclusive')));
-            if (! in_array($taxBasis, ['exclusive', 'inclusive'], true)) {
-                $taxBasis = 'exclusive';
-            }
+                    $taxBasis = strtolower(trim((string) ($data['purchase_price_tax_basis'] ?? 'exclusive')));
+                    if (! in_array($taxBasis, ['exclusive', 'inclusive'], true)) {
+                        $taxBasis = 'exclusive';
+                    }
 
-            $costing = strtolower(trim((string) ($data['costing_method'] ?? 'avg_cost')));
-            if (! array_key_exists($costing, Product::COSTING_METHODS)) {
-                $costing = 'avg_cost';
-            }
+                    $costing = strtolower(trim((string) ($data['costing_method'] ?? 'avg_cost')));
+                    if (! array_key_exists($costing, Product::COSTING_METHODS)) {
+                        $costing = 'avg_cost';
+                    }
 
-            $market = strtolower(trim((string) ($data['market_valuation_method'] ?? 'avg_price')));
-            if (! array_key_exists($market, Product::MARKET_VALUATION_METHODS)) {
-                $market = 'avg_price';
-            }
+                    $market = strtolower(trim((string) ($data['market_valuation_method'] ?? 'avg_price')));
+                    if (! array_key_exists($market, Product::MARKET_VALUATION_METHODS)) {
+                        $market = 'avg_price';
+                    }
 
-            $weightUnit = strtoupper(trim((string) ($data['weight_unit'] ?? 'KG')));
-            if (! in_array($weightUnit, ['KG', 'GRAMS'], true)) {
-                $weightUnit = 'KG';
-            }
+                    $weightUnit = strtoupper(trim((string) ($data['weight_unit'] ?? 'KG')));
+                    if (! in_array($weightUnit, ['KG', 'GRAMS'], true)) {
+                        $weightUnit = 'KG';
+                    }
 
-            $isActive = array_key_exists('is_active', $data) && $data['is_active'] !== null && $data['is_active'] !== ''
-                ? $this->isTruthy($data['is_active'])
-                : true;
+                    $isActive = array_key_exists('is_active', $data) && $data['is_active'] !== null && $data['is_active'] !== ''
+                        ? $this->isTruthy($data['is_active'])
+                        : true;
 
-            $payload = [
-                'company_id' => $companyId,
-                'name' => $name,
-                'sku' => $sku,
-                'model' => trim((string) ($data['model'] ?? '')) ?: null,
-                'product_type_id' => $productType?->id,
-                'product_type' => $productType?->name,
-                'hsn_code' => trim((string) ($data['hsn_code'] ?? '')) ?: null,
-                'base_uom_id' => $uom->id,
-                'alternate_uom_id' => $altUom?->id,
-                'conversion_factor' => $altUom ? max(0.0001, $conversion) : 1,
-                'brand_id' => $brand?->id,
-                'category_id' => $category?->id,
-                'sub_category_id' => $subCategory?->id,
-                'supply_type' => $supplyType,
-                'tax_rate' => (float) ($data['tax_rate'] ?? 0),
-                'purchase_price' => (float) ($data['purchase_price'] ?? 0),
-                'selling_price' => (float) ($data['selling_price'] ?? 0),
-                'trade_price' => (float) ($data['trade_price'] ?? $data['selling_price'] ?? 0),
-                'calculation_mrp' => (float) ($data['mrp'] ?? 0),
-                'purchase_price_tax_basis' => $taxBasis,
-                'alt_purchase_price' => filled($data['alt_purchase_price'] ?? null) ? (float) $data['alt_purchase_price'] : null,
-                'alt_trade_price' => filled($data['alt_trade_price'] ?? null) ? (float) $data['alt_trade_price'] : null,
-                'alt_selling_price' => filled($data['alt_selling_price'] ?? null) ? (float) $data['alt_selling_price'] : null,
-                'alt_calculation_mrp' => filled($data['alt_mrp'] ?? null) ? (float) $data['alt_mrp'] : null,
-                'costing_method' => $costing,
-                'market_valuation_method' => $market,
-                'height_cm' => filled($data['height_cm'] ?? null) ? (float) $data['height_cm'] : null,
-                'length_cm' => filled($data['length_cm'] ?? null) ? (float) $data['length_cm'] : null,
-                'width_cm' => filled($data['width_cm'] ?? null) ? (float) $data['width_cm'] : null,
-                'net_weight' => filled($data['net_weight'] ?? null) ? (float) $data['net_weight'] : null,
-                'weight_unit' => filled($data['net_weight'] ?? null) || filled($data['weight_unit'] ?? null) ? $weightUnit : null,
-                'min_stock' => filled($data['min_stock'] ?? null) ? (float) $data['min_stock'] : 0,
-                'reorder_level' => filled($data['reorder_level'] ?? null) ? (float) $data['reorder_level'] : 0,
-                'specification' => trim((string) ($data['specification'] ?? '')) ?: null,
-                'warranty' => $warrantyText,
-                'warranty_months' => $warrantyMonths,
-                'catalog_link' => trim((string) ($data['catalog_link'] ?? '')) ?: null,
-                'series' => trim((string) ($data['series'] ?? '')) ?: null,
-                'color_variant' => trim((string) ($data['color_variant'] ?? '')) ?: null,
-                'sender_warranty_months' => filled($data['sender_warranty_months'] ?? null) ? (int) $data['sender_warranty_months'] : null,
-                'customer_warranty_months' => filled($data['customer_warranty_months'] ?? null) ? (int) $data['customer_warranty_months'] : null,
-                'discount_percent' => (float) ($data['discount_percent'] ?? 0),
-                'discount_type' => 'percent',
-                'discount_value' => (float) ($data['discount_percent'] ?? 0),
-                'selling_discount_type' => 'percent',
-                'selling_discount_value' => 0,
-                'tracking_type' => $trackingType,
-                'is_active' => $isActive,
-            ];
+                    $payload = [
+                        'company_id' => $companyId,
+                        'name' => $name,
+                        'sku' => $sku,
+                        'model' => trim((string) ($data['model'] ?? '')) ?: null,
+                        'product_type_id' => $productType?->id,
+                        'product_type' => $productType?->name,
+                        'hsn_code' => trim((string) ($data['hsn_code'] ?? '')) ?: null,
+                        'base_uom_id' => $uom->id,
+                        'alternate_uom_id' => $altUom?->id,
+                        'conversion_factor' => $altUom ? max(0.0001, $conversion) : 1,
+                        'brand_id' => $brand?->id,
+                        'category_id' => $category?->id,
+                        'sub_category_id' => $subCategory?->id,
+                        'supply_type' => $supplyType,
+                        'tax_rate' => (float) ($data['tax_rate'] ?? 0),
+                        'purchase_price' => (float) ($data['purchase_price'] ?? 0),
+                        'selling_price' => (float) ($data['selling_price'] ?? 0),
+                        'trade_price' => (float) ($data['trade_price'] ?? $data['selling_price'] ?? 0),
+                        'calculation_mrp' => (float) ($data['mrp'] ?? 0),
+                        'purchase_price_tax_basis' => $taxBasis,
+                        'alt_purchase_price' => filled($data['alt_purchase_price'] ?? null) ? (float) $data['alt_purchase_price'] : null,
+                        'alt_trade_price' => filled($data['alt_trade_price'] ?? null) ? (float) $data['alt_trade_price'] : null,
+                        'alt_selling_price' => filled($data['alt_selling_price'] ?? null) ? (float) $data['alt_selling_price'] : null,
+                        'alt_calculation_mrp' => filled($data['alt_mrp'] ?? null) ? (float) $data['alt_mrp'] : null,
+                        'costing_method' => $costing,
+                        'market_valuation_method' => $market,
+                        'height_cm' => filled($data['height_cm'] ?? null) ? (float) $data['height_cm'] : null,
+                        'length_cm' => filled($data['length_cm'] ?? null) ? (float) $data['length_cm'] : null,
+                        'width_cm' => filled($data['width_cm'] ?? null) ? (float) $data['width_cm'] : null,
+                        'net_weight' => filled($data['net_weight'] ?? null) ? (float) $data['net_weight'] : null,
+                        'weight_unit' => filled($data['net_weight'] ?? null) || filled($data['weight_unit'] ?? null) ? $weightUnit : null,
+                        'min_stock' => filled($data['min_stock'] ?? null) ? (float) $data['min_stock'] : 0,
+                        'reorder_level' => filled($data['reorder_level'] ?? null) ? (float) $data['reorder_level'] : 0,
+                        'specification' => trim((string) ($data['specification'] ?? '')) ?: null,
+                        'warranty' => $warrantyText,
+                        'warranty_months' => $warrantyMonths,
+                        'catalog_link' => trim((string) ($data['catalog_link'] ?? '')) ?: null,
+                        'series' => trim((string) ($data['series'] ?? '')) ?: null,
+                        'color_variant' => trim((string) ($data['color_variant'] ?? '')) ?: null,
+                        'sender_warranty_months' => filled($data['sender_warranty_months'] ?? null) ? (int) $data['sender_warranty_months'] : null,
+                        'customer_warranty_months' => filled($data['customer_warranty_months'] ?? null) ? (int) $data['customer_warranty_months'] : null,
+                        'discount_percent' => (float) ($data['discount_percent'] ?? 0),
+                        'discount_type' => 'percent',
+                        'discount_value' => (float) ($data['discount_percent'] ?? 0),
+                        'selling_discount_type' => 'percent',
+                        'selling_discount_value' => 0,
+                        'tracking_type' => $trackingType,
+                        'is_active' => $isActive,
+                    ];
 
             $uomRows = [[
                 'uom_id' => $uom->id,
@@ -306,12 +306,12 @@ class ProductsImport implements ToCollection, WithHeadingRow
 
             if ($located && ! empty($located['pending'])) {
                 if (! $this->arrayChanged($located, $payload)) {
-                    $this->skipped++;
+                                $this->skipped++;
 
-                    continue;
-                }
+                                continue;
+                            }
                 $this->replacePending($located['sku'], $payload, $uomRows, $name);
-                $this->updated++;
+                            $this->updated++;
 
                 continue;
             }
@@ -320,8 +320,8 @@ class ProductsImport implements ToCollection, WithHeadingRow
                 if (! $this->arrayChanged($located, $payload)) {
                     $this->skipped++;
 
-                    continue;
-                }
+                        continue;
+                    }
                 $this->queueUpdate((int) $located['id'], $payload, $uomRows);
                 $this->updated++;
 

@@ -36,7 +36,29 @@ class FinancialReportController extends Controller
     {
         [$from, $to] = $this->range($request);
 
+        $typeFilters = [
+            'all' => 'All',
+            'journal' => 'Journal',
+            'contra' => 'Contra',
+            'receipt' => 'Receipt',
+            'purchase' => 'Purchase',
+            'sales' => 'Sales',
+            'credit_note' => 'Credit Note',
+            'debit_note' => 'Debit Note',
+        ];
+        $activeType = strtolower((string) $request->input('type', 'all'));
+        if (! array_key_exists($activeType, $typeFilters)) {
+            $activeType = 'all';
+        }
+
         $rows = $this->buildDayBook($from, $to);
+
+        $typeCounts = $rows->groupBy('type_key')->map->count();
+        $typeCounts['all'] = $rows->count();
+
+        if ($activeType !== 'all') {
+            $rows = $rows->filter(fn ($r) => ($r['type_key'] ?? '') === $activeType)->values();
+        }
 
         if ($search = trim($request->input('search', ''))) {
             $lower = mb_strtolower($search);
@@ -58,10 +80,10 @@ class FinancialReportController extends Controller
             return $this->export($request, 'day-book', 'Day Book',
                 ['Date', 'Voucher Type', 'Voucher No', 'Party', 'Narration', 'Debit', 'Credit'],
                 $rows->map(fn ($r) => [
-                    $r['date']->format('d M Y'), $r['type'], $r['voucher'], $r['party'], $r['narration'],
+                    Carbon::parse($r['date'])->format('d M Y'), $r['type'], $r['voucher'], $r['party'], $r['narration'],
                     number_format((float) $r['debit'], 2), number_format((float) $r['credit'], 2),
                 ]),
-                ['From' => $from, 'To' => $to]
+                ['From' => $from, 'To' => $to, 'Type' => $typeFilters[$activeType]]
             );
         }
 
@@ -71,6 +93,9 @@ class FinancialReportController extends Controller
             'dateTo' => $to,
             'sort' => $sort,
             'direction' => $dir,
+            'activeType' => $activeType,
+            'typeFilters' => $typeFilters,
+            'typeCounts' => $typeCounts,
             'totals' => [
                 'debit' => $rows->sum('debit'),
                 'credit' => $rows->sum('credit'),
@@ -149,10 +174,15 @@ class FinancialReportController extends Controller
             ->get()
             ->each(function (Invoice $inv) use ($entries) {
                 $entries->push([
-                    'date' => $inv->invoice_date, 'type' => 'Sales',
-                    'voucher' => $inv->invoice_no, 'party' => $inv->customer?->name ?? '—',
+                    'date' => $inv->invoice_date,
+                    'type' => 'Sales',
+                    'type_key' => 'sales',
+                    'voucher' => $inv->invoice_no,
+                    'party' => $inv->customer?->name ?? '—',
                     'narration' => 'Being sales invoice',
-                    'debit' => (float) $inv->grand_total, 'credit' => 0,
+                    'debit' => (float) $inv->grand_total,
+                    'credit' => 0,
+                    'view_url' => route('invoices.show', $inv),
                 ]);
             });
 
@@ -165,10 +195,14 @@ class FinancialReportController extends Controller
             ->each(function (Payment $p) use ($entries) {
                 $entries->push([
                     'date' => $p->paid_at ? Carbon::parse($p->paid_at) : now(),
-                    'type' => 'Receipt', 'voucher' => $p->payment_no ?? ('PAY-'.$p->id),
+                    'type' => 'Receipt',
+                    'type_key' => 'receipt',
+                    'voucher' => $p->payment_no ?? ('PAY-'.$p->id),
                     'party' => $p->customer?->name ?? '—',
                     'narration' => 'Payment received via '.$p->method,
-                    'debit' => 0, 'credit' => (float) $p->amount,
+                    'debit' => 0,
+                    'credit' => (float) $p->amount,
+                    'view_url' => route('payments.show', $p),
                 ]);
             });
 
@@ -179,10 +213,15 @@ class FinancialReportController extends Controller
             ->get()
             ->each(function (CreditNote $c) use ($entries) {
                 $entries->push([
-                    'date' => $c->credit_note_date, 'type' => 'Credit Note',
-                    'voucher' => $c->credit_note_no, 'party' => $c->customer?->name ?? '—',
+                    'date' => $c->credit_note_date,
+                    'type' => 'Credit Note',
+                    'type_key' => 'credit_note',
+                    'voucher' => $c->credit_note_no,
+                    'party' => $c->customer?->name ?? '—',
                     'narration' => 'Credit note ('.$c->reason.')',
-                    'debit' => 0, 'credit' => (float) $c->grand_total,
+                    'debit' => 0,
+                    'credit' => (float) $c->grand_total,
+                    'view_url' => route('credit-notes.show', $c),
                 ]);
             });
 
@@ -194,10 +233,15 @@ class FinancialReportController extends Controller
             ->get()
             ->each(function (PurchaseInvoice $pi) use ($entries) {
                 $entries->push([
-                    'date' => $pi->invoice_date, 'type' => 'Purchase',
-                    'voucher' => $pi->invoice_no, 'party' => $pi->supplier?->name ?? '—',
+                    'date' => $pi->invoice_date,
+                    'type' => 'Purchase',
+                    'type_key' => 'purchase',
+                    'voucher' => $pi->invoice_no,
+                    'party' => $pi->supplier?->name ?? '—',
                     'narration' => 'Purchase invoice',
-                    'debit' => 0, 'credit' => (float) $pi->grand_total,
+                    'debit' => 0,
+                    'credit' => (float) $pi->grand_total,
+                    'view_url' => route('purchasing.invoices.show', $pi),
                 ]);
             });
 
@@ -210,23 +254,42 @@ class FinancialReportController extends Controller
             ->get()
             ->each(function (FreightBill $bill) use ($entries) {
                 $entries->push([
-                    'date' => $bill->bill_date, 'type' => 'Freight',
-                    'voucher' => $bill->freight_no, 'party' => $bill->transporter_name ?: '—',
+                    'date' => $bill->bill_date,
+                    'type' => 'Freight',
+                    'type_key' => 'freight',
+                    'voucher' => $bill->freight_no,
+                    'party' => $bill->transporter_name ?: '—',
                     'narration' => 'Freight bill',
-                    'debit' => (float) $bill->total_amount, 'credit' => 0,
+                    'debit' => (float) $bill->total_amount,
+                    'credit' => 0,
+                    'view_url' => route('purchasing.freight-bills.show', $bill),
                 ]);
             });
 
         $seen = $entries->pluck('voucher')->filter()->map(fn ($number) => (string) $number);
         foreach ($this->booksVouchers($from, $to, false, $seen) as $voucher) {
+            $typeKey = match ($voucher->voucher_type) {
+                VoucherType::Journal => 'journal',
+                VoucherType::Contra => 'contra',
+                VoucherType::Receipt => 'receipt',
+                VoucherType::Payment => 'payment',
+                VoucherType::Purchase => 'purchase',
+                VoucherType::Sales => 'sales',
+                VoucherType::CreditNote => 'credit_note',
+                VoucherType::DebitNote => 'debit_note',
+                default => strtolower(str_replace(' ', '_', $voucher->voucher_type->label())),
+            };
+
             $entries->push([
                 'date' => $voucher->voucher_date,
                 'type' => $voucher->voucher_type->label().($voucher->isDraft() ? ' (Draft)' : ''),
+                'type_key' => $typeKey,
                 'voucher' => $voucher->voucher_number,
                 'party' => $voucher->ledgerSummary(),
                 'narration' => $voucher->narration ?: 'Accounting voucher',
                 'debit' => (float) $voucher->total_debit,
                 'credit' => (float) $voucher->total_credit,
+                'view_url' => route('books.tally.vouchers.show', $voucher),
             ]);
         }
 
@@ -447,15 +510,18 @@ class FinancialReportController extends Controller
             ->when($companyId, fn ($q) => $q->where('company_id', $companyId));
 
         $fy = null;
-        if ($latestInvoice) {
+        if ($request->filled('fy_id')) {
+            $fy = (clone $fyQuery)->whereKey((int) $request->input('fy_id'))->first();
+        }
+        $fy ??= (clone $fyQuery)->where('is_current', true)->first();
+        if (! $fy && $latestInvoice) {
             $fy = (clone $fyQuery)
                 ->whereDate('starts_on', '<=', $latestInvoice)
                 ->whereDate('ends_on', '>=', $latestInvoice)
                 ->orderByDesc('starts_on')
                 ->first();
         }
-        $fy ??= (clone $fyQuery)->where('is_current', true)->first()
-            ?? (clone $fyQuery)->orderByDesc('starts_on')->first();
+        $fy ??= (clone $fyQuery)->orderByDesc('starts_on')->first();
 
         $defaultFrom = $fy?->starts_on
             ? Carbon::parse($fy->starts_on)->toDateString()
@@ -464,8 +530,14 @@ class FinancialReportController extends Controller
             ? Carbon::parse($fy->ends_on)->toDateString()
             : ($latestInvoice ? Carbon::parse($latestInvoice)->toDateString() : now()->toDateString());
 
-        $from = $request->input('date_from', $defaultFrom);
-        $to = $request->input('date_to', $defaultTo);
+        // Explicit date range wins over FY chip defaults.
+        if ($request->filled('date_from') || $request->filled('date_to')) {
+            $from = $request->input('date_from', $defaultFrom);
+            $to = $request->input('date_to', $defaultTo);
+        } else {
+            $from = $defaultFrom;
+            $to = $defaultTo;
+        }
 
         return [$from, $to];
     }

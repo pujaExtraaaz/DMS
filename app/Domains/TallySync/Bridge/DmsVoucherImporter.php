@@ -80,14 +80,23 @@ class DmsVoucherImporter
             $normalized === 'purchase' || str_contains($normalized, 'purchase') => $this->purchaseInvoice($node),
             $normalized === 'receipt' || str_contains($normalized, 'receipt') => $this->receipt($node),
             $normalized === 'payment' || str_contains($normalized, 'payment') => $this->paymentVoucher($node),
-            // Accounting-only types are handled on the Books import path.
+            // Journal / Contra / Debit Note → Books (acct_vouchers); combined import shows them in DMS Day Book.
             in_array($normalized, ['journal', 'contra'], true)
                 || str_contains($normalized, 'journal')
                 || str_contains($normalized, 'contra')
-                || str_contains($normalized, 'debit note')
-                || str_contains($normalized, 'delivery') => $this->unsupported($node, $typeName, 'No DMS commercial document mapping; import via Books path or review manually.'),
+                || str_contains($normalized, 'debit note') => $this->deferredToBooks($node, $typeName),
+            str_contains($normalized, 'delivery') => $this->unsupported($node, $typeName, 'No DMS commercial document mapping for delivery challan; review manually.'),
             default => $this->unsupported($node, $typeName, 'Unsupported DMS voucher type.'),
         };
+    }
+
+    /**
+     * Quietly skip on the DMS commercial path — Books stage imports these and
+     * FinancialReportController Day Book already merges acct_vouchers.
+     */
+    private function deferredToBooks(\DOMElement $node, string $_typeName): void
+    {
+        $this->counts['skipped']++;
     }
 
     private function unsupported(\DOMElement $node, string $typeName, string $reason): void

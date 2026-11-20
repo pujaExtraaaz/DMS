@@ -1556,9 +1556,7 @@ class TallyInbound
 
         $branch = $company->branches()->where('is_active', true)->orderBy('id')->first()
             ?: $company->branches()->orderBy('id')->first();
-        $year = $date
-            ? FinancialYear::query()->where('company_id', $company->id)->whereDate('start_date', '<=', $date)->whereDate('end_date', '>=', $date)->first()
-            : null;
+        $year = $date ? $this->ensureBooksFinancialYear($company, $date) : null;
         $user = User::query()->orderBy('id')->first();
         if (! $branch || ! $year || ! $user || ! $date) {
             $this->conflict('vouchers', $this->text($node, 'GUID'), $number, 'Books needs a branch, an open financial year, and a user for this stock journal.');
@@ -1689,9 +1687,7 @@ class TallyInbound
 
         $branch = $company->branches()->where('is_active', true)->orderBy('id')->first()
             ?: $company->branches()->orderBy('id')->first();
-        $year = $date
-            ? FinancialYear::query()->where('company_id', $company->id)->whereDate('start_date', '<=', $date)->whereDate('end_date', '>=', $date)->first()
-            : null;
+        $year = $date ? $this->ensureBooksFinancialYear($company, $date) : null;
         $user = User::query()->orderBy('id')->first();
         if (! $branch || ! $year || ! $user || ! $date) {
             $this->conflict('vouchers', $this->text($node, 'GUID'), $number, 'Books needs a branch, an open financial year, and a user for this receipt note.');
@@ -1869,7 +1865,7 @@ class TallyInbound
         }
 
         $branch = $company->branches()->where('is_active', true)->orderBy('id')->first() ?: $company->branches()->orderBy('id')->first();
-        $year = $date ? FinancialYear::query()->where('company_id', $company->id)->whereDate('start_date', '<=', $date)->whereDate('end_date', '>=', $date)->first() : null;
+        $year = $date ? $this->ensureBooksFinancialYear($company, $date) : null;
         $user = $existing?->creator ?: User::query()->orderBy('id')->first();
         if (! $branch || ! $year || ! $user || ! $date) {
             $this->conflict('vouchers', $this->text($node, 'GUID'), $number, 'Books needs a branch, an open financial year, and a user for this voucher.');
@@ -2251,6 +2247,37 @@ class TallyInbound
                 'discount_amount' => abs((float) str_replace(',', '', $this->text($entry, 'DISCOUNT'))),
             ]);
         }
+    }
+
+    /**
+     * Resolve or create an Apr–Mar Books financial year covering $date
+     * so Journal/Contra imports are not blocked on missing FY rows.
+     */
+    private function ensureBooksFinancialYear(Company $company, string $date): FinancialYear
+    {
+        $existing = FinancialYear::query()
+            ->where('company_id', $company->id)
+            ->whereDate('start_date', '<=', $date)
+            ->whereDate('end_date', '>=', $date)
+            ->first();
+        if ($existing) {
+            return $existing;
+        }
+
+        $carbon = \Illuminate\Support\Carbon::parse($date);
+        $start = $carbon->month >= 4
+            ? $carbon->copy()->month(4)->day(1)->startOfDay()
+            : $carbon->copy()->subYear()->month(4)->day(1)->startOfDay();
+        $end = $start->copy()->addYear()->subDay();
+
+        return FinancialYear::query()->create([
+            'company_id' => $company->id,
+            'name' => FinancialYear::labelForPeriod($start, $end),
+            'start_date' => $start->toDateString(),
+            'end_date' => $end->toDateString(),
+            'is_active' => true,
+            'is_closed' => false,
+        ]);
     }
 
     private function link(Company $company, Model $model, string $type, \DOMElement $node): void

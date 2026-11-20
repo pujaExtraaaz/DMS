@@ -44,6 +44,16 @@
         <input type="checkbox" name="is_half_day" value="1" @checked(old('is_half_day')) class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
         Half-Day Leave (0.5 day)
     </label>
+    <label class="flex items-center gap-2 text-sm text-slate-700">
+        <input type="checkbox" name="is_short_leave" value="1" @checked(old('is_short_leave')) class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500">
+        Short leave
+    </label>
+    <x-ui.input name="short_leave_hours" label="Short leave hours" type="number" step="0.5" :value="old('short_leave_hours', 2)" />
+    <x-ui.select name="session" label="Half-day session">
+        <option value="">—</option>
+        <option value="first_half" @selected(old('session')==='first_half')>First half</option>
+        <option value="second_half" @selected(old('session')==='second_half')>Second half</option>
+    </x-ui.select>
 
     <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Reason for Leave</label>

@@ -7,6 +7,7 @@ use App\Domains\Hrms\Models\PayHead;
 use App\Domains\Hrms\Models\SalaryStructure;
 use App\Http\Controllers\Controller;
 use App\Support\Traits\SortableAndSearchable;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -82,9 +83,16 @@ class SalaryStructureController extends Controller
 
         $structure = DB::transaction(function () use ($data) {
             if (! empty($data['is_active'])) {
+                $from = $data['effective_from'] ?? now()->toDateString();
                 SalaryStructure::where('employee_id', $data['employee_id'])
                     ->where('is_active', true)
-                    ->update(['is_active' => false]);
+                    ->get()
+                    ->each(function (SalaryStructure $old) use ($from) {
+                        $old->update([
+                            'is_active' => false,
+                            'effective_to' => $old->effective_to ?: Carbon::parse($from)->subDay()->toDateString(),
+                        ]);
+                    });
             }
 
             $structure = SalaryStructure::create(collect($data)->except('lines')->all());
@@ -95,7 +103,7 @@ class SalaryStructureController extends Controller
             return $structure;
         });
 
-        return $this->flashSuccess('Salary structure created.', 'hrms.salary-structures.index');
+        return $this->flashSuccess('Salary structure created.', 'hrms.salary-structures.history', ['employee' => $structure->employee_id]);
     }
 
     public function edit(SalaryStructure $salary_structure): View
@@ -153,6 +161,21 @@ class SalaryStructureController extends Controller
         $salary_structure->delete();
 
         return $this->flashSuccess('Salary structure deleted.', 'hrms.salary-structures.index');
+    }
+
+    public function history(Employee $employee): View
+    {
+        $revisions = SalaryStructure::query()
+            ->with('lines.payHead')
+            ->where('employee_id', $employee->id)
+            ->orderByDesc('effective_from')
+            ->orderByDesc('id')
+            ->get();
+
+        return view('hrms.salary-structures.history', [
+            'employee' => $employee,
+            'revisions' => $revisions,
+        ]);
     }
 
     protected function validated(Request $request, ?SalaryStructure $structure = null): array
