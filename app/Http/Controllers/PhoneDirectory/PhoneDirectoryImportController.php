@@ -223,6 +223,20 @@ class PhoneDirectoryImportController extends Controller
             })->toArray();
         }
 
+        $companies = [];
+        if (Schema::hasTable('companies')) {
+            $companies = \App\Domains\Organization\Models\Company::query()->pluck('id', 'name')->mapWithKeys(function ($id, $name) {
+                return [strtolower(trim($name)) => $id];
+            })->toArray();
+        }
+
+        $classifications = [];
+        if (Schema::hasTable('customer_types')) {
+            $classifications = \App\Domains\Master\Models\CustomerType::query()->pluck('id', 'name')->mapWithKeys(function ($id, $name) {
+                return [strtolower(trim($name)) => $id];
+            })->toArray();
+        }
+
         $createdCount = 0;
         $updatedCount = 0;
         $skippedCount = 0;
@@ -352,13 +366,27 @@ class PhoneDirectoryImportController extends Controller
                     }
                 }
 
+                $companyRaw = $getColumn($row, ['company name', 'company', 'organization']);
+                $companyId = null;
+                if (! empty($companyRaw) && isset($companies[strtolower(trim($companyRaw))])) {
+                    $companyId = $companies[strtolower(trim($companyRaw))];
+                }
+
+                $classificationRaw = $getColumn($row, ['classification', 'party classification', 'customer type']);
+                $customerTypeId = null;
+                if (! empty($classificationRaw) && isset($classifications[strtolower(trim($classificationRaw))])) {
+                    $customerTypeId = $classifications[strtolower(trim($classificationRaw))];
+                }
+
                 $contactData = [
                     'contact_name' => $contactName,
                     'contact_type' => $contactType,
                     'designation' => $designationText,
                     'designation_id' => $designationId,
                     'department_id' => $departmentId,
-                    'company_name' => $getColumn($row, ['company name', 'company', 'organization']),
+                    'company_id' => $companyId,
+                    'customer_type_id' => $customerTypeId,
+                    'company_name' => $companyRaw,
                     'category_id' => $categoryId,
                     'mobile_number' => $mobileNumber,
                     'alternate_mobile' => $getColumn($row, ['alternate mobile', 'secondary mobile']),

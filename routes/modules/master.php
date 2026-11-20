@@ -75,6 +75,12 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::get('parties/autocomplete', [CustomerController::class, 'autocomplete'])->name('parties.autocomplete');
         Route::get('customers/autocomplete', [CustomerController::class, 'autocomplete'])->name('customers.autocomplete');
 
+        // Phone Directory contact lookup & Party draft session endpoints
+        Route::get('customers/phone-directory-contacts', [CustomerController::class, 'searchPhoneDirectoryContacts'])->name('customers.phone-directory-contacts');
+        Route::post('customers/phone-directory-quick-store', [CustomerController::class, 'quickStorePhoneDirectoryContact'])->name('customers.phone-directory-quick-store');
+        Route::post('customers/draft/save', [CustomerController::class, 'saveDraftSession'])->name('customers.draft.save');
+        Route::match(['post', 'delete'], 'customers/draft/clear', [CustomerController::class, 'clearDraftSession'])->name('customers.draft.clear');
+
         Route::resource('customers', CustomerController::class);
         Route::get('parties', [CustomerController::class, 'index'])->name('parties.index');
         Route::delete('parties/{customer}', [CustomerController::class, 'destroy'])->name('parties.destroy');

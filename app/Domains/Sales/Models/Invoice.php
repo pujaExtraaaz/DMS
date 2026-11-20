@@ -173,6 +173,29 @@ class Invoice extends Model
         return $this->hasMany(InvoiceItem::class);
     }
 
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Payment\Models\CreditNote::class);
+    }
+
+    public function getCreditNotesTotalAttribute(): float
+    {
+        if ($this->relationLoaded('creditNotes')) {
+            return (float) $this->creditNotes
+                ->where('status', 'posted')
+                ->sum('grand_total');
+        }
+
+        return (float) $this->creditNotes()
+            ->where('status', 'posted')
+            ->sum('grand_total');
+    }
+
+    public function getEligibleAmountAttribute(): float
+    {
+        return max(0, (float) $this->grand_total - $this->credit_notes_total);
+    }
+
     public function eInvoice(): HasOne
     {
         return $this->hasOne(EInvoice::class);

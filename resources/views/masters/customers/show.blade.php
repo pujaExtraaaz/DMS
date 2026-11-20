@@ -211,13 +211,13 @@
                 <div>
                     <dt class="text-xs font-semibold text-slate-500 tracking-wider">Contact Person</dt>
                     <dd class="mt-0.5 font-medium text-slate-900">
-                        {{ $customer->defaultAddress()?->contact_person ?: ($customer->contacts->first()?->name ?: '—') }}
+                        {{ $customer->defaultAddress()?->contact_person ?: ($customer->contacts->first()?->effective_name ?: '—') }}
                     </dd>
                 </div>
                 <div>
                     <dt class="text-xs font-semibold text-slate-500 tracking-wider">Contact Phone</dt>
                     <dd class="mt-0.5 font-medium text-slate-900">
-                        {{ $customer->defaultAddress()?->contact_phone ?: ($customer->contacts->first()?->phone ?: '—') }}
+                        {{ $customer->defaultAddress()?->contact_phone ?: ($customer->contacts->first()?->effective_phone ?: '—') }}
                     </dd>
                 </div>
             </dl>
@@ -228,15 +228,45 @@
                     <h4 class="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">Registered Contacts</h4>
                     <div class="space-y-2">
                         @foreach($customer->contacts as $contact)
-                            <div class="flex items-center justify-between p-2 rounded-lg bg-slate-50 text-xs">
-                                <div>
-                                    <span class="font-semibold text-slate-800">{{ $contact->name }}</span>
-                                    @if($contact->designation?->name || $contact->role)<span class="text-slate-500">({{ $contact->designation?->name ?: $contact->role }})</span>@endif
-                                    @if($contact->is_primary)<span class="ml-1 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-semibold">Primary</span>@endif
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs gap-2">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="font-semibold text-slate-900">{{ $contact->effective_name }}</span>
+                                    @if($contact->effective_designation)
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-200/70 text-slate-700">
+                                            ({{ $contact->effective_designation }})
+                                        </span>
+                                    @endif
+                                    @if($contact->effective_company_name)
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                                            {{ $contact->effective_company_name }}
+                                        </span>
+                                    @endif
+                                    @if($contact->phone_directory_contact_id)
+                                        <a href="{{ route('phone-directory.show', $contact->phone_directory_contact_id) }}" 
+                                           class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
+                                           title="View in Phone Directory">
+                                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                                            Directory
+                                        </a>
+                                    @endif
+                                    @if($contact->is_primary)
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-800 font-semibold">Primary</span>
+                                    @endif
                                 </div>
-                                <div class="text-slate-600 space-x-2">
-                                    @if($contact->phone)<span>{{ $contact->phone }}</span>@endif
-                                    @if($contact->email)<span>{{ $contact->email }}</span>@endif
+                                <div class="text-slate-600 flex items-center gap-3 shrink-0">
+                                    @if($contact->effective_phone)
+                                        <a href="tel:{{ $contact->effective_phone }}" class="hover:text-indigo-600 flex items-center gap-1">
+                                            <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                                            {{ $contact->effective_phone }}
+                                        </a>
+                                    @endif
+                                    @if($contact->effective_email)
+                                        <a href="mailto:{{ $contact->effective_email }}" class="hover:text-indigo-600 flex items-center gap-1">
+                                            <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                            {{ $contact->effective_email }}
+                                        </a>
+                                    @endif
                                 </div>
                             </div>
                         @endforeach

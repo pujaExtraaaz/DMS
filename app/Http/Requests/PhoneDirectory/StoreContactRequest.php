@@ -23,7 +23,10 @@ class StoreContactRequest extends FormRequest
             'designation' => ['nullable', 'string', 'max:255'],
             'designation_id' => ['nullable', 'integer', 'exists:designations,id'],
             'department_id' => ['nullable', 'exists:phone_directory_departments,id'],
+            'company_id' => ['nullable', 'integer', 'exists:companies,id'],
             'company_name' => ['nullable', 'string', 'max:255'],
+            'customer_type_id' => ['nullable', 'integer', 'exists:customer_types,id'],
+            'classification_id' => ['nullable', 'integer', 'exists:customer_types,id'],
             'category_id' => ['nullable', 'exists:phone_directory_categories,id'],
             'mobile_number' => ['required', 'string', 'max:30'],
             'alternate_mobile' => ['nullable', 'string', 'max:30'],
@@ -41,6 +44,8 @@ class StoreContactRequest extends FormRequest
             'is_important' => ['nullable', 'boolean'],
             'status' => ['nullable', 'in:active,inactive'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'return_to' => ['nullable', 'string', 'max:50'],
+            'party_id' => ['nullable', 'integer'],
         ];
     }
 

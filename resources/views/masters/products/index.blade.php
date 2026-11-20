@@ -7,52 +7,33 @@
 <div id="listing-container" data-dynamic-container x-data="productIndex()">
     <x-ui.page-header title="Products">
         <x-slot name="actions">
-            <div class="relative inline-block text-left" x-data="{ quickOpen: false }">
-                <div class="inline-flex rounded-lg shadow-xs">
-                    <button
-                        type="button"
-                        @click="openExportModal()"
-                        class="inline-flex items-center gap-1.5 rounded-l-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 active:bg-slate-100 transition-colors"
-                        title="Customize Export Columns"
-                        data-export-button
-                    >
-                        <svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                        </svg>
-                        <span>Export</span>
-                    </button>
-                    <button
-                        type="button"
-                        @click="quickOpen = !quickOpen"
-                        class="inline-flex items-center rounded-r-lg border border-l-0 border-slate-300 bg-white px-1.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-colors"
-                        title="Quick Export Options"
-                        aria-label="Quick Export Options"
-                    >
-                        <svg class="h-3 w-3 text-slate-400 transition-transform duration-150" :class="quickOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                        </svg>
-                    </button>
-                </div>
+            <div class="relative inline-block text-left" x-data="{ exportOpen: false }">
+                <button
+                    type="button"
+                    @click="exportOpen = !exportOpen"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 active:bg-slate-100 transition-colors shadow-xs"
+                    title="Export Products"
+                    data-export-button
+                >
+                    <svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    <span>Export</span>
+                    <svg class="h-3 w-3 text-slate-400 transition-transform duration-150" :class="exportOpen ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
 
-                {{-- Quick Export Dropdown --}}
+                {{-- Export Dropdown --}}
                 <div
-                    x-show="quickOpen"
+                    x-show="exportOpen"
                     x-cloak
-                    @click.away="quickOpen = false"
+                    @click.away="exportOpen = false"
                     class="absolute left-0 mt-1.5 z-50 w-48 rounded-xl bg-white p-1.5 shadow-xl border border-slate-200/90 ring-1 ring-slate-900/5 focus:outline-none"
                 >
-                    <button
-                        type="button"
-                        @click="quickOpen = false; openExportModal()"
-                        class="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors text-left"
-                    >
-                        <svg class="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
-                        <span>Customize Columns...</span>
-                    </button>
-                    <div class="my-1 border-t border-slate-100"></div>
                     <a
                         href="{{ request()->fullUrlWithQuery(['export' => 'xlsx']) }}"
-                        @click="quickOpen = false"
+                        @click="exportOpen = false"
                         data-export-format="xlsx"
                         class="flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-emerald-700 hover:bg-emerald-50/70 rounded-lg transition-colors"
                     >
@@ -63,7 +44,7 @@
                     </a>
                     <a
                         href="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}"
-                        @click="quickOpen = false"
+                        @click="exportOpen = false"
                         data-export-format="csv"
                         class="flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-indigo-700 hover:bg-indigo-50/70 rounded-lg transition-colors"
                     >
@@ -74,7 +55,7 @@
                     </a>
                     <a
                         href="{{ request()->fullUrlWithQuery(['export' => 'pdf']) }}"
-                        @click="quickOpen = false"
+                        @click="exportOpen = false"
                         data-export-format="pdf"
                         class="flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-rose-700 hover:bg-rose-50/70 rounded-lg transition-colors"
                     >
@@ -897,158 +878,6 @@
         </div>
     </div>
 
-    <!-- Customize Export Columns Modal -->
-    <div x-show="showExportModal"
-         x-cloak
-         class="fixed inset-0 z-50 overflow-y-auto"
-         aria-labelledby="export-modal-title" role="dialog" aria-modal="true"
-         @keydown.escape.window="closeExportModal()">
-        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <!-- Backdrop -->
-            <div x-show="showExportModal"
-                 x-transition:enter="ease-out duration-200"
-                 x-transition:enter-start="opacity-0"
-                 x-transition:enter-end="opacity-100"
-                 x-transition:leave="ease-in duration-150"
-                 x-transition:leave-start="opacity-100"
-                 x-transition:leave-end="opacity-0"
-                 class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
-                 aria-hidden="true"
-                 @click="closeExportModal()"></div>
-
-            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-
-            <div x-show="showExportModal"
-                 x-transition:enter="ease-out duration-200"
-                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-                 x-transition:leave="ease-in duration-150"
-                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                 class="relative inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-slate-200">
-                
-                <!-- Modal Header -->
-                <div class="bg-gradient-to-r from-slate-50 to-indigo-50/40 px-6 py-4 border-b border-slate-200/80 flex items-center justify-between">
-                    <div class="flex items-center gap-3">
-                        <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                            </svg>
-                        </div>
-                        <div>
-                            <h3 class="text-base font-bold text-slate-900" id="export-modal-title">Customize Export Columns</h3>
-                            <p class="text-xs text-slate-500 mt-0.5">Select the product fields to include. Current filters, search, and ordering will be applied.</p>
-                        </div>
-                    </div>
-                    <button type="button" @click="closeExportModal()" class="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-white transition" aria-label="Close Modal">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                    </button>
-                </div>
-
-                <!-- Modal Body -->
-                <div class="px-6 py-5 max-h-[70vh] overflow-y-auto space-y-5">
-                    
-                    <!-- Format selection & Quick toolbar -->
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 bg-slate-50 rounded-xl border border-slate-200/70">
-                        <!-- Format Options -->
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-semibold text-slate-600 mr-1">Format:</span>
-                            <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-all"
-                                   :class="exportFormat === 'xlsx' ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'">
-                                <input type="radio" name="modal_export_format" value="xlsx" x-model="exportFormat" class="sr-only">
-                                <span>Excel (.xlsx)</span>
-                            </label>
-                            <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-all"
-                                   :class="exportFormat === 'csv' ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'">
-                                <input type="radio" name="modal_export_format" value="csv" x-model="exportFormat" class="sr-only">
-                                <span>CSV (.csv)</span>
-                            </label>
-                            <label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-all"
-                                   :class="exportFormat === 'pdf' ? 'bg-rose-600 text-white border-rose-600 shadow-xs' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'">
-                                <input type="radio" name="modal_export_format" value="pdf" x-model="exportFormat" class="sr-only">
-                                <span>PDF (.pdf)</span>
-                            </label>
-                        </div>
-
-                        <!-- Selection actions & counter -->
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-medium text-slate-500 mr-2" x-text="`${selectedColumns.length} of ${getTotalColumnsCount()} selected`"></span>
-                            <button type="button"
-                                    @click="selectAllColumns()"
-                                    class="px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-2xs transition">
-                                Select All
-                            </button>
-                            <button type="button"
-                                    @click="clearAllColumns()"
-                                    class="px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 shadow-2xs transition">
-                                Clear All
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Validation error alert -->
-                    <div x-show="exportError" x-cloak class="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
-                        <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span x-text="exportError"></span>
-                    </div>
-
-                    <!-- Column Groups Grid -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        @foreach($exportColumnGroups ?? [] as $groupKey => $group)
-                            <div class="rounded-xl border border-slate-200 bg-slate-50/40 p-3.5 flex flex-col justify-between">
-                                <div>
-                                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-200">
-                                        <span class="text-xs font-bold uppercase tracking-wider text-slate-700">{{ $group['title'] }}</span>
-                                        <button type="button"
-                                                @click="toggleGroup('{{ $groupKey }}')"
-                                                class="text-[11px] font-medium text-indigo-600 hover:text-indigo-800 transition"
-                                                x-text="isGroupAllSelected('{{ $groupKey }}') ? 'Clear' : 'Select All'">
-                                        </button>
-                                    </div>
-                                    <div class="space-y-1.5">
-                                        @foreach($group['fields'] as $fieldKey => $field)
-                                            <label class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white text-xs cursor-pointer select-none transition">
-                                                <input type="checkbox"
-                                                       value="{{ $fieldKey }}"
-                                                       x-model="selectedColumns"
-                                                       @change="exportError = ''"
-                                                       class="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                                                <span class="text-slate-800 font-medium">{{ $field['label'] }}</span>
-                                            </label>
-                                        @endforeach
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-                </div>
-
-                <!-- Modal Footer -->
-                <div class="bg-slate-50 px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div class="text-[11px] text-slate-500">
-                        Export will include all matching items across all pages according to current filters.
-                    </div>
-                    <div class="flex items-center gap-2 self-end sm:self-auto">
-                        <button type="button"
-                                @click="closeExportModal()"
-                                :disabled="isExporting"
-                                class="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition disabled:opacity-50">
-                            Cancel
-                        </button>
-                        <button type="button"
-                                @click="submitExport()"
-                                :disabled="isExporting || selectedColumns.length === 0"
-                                class="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 shadow-xs transition disabled:opacity-50 disabled:cursor-not-allowed">
-                            <svg x-show="!isExporting" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                            <svg x-show="isExporting" class="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
-                            <span x-text="isExporting ? 'Exporting...' : `Export ${exportFormat.toUpperCase()}`"></span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Notification Toast -->
     <div x-show="notification.show"
          x-cloak
@@ -1075,86 +904,6 @@ function productIndex() {
         targetProductName: '',
         targetProductSku: '',
         targetProductSerial: '',
-
-        // Export Modal State
-        showExportModal: false,
-        isExporting: false,
-        exportFormat: 'xlsx',
-        exportError: '',
-        exportColumnGroups: @js($exportColumnGroups ?? []),
-        selectedColumns: @js($defaultExportColumns ?? ['name', 'sku', 'model', 'brand', 'category', 'sub_category', 'product_type', 'base_uom', 'tax_rate', 'is_active', 'is_hidden']),
-
-        openExportModal() {
-            this.exportError = '';
-            this.showExportModal = true;
-        },
-
-        closeExportModal() {
-            if (this.isExporting) return;
-            this.showExportModal = false;
-            this.exportError = '';
-        },
-
-        selectAllColumns() {
-            const all = [];
-            Object.values(this.exportColumnGroups).forEach(group => {
-                Object.keys(group.fields).forEach(key => all.push(key));
-            });
-            this.selectedColumns = all;
-            this.exportError = '';
-        },
-
-        clearAllColumns() {
-            this.selectedColumns = [];
-        },
-
-        toggleGroup(groupKey) {
-            const groupFields = Object.keys(this.exportColumnGroups[groupKey]?.fields || {});
-            const allSelected = groupFields.every(key => this.selectedColumns.includes(key));
-            if (allSelected) {
-                this.selectedColumns = this.selectedColumns.filter(key => !groupFields.includes(key));
-            } else {
-                const set = new Set([...this.selectedColumns, ...groupFields]);
-                this.selectedColumns = Array.from(set);
-            }
-            this.exportError = '';
-        },
-
-        isGroupAllSelected(groupKey) {
-            const groupFields = Object.keys(this.exportColumnGroups[groupKey]?.fields || {});
-            return groupFields.length > 0 && groupFields.every(key => this.selectedColumns.includes(key));
-        },
-
-        getTotalColumnsCount() {
-            let count = 0;
-            Object.values(this.exportColumnGroups).forEach(g => {
-                count += Object.keys(g.fields).length;
-            });
-            return count;
-        },
-
-        submitExport() {
-            if (this.selectedColumns.length === 0) {
-                this.exportError = 'Please select at least one column to export.';
-                return;
-            }
-
-            this.exportError = '';
-            this.isExporting = true;
-
-            const url = new URL(window.location.href);
-            url.searchParams.set('export', this.exportFormat);
-            url.searchParams.set('columns', this.selectedColumns.join(','));
-            url.searchParams.delete('page');
-
-            window.location.href = url.toString();
-
-            setTimeout(() => {
-                this.isExporting = false;
-                this.showExportModal = false;
-                this.showNotification('success', `Export generated (${this.exportFormat.toUpperCase()}).`);
-            }, 1500);
-        },
 
         // Stock Details Modal state
         showStockModal: false,

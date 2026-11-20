@@ -267,8 +267,6 @@ class ProductController extends Controller
             'canViewHidden' => $canViewHidden,
             'canHideProduct' => $canHideProduct,
             'canUnhideProduct' => $canUnhideProduct,
-            'exportColumnGroups' => $this->getExportColumnGroups(),
-            'defaultExportColumns' => $this->getDefaultExportColumnKeys(),
         ]);
     }
 
@@ -1090,7 +1088,9 @@ class ProductController extends Controller
             'net_weight' => 'net weight',
         ]);
 
-        $this->assertCatalogHierarchy($data);
+        if (method_exists($this, 'assertCatalogHierarchy')) {
+            $this->assertCatalogHierarchy($data);
+        }
 
         $data['is_active'] = $request->boolean('is_active');
         $data['is_hidden'] = $request->has('is_hidden') ? $request->boolean('is_hidden') : ($product?->is_hidden ?? false);
@@ -1363,7 +1363,7 @@ class ProductController extends Controller
      *
      * @param  array<string, mixed>  $data
      */
-    protected function assertCatalogHierarchy(array &$data): void
+    public function assertCatalogHierarchy(array &$data): void
     {
         $brandId = ! empty($data['brand_id']) ? (int) $data['brand_id'] : null;
         $categoryId = ! empty($data['category_id']) ? (int) $data['category_id'] : null;

@@ -46,6 +46,7 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
     Route::get('orders/{order}/receive', [PurchaseOrderController::class, 'receiveForm'])->name('orders.receive');
     Route::post('orders/{order}/receive', [PurchaseOrderController::class, 'receive'])->name('orders.receive.store');
 
+    // Goods Receipts module removed — disabled routes return 404
     Route::get('inwards', [PurchaseInwardController::class, 'index'])->name('inwards.index');
     Route::get('inwards/{inward}', [PurchaseInwardController::class, 'show'])->name('inwards.show');
 
