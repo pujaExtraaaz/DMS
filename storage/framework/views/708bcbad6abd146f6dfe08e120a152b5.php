@@ -1,29 +1,29 @@
-<?php $__env->startSection('title', 'Sub Categories'); ?>
+<?php $__env->startSection('title', 'Brands'); ?>
 <?php $__env->startSection('content'); ?>
-<div id="listing-container" data-dynamic-container x-data="subCategoryIndex()">
+<div id="listing-container" data-dynamic-container x-data="brandIndex()">
     <?php if (isset($component)) { $__componentOriginal91a231a9270579fa1ae9246bd51fb785 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal91a231a9270579fa1ae9246bd51fb785 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.page-header','data' => ['title' => 'Sub Categories']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.page-header','data' => ['title' => 'Brands']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('ui.page-header'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['title' => 'Sub Categories']); ?>
+<?php $component->withAttributes(['title' => 'Brands']); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
          <?php $__env->slot('actions', null, []); ?> 
             <?php if (isset($component)) { $__componentOriginal35b050e20f206e9347afbbec3f9521d8 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal35b050e20f206e9347afbbec3f9521d8 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.export-menu','data' => []] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.export-menu','data' => ['align' => 'left']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('ui.export-menu'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes([]); ?>
+<?php $component->withAttributes(['align' => 'left']); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
 <?php echo $__env->renderComponent(); ?>
@@ -38,16 +38,16 @@
 <?php endif; ?>
             <?php if (isset($component)) { $__componentOriginala8bb031a483a05f647cb99ed3a469847 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginala8bb031a483a05f647cb99ed3a469847 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.button','data' => ['variant' => 'primary','href' => route('masters.sub-categories.create')]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.button','data' => ['variant' => 'primary','href' => route('masters.brands.create')]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('ui.button'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['variant' => 'primary','href' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('masters.sub-categories.create'))]); ?>
+<?php $component->withAttributes(['variant' => 'primary','href' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('masters.brands.create'))]); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
-+ Add Sub Category <?php echo $__env->renderComponent(); ?>
++ Add Brand <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>
 <?php if (isset($__attributesOriginala8bb031a483a05f647cb99ed3a469847)): ?>
 <?php $attributes = $__attributesOriginala8bb031a483a05f647cb99ed3a469847; ?>
@@ -83,50 +83,17 @@
 
         <?php if (isset($component)) { $__componentOriginala060c6a0206375167a5f0e5fbcb7b575 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginala060c6a0206375167a5f0e5fbcb7b575 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.table-toolbar','data' => ['search' => $search ?? request('search'),'searchPlaceholder' => 'Search Sub Category Name...','resetUrl' => route('masters.sub-categories.index')]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.table-toolbar','data' => ['search' => $search ?? request('search'),'searchPlaceholder' => 'Search Brand Name, Detail...','resetUrl' => route('masters.brands.index')]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('ui.table-toolbar'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['search' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($search ?? request('search')),'search-placeholder' => 'Search Sub Category Name...','reset-url' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('masters.sub-categories.index'))]); ?>
+<?php $component->withAttributes(['search' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute($search ?? request('search')),'search-placeholder' => 'Search Brand Name, Detail...','reset-url' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('masters.brands.index'))]); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
              <?php $__env->slot('filters', null, []); ?> 
-                <select
-                    name="brand_id"
-                    id="sub_category_brand_filter"
-                    data-dynamic-filter
-                    onchange="
-                        const catSelect = document.getElementById('sub_category_category_filter') || document.querySelector('select[name=\'category_id\']');
-                        if (catSelect) {
-                            const selectedOpt = catSelect.options[catSelect.selectedIndex];
-                            if (this.value && selectedOpt && selectedOpt.dataset.brandId && String(selectedOpt.dataset.brandId) !== String(this.value)) {
-                                catSelect.value = '';
-                            }
-                        }
-                    "
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">All Brands</option>
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $brands ?? []; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $b): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                        <option value="<?php echo e($b->id); ?>" <?php if(($brandId ?? request('brand_id')) == $b->id): echo 'selected'; endif; ?>><?php echo e($b->name); ?></option>
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
-                </select>
-
-                <select
-                    name="category_id"
-                    id="sub_category_category_filter"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">Category: All</option>
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $categories ?? []; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $cat): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                        <option value="<?php echo e($cat->id); ?>" data-brand-id="<?php echo e($cat->brand_id); ?>" <?php if(($categoryId ?? request('category_id')) == $cat->id): echo 'selected'; endif; ?>><?php echo e($cat->name); ?></option>
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
-                </select>
-
                 <select
                     name="status"
                     data-dynamic-filter
@@ -175,7 +142,7 @@
 <?php $component = $__componentOriginal5967529496f56086d13f1257a544c7e9; ?>
 <?php unset($__componentOriginal5967529496f56086d13f1257a544c7e9); ?>
 <?php endif; ?>
-                        <th scope="col" class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Category</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-semibold tracking-wider text-slate-500">Details</th>
                         <?php if (isset($component)) { $__componentOriginal5967529496f56086d13f1257a544c7e9 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal5967529496f56086d13f1257a544c7e9 = $attributes; } ?>
 <?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.sortable-th','data' => ['column' => 'is_active','currentSort' => $sort ?? request('sort', 'name'),'currentDirection' => $direction ?? request('direction', 'asc')]] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
@@ -206,7 +173,7 @@
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $items; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
                         <tr class="hover:bg-slate-50/75 transition-colors">
                             <td class="px-4 py-3 font-medium text-slate-900"><?php echo e($item->name); ?></td>
-                            <td class="px-4 py-3 text-slate-600"><?php echo e($item->category?->name ?: '—'); ?></td>
+                            <td class="px-4 py-3 text-slate-600"><?php echo e($item->detail ?: '—'); ?></td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium <?php echo e($item->is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'); ?>">
                                     <?php echo e($item->is_active ? 'Active' : 'Inactive'); ?>
@@ -217,14 +184,14 @@
                                 <div class="flex items-center justify-end gap-1.5">
                                     <?php if (isset($component)) { $__componentOriginala8bb031a483a05f647cb99ed3a469847 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginala8bb031a483a05f647cb99ed3a469847 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.button','data' => ['variant' => 'secondary','size' => 'sm','href' => route('masters.sub-categories.edit', $item),'title' => 'Edit Sub Category','ariaLabel' => 'Edit Sub Category']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.button','data' => ['variant' => 'secondary','size' => 'sm','href' => route('masters.brands.edit', $item),'title' => 'Edit Brand','ariaLabel' => 'Edit Brand']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('ui.button'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['variant' => 'secondary','size' => 'sm','href' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('masters.sub-categories.edit', $item)),'title' => 'Edit Sub Category','aria-label' => 'Edit Sub Category']); ?>
+<?php $component->withAttributes(['variant' => 'secondary','size' => 'sm','href' => \Illuminate\View\Compilers\BladeCompiler::sanitizeComponentAttribute(route('masters.brands.edit', $item)),'title' => 'Edit Brand','aria-label' => 'Edit Brand']); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 Edit <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>
@@ -240,9 +207,9 @@ Edit <?php echo $__env->renderComponent(); ?>
                                             @click="promptDelete('<?php echo e($item->id); ?>', '<?php echo e(addslashes($item->name)); ?>')"
                                             :disabled="isDeleting"
                                             class="inline-flex items-center gap-1 font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-40 disabled:cursor-not-allowed bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 shadow-xs px-2.5 py-1.5 text-xs"
-                                            title="Delete Sub Category"
-                                            aria-label="Delete Sub Category"
-                                            data-delete-subcategory="<?php echo e($item->id); ?>">
+                                            title="Delete Brand"
+                                            aria-label="Delete Brand"
+                                            data-delete-brand="<?php echo e($item->id); ?>">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                         </svg>
@@ -256,18 +223,18 @@ Edit <?php echo $__env->renderComponent(); ?>
                             <td colspan="4" class="p-0">
                                 <?php if (isset($component)) { $__componentOriginal3607a477fdef7402bc742abad5df9c51 = $component; } ?>
 <?php if (isset($attributes)) { $__attributesOriginal3607a477fdef7402bc742abad5df9c51 = $attributes; } ?>
-<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.empty-state','data' => ['title' => 'No matching sub categories found','description' => 'Try clearing search or filters to see more results.','class' => 'border-0 rounded-none py-10']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ui.empty-state','data' => ['title' => 'No matching brands found','description' => 'Try clearing search or filters to see more results.','class' => 'border-0 rounded-none py-10']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
 <?php $component->withName('ui.empty-state'); ?>
 <?php if ($component->shouldRender()): ?>
 <?php $__env->startComponent($component->resolveView(), $component->data()); ?>
 <?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
 <?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
 <?php endif; ?>
-<?php $component->withAttributes(['title' => 'No matching sub categories found','description' => 'Try clearing search or filters to see more results.','class' => 'border-0 rounded-none py-10']); ?>
+<?php $component->withAttributes(['title' => 'No matching brands found','description' => 'Try clearing search or filters to see more results.','class' => 'border-0 rounded-none py-10']); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
                                      <?php $__env->slot('action', null, []); ?> 
-                                        <a href="<?php echo e(route('masters.sub-categories.index')); ?>" data-reset-filters class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500">
+                                        <a href="<?php echo e(route('masters.brands.index')); ?>" data-reset-filters class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500">
                                             Reset Filters
                                         </a>
                                      <?php $__env->endSlot(); ?>
@@ -338,14 +305,14 @@ Edit <?php echo $__env->renderComponent(); ?>
                             </svg>
                         </div>
                         <div class="mt-3 text-center sm:mt-0 sm:text-left flex-1">
-                            <h3 class="text-base font-semibold leading-6 text-slate-900" id="modal-title">Delete Sub Category?</h3>
+                            <h3 class="text-base font-semibold leading-6 text-slate-900" id="modal-title">Delete Brand</h3>
                             <div class="mt-2 space-y-3">
-                                <p class="text-xs text-slate-500">Are you sure you want to delete this sub-category? This action may affect linked products and records.</p>
+                                <p class="text-xs text-slate-500">Are you sure you want to delete this brand? This action will remove the brand record.</p>
                                 
                                 <div class="bg-slate-50 rounded-xl p-3 border border-slate-100 space-y-1.5 text-xs text-left">
                                     <div class="flex justify-between items-center text-slate-600">
-                                        <span class="font-medium">Sub Category Name:</span>
-                                        <span class="font-semibold text-slate-900" x-text="deletingSubCategoryName"></span>
+                                        <span class="font-medium">Brand Name:</span>
+                                        <span class="font-semibold text-slate-900" x-text="deletingBrandName"></span>
                                     </div>
                                 </div>
                             </div>
@@ -357,7 +324,7 @@ Edit <?php echo $__env->renderComponent(); ?>
                             @click="executeDelete()"
                             :disabled="isDeleting"
                             class="inline-flex items-center justify-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span x-show="!isDeleting">Delete</span>
+                        <span x-show="!isDeleting">Confirm Delete</span>
                         <span x-show="isDeleting" class="inline-flex items-center gap-1.5">
                             <svg class="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -392,12 +359,12 @@ Edit <?php echo $__env->renderComponent(); ?>
 
 <?php $__env->startPush('scripts'); ?>
 <script>
-function subCategoryIndex() {
+function brandIndex() {
     return {
         showDeleteModal: false,
         isDeleting: false,
-        deletingSubCategoryId: null,
-        deletingSubCategoryName: '',
+        deletingBrandId: null,
+        deletingBrandName: '',
         notification: {
             show: false,
             type: 'success',
@@ -405,23 +372,23 @@ function subCategoryIndex() {
         },
 
         promptDelete(id, name) {
-            this.deletingSubCategoryId = id;
-            this.deletingSubCategoryName = name;
+            this.deletingBrandId = id;
+            this.deletingBrandName = name;
             this.showDeleteModal = true;
         },
 
         cancelDelete() {
             if (this.isDeleting) return;
             this.showDeleteModal = false;
-            this.deletingSubCategoryId = null;
-            this.deletingSubCategoryName = '';
+            this.deletingBrandId = null;
+            this.deletingBrandName = '';
         },
 
         async executeDelete() {
-            if (!this.deletingSubCategoryId || this.isDeleting) return;
+            if (!this.deletingBrandId || this.isDeleting) return;
             this.isDeleting = true;
 
-            const url = `<?php echo e(url('masters/sub-categories')); ?>/${this.deletingSubCategoryId}`;
+            const url = `<?php echo e(url('masters/brands')); ?>/${this.deletingBrandId}`;
             const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
             try {
@@ -438,7 +405,7 @@ function subCategoryIndex() {
 
                 if (response.ok && data.success) {
                     this.showDeleteModal = false;
-                    this.showNotification('success', data.message || 'Sub-category deleted successfully.');
+                    this.showNotification('success', data.message || 'Brand deleted successfully.');
 
                     const rows = document.querySelectorAll('#listing-container tbody tr:not([data-empty])');
                     const currentUrl = new URL(window.location.href);
@@ -451,11 +418,11 @@ function subCategoryIndex() {
 
                     await this.refreshList();
                 } else {
-                    this.showNotification('error', data.message || 'Failed to delete sub-category.');
+                    this.showNotification('error', data.message || 'Failed to delete brand.');
                 }
             } catch (err) {
                 console.error(err);
-                this.showNotification('error', 'Network error occurred while deleting sub-category.');
+                this.showNotification('error', 'Network error occurred while deleting brand.');
             } finally {
                 this.isDeleting = false;
             }
@@ -517,5 +484,4 @@ function subCategoryIndex() {
 </script>
 <?php $__env->stopPush(); ?>
 <?php $__env->stopSection(); ?>
-
-<?php echo $__env->make('layouts.dms', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\xampp\htdocs\DMS\resources\views/masters/sub-categories/index.blade.php ENDPATH**/ ?>
+<?php echo $__env->make('layouts.dms', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\xampp\htdocs\dms\resources\views/masters/brands/index.blade.php ENDPATH**/ ?>

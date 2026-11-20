@@ -192,21 +192,7 @@
                     </div>
 
                     <div class="flex items-center gap-2 sm:gap-4">
-                        
-                        <?php
-                            $currentFy = \Illuminate\Support\Facades\Cache::remember('current_fy_pill', 60, function () {
-                                return \App\Domains\Organization\Models\FinancialYear::where('is_current', true)->first();
-                            });
-                        ?>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($currentFy): ?>
-                            <a href="<?php echo e(route('organization.financial-years.index')); ?>"
-                                title="Change / Close Period"
-                                class="hidden md:inline-flex items-center gap-1.5 rounded-lg border <?php echo e($currentFy->is_closed ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'); ?> px-3 py-1.5 text-xs font-semibold">
-                                <span class="opacity-70">Period:</span>
-                                <span><?php echo e($currentFy->name); ?></span>
-                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($currentFy->is_closed): ?><span class="rounded bg-red-600 px-1 text-[10px] text-white">CLOSED</span><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                            </a>
-                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                        <?php echo $__env->make('partials.period-switcher', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
                         <button
                             type="button"

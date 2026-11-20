@@ -19,12 +19,13 @@ class ImportTallyCommand extends Command
         {path : Path to Avit_data_xml.zip, an extracted directory, or a single XML file}
         {--company=AVIT DIGITAL : Target DMS company name}
         {--dry-run : Analyse XML and preview counts without writing business data}
-        {--books : Also import chart/ledgers/vouchers into Books acct_* tables}
+        {--books : Deprecated alias — Books import is on by default; use --dms-only to skip}
+        {--dms-only : Import DMS commercial data only (skip Books acct_* / Journal / Contra)}
         {--force : Confirm idempotent re-import when Tally mappings already exist}
         {--backup : Attempt mysqldump backup before import (needs exec; local XAMPP only)}
         {--skip-backup : Deprecated alias — auto-backup is off by default; use --backup to enable}';
 
-    protected $description = 'Import TallyPrime XML (masters + inventory + transactions) into DMS safely and idempotently';
+    protected $description = 'Import TallyPrime XML into DMS + Books (Journal/Contra land in Books and appear in DMS Day Book)';
 
     /** @var array<string, array{source:int, created:int, updated:int, skipped:int, conflicts:int, file?:string}> */
     private array $report = [];
@@ -40,18 +41,19 @@ class ImportTallyCommand extends Command
         $path = $this->resolvePath((string) $this->argument('path'));
         $companyName = trim((string) $this->option('company'));
         $dryRun = (bool) $this->option('dry-run');
-        $withBooks = (bool) $this->option('books');
+        // Combined DMS + Books by default. Journal/Contra need Books to show in DMS Day Book.
+        $withBooks = ! (bool) $this->option('dms-only');
         $force = (bool) $this->option('force');
 
         $this->info('DMS Tally import');
         $this->line('  Database : '.config('database.connections.'.config('database.default').'.database'));
         $this->line('  Company  : '.$companyName);
         $this->line('  Source   : '.$path);
-        $this->line('  Mode     : '.($dryRun ? 'DRY-RUN' : 'LIVE').($withBooks ? ' + BOOKS' : '').($force ? ' + FORCE' : ''));
+        $this->line('  Mode     : '.($dryRun ? 'DRY-RUN' : 'LIVE').($withBooks ? ' + BOOKS (combined)' : ' (DMS only)').($force ? ' + FORCE' : ''));
 
         if (! is_file($path) && ! is_dir($path)) {
             $this->error('Source not found.');
-            $this->line('  php artisan dms:import-tally "C:\\Users\\jaind\\Downloads\\Avit_data_xml.zip" --company="AVIT DIGITAL" --books --dry-run');
+            $this->line('  php artisan dms:import-tally "storage/app/tally-imports/Avit_data_xml.zip" --company="AVIT DIGITAL" --force');
 
             return self::FAILURE;
         }
@@ -104,7 +106,8 @@ class ImportTallyCommand extends Command
 
         if ($withBooks) {
             $books = BooksCompany::ensureForOrganization($company);
-            $this->info("Books company ready #{$books->id}");
+            BooksCompany::syncFinancialYearsFromOrganization($company);
+            $this->info("Books company ready #{$books->id} (FYs synced for Journal/Contra)");
         }
 
         $inbound->setForceOverwrite($force);
@@ -125,7 +128,8 @@ class ImportTallyCommand extends Command
                                         ->orWhere('name', 'like', '%Sale Return%')
                                         ->orWhere('name', 'like', '%Tax Invoice%');
                                 });
-                        });
+                        })
+                        ->orWhere('reason', 'like', '%No DMS commercial document mapping%');
                 })
                 ->update(['status' => 'resolved', 'updated_at' => now()]);
             if ($cleared > 0) {
@@ -346,7 +350,8 @@ class ImportTallyCommand extends Command
         $this->table(['Bundle', 'File', 'Tag', 'Count'], $rows);
 
         $this->notes[] = 'Pay heads (payroll ledgers) + currencies import on live; ATTENDANCETYPE/EMPLOYEE still need dedicated HR rows if present.';
-        $this->notes[] = 'Journal/Contra/Debit Note: Books path; Delivery Challan logged (no DMS commercial twin).';
+        $this->notes[] = 'Default is combined DMS+Books. Journal/Contra import into Books and appear in DMS Reports → Day Book.';
+        $this->notes[] = 'Use --dms-only to skip Books. Delivery Challan still has no DMS commercial twin.';
         $this->notes[] = 'No data written (dry-run).';
         foreach ($this->notes as $note) {
             $this->warn($note);

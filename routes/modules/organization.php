@@ -12,6 +12,11 @@ use App\Http\Controllers\Organization\FinancialYearController;
 use App\Http\Controllers\Organization\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
+// Period switcher in the top bar — available to any authenticated user.
+Route::middleware(['auth'])->prefix('organization')->name('organization.')->group(function () {
+    Route::post('financial-years/{financial_year}/set-current', [FinancialYearController::class, 'setCurrent'])->name('financial-years.set-current');
+});
+
 Route::prefix('organization')->name('organization.')->middleware('role_or_permission:super-admin|organization.view|organization.create|organization.edit|organization.manage')->group(function () {
     Route::get('company-profile', [CompanyProfileController::class, 'show'])->name('company-profile');
     Route::get('company-profile/logo', [CompanyProfileController::class, 'logo'])->name('company-profile.logo');
@@ -37,7 +42,6 @@ Route::prefix('organization')->name('organization.')->middleware('role_or_permis
     Route::post('warehouses/warehouse-types/quick-store', [WarehouseController::class, 'storeWarehouseType'])->name('warehouses.warehouse-types.quick-store');
     Route::resource('warehouses', WarehouseController::class);
     Route::resource('financial-years', FinancialYearController::class);
-    Route::post('financial-years/{financial_year}/set-current', [FinancialYearController::class, 'setCurrent'])->name('financial-years.set-current');
     Route::post('financial-years/{financial_year}/close', [FinancialYearController::class, 'close'])->name('financial-years.close');
     Route::post('financial-years/{financial_year}/reopen', [FinancialYearController::class, 'reopen'])->name('financial-years.reopen');
     Route::resource('document-number-series', DocumentNumberSeriesController::class)->except(['show']);
