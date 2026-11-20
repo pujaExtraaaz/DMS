@@ -131,6 +131,10 @@ class TitleCase
             return '';
         }
 
+        // Blade slots often arrive already entity-encoded (&amp;). Decode first so
+        // title-casing does not turn "Profit &amp; Loss" into "Profit &Amp; Loss".
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
         // Preserve raw URLs or email addresses untouched
         if (str_contains($text, '://') || (str_contains($text, '@') && !str_contains($text, ' '))) {
             return $text;

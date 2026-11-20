@@ -7,17 +7,29 @@ use App\Http\Controllers\Hrms\EmployeeController;
 use App\Http\Controllers\Hrms\EmployeeDocumentController;
 use App\Http\Controllers\Hrms\ExpenseClaimController;
 use App\Http\Controllers\Hrms\LeaveBalanceController;
+use App\Http\Controllers\Hrms\LeaveManagementController;
 use App\Http\Controllers\Hrms\LeaveRequestController;
 use App\Http\Controllers\Hrms\LeaveTypeController;
 use App\Http\Controllers\Hrms\ManagerController;
+use App\Http\Controllers\Hrms\PayHeadController;
+use App\Http\Controllers\Hrms\PayrollController;
+use App\Http\Controllers\Hrms\SalaryStructureController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('hrms')->name('hrms.')->middleware('role_or_permission:super-admin|hrms.view|hrms.create|hrms.edit|hrms.manage')->group(function () {
     // Employee Master
+    Route::match(['get', 'post'], 'employees/ifsc-lookup', [EmployeeController::class, 'ifscLookup'])->name('employees.ifsc-lookup');
     Route::resource('employees', EmployeeController::class);
+    Route::get('employees/{employee}/photo', [EmployeeController::class, 'downloadPhoto'])->name('employees.photo');
+    Route::get('employees/{employee}/cancelled-cheque', [EmployeeController::class, 'downloadCancelledCheque'])->name('employees.cancelled-cheque');
     Route::post('employees/{employee}/documents', [EmployeeDocumentController::class, 'store'])->name('employees.documents.store');
     Route::get('documents/{document}/download', [EmployeeDocumentController::class, 'download'])->name('documents.download');
     Route::delete('documents/{document}', [EmployeeDocumentController::class, 'destroy'])->name('documents.destroy');
+
+    // Payroll (salary structures + pay heads)
+    Route::get('payroll', [PayrollController::class, 'index'])->name('payroll.index');
+    Route::resource('salary-structures', SalaryStructureController::class)->except(['show']);
+    Route::resource('pay-heads', PayHeadController::class)->except(['show']);
 
     // Organization
     Route::resource('departments', DepartmentController::class)->except(['show']);
@@ -33,6 +45,9 @@ Route::prefix('hrms')->name('hrms.')->middleware('role_or_permission:super-admin
     Route::post('attendances/punch', [AttendanceController::class, 'punch'])->name('attendances.punch');
     Route::get('attendances/{attendance}/edit', [AttendanceController::class, 'edit'])->name('attendances.edit');
     Route::put('attendances/{attendance}', [AttendanceController::class, 'update'])->name('attendances.update');
+
+    // Leave Management (hub + nested modules)
+    Route::get('leave-management', [LeaveManagementController::class, 'index'])->name('leave-management.index');
 
     // Leave Types & Balances
     Route::resource('leave-types', LeaveTypeController::class)->except(['show']);

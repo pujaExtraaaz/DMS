@@ -1,5 +1,5 @@
 @once
-    <link rel="stylesheet" href="{{ asset('css/books-sidebar.css') }}?v=9">
+    <link rel="stylesheet" href="{{ asset('css/books-sidebar.css') }}?v=11">
 @endonce
 
 @php

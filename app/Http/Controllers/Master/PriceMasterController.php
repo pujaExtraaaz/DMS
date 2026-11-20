@@ -1030,6 +1030,9 @@ class PriceMasterController extends Controller
             'selling_price' => $product->selling_price !== null ? (float) $product->selling_price : null,
             'trade_price' => $product->trade_price !== null ? (float) $product->trade_price : null,
             'purchase_price' => $product->purchase_price !== null ? (float) $product->purchase_price : null,
+            'purchase_price_tax_basis' => in_array((string) ($product->purchase_price_tax_basis ?? ''), ['inclusive', 'exclusive'], true)
+                ? (string) $product->purchase_price_tax_basis
+                : 'exclusive',
             'base_uom_id' => $product->base_uom_id ? (string) $product->base_uom_id : '',
             'base_uom_code' => $product->baseUom?->code ?: '',
             'base_uom_name' => $product->baseUom?->name ?: '',

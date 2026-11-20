@@ -7,34 +7,159 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Delivery\Models\Delivery;
 use App\Domains\Inventory\Models\Purchase;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
+use App\Domains\Purchasing\Models\PurchaseOrder;
+use App\Domains\Purchasing\Models\SupplierPayable;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Inventory\Models\StockMovement;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Order\Models\Order;
 use App\Domains\Organization\Models\Branch;
+use App\Domains\Organization\Models\FinancialYear;
 use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Payment\Models\OutstandingLedger;
 use App\Domains\Payment\Models\Payment;
 use App\Domains\Sales\Models\Invoice;
+use App\Domains\Sales\Models\Quotation;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\ReportExporter;
 use App\Support\Traits\SortableAndSearchable;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 
 class ReportController extends Controller
 {
     use SortableAndSearchable;
+
+    public function quotations(Request $request): View|Response
+    {
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
+
+        $quotationQuery = Quotation::query()
+            ->with(['customer', 'salesperson', 'convertedOrder'])
+            ->whereDate('quotation_date', '>=', $dateFrom)
+            ->whereDate('quotation_date', '<=', $dateTo)
+            ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
+            ->when($request->filled('salesperson_id'), fn ($q) => $q->where('salesperson_id', $request->salesperson_id))
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('branch_id'), fn ($q) => $q->whereHas('customer', fn ($c) => $c->where('branch_id', $request->branch_id)));
+
+        $this->applySearch($quotationQuery, $request->input('search'), ['quotation_no', 'status', 'title'], [
+            'customer' => ['name', 'code'],
+            'salesperson' => ['name'],
+        ]);
+
+        $quotations = $quotationQuery
+            ->orderByDesc('quotation_date')
+            ->orderByDesc('id')
+            ->get();
+
+        $summary = [
+            'count' => $quotations->count(),
+            'total' => (float) $quotations->sum('grand_total'),
+            'converted' => $quotations->whereNotNull('converted_order_id')->count(),
+            'open' => $quotations->whereIn('status', ['draft', 'sent', 'accepted'])->count(),
+        ];
+
+        $export = strtolower((string) $request->input('export'));
+        if (in_array($export, ['csv', 'pdf'], true)) {
+            $headers = ['Date', 'Quotation No', 'Customer', 'Salesperson', 'Status', 'Subtotal', 'Tax', 'Grand Total', 'Converted Order'];
+            $rows = $quotations->map(fn (Quotation $q) => [
+                optional($q->quotation_date)->format('Y-m-d'),
+                $q->quotation_no,
+                $q->customer?->name,
+                $q->salesperson?->name,
+                $q->status,
+                number_format((float) $q->subtotal, 2, '.', ''),
+                number_format((float) $q->tax_amount, 2, '.', ''),
+                number_format((float) $q->grand_total, 2, '.', ''),
+                $q->convertedOrder?->order_no ?: ($q->converted_order_id ? '#'.$q->converted_order_id : ''),
+            ])->all();
+            $filename = 'quotations-'.$dateFrom.'-to-'.$dateTo.'.'.$export;
+            $meta = ['Period' => "{$dateFrom} → {$dateTo}", 'Quotations' => $summary['count'], 'Grand Total' => '₹ '.number_format($summary['total'], 2)];
+
+            return $export === 'csv'
+                ? ReportExporter::csv($filename, $headers, $rows)
+                : ReportExporter::pdf($filename, 'Quotation Register', $headers, $rows, $meta);
+        }
+
+        return view('reporting.quotations', array_merge([
+            'quotations' => $quotations,
+            'summary' => $summary,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+            'integrity' => $this->reportIntegrityHints(),
+        ], $this->filterOptions()));
+    }
+
+    public function purchaseOrders(Request $request): View|Response
+    {
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
+
+        $orderQuery = PurchaseOrder::query()
+            ->with(['supplier', 'warehouse', 'branch'])
+            ->whereDate('po_date', '>=', $dateFrom)
+            ->whereDate('po_date', '<=', $dateTo)
+            ->when($request->filled('supplier_id'), fn ($q) => $q->where('supplier_id', $request->supplier_id))
+            ->when($request->filled('warehouse_id'), fn ($q) => $q->where('warehouse_id', $request->warehouse_id))
+            ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->branch_id))
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status));
+
+        $this->applySearch($orderQuery, $request->input('search'), ['po_no', 'status'], [
+            'supplier' => ['name', 'code'],
+            'warehouse' => ['name'],
+        ]);
+
+        $orders = $orderQuery->orderByDesc('po_date')->orderByDesc('id')->get();
+
+        $summary = [
+            'count' => $orders->count(),
+            'total' => (float) $orders->sum('grand_total'),
+            'open' => $orders->whereIn('status', ['draft', 'submitted', 'approved', 'partial'])->count(),
+        ];
+
+        $export = strtolower((string) $request->input('export'));
+        if (in_array($export, ['csv', 'pdf'], true)) {
+            $headers = ['Date', 'PO No', 'Supplier', 'Warehouse', 'Status', 'Subtotal', 'Tax', 'Grand Total', 'Expected'];
+            $rows = $orders->map(fn (PurchaseOrder $o) => [
+                optional($o->po_date)->format('Y-m-d'),
+                $o->po_no,
+                $o->supplier?->name,
+                $o->warehouse?->name,
+                $o->status,
+                number_format((float) $o->subtotal, 2, '.', ''),
+                number_format((float) $o->tax_amount, 2, '.', ''),
+                number_format((float) $o->grand_total, 2, '.', ''),
+                optional($o->expected_date)->format('Y-m-d'),
+            ])->all();
+            $filename = 'purchase-orders-'.$dateFrom.'-to-'.$dateTo.'.'.$export;
+            $meta = ['Period' => "{$dateFrom} → {$dateTo}", 'Orders' => $summary['count'], 'Grand Total' => '₹ '.number_format($summary['total'], 2)];
+
+            return $export === 'csv'
+                ? ReportExporter::csv($filename, $headers, $rows)
+                : ReportExporter::pdf($filename, 'Purchase Order Register', $headers, $rows, $meta);
+        }
+
+        return view('reporting.purchase-orders', array_merge([
+            'orders' => $orders,
+            'summary' => $summary,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+            'integrity' => $this->reportIntegrityHints(),
+        ], $this->filterOptions()));
+    }
+
     public function sales(Request $request)
     {
-        $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
-        $dateTo = $request->input('date_to', now()->toDateString());
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
 
-        $invoices = Invoice::query()
+        $invoiceQuery = Invoice::query()
             ->with(['customer', 'items.product', 'items.uom', 'salesperson'])
             ->whereDate('invoice_date', '>=', $dateFrom)
             ->whereDate('invoice_date', '<=', $dateTo)
@@ -54,9 +179,14 @@ class ReportController extends Controller
                         ->when($request->filled('brand_id'), fn ($x) => $x->where('brand_id', $request->brand_id))
                         ->when($request->filled('category_id'), fn ($x) => $x->where('category_id', $request->category_id));
                 });
-            })
-            ->orderByDesc('invoice_date')
-            ->get();
+            });
+
+        $this->applySearch($invoiceQuery, $request->input('search'), ['invoice_no', 'status'], [
+            'customer' => ['name', 'code'],
+            'salesperson' => ['name'],
+        ]);
+
+        $invoices = $invoiceQuery->orderByDesc('invoice_date')->get();
 
         $totalSubtotal = $invoices->sum('subtotal');
         $totalTax = $invoices->sum('tax_amount');
@@ -112,11 +242,17 @@ class ReportController extends Controller
             'byCustomer' => $byCustomer,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'integrity' => $this->reportIntegrityHints(),
         ], $this->filterOptions()));
     }
 
     public function stock(Request $request)
     {
+        // Books openings land in acct_stock_godown_openings; DMS Stock Report reads stock_levels.
+        if (StockLevel::query()->doesntExist()) {
+            \App\Support\StockLevelsFromBooks::sync();
+        }
+
         $query = StockLevel::query()
             ->with(['product.brand', 'product.category', 'uom', 'warehouse'])
             ->when($request->boolean('low_only'), fn ($q) => $q->where('quantity', '<', 10))
@@ -181,38 +317,71 @@ class ReportController extends Controller
                 : ReportExporter::pdf($filename, 'Stock Report', $headers, $rows, ['Generated' => now()->format('d M Y H:i')]);
         }
 
-        return view('reporting.stock', array_merge(compact('stockLevels', 'sort', 'direction'), $this->filterOptions()));
+        return view('reporting.stock', array_merge(compact('stockLevels', 'sort', 'direction'), [
+            'integrity' => $this->reportIntegrityHints(),
+        ], $this->filterOptions()));
     }
 
-    public function payments(Request $request): View
+    public function payments(Request $request): View|Response
     {
-        $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
-        $dateTo = $request->input('date_to', now()->toDateString());
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
 
-        $payments = Payment::query()
+        $paymentQuery = Payment::query()
             ->with(['customer', 'invoice'])
             ->whereBetween('paid_at', [$dateFrom, $dateTo])
             ->where('status', 'completed')
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
-            ->when($request->filled('salesperson_id'), fn ($q) => $q->whereHas('invoice', fn ($i) => $i->where('salesperson_id', $request->salesperson_id)))
-            ->orderBy('paid_at')
-            ->get();
+            ->when($request->filled('salesperson_id'), fn ($q) => $q->whereHas('invoice', fn ($i) => $i->where('salesperson_id', $request->salesperson_id)));
+
+        $this->applySearch($paymentQuery, $request->input('search'), ['payment_no', 'method', 'status'], [
+            'customer' => ['name', 'code'],
+            'invoice' => ['invoice_no'],
+        ]);
+
+        $payments = $paymentQuery->orderBy('paid_at')->get();
 
         $byMethod = $payments->groupBy('method')->map->sum('amount');
 
+        $export = strtolower((string) $request->input('export'));
+        if (in_array($export, ['csv', 'pdf'], true)) {
+            $headers = ['Date', 'Payment No', 'Customer', 'Invoice', 'Method', 'Amount', 'Status'];
+            $rows = $payments->map(fn (Payment $p) => [
+                optional($p->paid_at)->format('Y-m-d'),
+                $p->payment_no ?? $p->id,
+                $p->customer?->name,
+                $p->invoice?->invoice_no,
+                strtoupper((string) $p->method),
+                number_format((float) $p->amount, 2, '.', ''),
+                $p->status,
+            ])->all();
+            $filename = 'payments-'.$dateFrom.'-to-'.$dateTo.'.'.$export;
+
+            return $export === 'csv'
+                ? ReportExporter::csv($filename, $headers, $rows)
+                : ReportExporter::pdf($filename, 'Payments Report', $headers, $rows, [
+                    'Period' => "{$dateFrom} → {$dateTo}",
+                    'Total' => '₹ '.number_format((float) $payments->sum('amount'), 2),
+                ]);
+        }
+
         return view('reporting.payments', array_merge(
             compact('payments', 'byMethod', 'dateFrom', 'dateTo'),
+            ['integrity' => $this->reportIntegrityHints()],
             $this->filterOptions()
         ));
     }
 
     public function outstanding(Request $request)
     {
-        $customers = Customer::where('is_active', true)
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
+
+        $customerQuery = Customer::where('is_active', true)
             ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->branch_id))
-            ->when($request->filled('customer_id'), fn ($q) => $q->where('id', $request->customer_id))
-            ->orderBy('name')
-            ->get();
+            ->when($request->filled('customer_id'), fn ($q) => $q->where('id', $request->customer_id));
+
+        $this->applySearch($customerQuery, $request->input('search'), ['name', 'code']);
+
+        $customers = $customerQuery->orderBy('name')->get();
 
         $balances = $customers->map(function ($customer) {
             $latest = OutstandingLedger::where('customer_id', $customer->id)->orderByDesc('id')->first();
@@ -234,27 +403,54 @@ class ReportController extends Controller
                 : ReportExporter::pdf($filename, 'Outstanding Report', $headers, $rows, ['Total' => '₹ '.number_format($balances->sum('balance'), 2)]);
         }
 
-        return view('reporting.outstanding', array_merge(compact('balances'), $this->filterOptions()));
+        return view('reporting.outstanding', array_merge(compact('balances', 'dateFrom', 'dateTo'), [
+            'integrity' => $this->reportIntegrityHints(),
+        ], $this->filterOptions()));
     }
 
-    public function delivery(Request $request): View
+    public function delivery(Request $request): View|Response
     {
-        $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
-        $dateTo = $request->input('date_to', now()->toDateString());
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
 
-        $deliveries = Delivery::query()
+        $deliveryQuery = Delivery::query()
             ->with(['customer', 'invoice', 'loadSheet'])
             ->whereBetween('created_at', [$dateFrom.' 00:00:00', $dateTo.' 23:59:59'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
             ->when($request->filled('customer_id'), fn ($q) => $q->where('customer_id', $request->customer_id))
-            ->when($request->filled('salesperson_id'), fn ($q) => $q->whereHas('invoice', fn ($i) => $i->where('salesperson_id', $request->salesperson_id)))
-            ->latest()
-            ->get();
+            ->when($request->filled('salesperson_id'), fn ($q) => $q->whereHas('invoice', fn ($i) => $i->where('salesperson_id', $request->salesperson_id)));
+
+        $this->applySearch($deliveryQuery, $request->input('search'), ['status'], [
+            'customer' => ['name', 'code'],
+            'invoice' => ['invoice_no'],
+        ]);
+
+        $deliveries = $deliveryQuery->latest()->get();
 
         $summary = $deliveries->groupBy('status')->map->count();
 
+        $export = strtolower((string) $request->input('export'));
+        if (in_array($export, ['csv', 'pdf'], true)) {
+            $headers = ['Date', 'Delivery ID', 'Customer', 'Invoice', 'Status'];
+            $rows = $deliveries->map(fn (Delivery $d) => [
+                optional($d->created_at)->format('Y-m-d'),
+                $d->id,
+                $d->customer?->name,
+                $d->invoice?->invoice_no,
+                $d->status,
+            ])->all();
+            $filename = 'deliveries-'.$dateFrom.'-to-'.$dateTo.'.'.$export;
+
+            return $export === 'csv'
+                ? ReportExporter::csv($filename, $headers, $rows)
+                : ReportExporter::pdf($filename, 'Delivery Report', $headers, $rows, [
+                    'Period' => "{$dateFrom} → {$dateTo}",
+                    'Deliveries' => $deliveries->count(),
+                ]);
+        }
+
         return view('reporting.delivery', array_merge(
             compact('deliveries', 'summary', 'dateFrom', 'dateTo'),
+            ['integrity' => $this->reportIntegrityHints()],
             $this->filterOptions()
         ));
     }
@@ -327,46 +523,239 @@ class ReportController extends Controller
         ], $this->filterOptions()));
     }
 
-    public function partyStatement(Request $request): View
+    public function partyStatement(Request $request): View|Response
     {
         $customerId = $request->input('customer_id');
-        $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
-        $dateTo = $request->input('date_to', now()->toDateString());
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
 
         $entries = collect();
         $customer = null;
         $opening = 0.0;
+        $totalDebit = 0.0;
+        $totalCredit = 0.0;
+        $closing = 0.0;
 
         if ($customerId) {
             $customer = Customer::findOrFail($customerId);
 
-            $opening = (float) (OutstandingLedger::query()
-                ->where('customer_id', $customerId)
-                ->whereDate('created_at', '<', $dateFrom)
-                ->orderByDesc('id')
-                ->value('balance') ?? 0);
+            // Ensure any posted purchase invoices without a supplier_payable entry are synchronized
+            PurchaseInvoice::query()
+                ->where('supplier_id', $customerId)
+                ->where('status', 'posted')
+                ->whereDoesntHave('supplierPayable')
+                ->each(fn (PurchaseInvoice $pi) => $pi->syncSupplierPayable());
 
-            $entries = OutstandingLedger::query()
-                ->where('customer_id', $customerId)
-                ->whereDate('created_at', '>=', $dateFrom)
-                ->whereDate('created_at', '<=', $dateTo)
-                ->orderBy('id')
+            $rawEntries = collect();
+
+            // 1. Posted Purchase Invoices for supplier
+            $purchaseInvoices = PurchaseInvoice::query()
+                ->where('supplier_id', $customerId)
+                ->where('status', 'posted')
                 ->get();
+
+            foreach ($purchaseInvoices as $pi) {
+                $txDate = $pi->invoice_date ? $pi->invoice_date->toDateString() : $pi->created_at->toDateString();
+                $voucherNo = $pi->invoice_no ?? $pi->invoice_number ?? ($pi->supplier_invoice_no ?? "PI-{$pi->id}");
+                $particulars = $pi->notes ?: "Purchase invoice {$voucherNo}";
+
+                $rawEntries->push([
+                    'id' => 'pi_'.$pi->id,
+                    'sort_date' => $txDate,
+                    'date' => $pi->invoice_date ?? $pi->created_at,
+                    'voucher_number' => $voucherNo,
+                    'particulars' => $particulars,
+                    'voucher_type' => 'Purchase Invoice',
+                    'debit' => 0.0,
+                    'credit' => (float) $pi->grand_total,
+                ]);
+            }
+
+            // 2. Non-invoice Supplier Payables (payments to supplier, debit notes, etc.)
+            $otherPayables = SupplierPayable::query()
+                ->where('supplier_id', $customerId)
+                ->where('type', '!=', 'invoice')
+                ->get();
+
+            foreach ($otherPayables as $sp) {
+                $txDate = $sp->created_at->toDateString();
+                $voucherType = match ($sp->type) {
+                    'payment' => 'Payment',
+                    'debit_note' => 'Debit Note',
+                    'credit_note' => 'Credit Note',
+                    default => ucfirst(str_replace('_', ' ', $sp->type)),
+                };
+                $debit = (float) ($sp->debit > 0 ? $sp->debit : 0);
+                $credit = (float) ($sp->credit > 0 ? $sp->credit : 0);
+                if ($sp->type === 'payment' && $debit == 0 && $credit > 0) {
+                    $debit = $credit;
+                    $credit = 0;
+                }
+
+                $rawEntries->push([
+                    'id' => 'sp_'.$sp->id,
+                    'sort_date' => $txDate,
+                    'date' => $sp->created_at,
+                    'voucher_number' => $sp->notes ?: "SP-{$sp->id}",
+                    'particulars' => $sp->notes ?: $voucherType,
+                    'voucher_type' => $voucherType,
+                    'debit' => $debit,
+                    'credit' => $credit,
+                ]);
+            }
+
+            // 3. Outstanding Ledger Entries (sales invoices, customer receipts, credit notes, adjustments)
+            $outstanding = OutstandingLedger::query()
+                ->where('customer_id', $customerId)
+                ->with('reference')
+                ->get();
+
+            foreach ($outstanding as $ol) {
+                $ref = $ol->reference;
+                $txDate = match (true) {
+                    $ref instanceof Invoice => $ref->invoice_date?->toDateString() ?? $ol->created_at->toDateString(),
+                    $ref instanceof Payment => $ref->paid_at?->toDateString() ?? $ol->created_at->toDateString(),
+                    $ref instanceof \App\Domains\Payment\Models\CreditNote => $ref->credit_note_date?->toDateString() ?? $ol->created_at->toDateString(),
+                    default => $ol->created_at->toDateString(),
+                };
+
+                $voucherNo = match (true) {
+                    $ref instanceof Invoice => $ref->invoice_no ?? $ref->invoice_number ?? "INV-{$ref->id}",
+                    $ref instanceof Payment => $ref->payment_no ?? "PAY-{$ref->id}",
+                    $ref instanceof \App\Domains\Payment\Models\CreditNote => $ref->credit_note_no ?? "CN-{$ref->id}",
+                    default => "LED-{$ol->id}",
+                };
+
+                $voucherType = match ($ol->type) {
+                    'invoice' => 'Sales Invoice',
+                    'payment' => 'Payment',
+                    'credit_note' => 'Credit Note',
+                    'settlement' => 'Settlement',
+                    'adjustment' => 'Adjustment',
+                    default => ucfirst(str_replace('_', ' ', $ol->type)),
+                };
+
+                $rawEntries->push([
+                    'id' => 'ol_'.$ol->id,
+                    'sort_date' => $txDate,
+                    'date' => $ref?->invoice_date ?? $ref?->paid_at ?? $ref?->credit_note_date ?? $ol->created_at,
+                    'voucher_number' => $voucherNo,
+                    'particulars' => $ol->notes ?: "{$voucherType} {$voucherNo}",
+                    'voucher_type' => $voucherType,
+                    'debit' => (float) $ol->debit,
+                    'credit' => (float) $ol->credit,
+                ]);
+            }
+
+            // Chronological sort
+            $rawEntries = $rawEntries->sortBy(fn ($item) => $item['sort_date'] . '_' . $item['id'])->values();
+
+            $isSupplier = $customer->party_type === Customer::PARTY_TYPE_SUNDRY_CREDITORS
+                || $customer->party_type === 'supplier'
+                || ($customer->isSupplier() && ! $customer->isCustomerParty());
+
+            $priorEntries = $rawEntries->filter(fn ($t) => $t['sort_date'] < $dateFrom);
+            $periodEntries = $rawEntries->filter(fn ($t) => $t['sort_date'] >= $dateFrom && $t['sort_date'] <= $dateTo);
+
+            $opening = (float) $priorEntries->sum(fn ($t) => $isSupplier ? ($t['credit'] - $t['debit']) : ($t['debit'] - $t['credit']));
+            $runningBalance = $opening;
+
+            $entries = $periodEntries->map(function ($t) use (&$runningBalance, &$totalDebit, &$totalCredit, $isSupplier) {
+                $debit = (float) $t['debit'];
+                $credit = (float) $t['credit'];
+                $totalDebit += $debit;
+                $totalCredit += $credit;
+
+                $runningBalance += $isSupplier ? ($credit - $debit) : ($debit - $credit);
+
+                return (object) [
+                    'id' => $t['id'],
+                    'date' => $t['date'],
+                    'created_at' => $t['date'],
+                    'voucher_number' => $t['voucher_number'],
+                    'particulars' => $t['particulars'],
+                    'notes' => $t['particulars'],
+                    'voucher_type' => $t['voucher_type'],
+                    'type' => $t['voucher_type'],
+                    'debit' => $debit,
+                    'credit' => $credit,
+                    'balance' => $runningBalance,
+                ];
+            })->values();
+
+            $closing = $runningBalance;
+
+            $export = strtolower((string) $request->input('export'));
+            if (in_array($export, ['csv', 'pdf'], true)) {
+                $headers = ['Date', 'Voucher Number', 'Particulars', 'Voucher Type', 'Debit', 'Credit', 'Balance'];
+                $exportRows = $entries->map(fn ($r) => [
+                    $r->date instanceof \DateTimeInterface ? $r->date->format('d M Y') : (string) $r->date,
+                    $r->voucher_number,
+                    $r->particulars,
+                    $r->voucher_type,
+                    $r->debit > 0 ? number_format($r->debit, 2) : '',
+                    $r->credit > 0 ? number_format($r->credit, 2) : '',
+                    number_format($r->balance, 2),
+                ])->all();
+                $filename = 'party-statement-'.($customer->code ?? $customer->id).'-'.now()->format('Ymd-His').'.'.$export;
+
+                return $export === 'csv'
+                    ? ReportExporter::csv($filename, $headers, $exportRows)
+                    : ReportExporter::pdf($filename, 'Party Statement: '.$customer->name, $headers, $exportRows, [
+                        'Party' => $customer->name,
+                        'Period' => trim(($dateFrom ?? '').' → '.($dateTo ?? ''), ' →'),
+                        'Opening Balance' => number_format($opening, 2),
+                        'Closing Balance' => number_format($closing, 2),
+                    ]);
+            }
+        }
+
+        $export = strtolower((string) $request->input('export'));
+        if ($customer && in_array($export, ['csv', 'pdf'], true)) {
+            $headers = ['Date', 'Type', 'Notes', 'Debit', 'Credit', 'Balance'];
+            $rows = [[
+                $dateFrom,
+                'Opening',
+                '',
+                '',
+                '',
+                number_format($opening, 2, '.', ''),
+            ]];
+            foreach ($entries as $entry) {
+                $rows[] = [
+                    optional($entry->created_at)->format('Y-m-d'),
+                    $entry->type,
+                    $entry->notes,
+                    number_format((float) $entry->debit, 2, '.', ''),
+                    number_format((float) $entry->credit, 2, '.', ''),
+                    number_format((float) $entry->balance, 2, '.', ''),
+                ];
+            }
+            $filename = 'party-ledger-'.$customer->id.'-'.$dateFrom.'-to-'.$dateTo.'.'.$export;
+
+            return $export === 'csv'
+                ? ReportExporter::csv($filename, $headers, $rows)
+                : ReportExporter::pdf($filename, 'Party Ledger — '.$customer->name, $headers, $rows, [
+                    'Party' => $customer->name,
+                    'Period' => "{$dateFrom} → {$dateTo}",
+                ]);
         }
 
         return view('reporting.party-statement', array_merge([
             'customer' => $customer,
             'entries' => $entries,
             'opening' => $opening,
+            'totalDebit' => $totalDebit,
+            'totalCredit' => $totalCredit,
+            'closing' => $closing,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'integrity' => $this->reportIntegrityHints(),
         ], $this->filterOptions()));
     }
 
-    public function salesmanOutstanding(Request $request): View
+    public function salesmanOutstanding(Request $request): View|Response
     {
-        $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
-        $dateTo = $request->input('date_to', now()->toDateString());
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
 
         $invoices = Invoice::query()
             ->with(['customer', 'salesperson'])
@@ -392,17 +781,40 @@ class ReportController extends Controller
                 ];
             });
 
+        $export = strtolower((string) $request->input('export'));
+        if (in_array($export, ['csv', 'pdf'], true)) {
+            $headers = ['Salesperson', 'Invoice', 'Date', 'Customer', 'Due', 'Overdue Days', 'Bucket', 'Outstanding'];
+            $rows = $invoices->map(fn ($r) => [
+                $r['invoice']->salesperson?->name ?: 'Unassigned',
+                $r['invoice']->invoice_no,
+                optional($r['invoice']->invoice_date)->format('Y-m-d'),
+                $r['invoice']->customer?->name,
+                optional($r['due_date'])->format('Y-m-d'),
+                $r['overdue_days'],
+                $r['bucket'],
+                number_format((float) $r['outstanding'], 2, '.', ''),
+            ])->all();
+            $filename = 'salesman-outstanding-'.$dateFrom.'-to-'.$dateTo.'.'.$export;
+
+            return $export === 'csv'
+                ? ReportExporter::csv($filename, $headers, $rows)
+                : ReportExporter::pdf($filename, 'Salesman Outstanding', $headers, $rows, [
+                    'Period' => "{$dateFrom} → {$dateTo}",
+                    'Total' => '₹ '.number_format((float) $invoices->sum('outstanding'), 2),
+                ]);
+        }
+
         return view('reporting.salesman-outstanding', array_merge([
             'rows' => $invoices,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'integrity' => $this->reportIntegrityHints(),
         ], $this->filterOptions()));
     }
 
-    public function stockLedger(Request $request): View
+    public function stockLedger(Request $request): View|Response
     {
-        $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
-        $dateTo = $request->input('date_to', now()->toDateString());
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
 
         $query = StockMovement::query()
             ->with(['product', 'uom', 'warehouse'])
@@ -447,6 +859,26 @@ class ReportController extends Controller
             'desc'
         );
 
+        $export = strtolower((string) $request->input('export'));
+        if (in_array($export, ['csv', 'pdf'], true)) {
+            $all = (clone $query)->limit(5000)->get();
+            $headers = ['Date', 'Product', 'Warehouse', 'Type', 'Qty', 'Balance After', 'Notes'];
+            $rows = $all->map(fn (StockMovement $m) => [
+                optional($m->created_at)->format('Y-m-d H:i'),
+                $m->product?->name,
+                $m->warehouse?->name,
+                $m->type,
+                number_format((float) $m->quantity, 3, '.', ''),
+                number_format((float) $m->balance_after, 3, '.', ''),
+                $m->notes,
+            ])->all();
+            $filename = 'stock-ledger-'.$dateFrom.'-to-'.$dateTo.'.'.$export;
+
+            return $export === 'csv'
+                ? ReportExporter::csv($filename, $headers, $rows)
+                : ReportExporter::pdf($filename, 'Stock Ledger', $headers, $rows, ['Period' => "{$dateFrom} → {$dateTo}"]);
+        }
+
         $movements = $query->paginate(50)->withQueryString();
 
         return view('reporting.stock-ledger', array_merge([
@@ -458,10 +890,9 @@ class ReportController extends Controller
         ], $this->filterOptions()));
     }
 
-    public function purchaseRegister(Request $request): View
+    public function purchaseRegister(Request $request): View|Response
     {
-        $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
-        $dateTo = $request->input('date_to', now()->toDateString());
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
 
         $query = PurchaseInvoice::query()
             ->with(['items.product', 'supplier', 'warehouse'])
@@ -525,6 +956,27 @@ class ReportController extends Controller
         ]));
 
         $rows = ($direction === 'asc' ? $rows->sortBy(fn ($row) => $this->purchaseRegisterSortValue($row, $sort)) : $rows->sortByDesc(fn ($row) => $this->purchaseRegisterSortValue($row, $sort)))->values();
+
+        $export = strtolower((string) $request->input('export'));
+        if (in_array($export, ['csv', 'pdf'], true)) {
+            $headers = ['Date', 'Invoice No', 'Supplier', 'Grand Total', 'Status'];
+            $exportRows = $rows->map(fn ($row) => [
+                optional($row->invoice_date)->format('Y-m-d'),
+                $row->invoice_no,
+                $row->supplier->name ?? '',
+                number_format((float) $row->grand_total, 2, '.', ''),
+                $row->status,
+            ])->all();
+            $filename = 'purchase-register-'.$dateFrom.'-to-'.$dateTo.'.'.$export;
+
+            return $export === 'csv'
+                ? ReportExporter::csv($filename, $headers, $exportRows)
+                : ReportExporter::pdf($filename, 'Purchase Register', $headers, $exportRows, [
+                    'Period' => "{$dateFrom} → {$dateTo}",
+                    'Rows' => $rows->count(),
+                ]);
+        }
+
         $page = LengthAwarePaginator::resolveCurrentPage();
         $purchases = new LengthAwarePaginator(
             $rows->forPage($page, 30)->values(),
@@ -536,14 +988,14 @@ class ReportController extends Controller
 
         return view('reporting.purchase-register', array_merge(
             compact('purchases', 'dateFrom', 'dateTo', 'sort', 'direction'),
+            ['integrity' => $this->reportIntegrityHints()],
             $this->filterOptions()
         ));
     }
 
-    public function margin(Request $request): View
+    public function margin(Request $request): View|Response
     {
-        $dateFrom = $request->input('date_from', now()->startOfMonth()->toDateString());
-        $dateTo = $request->input('date_to', now()->toDateString());
+        [$dateFrom, $dateTo] = $this->resolveDateRange($request);
 
         $invoices = Invoice::query()
             ->with(['customer', 'items.product', 'deal.expenses', 'salesperson'])
@@ -580,10 +1032,33 @@ class ReportController extends Controller
                 ];
             });
 
+        $export = strtolower((string) $request->input('export'));
+        if (in_array($export, ['csv', 'pdf'], true)) {
+            $headers = ['Date', 'Invoice', 'Customer', 'Sale', 'Cost', 'Deal Expense', 'Gross', 'Gross %', 'Net', 'Net %'];
+            $rows = $invoices->map(fn ($r) => [
+                optional($r['invoice']->invoice_date)->format('Y-m-d'),
+                $r['invoice']->invoice_no,
+                $r['invoice']->customer?->name,
+                number_format((float) $r['sale'], 2, '.', ''),
+                number_format((float) $r['cost'], 2, '.', ''),
+                number_format((float) $r['deal_expense'], 2, '.', ''),
+                number_format((float) $r['gross'], 2, '.', ''),
+                $r['gross_pct'],
+                number_format((float) $r['net'], 2, '.', ''),
+                $r['net_pct'],
+            ])->all();
+            $filename = 'margin-'.$dateFrom.'-to-'.$dateTo.'.'.$export;
+
+            return $export === 'csv'
+                ? ReportExporter::csv($filename, $headers, $rows)
+                : ReportExporter::pdf($filename, 'Margin Analysis', $headers, $rows, ['Period' => "{$dateFrom} → {$dateTo}"]);
+        }
+
         return view('reporting.margin', array_merge([
             'rows' => $invoices,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'integrity' => $this->reportIntegrityHints(),
         ], $this->filterOptions()));
     }
 
@@ -654,6 +1129,129 @@ class ReportController extends Controller
             'status' => $row->status,
             default => optional($row->invoice_date)->format('Y-m-d'),
         };
+    }
+
+    /**
+     * Default report period: financial year that contains the latest sales invoice
+     * (imported Tally data often sits in a past FY while is_current is the calendar year).
+     *
+     * @return array{0:string,1:string}
+     */
+    protected function resolveDateRange(Request $request): array
+    {
+        if ($request->filled('date_from') || $request->filled('date_to')) {
+            $fallback = $this->defaultDateRange();
+
+            return [
+                $request->input('date_from', $fallback[0]),
+                $request->input('date_to', $fallback[1]),
+            ];
+        }
+
+        return $this->defaultDateRange();
+    }
+
+    /**
+     * @return array{0:string,1:string}
+     */
+    protected function defaultDateRange(): array
+    {
+        $companyId = auth()->user()?->company_id;
+        $latestInvoice = Invoice::query()
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            ->whereNotNull('invoice_date')
+            ->max('invoice_date');
+
+        $fyQuery = FinancialYear::query()
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId));
+
+        $fy = null;
+        if ($latestInvoice) {
+            $fy = (clone $fyQuery)
+                ->whereDate('starts_on', '<=', $latestInvoice)
+                ->whereDate('ends_on', '>=', $latestInvoice)
+                ->orderByDesc('starts_on')
+                ->first();
+        }
+
+        $fy ??= (clone $fyQuery)->where('is_current', true)->first()
+            ?? (clone $fyQuery)->orderByDesc('starts_on')->first();
+
+        if ($fy?->starts_on && $fy?->ends_on) {
+            return [
+                Carbon::parse($fy->starts_on)->toDateString(),
+                Carbon::parse($fy->ends_on)->toDateString(),
+            ];
+        }
+
+        if ($latestInvoice) {
+            $d = Carbon::parse($latestInvoice);
+
+            return [$d->copy()->startOfMonth()->toDateString(), $d->toDateString()];
+        }
+
+        return [now()->startOfMonth()->toDateString(), now()->toDateString()];
+    }
+
+    /**
+     * Lightweight integrity hints so empty/wrong reports are diagnosable.
+     *
+     * @return list<string>
+     */
+    protected function reportIntegrityHints(): array
+    {
+        $hints = [];
+
+        try {
+            $issued = Invoice::query()
+                ->whereNotIn('status', ['draft', 'cancelled'])
+                ->count();
+            $withLedger = OutstandingLedger::query()
+                ->where('reference_type', Invoice::class)
+                ->distinct('reference_id')
+                ->count('reference_id');
+            $missingOd = max(0, $issued - $withLedger);
+            if ($missingOd > 0) {
+                $hints[] = "{$missingOd} issued invoice(s) have no Outstanding Ledger row — Party Ledger / Outstanding may understate balances.";
+            }
+        } catch (\Throwable) {
+            // ignore schema differences
+        }
+
+        try {
+            if (Schema::hasTable('sync_entity_links') && Schema::hasTable('invoices')) {
+                $invoiceCount = Invoice::query()->whereNotIn('status', ['draft', 'cancelled'])->count();
+                $linked = (int) DB::table('sync_entity_links')->where('entity_key', 'sales_invoice')->count();
+                $gap = max(0, $invoiceCount - $linked);
+                if ($gap > 0 && $invoiceCount > 0) {
+                    $hints[] = "{$gap} sales invoice(s) may be missing Books sync links — Day Book figures can disagree with Sales Register.";
+                }
+            }
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        try {
+            $quoteCount = Quotation::query()->count();
+            if ($quoteCount === 0) {
+                $hints[] = 'No DMS quotations yet — Quotation Register stays empty until you create quotations in Sales or import Quotation vouchers from Tally.';
+            }
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        try {
+            if (Schema::hasTable('acct_stock_godown_openings') && StockLevel::query()->doesntExist()) {
+                $openings = (int) DB::table('acct_stock_godown_openings')->count();
+                if ($openings > 0) {
+                    $hints[] = "{$openings} Books stock opening row(s) are not mirrored into DMS stock levels yet — open Stock Report once or run php artisan dms:backfill-stock-levels.";
+                }
+            }
+        } catch (\Throwable) {
+            // ignore
+        }
+
+        return $hints;
     }
 
     /**

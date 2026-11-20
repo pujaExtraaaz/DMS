@@ -36,11 +36,13 @@ Route::prefix('quotations')->name('quotations.')->middleware('role_or_permission
     Route::get('/', [QuotationController::class, 'index'])->name('index');
     Route::get('/create', [QuotationController::class, 'create'])->name('create');
     Route::post('/', [QuotationController::class, 'store'])->name('store');
-    Route::get('/{quotation}', [QuotationController::class, 'show'])->name('show');
+    Route::get('/{quotation}/preview', [QuotationController::class, 'preview'])->name('preview');
     Route::get('/{quotation}/edit', [QuotationController::class, 'edit'])->name('edit');
     Route::put('/{quotation}', [QuotationController::class, 'update'])->name('update');
+    Route::delete('/{quotation}', [QuotationController::class, 'destroy'])->name('destroy');
     Route::post('/{quotation}/send', [QuotationController::class, 'send'])->name('send');
     Route::post('/{quotation}/accept', [QuotationController::class, 'accept'])->name('accept');
+    Route::get('/{quotation}', [QuotationController::class, 'show'])->name('show');
 });
 
 Route::prefix('region-policies')->name('region-policies.')->middleware('role_or_permission:super-admin|sales.manage|quotations.manage|masters.manage')->group(function () {

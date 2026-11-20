@@ -59,18 +59,34 @@ class CustomerSync
 
         $party->loadMissing('ledger');
         $customer = Customer::query()->find(SyncLinks::dmsId(self::KEY, $party));
-        $typeId = $customer?->customer_type_id ?: CustomerType::query()->orderBy('id')->value('id');
-        if (! $typeId) {
-            $typeId = CustomerType::query()->create(['name' => 'General', 'is_active' => true])->id;
+        $partyName = $party->ledger?->name ?: $party->legal_name ?: ('Party '.$party->id);
+        // Prefer existing DMS party imported by TallyInbound::dmsCustomer (same company+name).
+        if (! $customer) {
+            $customer = Customer::query()
+                ->where('company_id', $organizationId)
+                ->whereRaw('LOWER(name) = ?', [mb_strtolower($partyName)])
+                ->first();
         }
 
-        $code = SyncNames::unique(
-            Customer::query(),
+        $typeId = $customer?->customer_type_id ?: CustomerType::query()->orderBy('id')->value('id');
+        if (! $typeId) {
+            $typeId = CustomerType::query()->create([
+                'name' => 'General',
+                'code' => 'GENERAL',
+                'is_active' => true,
+            ])->id;
+        }
+
+        $code = $customer?->code ?: SyncNames::unique(
+            Customer::query()->where('company_id', $organizationId),
             'code',
             SyncNames::code($party->ledger?->code ?: ('P'.$party->id), 30),
             $customer?->id,
             30
         );
+        if ($code === '') {
+            $code = 'P'.$party->id;
+        }
 
         // Preserve DMS dual-role "both" when Books only has customer|supplier.
         $partyType = $customer?->party_type === Customer::PARTY_TYPE_BOTH
@@ -80,7 +96,7 @@ class CustomerSync
         $attributes = [
             'company_id' => $organizationId,
             'customer_type_id' => $typeId,
-            'name' => $party->ledger?->name ?: $party->legal_name ?: ('Party '.$party->id),
+            'name' => $partyName,
             'trade_name' => $party->ledger?->mailing_name ?: $party->legal_name,
             'code' => $code,
             'party_type' => $partyType,

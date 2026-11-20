@@ -17,6 +17,11 @@ final class Quantity
 
     public static function scale(string $value, int $places): int
     {
+        $value = trim($value);
+        if ($value === '' || $value === '-' || $value === '.') {
+            $value = '0';
+        }
+
         if (! preg_match('/^\d+(\.\d{1,4})?$/', $value)) {
             throw new InvalidArgumentException('Enter a quantity with up to 4 decimal places.');
         }

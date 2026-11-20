@@ -57,6 +57,29 @@ class FinancialYear extends Model
         return $query->where('company_id', $companyId);
     }
 
+    public function scopeCurrent($query, ?int $companyId = null)
+    {
+        return $query->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            ->where('is_current', true);
+    }
+
+    public static function current(?int $companyId = null): ?self
+    {
+        return static::query()
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            ->where('is_current', true)
+            ->first()
+            ?? static::query()
+                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                ->whereDate('starts_on', '<=', now()->toDateString())
+                ->whereDate('ends_on', '>=', now()->toDateString())
+                ->first()
+            ?? static::query()
+                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                ->orderByDesc('starts_on')
+                ->first();
+    }
+
     public function scopeOverlapping($query, int $companyId, string $startsOn, string $endsOn, ?int $ignoreId = null)
     {
         return $query->where('company_id', $companyId)

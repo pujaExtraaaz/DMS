@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\PhoneDirectory;
 
+use App\Domains\Master\Models\Designation;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryCategory;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryContact;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryDepartment;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -214,6 +216,13 @@ class PhoneDirectoryImportController extends Controller
             return [strtolower(trim($name)) => $id];
         })->toArray();
 
+        $designations = [];
+        if (Schema::hasTable('designations')) {
+            $designations = Designation::query()->pluck('id', 'name')->mapWithKeys(function ($id, $name) {
+                return [strtolower(trim($name)) => $id];
+            })->toArray();
+        }
+
         $createdCount = 0;
         $updatedCount = 0;
         $skippedCount = 0;
@@ -317,10 +326,37 @@ class PhoneDirectoryImportController extends Controller
                 $statusRaw = strtolower((string) $getColumn($row, ['status', 'status active/inactive']));
                 $status = in_array($statusRaw, ['inactive', '0', 'no', 'disabled'], true) ? 'inactive' : 'active';
 
+                $designationText = $getColumn($row, ['designation', 'title', 'job title']);
+                $designationId = null;
+                if (! empty($designationText) && Schema::hasTable('designations')) {
+                    $normDesig = strtolower(trim($designationText));
+                    if (isset($designations[$normDesig])) {
+                        $designationId = $designations[$normDesig];
+                        $designationText = Designation::query()->find($designationId)?->name ?: $designationText;
+                    } else {
+                        $code = strtoupper(preg_replace('/[^A-Z0-9]/', '', substr(strtoupper($designationText), 0, 8)) ?: 'DES');
+                        $base = $code;
+                        $suffix = 1;
+                        while (Designation::query()->where('code', $code)->exists()) {
+                            $code = $base.$suffix;
+                            $suffix++;
+                        }
+                        $newDesig = Designation::create([
+                            'name' => trim($designationText),
+                            'code' => $code,
+                            'is_active' => true,
+                        ]);
+                        $designationId = $newDesig->id;
+                        $designationText = $newDesig->name;
+                        $designations[$normDesig] = $designationId;
+                    }
+                }
+
                 $contactData = [
                     'contact_name' => $contactName,
                     'contact_type' => $contactType,
-                    'designation' => $getColumn($row, ['designation', 'title', 'job title']),
+                    'designation' => $designationText,
+                    'designation_id' => $designationId,
                     'department_id' => $departmentId,
                     'company_name' => $getColumn($row, ['company name', 'company', 'organization']),
                     'category_id' => $categoryId,

@@ -133,6 +133,7 @@ class ProductNameCapitalizationTest extends TestCase
             'name' => 'Old Product Name',
             'sku' => 'PROD-UPD-01',
             'serial_no' => 'SN-UPD-01',
+            'brand_id' => $this->brand->id,
             'base_uom_id' => $this->uom->id,
             'alternate_uom_id' => $this->boxUom->id,
             'conversion_factor' => 10,
@@ -143,6 +144,7 @@ class ProductNameCapitalizationTest extends TestCase
         $payload = [
             'name' => 'premium Basmati Rice 25kg',
             'sku' => 'PROD-UPD-01',
+            'brand_id' => $this->brand->id,
             'base_uom_id' => $this->uom->id,
             'alternate_uom_id' => $this->boxUom->id,
             'conversion_factor' => 10,

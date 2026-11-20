@@ -70,18 +70,51 @@ class DmsVoucherImporter
         }
 
         match (true) {
-            str_contains($normalized, 'stock journal') => $this->stockJournal($node),
+            str_contains($normalized, 'stock journal') || str_contains($normalized, 'physical stock') => $this->stockJournal($node),
             str_contains($normalized, 'sales order') => $this->salesOrder($node),
             str_contains($normalized, 'purchase order') => $this->purchaseOrder($node),
-            str_contains($normalized, 'receipt note') || str_contains($normalized, 'goods receipt') => $this->goodsReceipt($node),
-            str_contains($normalized, 'credit note') => $this->creditNote($node),
+            str_contains($normalized, 'receipt note') || str_contains($normalized, 'goods receipt') || str_contains($normalized, 'material in') => $this->goodsReceipt($node),
+            str_contains($normalized, 'credit note') || str_contains($normalized, 'sale return') || str_contains($normalized, 'sales return') => $this->creditNote($node),
             str_contains($normalized, 'quotation') || str_contains($normalized, 'proforma') => $this->quotation($node),
-            $normalized === 'sales' || str_contains($normalized, 'sales') => $this->salesInvoice($node),
+            str_contains($normalized, 'gst tax invoice') || str_contains($normalized, 'tax invoice') || $normalized === 'sales' || str_contains($normalized, 'sales') => $this->salesInvoice($node),
             $normalized === 'purchase' || str_contains($normalized, 'purchase') => $this->purchaseInvoice($node),
             $normalized === 'receipt' || str_contains($normalized, 'receipt') => $this->receipt($node),
             $normalized === 'payment' || str_contains($normalized, 'payment') => $this->paymentVoucher($node),
-            default => $this->counts['skipped']++,
+            // Accounting-only types are handled on the Books import path.
+            in_array($normalized, ['journal', 'contra'], true)
+                || str_contains($normalized, 'journal')
+                || str_contains($normalized, 'contra')
+                || str_contains($normalized, 'debit note')
+                || str_contains($normalized, 'delivery') => $this->unsupported($node, $typeName, 'No DMS commercial document mapping; import via Books path or review manually.'),
+            default => $this->unsupported($node, $typeName, 'Unsupported DMS voucher type.'),
         };
+    }
+
+    private function unsupported(\DOMElement $node, string $typeName, string $reason): void
+    {
+        $this->counts['skipped']++;
+        $number = $this->voucherNumber($node) ?: $this->text($node, 'GUID') ?: '(no number)';
+        $remote = substr($node->getAttribute('REMOTEID') ?: $this->text($node, 'GUID'), 0, 120) ?: null;
+        $reason = substr($reason, 0, 2000);
+        $exists = \Illuminate\Support\Facades\DB::table('tally_sync_conflicts')
+            ->where('collection', 'vouchers')
+            ->where('status', 'open')
+            ->when($remote, fn ($q) => $q->where('remote_id', $remote), fn ($q) => $q->whereNull('remote_id'))
+            ->where('reason', $reason)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+        $this->counts['conflicts']++;
+        \Illuminate\Support\Facades\DB::table('tally_sync_conflicts')->insert([
+            'collection' => 'vouchers',
+            'remote_id' => $remote,
+            'name' => substr(trim($typeName.' '.$number), 0, 200),
+            'reason' => $reason,
+            'status' => 'open',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function salesInvoice(\DOMElement $node): void
@@ -856,16 +889,35 @@ class DmsVoucherImporter
                 continue;
             }
             if ($this->yes($this->text($entry, 'ISPARTYLEDGER'))) {
-                return (float) str_replace(',', '', $this->text($entry, 'AMOUNT') ?: '0');
+                $amount = $this->leadingNumber($this->text($entry, 'AMOUNT'));
+                if (abs($amount) >= 0.01) {
+                    return $amount;
+                }
             }
         }
 
-        return (float) str_replace(',', '', $this->text($node, 'AMOUNT') ?: '0');
+        foreach ($node->getElementsByTagName('ALLLEDGERENTRIES.LIST') as $entry) {
+            if (! $entry instanceof \DOMElement) {
+                continue;
+            }
+            $amount = $this->leadingNumber($this->text($entry, 'AMOUNT'));
+            if (abs($amount) >= 0.01) {
+                return $amount;
+            }
+        }
+
+        return $this->leadingNumber($this->text($node, 'AMOUNT'));
     }
 
     private function leadingNumber(string $text): float
     {
-        if (preg_match('/-?\d+(?:\.\d+)?/', str_replace(',', '', $text), $m)) {
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = str_replace([',', '₹', 'Rs.', 'Rs', 'INR', ' '], '', $text);
+        $text = preg_replace('/[^\d.\-]/', '', $text) ?? '';
+        if ($text === '' || $text === '-' || $text === '.') {
+            return 0.0;
+        }
+        if (preg_match('/^-?\d+(?:\.\d+)?/', $text, $m)) {
             return (float) $m[0];
         }
 

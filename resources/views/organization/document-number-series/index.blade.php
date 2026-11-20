@@ -39,8 +39,16 @@
                                 <code class="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-800">{{ $item->preview() }}</code>
                             </td>
                             <td class="px-3 py-2">
-                                <x-ui.badge :variant="$item->isManual() ? 'warning' : 'info'">
-                                    {{ $item->isManual() ? 'Manual' : 'Automatic' }}
+                                @php
+                                    $badgeVariant = match ($item->numbering_method) {
+                                        \App\Domains\Organization\Models\DocumentNumberSeries::METHOD_MANUAL => 'warning',
+                                        \App\Domains\Organization\Models\DocumentNumberSeries::METHOD_AUTOMATIC_MANUAL_OVERRIDE => 'primary',
+                                        \App\Domains\Organization\Models\DocumentNumberSeries::METHOD_MULTI_USER_AUTO => 'success',
+                                        default => 'info',
+                                    };
+                                @endphp
+                                <x-ui.badge :variant="$badgeVariant">
+                                    {{ $item->methodName() }}
                                 </x-ui.badge>
                             </td>
                             <td class="px-3 py-2">

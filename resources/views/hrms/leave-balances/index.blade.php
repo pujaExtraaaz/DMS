@@ -1,14 +1,9 @@
 @extends('layouts.dms')
-@section('title', 'Employee Leave Balances')
+@section('title', 'Leave Management · Balances')
 @section('content')
-<x-ui.page-header title="Leave Balances" description="Yearly opening, utilized, and available balances per employee">
-<x-slot name="actions">
-    <x-ui.button variant="secondary" :href="route('hrms.leave-requests.index')">Leave Requests</x-ui.button>
-    <x-ui.button variant="primary" :href="route('hrms.leave-balances.create')">+ Allocate / Adjust Balance</x-ui.button>
-</x-slot>
-</x-ui.page-header>
+<x-hrms.leave-nav active="balances" />
 
-<x-ui.card class="mb-6">
+<x-ui.card class="mb-4" title="Filters">
     <form method="GET" action="{{ route('hrms.leave-balances.index') }}" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
         <div>
             <label class="block text-xs font-semibold text-slate-500 mb-1">Year</label>
@@ -42,7 +37,7 @@
     </form>
 </x-ui.card>
 
-<x-ui.card>
+<x-ui.card title="Leave Balances" description="Yearly opening, utilized, and available balances per employee">
     <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-slate-200 text-sm">
             <thead class="bg-slate-50">
@@ -83,4 +78,3 @@
     <div class="mt-4">{{ $items->links() }}</div>
 </x-ui.card>
 @endsection
-

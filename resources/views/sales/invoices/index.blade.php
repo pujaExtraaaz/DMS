@@ -222,6 +222,9 @@
                     <td class="px-6 py-4 text-right whitespace-nowrap space-x-1">
                         <x-ui.button variant="secondary" size="sm" :href="route('invoices.preview', $invoice)">Preview</x-ui.button>
                         <x-ui.button variant="secondary" size="sm" :href="route('invoices.show', $invoice)">View</x-ui.button>
+                        @if(auth()->user()?->can('invoices.edit') || auth()->user()?->can('invoices.manage') || auth()->user()?->can('sales.edit') || auth()->user()?->can('sales.manage') || auth()->user()?->hasRole('super-admin'))
+                            <x-ui.button variant="secondary" size="sm" :href="route('invoices.edit', $invoice)">Edit</x-ui.button>
+                        @endif
                     </td>
                 </tr>
             @empty

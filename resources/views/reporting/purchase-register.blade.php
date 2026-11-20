@@ -1,130 +1,69 @@
 @extends('layouts.dms')
 @section('title', 'Purchase Register')
 @section('content')
-<div id="listing-container" data-dynamic-container>
-    <x-ui.page-header title="Purchase Register" />
+<x-ui.page-header title="Purchase Register" description="Purchase invoices and legacy purchases">
+    <x-slot name="actions">
+        <a href="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">⬇ CSV</a>
+        <a href="{{ request()->fullUrlWithQuery(['export' => 'pdf']) }}" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">⬇ PDF</a>
+        <button type="button" onclick="window.print()" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">🖨 Print</button>
+    </x-slot>
+</x-ui.page-header>
+@include('reporting.partials.integrity-hints')
 
-    <x-ui.card>
-        <x-ui.table-toolbar
-            :search="$search ?? request('search')"
-            search-placeholder="Search Purchase No, Supplier, Status, Notes..."
-            :reset-url="route('reports.purchase-register')"
-        >
-            <x-slot name="filters">
-                <div class="flex items-center gap-1.5 text-xs text-slate-500">
-                    <span>From:</span>
-                    <input
-                        type="date"
-                        name="date_from"
-                        value="{{ $dateFrom }}"
-                        data-dynamic-filter
-                        class="rounded-lg border-slate-300 py-1.5 px-2 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                    />
-                </div>
-                <div class="flex items-center gap-1.5 text-xs text-slate-500">
-                    <span>To:</span>
-                    <input
-                        type="date"
-                        name="date_to"
-                        value="{{ $dateTo }}"
-                        data-dynamic-filter
-                        class="rounded-lg border-slate-300 py-1.5 px-2 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                    />
-                </div>
+<x-ui.report-filters
+    :date-from="$dateFrom"
+    :date-to="$dateTo"
+    search-placeholder="Search purchase no, supplier, status initials..."
+    :reset-url="route('reports.purchase-register')"
+    submit-label="Filter"
+    :show-supplier="true"
+    :show-warehouse="true"
+    :show-brand="true"
+    :show-category="true"
+    :show-product="true"
+    :suppliers="$suppliers"
+    :warehouses="$warehouses"
+    :brands="$brands"
+    :categories="$categories"
+    :products="$products"
+/>
 
-                <select
-                    name="supplier_id"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">Supplier: All</option>
-                    @foreach($suppliers as $s)
-                        <option value="{{ $s->id }}" @selected(request('supplier_id') == $s->id)>{{ $s->name }}</option>
-                    @endforeach
-                </select>
-
-                <select
-                    name="warehouse_id"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">Warehouse: All</option>
-                    @foreach($warehouses as $w)
-                        <option value="{{ $w->id }}" @selected(request('warehouse_id') == $w->id)>{{ $w->name }}</option>
-                    @endforeach
-                </select>
-
-                <select
-                    name="brand_id"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">Brand: All</option>
-                    @foreach($brands as $b)
-                        <option value="{{ $b->id }}" @selected(request('brand_id') == $b->id)>{{ $b->name }}</option>
-                    @endforeach
-                </select>
-
-                <select
-                    name="category_id"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">Category: All</option>
-                    @foreach($categories as $c)
-                        <option value="{{ $c->id }}" @selected(request('category_id') == $c->id)>{{ $c->name }}</option>
-                    @endforeach
-                </select>
-
-                <select
-                    name="product_id"
-                    data-dynamic-filter
-                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                >
-                    <option value="">Product: All</option>
-                    @foreach($products as $p)
-                        <option value="{{ $p->id }}" @selected(request('product_id') == $p->id)>{{ $p->name }}</option>
-                    @endforeach
-                </select>
-            </x-slot>
-        </x-ui.table-toolbar>
-
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-slate-200 text-sm">
-                <thead class="bg-slate-50">
-                    <tr>
-                        <x-ui.sortable-th column="invoice_no" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Invoice No</x-ui.sortable-th>
-                        <x-ui.sortable-th column="invoice_date" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Date</x-ui.sortable-th>
-                        <x-ui.sortable-th column="supplier" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Supplier</x-ui.sortable-th>
-                        <x-ui.sortable-th column="grand_total" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'" align="right">Total</x-ui.sortable-th>
-                        <x-ui.sortable-th column="status" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Status</x-ui.sortable-th>
+<x-ui.card>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-sm" data-report-table>
+            <thead class="bg-slate-50">
+                <tr>
+                    <x-ui.sortable-th column="invoice_no" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Invoice No</x-ui.sortable-th>
+                    <x-ui.sortable-th column="invoice_date" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Date</x-ui.sortable-th>
+                    <x-ui.sortable-th column="supplier" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Supplier</x-ui.sortable-th>
+                    <x-ui.sortable-th column="grand_total" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'" align="right">Total</x-ui.sortable-th>
+                    <x-ui.sortable-th column="status" :current-sort="$sort ?? 'invoice_date'" :current-direction="$direction ?? 'desc'">Status</x-ui.sortable-th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                @forelse($purchases as $p)
+                    <tr class="hover:bg-slate-50" data-search="{{ trim(($p->invoice_no ?? '').' '.($p->supplier?->name ?? '').' '.($p->status ?? '')) }}">
+                        <td class="px-3 py-2 font-medium text-slate-900">{{ $p->invoice_no }}</td>
+                        <td class="px-3 py-2 text-slate-600">{{ $p->invoice_date?->format('d M Y') }}</td>
+                        <td class="px-3 py-2 text-slate-700">{{ $p->supplier?->name ?? '—' }}</td>
+                        <td class="px-3 py-2 text-right font-medium text-slate-900">₹{{ number_format((float)$p->grand_total, 2) }}</td>
+                        <td class="px-3 py-2">
+                            <x-ui.badge :variant="in_array($p->status, ['posted', 'paid']) ? 'emerald' : ($p->status === 'cancelled' ? 'rose' : 'amber')">
+                                {{ ucfirst((string) $p->status) }}
+                            </x-ui.badge>
+                        </td>
                     </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                    @forelse($purchases as $p)
-                        <tr class="hover:bg-slate-50">
-                            <td class="px-3 py-2 font-medium text-slate-900">{{ $p->invoice_no }}</td>
-                            <td class="px-3 py-2 text-slate-600">{{ $p->invoice_date?->format('d M Y') }}</td>
-                            <td class="px-3 py-2 text-slate-700">{{ $p->supplier?->name ?? '—' }}</td>
-                            <td class="px-3 py-2 text-right font-medium text-slate-900">₹{{ number_format((float)$p->grand_total, 2) }}</td>
-                            <td class="px-3 py-2">
-                                <x-ui.badge :variant="in_array($p->status, ['posted', 'paid']) ? 'emerald' : ($p->status === 'cancelled' ? 'rose' : 'amber')">
-                                    {{ ucfirst((string) $p->status) }}
-                                </x-ui.badge>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="5" class="px-3 py-8 text-center text-slate-500">
-                                <x-ui.empty-state title="No purchases found" description="Try adjusting your search or date filters." />
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                @empty
+                    <tr>
+                        <td colspan="5" class="px-3 py-8 text-center text-slate-500" data-report-empty>
+                            <x-ui.empty-state title="No purchases found" description="Try adjusting your search or date filters." />
+                        </td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
 
-        <div class="mt-4">{{ $purchases->links() }}</div>
-    </x-ui.card>
-</div>
+    <div class="mt-4">{{ $purchases->links() }}</div>
+</x-ui.card>
 @endsection

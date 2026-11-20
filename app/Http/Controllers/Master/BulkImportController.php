@@ -196,7 +196,31 @@ class BulkImportController extends Controller
         $storedPath = $request->file('file')->store('imports/pending', 'local');
         $fullPath = Storage::disk('local')->path($storedPath);
 
-        $import->import($fullPath);
+        try {
+            $import->import($fullPath);
+        } catch (ImportCancelledException) {
+            Storage::disk('local')->delete($storedPath);
+            $this->forgetProgressArtifacts($progressId);
+
+            $cancelled = [
+                'type' => $type,
+                'cancelled' => true,
+                'created' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'failed' => 0,
+                'errors' => [],
+                'missing_uoms' => [],
+                'pending_file' => null,
+                'errors_file' => null,
+            ];
+
+            if ($progressId) {
+                return response()->json($cancelled);
+            }
+
+            return back()->with('error', 'Import cancelled. Nothing was saved.');
+        }
 
         $failedCount = property_exists($import, 'failed') ? $import->failed : count($import->errors);
         $summary = [
@@ -231,6 +255,7 @@ class BulkImportController extends Controller
         }
 
         session(['bulk_import_summary' => $summary]);
+        $this->forgetProgressArtifacts($progressId);
 
         if ($progressId) {
             return response()->json($summary);
@@ -247,6 +272,62 @@ class BulkImportController extends Controller
             ),
             'masters.bulk-import.index',
         );
+    }
+
+    public function progress(string $id): JsonResponse
+    {
+        abort_unless($this->validProgressId($id), 404);
+
+        $path = 'imports/progress/'.$id.'.json';
+        if (! Storage::disk('local')->exists($path)) {
+            return response()->json([
+                'processed' => 0,
+                'total' => 0,
+                'percent' => 0,
+                'status' => 'reading',
+                'created' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+            ]);
+        }
+
+        $data = json_decode((string) Storage::disk('local')->get($path), true);
+
+        return response()->json(is_array($data) ? $data : ['percent' => 0, 'status' => 'reading']);
+    }
+
+    public function cancel(string $id): JsonResponse
+    {
+        abort_unless($this->validProgressId($id), 404);
+
+        Storage::disk('local')->makeDirectory('imports/progress');
+        Storage::disk('local')->put('imports/progress/'.$id.'.cancel', '1');
+
+        return response()->json(['cancelled' => true]);
+    }
+
+    protected function progressId(Request $request): ?string
+    {
+        $id = (string) $request->input('progress_id', '');
+
+        return $this->validProgressId($id) ? $id : null;
+    }
+
+    protected function validProgressId(string $id): bool
+    {
+        return (bool) preg_match('/^[A-Za-z0-9\-]{8,80}$/', $id);
+    }
+
+    protected function forgetProgressArtifacts(?string $progressId): void
+    {
+        if (! $progressId) {
+            return;
+        }
+
+        Storage::disk('local')->delete([
+            'imports/progress/'.$progressId.'.json',
+            'imports/progress/'.$progressId.'.cancel',
+        ]);
     }
 
     public function retry(Request $request): RedirectResponse

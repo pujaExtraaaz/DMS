@@ -3,6 +3,7 @@
 namespace App\Domains\Sync\Handlers;
 
 use App\Domains\Master\Models\Product;
+use App\Domains\Master\Models\ProductUom;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Sync\Support\BooksCompany;
 use App\Domains\Sync\Support\SyncLinks;
@@ -152,8 +153,10 @@ class ProductSync
             'hsn_code' => $books->hsnSac?->code,
             'tax_rate' => $books->taxRate?->igst_rate ?? $product?->tax_rate ?? 0,
             'supply_type' => $this->dmsSupplyType($books->type_of_supply),
-            'purchase_price' => $books->purchase_rate ?? 0,
-            'selling_price' => $books->sales_rate ?? 0,
+            'purchase_price' => $this->rateOrOpening($books->purchase_rate, $books->opening_rate),
+            'selling_price' => $this->rateOrOpening($books->sales_rate, $books->opening_rate),
+            'trade_price' => $this->rateOrOpening($books->sales_rate, $books->opening_rate),
+            'calculation_mrp' => $this->rateOrOpening($books->sales_rate, $books->opening_rate),
             'min_stock' => $books->minimum_stock ?? 0,
             'reorder_level' => $books->reorder_level ?? 0,
             'tracking_type' => $tracking !== [] ? $tracking : ($product?->tracking_type ?? null),
@@ -162,6 +165,41 @@ class ProductSync
 
         $product ? $product->update($attributes) : $product = Product::query()->create($attributes);
         SyncLinks::store(self::KEY, $product, $books);
+        $this->syncBaseProductUom($product);
+    }
+
+    private function rateOrOpening(mixed $rate, mixed $openingRate): float
+    {
+        $rate = (float) ($rate ?? 0);
+        if ($rate > 0) {
+            return round($rate, 2);
+        }
+
+        $opening = (float) ($openingRate ?? 0);
+
+        return $opening > 0 ? round($opening, 2) : 0.0;
+    }
+
+    private function syncBaseProductUom(Product $product): void
+    {
+        if (! $product->base_uom_id) {
+            return;
+        }
+
+        ProductUom::query()->updateOrCreate(
+            ['product_id' => $product->id, 'uom_id' => $product->base_uom_id],
+            [
+                'conversion_factor' => 1,
+                'is_base' => true,
+                'label' => 'Base',
+                'selling_price' => $product->selling_price ?? 0,
+                'trade_price' => $product->trade_price ?? 0,
+                'purchase_price' => $product->purchase_price ?? 0,
+                'mrp' => $product->calculation_mrp ?? 0,
+                'is_default_sales' => true,
+                'is_active' => true,
+            ],
+        );
     }
 
     private function booksSupplyType(?string $supplyType): string

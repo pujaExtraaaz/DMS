@@ -287,13 +287,13 @@ class DashboardAnalytics
             $scaled = ($movements['quantity'][$product->id] ?? 0);
 
             if ($branchId === null) {
-                $scaled += \Tally\Inventory\Quantity::scale((string) $product->opening_quantity, 4);
-                $value += Money::cents((string) $product->opening_value);
+                $scaled += \Tally\Inventory\Quantity::signedScale((string) ($product->opening_quantity ?? '0'), 4);
+                $value += Money::cents((string) ($product->opening_value ?? '0'));
             }
 
             $value += $movements['value'][$product->id] ?? 0;
             $qty += $scaled;
-            $reorder = \Tally\Inventory\Quantity::scale((string) $product->reorder_level, 4);
+            $reorder = \Tally\Inventory\Quantity::scale((string) ($product->reorder_level ?? '0'), 4);
 
             if ($product->is_active && $reorder > 0 && $scaled <= $reorder) {
                 $low[] = ['name' => $product->name, 'quantity' => \Tally\Inventory\Quantity::format($scaled)];

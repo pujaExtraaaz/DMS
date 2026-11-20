@@ -2,6 +2,7 @@
 
 namespace App\Domains\PhoneDirectory\Models;
 
+use App\Domains\Master\Models\Designation;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -22,6 +23,7 @@ class PhoneDirectoryContact extends Model
         'profile_photo',
         'contact_type',
         'designation',
+        'designation_id',
         'department_id',
         'company_name',
         'category_id',
@@ -63,6 +65,11 @@ class PhoneDirectoryContact extends Model
         'government_official' => 'Government / Official',
         'other' => 'Other',
     ];
+
+    public function designationMaster(): BelongsTo
+    {
+        return $this->belongsTo(Designation::class, 'designation_id');
+    }
 
     public function department(): BelongsTo
     {
@@ -210,24 +217,26 @@ class PhoneDirectoryContact extends Model
 
         $term = trim($term);
 
-        return $query->where(function (Builder $q) use ($term) {
-            $q->where('contact_name', 'like', "%{$term}%")
-                ->orWhere('mobile_number', 'like', "%{$term}%")
-                ->orWhere('alternate_mobile', 'like', "%{$term}%")
-                ->orWhere('office_phone', 'like', "%{$term}%")
-                ->orWhere('email', 'like', "%{$term}%")
-                ->orWhere('alternate_email', 'like', "%{$term}%")
-                ->orWhere('designation', 'like', "%{$term}%")
-                ->orWhere('company_name', 'like', "%{$term}%")
-                ->orWhere('city', 'like', "%{$term}%")
-                ->orWhere('state', 'like', "%{$term}%")
-                ->orWhere('area', 'like', "%{$term}%")
-                ->orWhere('pincode', 'like', "%{$term}%")
-                ->orWhereHas('department', function ($deptQuery) use ($term) {
-                    $deptQuery->where('name', 'like', "%{$term}%");
+        $prefix = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $term).'%';
+
+        return $query->where(function (Builder $q) use ($prefix) {
+            $q->where('contact_name', 'like', $prefix)
+                ->orWhere('mobile_number', 'like', $prefix)
+                ->orWhere('alternate_mobile', 'like', $prefix)
+                ->orWhere('office_phone', 'like', $prefix)
+                ->orWhere('email', 'like', $prefix)
+                ->orWhere('alternate_email', 'like', $prefix)
+                ->orWhere('designation', 'like', $prefix)
+                ->orWhere('company_name', 'like', $prefix)
+                ->orWhere('city', 'like', $prefix)
+                ->orWhere('state', 'like', $prefix)
+                ->orWhere('area', 'like', $prefix)
+                ->orWhere('pincode', 'like', $prefix)
+                ->orWhereHas('department', function ($deptQuery) use ($prefix) {
+                    $deptQuery->where('name', 'like', $prefix);
                 })
-                ->orWhereHas('category', function ($catQuery) use ($term) {
-                    $catQuery->where('name', 'like', "%{$term}%");
+                ->orWhereHas('category', function ($catQuery) use ($prefix) {
+                    $catQuery->where('name', 'like', $prefix);
                 });
         });
     }

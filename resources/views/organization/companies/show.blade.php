@@ -90,10 +90,6 @@
                         <span class="text-xs uppercase font-semibold text-slate-400">Legal Name:</span>
                         <span class="font-medium text-slate-800 ml-1">{{ $company->legal_name ?: '—' }}</span>
                     </div>
-                    <div>
-                        <span class="text-xs uppercase font-semibold text-slate-400">Business Group:</span>
-                        <span class="font-medium text-slate-800 ml-1">{{ $company->businessGroup?->name ?: '—' }}</span>
-                    </div>
                 </div>
             </div>
         </div>

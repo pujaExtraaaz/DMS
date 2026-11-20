@@ -431,16 +431,41 @@ class FinancialReportController extends Controller
     }
 
     /**
+     * Prefer the FY that contains the latest invoice (imported data), not an empty current FY.
+     *
      * @return array{0:string,1:string}
      */
     protected function range(Request $request): array
     {
-        $fy = FinancialYear::query()
-            ->when(auth()->user()?->company_id, fn ($q) => $q->where('company_id', auth()->user()->company_id))
-            ->where('is_current', true)->first();
+        $companyId = auth()->user()?->company_id;
+        $latestInvoice = Invoice::query()
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+            ->whereNotNull('invoice_date')
+            ->max('invoice_date');
 
-        $from = $request->input('date_from', $fy?->starts_on?->toDateString() ?? now()->startOfMonth()->toDateString());
-        $to = $request->input('date_to', $fy?->ends_on?->toDateString() ?? now()->toDateString());
+        $fyQuery = FinancialYear::query()
+            ->when($companyId, fn ($q) => $q->where('company_id', $companyId));
+
+        $fy = null;
+        if ($latestInvoice) {
+            $fy = (clone $fyQuery)
+                ->whereDate('starts_on', '<=', $latestInvoice)
+                ->whereDate('ends_on', '>=', $latestInvoice)
+                ->orderByDesc('starts_on')
+                ->first();
+        }
+        $fy ??= (clone $fyQuery)->where('is_current', true)->first()
+            ?? (clone $fyQuery)->orderByDesc('starts_on')->first();
+
+        $defaultFrom = $fy?->starts_on
+            ? Carbon::parse($fy->starts_on)->toDateString()
+            : ($latestInvoice ? Carbon::parse($latestInvoice)->startOfMonth()->toDateString() : now()->startOfMonth()->toDateString());
+        $defaultTo = $fy?->ends_on
+            ? Carbon::parse($fy->ends_on)->toDateString()
+            : ($latestInvoice ? Carbon::parse($latestInvoice)->toDateString() : now()->toDateString());
+
+        $from = $request->input('date_from', $defaultFrom);
+        $to = $request->input('date_to', $defaultTo);
 
         return [$from, $to];
     }

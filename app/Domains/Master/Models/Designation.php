@@ -4,6 +4,7 @@ namespace App\Domains\Master\Models;
 
 use App\Domains\Hrms\Models\Employee;
 use App\Domains\Organization\Models\Company;
+use App\Domains\PhoneDirectory\Models\PhoneDirectoryContact;
 use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -43,5 +44,10 @@ class Designation extends Model
     public function partyContacts(): HasMany
     {
         return $this->hasMany(PartyContact::class, 'designation_id');
+    }
+
+    public function phoneDirectoryContacts(): HasMany
+    {
+        return $this->hasMany(PhoneDirectoryContact::class, 'designation_id');
     }
 }

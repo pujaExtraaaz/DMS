@@ -1,7 +1,7 @@
 @if($can('payments.view', 'payments.create', 'cheques.view', 'credit-notes.view'))
     @php
         $sNum = $num();
-        $sectionActive = $is('payments.*', 'cheques.*', 'credit-notes.*', 'outstanding.*', 'reconciliation.*');
+        $sectionActive = $is('payments.*', 'cheques.*', 'credit-notes.*', 'outstanding.*', 'reconciliation.*', 'cheque-books.*', 'organization.cheque-books.*');
     @endphp
     <div
         data-sidebar-section="receivables"
@@ -59,7 +59,7 @@
                 aria-label="Receivables"
                 class="flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 {{ $sectionActive ? 'bg-indigo-600/90 text-white shadow-lg shadow-indigo-900/30' : 'text-slate-400 hover:bg-slate-800/80 hover:text-white' }}"
             >
-                <svg class="sidebar-item-icon shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <svg class="sidebar-item-icon shrink-0" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
                 </svg>
             </a>
@@ -70,6 +70,7 @@
             <a href="{{ route('payments.index') }}" class="{{ $itemClass }} {{ $linkClass(['payments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Payment Receipts</span></a>
             @if($can('cheques.view', 'cheques.create', 'payments.manage'))
                 <a href="{{ route('cheques.index') }}" class="{{ $itemClass }} {{ $linkClass(['cheques.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Cheque Register</span></a>
+                <a href="{{ route('cheque-books.index') }}" class="{{ $itemClass }} {{ $linkClass(['cheque-books.*', 'organization.cheque-books.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Cheque Books</span></a>
             @endif
             @if($can('credit-notes.view', 'credit-notes.create', 'payments.manage'))
                 <a href="{{ route('credit-notes.index') }}" class="{{ $itemClass }} {{ $linkClass(['credit-notes.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Credit Notes</span></a>

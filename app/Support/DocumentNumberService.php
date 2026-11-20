@@ -24,56 +24,65 @@ class DocumentNumberService
         $branchId ??= auth()->user()?->branch_id;
 
         return DB::transaction(function () use ($prefix, $date, $padding, $companyId, $branchId, $financialYearId) {
-            $query = DB::table('document_sequences')->where('prefix', $prefix);
+            $dateString = $date->toDateString();
+            $hasCompanyScope = Schema::hasColumn('document_sequences', 'company_id');
 
-            if (Schema::hasColumn('document_sequences', 'company_id')) {
-                $existing = (clone $query)
-                    ->when($companyId, fn ($q) => $q->where('company_id', $companyId), fn ($q) => $q->whereNull('company_id'))
-                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId), fn ($q) => $q->whereNull('branch_id'))
-                    ->when($financialYearId, fn ($q) => $q->where('financial_year_id', $financialYearId), fn ($q) => $q->whereNull('financial_year_id'))
-                    ->whereDate('sequence_date', $date->toDateString())
-                    ->lockForUpdate()
-                    ->first();
+            // Unique key is (prefix, sequence_date). Prefer matching that row first so
+            // company/branch filter mismatches (e.g. null vs 1) do not cause duplicate inserts.
+            $sequence = DB::table('document_sequences')
+                ->where('prefix', $prefix)
+                ->whereDate('sequence_date', $dateString)
+                ->lockForUpdate()
+                ->first();
 
-                if (! $existing) {
-                    DB::table('document_sequences')->insert([
-                        'company_id' => $companyId,
-                        'branch_id' => $branchId,
-                        'financial_year_id' => $financialYearId,
-                        'prefix' => $prefix,
-                        'sequence_date' => $date->toDateString(),
-                        'last_number' => 0,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                }
-
-                $sequence = DB::table('document_sequences')
-                    ->where('prefix', $prefix)
-                    ->when($companyId, fn ($q) => $q->where('company_id', $companyId), fn ($q) => $q->whereNull('company_id'))
-                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId), fn ($q) => $q->whereNull('branch_id'))
-                    ->when($financialYearId, fn ($q) => $q->where('financial_year_id', $financialYearId), fn ($q) => $q->whereNull('financial_year_id'))
-                    ->whereDate('sequence_date', $date->toDateString())
-                    ->lockForUpdate()
-                    ->first();
-            } else {
-                DB::table('document_sequences')->insertOrIgnore([
+            if (! $sequence) {
+                $row = [
                     'prefix' => $prefix,
-                    'sequence_date' => $date->toDateString(),
+                    'sequence_date' => $dateString,
                     'last_number' => 0,
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]);
+                ];
+
+                if ($hasCompanyScope) {
+                    $row['company_id'] = $companyId;
+                    if (Schema::hasColumn('document_sequences', 'branch_id')) {
+                        $row['branch_id'] = $branchId;
+                    }
+                    if (Schema::hasColumn('document_sequences', 'financial_year_id')) {
+                        $row['financial_year_id'] = $financialYearId;
+                    }
+                }
+
+                DB::table('document_sequences')->insertOrIgnore($row);
 
                 $sequence = DB::table('document_sequences')
                     ->where('prefix', $prefix)
-                    ->whereDate('sequence_date', $date->toDateString())
+                    ->whereDate('sequence_date', $dateString)
                     ->lockForUpdate()
                     ->first();
             }
 
             if (! $sequence) {
                 throw new RuntimeException("Unable to initialize document sequence for {$prefix}.");
+            }
+
+            // Backfill company/branch when an older null-scoped row is reused.
+            if ($hasCompanyScope) {
+                $updates = [];
+                if ($companyId && empty($sequence->company_id)) {
+                    $updates['company_id'] = $companyId;
+                }
+                if ($branchId && Schema::hasColumn('document_sequences', 'branch_id') && empty($sequence->branch_id)) {
+                    $updates['branch_id'] = $branchId;
+                }
+                if ($financialYearId && Schema::hasColumn('document_sequences', 'financial_year_id') && empty($sequence->financial_year_id)) {
+                    $updates['financial_year_id'] = $financialYearId;
+                }
+                if ($updates !== []) {
+                    $updates['updated_at'] = now();
+                    DB::table('document_sequences')->where('id', $sequence->id)->update($updates);
+                }
             }
 
             $nextNumber = ((int) $sequence->last_number) + 1;
@@ -135,8 +144,12 @@ class DocumentNumberService
         return $series->formatNumber($next, $fy, $date);
     }
 
-    public function nextFromSeries(DocumentNumberSeries|string $seriesOrType, ?Carbon $date = null, ?int $companyId = null): string
-    {
+    public function nextFromSeries(
+        DocumentNumberSeries|string $seriesOrType,
+        ?Carbon $date = null,
+        ?int $companyId = null,
+        ?callable $collisionCheck = null
+    ): string {
         $series = $seriesOrType instanceof DocumentNumberSeries
             ? $seriesOrType
             : $this->resolveSeries($seriesOrType, $companyId);
@@ -154,16 +167,47 @@ class DocumentNumberService
         $date ??= now();
         $companyId ??= $series->company_id ?? auth()->user()?->company_id;
 
-        return DB::transaction(function () use ($series, $date, $companyId) {
-            $fy = $series->resolveFinancialYear($date);
-            $next = $this->bumpSeriesCounter($series, $fy, $date, $companyId);
+        $lockKey = 'doc_series_lock_'.$series->id;
+        $execute = function () use ($series, $date, $companyId, $collisionCheck) {
+            return DB::transaction(function () use ($series, $date, $companyId, $collisionCheck) {
+                $fy = $series->resolveFinancialYear($date);
+                $attempts = 0;
+                $maxAttempts = 100;
 
-            return $series->formatNumber($next, $fy, $date);
-        });
+                do {
+                    $next = $this->bumpSeriesCounter($series, $fy, $date, $companyId);
+                    $formatted = $series->formatNumber($next, $fy, $date);
+                    $attempts++;
+                } while ($collisionCheck && $collisionCheck($formatted) && $attempts < $maxAttempts);
+
+                return $formatted;
+            });
+        };
+
+        try {
+            return \Illuminate\Support\Facades\Cache::lock($lockKey, 10)->block(10, $execute);
+        } catch (\Throwable) {
+            return $execute();
+        }
     }
 
     protected function seriesKey(DocumentNumberSeries $series, ?FinancialYear $fy, Carbon $date): string
     {
+        $restartRule = $series->resolveRestartRule($date);
+        if ($restartRule) {
+            $periodicity = strtolower((string) ($restartRule['periodicity'] ?? 'yearly'));
+            $periodKey = match ($periodicity) {
+                'daily' => 'd:'.$date->format('Ymd'),
+                'weekly' => 'w:'.$date->format('oW'),
+                'monthly' => 'm:'.$date->format('Ym'),
+                'yearly' => 'y:'.($fy?->id ? 'fy'.$fy->id : ($restartRule['applicable_from'] ?? $date->format('Y'))),
+                'never' => 'never',
+                default => 'p:'.$periodicity.':'.($restartRule['applicable_from'] ?? 'all'),
+            };
+
+            return strtoupper($series->document_type).'|'.$series->id.'|r:'.($restartRule['applicable_from'] ?? '0').'|'.$periodKey;
+        }
+
         $fyPart = $series->restart_each_fy
             ? ($fy?->id ? 'fy'.$fy->id : $series->financialYearCode($fy, $date))
             : 'all';
@@ -173,6 +217,20 @@ class DocumentNumberService
 
     protected function sequenceAnchorDate(DocumentNumberSeries $series, ?FinancialYear $fy, Carbon $date): string
     {
+        $restartRule = $series->resolveRestartRule($date);
+        if ($restartRule) {
+            $periodicity = strtolower((string) ($restartRule['periodicity'] ?? 'yearly'));
+
+            return match ($periodicity) {
+                'daily' => $date->toDateString(),
+                'weekly' => $date->copy()->startOfWeek()->toDateString(),
+                'monthly' => $date->copy()->startOfMonth()->toDateString(),
+                'yearly' => ! empty($restartRule['applicable_from']) ? Carbon::parse($restartRule['applicable_from'])->toDateString() : ($fy?->starts_on ? $fy->starts_on->toDateString() : '2000-01-01'),
+                'never' => ! empty($restartRule['applicable_from']) ? Carbon::parse($restartRule['applicable_from'])->toDateString() : '2000-01-01',
+                default => $date->toDateString(),
+            };
+        }
+
         if ($series->restart_each_fy && $fy?->starts_on) {
             return $fy->starts_on->toDateString();
         }
@@ -184,7 +242,8 @@ class DocumentNumberService
     {
         $key = $this->seriesKey($series, $fy, $date);
         $anchor = $this->sequenceAnchorDate($series, $fy, $date);
-        $prefix = strtoupper(trim((string) $series->prefix) ?: $series->document_type);
+        $activePrefix = $series->resolvePrefix($date);
+        $prefix = strtoupper(trim((string) $activePrefix) ?: (trim((string) $series->prefix) ?: $series->document_type));
 
         $query = DB::table('document_sequences')->where('prefix', $prefix);
 
@@ -192,11 +251,17 @@ class DocumentNumberService
             $query->where('series_key', $key);
         }
 
-        if (Schema::hasColumn('document_sequences', 'financial_year_id') && $series->restart_each_fy && $fy) {
+        if (Schema::hasColumn('document_sequences', 'financial_year_id') && $series->restart_each_fy && $fy && ! $series->resolveRestartRule($date)) {
             $query->where('financial_year_id', $fy->id);
         }
 
         $sequence = $query->whereDate('sequence_date', $anchor)->first();
+
+        if (! $sequence) {
+            $restartRule = $series->resolveRestartRule($date);
+
+            return max(1, (int) ($restartRule['starting_number'] ?? $series->starting_number ?? 1));
+        }
 
         return ((int) ($sequence->last_number ?? 0)) + 1;
     }
@@ -209,8 +274,13 @@ class DocumentNumberService
     ): int {
         $key = $this->seriesKey($series, $fy, $date);
         $anchor = $this->sequenceAnchorDate($series, $fy, $date);
-        $prefix = strtoupper(trim((string) $series->prefix) ?: $series->document_type);
-        $fyId = ($series->restart_each_fy && $fy) ? $fy->id : null;
+        $activePrefix = $series->resolvePrefix($date);
+        $prefix = strtoupper(trim((string) $activePrefix) ?: (trim((string) $series->prefix) ?: $series->document_type));
+        $restartRule = $series->resolveRestartRule($date);
+        $fyId = ($series->restart_each_fy && $fy && ! $restartRule) ? $fy->id : null;
+
+        $startingNumber = max(1, (int) ($restartRule['starting_number'] ?? $series->starting_number ?? 1));
+        $initialLastNumber = $startingNumber - 1;
 
         $query = DB::table('document_sequences')->where('prefix', $prefix);
 
@@ -229,7 +299,7 @@ class DocumentNumberService
             $row = [
                 'prefix' => $prefix,
                 'sequence_date' => $anchor,
-                'last_number' => 0,
+                'last_number' => $initialLastNumber,
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -247,7 +317,12 @@ class DocumentNumberService
                 $row['series_key'] = $key;
             }
 
-            DB::table('document_sequences')->insert($row);
+            try {
+                DB::table('document_sequences')->insert($row);
+            } catch (\Throwable) {
+                // Ignore race condition if another concurrent thread already inserted the sequence row
+            }
+
             $existing = (clone $query)->lockForUpdate()->first();
         }
 

@@ -4,7 +4,7 @@
 
 @section('content')
 <div id="listing-container" data-dynamic-container>
-    <x-ui.page-header title="Designations" description="Manage designation master data for party contacts.">
+    <x-ui.page-header title="Designations" description="Manage designation master data for party contacts and phone directory.">
         <x-slot name="actions">
             <x-ui.button variant="primary" :href="route('masters.designations.create')">+ Add Designation</x-ui.button>
         </x-slot>

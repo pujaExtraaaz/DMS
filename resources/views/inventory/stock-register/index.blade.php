@@ -434,7 +434,7 @@ function searchableProductSelect(products, initialId) {
         get filteredProducts() {
             const q = (this.searchQuery || '').trim().toLowerCase();
             if (!q) return this.products.slice(0, 30);
-            return this.products.filter(p => p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q))).slice(0, 30);
+            return this.products.filter(p => p.name.toLowerCase().startsWith(q) || (p.sku && p.sku.toLowerCase().startsWith(q))).slice(0, 30);
         },
         openDropdown() { this.isOpen = true; },
         closeDropdown() { setTimeout(() => { this.isOpen = false; }, 200); },

@@ -20,7 +20,45 @@
     <x-vite-assets />
     <link rel="stylesheet" href="{{ asset('css/tally-books.css') }}">
     <link rel="stylesheet" href="{{ asset('css/books-dms.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/books-sidebar.css') }}?v=12">
     <link rel="stylesheet" href="{{ asset('css/pwa-mobile.css') }}">
+    {{-- Critical: Books layout does not use layouts/dms.blade.php sidebar icon rules.
+         Also hide expanded rail content while server-painted collapsed (before Alpine). --}}
+    <style>
+        [x-cloak] { display: none !important; }
+        .dms-sidebar {
+            background-color: #0f172a;
+            color: #fff;
+            font-size: 13px;
+            overflow-x: hidden;
+        }
+        .dms-sidebar svg,
+        .dms-sidebar button svg,
+        .dms-sidebar a svg {
+            width: 1.15rem !important;
+            height: 1.15rem !important;
+            max-width: 1.15rem !important;
+            max-height: 1.15rem !important;
+            flex-shrink: 0 !important;
+        }
+        .dms-sidebar .sidebar-chevron {
+            width: 0.875rem !important;
+            height: 0.875rem !important;
+            max-width: 0.875rem !important;
+            max-height: 0.875rem !important;
+        }
+        .dms-sidebar .sidebar-section-icon {
+            width: 1rem !important;
+            height: 1rem !important;
+            max-width: 1rem !important;
+            max-height: 1rem !important;
+        }
+        /* Only when the user collapses the DMS rail — keep expanded chrome hidden */
+        aside.dms-sidebar.books-rail-collapsed [x-show="!$root.sidebarCollapsed"],
+        aside.dms-sidebar[data-collapsed="true"] [x-show="!$root.sidebarCollapsed"] {
+            display: none !important;
+        }
+    </style>
     @livewireStyles
 </head>
 <body class="font-sans antialiased bg-slate-100 text-slate-900 overflow-hidden dms-pwa books-shell" data-home="{{ tally_route('books.tally.dashboard') }}">
@@ -28,7 +66,7 @@
     <div
         x-data="{
             sidebarOpen: false,
-            sidebarCollapsed: {{ books_show_aside() ? 'true' : 'localStorage.getItem(\'dmsSidebarCollapsed\') === \'true\'' }},
+            sidebarCollapsed: {{ books_show_aside() ? 'false' : 'localStorage.getItem(\'dmsSidebarCollapsed\') === \'true\'' }},
             sidebarAnimate: false,
             booksAsideCollapsed: false,
             hasBooksAside: {{ books_show_aside() ? 'true' : 'false' }},
@@ -55,11 +93,11 @@
             },
             init() {
                 this.booksAsideCollapsed = false;
-                const stored = localStorage.getItem('dmsSidebarCollapsed');
+                // Keep primary DMS sidebar expanded so Accounting Books opens as the second panel.
                 if (this.hasBooksAside) {
-                    this.sidebarCollapsed = stored === null ? true : stored === 'true';
+                    this.sidebarCollapsed = false;
                 } else {
-                    this.sidebarCollapsed = stored === 'true';
+                    this.sidebarCollapsed = localStorage.getItem('dmsSidebarCollapsed') === 'true';
                     this.sidebarAnimate = true;
                 }
             }
@@ -74,9 +112,9 @@
         @endif
 
         <div class="relative z-0 flex flex-1 flex-col min-w-0 h-[100dvh] overflow-hidden bg-slate-100">
-            <header class="shrink-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200/80 shadow-sm pt-[env(safe-area-inset-top)] overflow-visible">
-                <div class="flex items-center justify-between h-14 sm:h-16 px-3 sm:px-6 lg:px-8 gap-3 overflow-visible">
-                    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+            <header class="relative shrink-0 z-40 isolate bg-white border-b border-slate-200/80 shadow-sm pt-[env(safe-area-inset-top)]">
+                <div class="flex items-center justify-between min-h-14 sm:min-h-16 px-3 sm:px-6 lg:px-8 gap-3 py-2">
+                    <div class="flex items-center gap-2 sm:gap-3 min-w-0 shrink">
                         <button
                             type="button"
                             @click="sidebarOpen = true"
@@ -109,7 +147,7 @@
                         </div>
                     </div>
 
-                    <div class="flex items-center gap-2 min-w-0 overflow-visible relative z-50">
+                    <div class="flex items-center gap-2 min-w-0 relative z-50 shrink-0">
                         <x-tally::shell.topbar />
                         @php
                             $roleName = Auth::user()->roles->first()?->name ?? 'User';
@@ -120,7 +158,7 @@
                 </div>
             </header>
 
-            <main class="flex-1 overflow-y-auto overflow-x-hidden dms-content">
+            <main class="relative z-0 flex-1 overflow-y-auto overflow-x-hidden dms-content">
                 <div class="px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6 max-w-[1600px] mx-auto w-full pb-24 lg:pb-6">
                     <x-tally::shell.breadcrumbs :items="$breadcrumbs" />
 

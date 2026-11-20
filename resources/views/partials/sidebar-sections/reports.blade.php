@@ -59,7 +59,7 @@
                 aria-label="Reports"
                 class="flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-150 {{ $sectionActive ? 'bg-indigo-600/90 text-white shadow-lg shadow-indigo-900/30' : 'text-slate-400 hover:bg-slate-800/80 hover:text-white' }}"
             >
-                <svg class="sidebar-item-icon shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <svg class="sidebar-item-icon shrink-0" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
                 </svg>
             </a>
@@ -67,18 +67,26 @@
 
         {{-- Submenu (Expanded Only) --}}
         <div x-show="open && !$root.sidebarCollapsed" x-cloak class="space-y-0.5">
+            <a href="{{ route('reports.quotations') }}" class="{{ $itemClass }} {{ $linkClass(['reports.quotations']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Quotation Register</span></a>
             <a href="{{ route('reports.sales') }}" class="{{ $itemClass }} {{ $linkClass(['reports.sales']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Sales Register</span></a>
-            <a href="{{ route('reports.stock') }}" class="{{ $itemClass }} {{ $linkClass(['reports.stock']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Movement</span></a>
+            <a href="{{ route('reports.purchase-orders') }}" class="{{ $itemClass }} {{ $linkClass(['reports.purchase-orders']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Order Register</span></a>
+            <a href="{{ route('reports.purchase-register') }}" class="{{ $itemClass }} {{ $linkClass(['reports.purchase-register']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Register</span></a>
+            <a href="{{ route('reports.payments') }}" class="{{ $itemClass }} {{ $linkClass(['reports.payments']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Payments Report</span></a>
+            <a href="{{ route('reports.delivery') }}" class="{{ $itemClass }} {{ $linkClass(['reports.delivery']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Delivery Report</span></a>
+            <a href="{{ route('reports.pending-orders') }}" class="{{ $itemClass }} {{ $linkClass(['reports.pending-orders']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Pending Orders</span></a>
+            <a href="{{ route('reports.stock') }}" class="{{ $itemClass }} {{ $linkClass(['reports.stock']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Report</span></a>
             <a href="{{ route('reports.stock-ledger') }}" class="{{ $itemClass }} {{ $linkClass(['reports.stock-ledger']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Stock Ledger</span></a>
             <a href="{{ route('reports.party-statement') }}" class="{{ $itemClass }} {{ $linkClass(['reports.party-statement']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Party Ledger</span></a>
-            <a href="{{ route('reports.purchase-register') }}" class="{{ $itemClass }} {{ $linkClass(['reports.purchase-register']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Register</span></a>
             <a href="{{ route('reports.outstanding') }}" class="{{ $itemClass }} {{ $linkClass(['reports.outstanding']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Outstanding Statement</span></a>
+            <a href="{{ route('reports.salesman-outstanding') }}" class="{{ $itemClass }} {{ $linkClass(['reports.salesman-outstanding']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Salesman Outstanding</span></a>
+            <a href="{{ route('reports.aging') }}" class="{{ $itemClass }} {{ $linkClass(['reports.aging']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Aging Analysis</span></a>
             <a href="{{ route('reports.margin') }}" class="{{ $itemClass }} {{ $linkClass(['reports.margin']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Margin Analysis</span></a>
             <a href="{{ route('reports.day-book') }}" class="{{ $itemClass }} {{ $linkClass(['reports.day-book']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Day Book</span></a>
             <a href="{{ route('reports.profit-loss') }}" class="{{ $itemClass }} {{ $linkClass(['reports.profit-loss']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Profit &amp; Loss</span></a>
             <a href="{{ route('reports.balance-sheet') }}" class="{{ $itemClass }} {{ $linkClass(['reports.balance-sheet']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Balance Sheet</span></a>
             <a href="{{ route('reports.trial-balance') }}" class="{{ $itemClass }} {{ $linkClass(['reports.trial-balance']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Trial Balance</span></a>
             <a href="{{ route('reports.od') }}" class="{{ $itemClass }} {{ $linkClass(['reports.od', 'od.report*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>OD Report</span></a>
+            <a href="{{ route('group-dashboard') }}" class="{{ $itemClass }} {{ $linkClass(['group-dashboard*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Group Dashboard</span></a>
             <a href="{{ route('organization.sister-concerns.reports') }}" class="{{ $itemClass }} {{ $linkClass(['organization.sister-concerns.reports*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Sister Concern Reports</span></a>
         </div>
     </div>

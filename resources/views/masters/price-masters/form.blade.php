@@ -73,6 +73,9 @@
             'selling_price' => $p->selling_price !== null ? (float) $p->selling_price : null,
             'trade_price' => $p->trade_price !== null ? (float) $p->trade_price : null,
             'purchase_price' => $p->purchase_price !== null ? (float) $p->purchase_price : null,
+            'purchase_price_tax_basis' => in_array((string) ($p->purchase_price_tax_basis ?? ''), ['inclusive', 'exclusive'], true)
+                ? (string) $p->purchase_price_tax_basis
+                : 'exclusive',
             'uoms' => $validUoms->values()->all(),
         ];
     })->values();
@@ -364,7 +367,14 @@
 
             {{-- 3. Brand Selector (shown when type === 'brand') --}}
             <div x-show="type === 'brand'" x-cloak>
-                <label for="brand_id" class="block text-sm font-medium text-gray-700 mb-1">Brand *</label>
+                <div class="flex items-center justify-between mb-1">
+                    <label for="brand_id" class="block text-sm font-medium text-gray-700">Brand *</label>
+                    <button type="button"
+                            @click="openBrandCreate('page')"
+                            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 hover:underline focus:outline-none">
+                        + Create
+                    </button>
+                </div>
                 <select name="brand_id"
                         id="brand_id"
                         x-model="selectedBrandId"
@@ -375,6 +385,9 @@
                     @foreach($brands as $b)
                         <option value="{{ $b->id }}">{{ $b->name }}</option>
                     @endforeach
+                    <template x-for="b in customBrands" :key="b.id">
+                        <option :value="b.id" x-text="b.name"></option>
+                    </template>
                 </select>
                 @error('brand_id')
                     <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
@@ -385,12 +398,13 @@
                 {{-- Single-row edit --}}
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Product *</label>
-                    <div class="relative" @click.outside="editProductOpen = false">
+                    <div class="relative" @click.outside="editProductOpen = false; editHighlightIndex = -1">
                         <input type="hidden" name="product_id" :value="editProductId" required>
                         <input type="text"
                                x-model="editProductQuery"
-                               @focus="editProductOpen = true"
-                               @input="editProductOpen = true; editProductId = ''"
+                               @focus="editProductOpen = true; editHighlightIndex = filteredEditProducts.length ? 0 : -1"
+                               @input="editProductOpen = true; editProductId = ''; editHighlightIndex = 0"
+                               @keydown="onEditProductKeydown($event)"
                                :placeholder="type === 'brand' ? 'Search products of this brand...' : 'Search product name or SKU...'"
                                autocomplete="off"
                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
@@ -398,10 +412,14 @@
                                 class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold">&times;</button>
                         <div x-show="editProductOpen && filteredEditProducts.length > 0"
                              x-cloak
+                             x-ref="editProductList"
                              class="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 divide-y divide-slate-100">
-                            <template x-for="prod in filteredEditProducts" :key="prod.id">
+                            <template x-for="(prod, pIdx) in filteredEditProducts" :key="prod.id">
                                 <div @click="selectEditProduct(prod)"
-                                     class="p-2.5 hover:bg-indigo-50 cursor-pointer text-xs flex items-center justify-between">
+                                     @mouseenter="editHighlightIndex = pIdx"
+                                     :data-index="pIdx"
+                                     :class="editHighlightIndex === pIdx ? 'bg-indigo-50' : 'hover:bg-indigo-50'"
+                                     class="p-2.5 cursor-pointer text-xs flex items-center justify-between">
                                     <span class="font-medium text-slate-800" x-text="prod.name"></span>
                                     <span class="font-mono text-[11px] text-slate-500" x-text="prod.sku"></span>
                                 </div>
@@ -589,7 +607,10 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">UOM *</label>
-                        <select name="uom_id" id="edit_uom_id" x-model="editUomId" required
+                        <select name="uom_id" id="edit_uom_id"
+                                :value="editUomId"
+                                @change="editUomId = $event.target.value"
+                                required
                                 class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                             <option value="">Select UOM</option>
                             @foreach($uoms as $u)
@@ -663,17 +684,31 @@
 
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-white p-3">
                         <div>
-                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Brand</label>
+                            <div class="mb-1 flex items-center justify-between gap-2">
+                                <label class="block text-[11px] font-medium text-slate-600 mb-0">Brand</label>
+                                <button type="button"
+                                        @click="openBrandCreate('customer_type')"
+                                        class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none whitespace-nowrap">
+                                    + Create
+                                </button>
+                            </div>
                             <select x-model="ctFilterBrandId" @change="onCtFilterBrandChange()"
                                     class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
                                 <option value="">All Brands</option>
-                                <template x-for="b in brands" :key="b.id">
+                                <template x-for="b in allBrands" :key="b.id">
                                     <option :value="b.id" x-text="b.name"></option>
                                 </template>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Category</label>
+                            <div class="mb-1 flex items-center justify-between gap-2">
+                                <label class="block text-[11px] font-medium text-slate-600 mb-0">Category</label>
+                                <button type="button"
+                                        @click="openCategoryCreate('customer_type')"
+                                        class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none whitespace-nowrap">
+                                    + Create
+                                </button>
+                            </div>
                             <select x-model="ctFilterCategoryId" @change="onCtFilterCategoryChange()"
                                     class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
                                 <option value="">All Categories</option>
@@ -683,7 +718,14 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[11px] font-medium text-slate-600 mb-1">Subcategory</label>
+                            <div class="mb-1 flex items-center justify-between gap-2">
+                                <label class="block text-[11px] font-medium text-slate-600 mb-0">Subcategory</label>
+                                <button type="button"
+                                        @click="openSubCategoryCreate('customer_type')"
+                                        class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none whitespace-nowrap">
+                                    + Create
+                                </button>
+                            </div>
                             <select x-model="ctFilterSubCategoryId"
                                     :disabled="!ctFilterCategoryId"
                                     class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-50">
@@ -709,14 +751,15 @@
                                 </div>
 
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <div class="md:col-span-2 relative" @click.outside="line.isOpen = false">
+                                    <div class="md:col-span-2 relative" @click.outside="line.isOpen = false; line.highlightIndex = -1">
                                         <label class="block text-xs font-medium text-slate-700 mb-1">Product *</label>
                                         <input type="hidden" :name="`lines[${idx}][product_id]`" :value="line.product_id">
                                         <div class="relative">
                                             <input type="text"
                                                    x-model="line.searchQuery"
-                                                   @focus="line.isOpen = true"
-                                                   @input="line.isOpen = true; line.product_id = ''"
+                                                   @focus="line.isOpen = true; line.highlightIndex = filteredProducts(line).length ? 0 : -1"
+                                                   @input="line.isOpen = true; line.product_id = ''; line.highlightIndex = 0"
+                                                   @keydown="onLineProductKeydown($event, idx)"
                                                    :placeholder="type === 'brand' ? (selectedBrandId ? 'Search products of this brand...' : 'Please select a brand above first') : 'Search product name or SKU...'"
                                                    :disabled="type === 'brand' && !selectedBrandId"
                                                    autocomplete="off"
@@ -726,10 +769,14 @@
                                         </div>
                                         <div x-show="line.isOpen && filteredProducts(line).length > 0"
                                              x-cloak
-                                             class="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 divide-y divide-slate-100">
-                                            <template x-for="prod in filteredProducts(line)" :key="prod.id">
+                                             class="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 divide-y divide-slate-100"
+                                             :id="`line-product-list-${idx}`">
+                                            <template x-for="(prod, pIdx) in filteredProducts(line)" :key="prod.id">
                                                 <div @click="selectLineProduct(idx, prod)"
-                                                     class="p-2.5 hover:bg-indigo-50 cursor-pointer text-xs flex items-center justify-between">
+                                                     @mouseenter="line.highlightIndex = pIdx"
+                                                     :data-index="pIdx"
+                                                     :class="line.highlightIndex === pIdx ? 'bg-indigo-50' : 'hover:bg-indigo-50'"
+                                                     class="p-2.5 cursor-pointer text-xs flex items-center justify-between">
                                                     <span class="font-medium text-slate-800" x-text="prod.name"></span>
                                                     <span class="font-mono text-[11px] text-slate-500" x-text="prod.sku"></span>
                                                 </div>
@@ -915,7 +962,10 @@
 
                                     <div>
                                         <label class="block text-xs font-medium text-slate-700 mb-1">UOM *</label>
-                                        <select :name="`lines[${idx}][uom_id]`" x-model="line.uom_id" required
+                                        <select :name="`lines[${idx}][uom_id]`"
+                                                :value="line.uom_id"
+                                                @change="line.uom_id = $event.target.value"
+                                                required
                                                 class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                                             <option value="">Select UOM</option>
                                             @foreach($uoms as $u)
@@ -1024,16 +1074,18 @@
                                 </div>
                             </div>
 
-                            {{-- Brand / Category / Subcategory filters + Search --}}
+                            {{-- Category / Subcategory filters + Search --}}
                             <div class="p-3 bg-white border-b border-slate-100 space-y-2.5">
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                     <div>
-                                        <label class="block text-[11px] font-medium text-slate-600 mb-1">Brand</label>
-                                        <input type="text" :value="brands.find(b => String(b.id) === String(selectedBrandId))?.name || '—'" disabled
-                                               class="block w-full rounded-lg border-gray-200 bg-slate-50 text-xs text-slate-700">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[11px] font-medium text-slate-600 mb-1">Category</label>
+                                        <div class="mb-1 flex items-center justify-between gap-2">
+                                            <label class="block text-[11px] font-medium text-slate-600 mb-0">Category</label>
+                                            <button type="button"
+                                                    @click="openCategoryCreate('brand')"
+                                                    class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none whitespace-nowrap">
+                                                + Create
+                                            </button>
+                                        </div>
                                         <select x-model="filterCategoryId" @change="onFilterCategoryChange()"
                                                 class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
                                             <option value="">All Categories</option>
@@ -1043,7 +1095,14 @@
                                         </select>
                                     </div>
                                     <div>
-                                        <label class="block text-[11px] font-medium text-slate-600 mb-1">Subcategory</label>
+                                        <div class="mb-1 flex items-center justify-between gap-2">
+                                            <label class="block text-[11px] font-medium text-slate-600 mb-0">Subcategory</label>
+                                            <button type="button"
+                                                    @click="openSubCategoryCreate('brand')"
+                                                    class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none whitespace-nowrap">
+                                                + Create
+                                            </button>
+                                        </div>
                                         <select x-model="filterSubCategoryId" @change="brandPage = 1"
                                                 :disabled="!filterCategoryId"
                                                 class="block w-full rounded-lg border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-50">
@@ -1455,7 +1514,10 @@
 
                                                     {{-- UOM Column --}}
                                                     <td class="px-3 py-3">
-                                                        <select :name="`lines[${idx}][uom_id]`" x-model="line.uom_id" required
+                                                        <select :name="`lines[${idx}][uom_id]`"
+                                                                :value="line.uom_id"
+                                                                @change="line.uom_id = $event.target.value"
+                                                                required
                                                                 class="block w-full rounded-md border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
                                                             <option value="">Select UOM</option>
                                                             @foreach($uoms as $u)
@@ -1577,6 +1639,45 @@
                             </button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+    @include('masters.partials.catalog-quick-modals')
+
+    {{-- Create Subcategory floating card --}}
+    <div x-show="subCategoryCreateOpen" x-cloak class="fixed inset-0 overflow-y-auto" style="z-index: 85" role="dialog" aria-modal="true" aria-labelledby="price-subcategory-create-title">
+        <div class="fixed inset-0 bg-slate-900/60" @click="subCategoryCreateOpen = false"></div>
+        <div class="relative flex min-h-full items-center justify-center p-4">
+            <div class="relative w-full max-w-xl rounded-xl border border-slate-200 bg-white shadow-2xl" @click.stop>
+                <div class="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+                    <h3 id="price-subcategory-create-title" class="text-base font-semibold text-slate-900">Create Subcategory</h3>
+                    <button type="button" @click="subCategoryCreateOpen = false" class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" title="Close">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="space-y-4 px-6 py-5">
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <label for="price_subcategory_category" class="block text-sm font-medium text-gray-700">Category <span class="text-red-500">*</span></label>
+                            <button type="button" @click="openCategoryCreate('subcategory')" class="text-[11px] font-semibold text-indigo-700 hover:text-indigo-900">+ Create</button>
+                        </div>
+                        <select id="price_subcategory_category" @change="subCategoryCreateCategoryId = $event.target.value; subCategoryCreateError = ''" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Select</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label for="price_subcategory_name" class="block text-sm font-medium text-gray-700">Name <span class="text-red-500">*</span></label>
+                        <input id="price_subcategory_name" type="text" x-model="subCategoryCreateName" @keydown.enter.prevent="saveSubCategory()" maxlength="255" class="block w-full rounded-lg border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="e.g. Standard, Premium">
+                    </div>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" x-model="subCategoryCreateActive" class="rounded border-gray-300 text-indigo-600">
+                        Active
+                    </label>
+                    <p class="text-xs text-red-600" x-show="subCategoryCreateError" x-text="subCategoryCreateError"></p>
+                </div>
+                <div class="px-6 pb-5">
+                    <button type="button" @click="saveSubCategory()" :disabled="subCategoryCreateSaving" class="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50">Save</button>
                 </div>
             </div>
         </div>
@@ -1783,6 +1884,7 @@
             </div>
         </div>
     </div>
+    </div>
 </x-ui.card>
 
 @push('scripts')
@@ -1815,22 +1917,50 @@ function priceMasterForm(config) {
             min_qty: line.min_qty ?? '',
             searchQuery: line.searchQuery || '',
             isOpen: false,
+            highlightIndex: -1,
             isLoadingDetails: false,
         })),
         selectedCustomerTypeId: String(config.customerTypeId || ''),
         previousCustomerTypeId: String(config.customerTypeId || ''),
         customTypes: [],
+        customBrands: [],
         knownTypeNames: config.knownTypeNames || [],
         typeModalOpen: false,
         newTypeName: '',
         typeSaving: false,
         typeError: '',
         typeSuccess: '',
+        brandCreateOpen: false,
+        brandCreateContext: 'page',
+        brandCreateName: '',
+        brandCreateDetail: '',
+        brandCreateCompanyId: '',
+        brandCreateActive: true,
+        brandCreateError: '',
+        brandCreateSaving: false,
+        categoryCreateOpen: false,
+        categoryCreateContext: 'brand',
+        categoryCreateName: '',
+        categoryCreateBrandId: '',
+        categoryCreateActive: true,
+        categoryCreateError: '',
+        categoryCreateSaving: false,
+        subCategoryCreateOpen: false,
+        subCategoryCreateContext: 'brand',
+        subCategoryCreateName: '',
+        subCategoryCreateCategoryId: '',
+        subCategoryCreateActive: true,
+        subCategoryCreateError: '',
+        subCategoryCreateSaving: false,
+        brandQuickUrl: @json(route('masters.brands.quick-store')),
+        categoryQuickUrl: @json(route('masters.categories.quick-store')),
+        subCategoryQuickUrl: @json(route('masters.sub-categories.quick-store')),
         lineErrors: {},
 
         editProductId: String(config.editProductId || ''),
         editProductQuery: '',
         editProductOpen: false,
+        editHighlightIndex: -1,
         isEditLoadingDetails: false,
         editUomId: String(config.editUomId || ''),
         editDealerPrice: config.editDealerPrice ?? (config.editRate ?? ''),
@@ -1880,6 +2010,14 @@ function priceMasterForm(config) {
             return this.companies.find(c => String(c.id) === String(this.selectedCompanyId)) || null;
         },
 
+        get allBrands() {
+            const map = new Map();
+            [...(this.brands || []), ...(this.customBrands || [])].forEach((b) => {
+                map.set(String(b.id), { id: String(b.id), name: b.name });
+            });
+            return Array.from(map.values()).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        },
+
         get brandSubCategoryOptions() {
             if (!this.filterCategoryId) return this.brandSubCategoryOptionsAll;
             return this.brandSubCategoryOptionsAll.filter(s => String(s.category_id) === String(this.filterCategoryId));
@@ -1912,9 +2050,7 @@ function priceMasterForm(config) {
                     const prod = this.getProductDetails(line.product_id);
                     if (prod) {
                         line.searchQuery = `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`;
-                        if (!line.uom_id && prod.base_uom_id) {
-                            line.uom_id = String(prod.base_uom_id);
-                        }
+                        this.ensureLineUom(line, prod);
                     }
                     this.fetchProductDetails(line.product_id, line);
                 }
@@ -1924,9 +2060,7 @@ function priceMasterForm(config) {
                 const prod = this.getProductDetails(this.editProductId);
                 if (prod) {
                     this.editProductQuery = `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`;
-                    if (!this.editUomId && prod.base_uom_id) {
-                        this.editUomId = String(prod.base_uom_id);
-                    }
+                    this.ensureEditUom(prod);
                 }
                 this.fetchProductDetails(this.editProductId);
             }
@@ -1950,7 +2084,7 @@ function priceMasterForm(config) {
             const prod = this.getProductDetails(productId);
             if (!prod) return [];
             if (Array.isArray(prod.uoms) && prod.uoms.length > 0) {
-                return prod.uoms;
+                return prod.uoms.map(u => ({ ...u, id: String(u.id) }));
             }
             const list = [];
             if (prod.base_uom_id) {
@@ -1964,6 +2098,37 @@ function priceMasterForm(config) {
                 });
             }
             return list;
+        },
+
+        resolveDefaultUomId(prod) {
+            if (!prod) return '';
+            if (prod.base_uom_id) return String(prod.base_uom_id);
+            const list = Array.isArray(prod.uoms) ? prod.uoms : [];
+            const base = list.find(u => u.is_base) || list[0];
+            return base?.id ? String(base.id) : '';
+        },
+
+        ensureLineUom(line, prod = null) {
+            if (!line) return;
+            const details = prod || this.getProductDetails(line.product_id);
+            const resolved = this.resolveDefaultUomId(details);
+            if (!resolved) return;
+            const current = line.uom_id != null ? String(line.uom_id) : '';
+            const validIds = this.getProductUomOptions(line.product_id).map(u => String(u.id));
+            if (!current || (validIds.length > 0 && !validIds.includes(current))) {
+                line.uom_id = resolved;
+            }
+        },
+
+        ensureEditUom(prod = null) {
+            const details = prod || this.getProductDetails(this.editProductId);
+            const resolved = this.resolveDefaultUomId(details);
+            if (!resolved) return;
+            const current = this.editUomId != null ? String(this.editUomId) : '';
+            const validIds = this.getProductUomOptions(this.editProductId).map(u => String(u.id));
+            if (!current || (validIds.length > 0 && !validIds.includes(current))) {
+                this.editUomId = resolved;
+            }
         },
 
         async fetchProductDetails(productId, line = null) {
@@ -1991,17 +2156,15 @@ function priceMasterForm(config) {
                         } else {
                             this.products.push(fetched);
                         }
-                        if (line && (!line.uom_id || line.uom_id === '') && fetched.base_uom_id) {
-                            line.uom_id = String(fetched.base_uom_id);
-                        }
                         if (line) {
-                            this.applyProductPricingDefaults(line, fetched);
-                        }
-                        if (this.isEdit && (!this.editUomId || this.editUomId === '') && fetched.base_uom_id) {
-                            this.editUomId = String(fetched.base_uom_id);
+                            this.ensureLineUom(line, fetched);
+                            this.applyProductPricingDefaults(line, fetched, true);
+                            this.$nextTick(() => this.ensureLineUom(line, fetched));
                         }
                         if (this.isEdit && String(this.editProductId) === String(productId)) {
+                            this.ensureEditUom(fetched);
                             this.applyEditPricingDefaults(fetched);
+                            this.$nextTick(() => this.ensureEditUom(fetched));
                         }
                         return fetched;
                     }
@@ -2047,6 +2210,7 @@ function priceMasterForm(config) {
                     min_qty: '',
                     searchQuery: '',
                     isOpen: false,
+                    highlightIndex: -1,
                     isLoadingDetails: false,
                 }];
             } else {
@@ -2141,44 +2305,89 @@ function priceMasterForm(config) {
             }
         },
 
-        applyProductPricingDefaults(line, prod) {
+        productTaxBasis(prod) {
+            const basis = String(prod?.purchase_price_tax_basis || '').toLowerCase();
+            return basis === 'inclusive' ? 'inclusive' : 'exclusive';
+        },
+
+        applyProductPricingDefaults(line, prod, force = false) {
             if (!line || !prod) return;
-            const dealer = Number(prod.trade_price) > 0 ? prod.trade_price : (Number(prod.selling_price) > 0 ? prod.selling_price : null);
-            const retail = Number(prod.selling_price) > 0 ? prod.selling_price : (Number(prod.mrp) > 0 ? prod.mrp : null);
-            if ((!line.dealer_price || line.dealer_price === '' || Number(line.dealer_price) === 0) && dealer !== null) {
-                line.dealer_price = this.money(dealer);
+
+            const dealer = Number(prod.trade_price) > 0
+                ? prod.trade_price
+                : (Number(prod.selling_price) > 0 ? prod.selling_price : null);
+            const retail = Number(prod.selling_price) > 0
+                ? prod.selling_price
+                : (Number(prod.mrp) > 0 ? prod.mrp : null);
+            const taxBasis = this.productTaxBasis(prod);
+
+            if (force || !line.dealer_price || line.dealer_price === '' || Number(line.dealer_price) === 0) {
+                if (dealer !== null) {
+                    line.dealer_price = this.money(dealer);
+                }
             }
-            if ((!line.retail_price || line.retail_price === '' || Number(line.retail_price) === 0) && retail !== null) {
-                line.retail_price = this.money(retail);
+            if (force || !line.retail_price || line.retail_price === '' || Number(line.retail_price) === 0) {
+                if (retail !== null) {
+                    line.retail_price = this.money(retail);
+                }
             }
+
+            // Prefer Product Master tax basis for Excl/Incl; bulk panel overrides only when set.
+            if (force || !line.dealer_price_gst_mode) {
+                line.dealer_price_gst_mode = this.bulkDealerGstMode || taxBasis;
+            } else if (!this.bulkDealerGstMode) {
+                line.dealer_price_gst_mode = taxBasis;
+            }
+            if (force || !line.retail_price_gst_mode) {
+                line.retail_price_gst_mode = this.bulkRetailGstMode || taxBasis;
+            } else if (!this.bulkRetailGstMode) {
+                line.retail_price_gst_mode = taxBasis;
+            }
+
+            this.ensureLineUom(line, prod);
         },
 
         applyEditPricingDefaults(prod) {
             if (!prod || !this.isEdit) return;
-            const dealer = Number(prod.trade_price) > 0 ? prod.trade_price : (Number(prod.selling_price) > 0 ? prod.selling_price : null);
-            const retail = Number(prod.selling_price) > 0 ? prod.selling_price : (Number(prod.mrp) > 0 ? prod.mrp : null);
+            const dealer = Number(prod.trade_price) > 0
+                ? prod.trade_price
+                : (Number(prod.selling_price) > 0 ? prod.selling_price : null);
+            const retail = Number(prod.selling_price) > 0
+                ? prod.selling_price
+                : (Number(prod.mrp) > 0 ? prod.mrp : null);
+            const taxBasis = this.productTaxBasis(prod);
+
             if ((!this.editDealerPrice || this.editDealerPrice === '' || Number(this.editDealerPrice) === 0) && dealer !== null) {
                 this.editDealerPrice = this.money(dealer);
             }
             if ((!this.editRetailPrice || this.editRetailPrice === '' || Number(this.editRetailPrice) === 0) && retail !== null) {
                 this.editRetailPrice = this.money(retail);
             }
+            if (!this.editDealerGstMode) {
+                this.editDealerGstMode = taxBasis;
+            }
+            if (!this.editRetailGstMode) {
+                this.editRetailGstMode = taxBasis;
+            }
+            this.ensureEditUom(prod);
         },
 
         buildLineFromProduct(prod) {
+            const taxBasis = this.productTaxBasis(prod);
             const line = {
                 product_id: String(prod.id),
-                uom_id: prod.base_uom_id ? String(prod.base_uom_id) : '',
+                uom_id: this.resolveDefaultUomId(prod),
                 dealer_price: this.bulkDealerPrice || '',
-                dealer_price_gst_mode: this.bulkDealerGstMode || 'exclusive',
+                dealer_price_gst_mode: this.bulkDealerGstMode || taxBasis,
                 retail_price: this.bulkRetailPrice || '',
-                retail_price_gst_mode: this.bulkRetailGstMode || 'exclusive',
+                retail_price_gst_mode: this.bulkRetailGstMode || taxBasis,
                 min_qty: this.bulkMinQty || '',
                 searchQuery: `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`,
                 isOpen: false,
+                highlightIndex: -1,
                 isLoadingDetails: false,
             };
-            this.applyProductPricingDefaults(line, prod);
+            this.applyProductPricingDefaults(line, prod, true);
             return line;
         },
 
@@ -2209,11 +2418,11 @@ function priceMasterForm(config) {
                 return list;
             }
             return list.filter(p =>
-                (p.name && p.name.toLowerCase().includes(q)) ||
-                (p.sku && String(p.sku).toLowerCase().includes(q)) ||
-                (p.model && String(p.model).toLowerCase().includes(q)) ||
-                (p.category_name && p.category_name.toLowerCase().includes(q)) ||
-                (p.sub_category_name && p.sub_category_name.toLowerCase().includes(q))
+                (p.name && p.name.toLowerCase().startsWith(q)) ||
+                (p.sku && String(p.sku).toLowerCase().startsWith(q)) ||
+                (p.model && String(p.model).toLowerCase().startsWith(q)) ||
+                (p.category_name && p.category_name.toLowerCase().startsWith(q)) ||
+                (p.sub_category_name && p.sub_category_name.toLowerCase().startsWith(q))
             );
         },
 
@@ -2319,6 +2528,293 @@ function priceMasterForm(config) {
             setTimeout(() => {
                 this.bulkAppliedToast = false;
             }, 3000);
+        },
+
+        fillSelect(selectId, items, selected) {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            select.replaceChildren();
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Select';
+            select.appendChild(placeholder);
+            (items || []).forEach((item) => {
+                const option = document.createElement('option');
+                option.value = String(item.id);
+                option.textContent = item.name;
+                select.appendChild(option);
+            });
+            select.value = selected ? String(selected) : '';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        },
+
+        async postJson(url, payload) {
+            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}';
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(() => ({}));
+            return { ok: response.ok, data };
+        },
+
+        openBrandCreate(context = 'page') {
+            this.brandCreateContext = context || 'page';
+            this.brandCreateOpen = true;
+            this.brandCreateError = '';
+            this.brandCreateName = '';
+            this.brandCreateDetail = '';
+            this.brandCreateActive = true;
+            this.brandCreateCompanyId = this.selectedCompanyId
+                ? String(this.selectedCompanyId)
+                : (this.companies[0] ? String(this.companies[0].id) : '');
+            this.$nextTick(() => {
+                this.fillSelect('catalog_brand_company', this.companies, this.brandCreateCompanyId);
+                document.getElementById('catalog_brand_name')?.focus();
+            });
+        },
+
+        async saveBrand() {
+            const name = (this.brandCreateName || '').trim();
+            if (!name) {
+                this.brandCreateError = 'Brand Name is required.';
+                return;
+            }
+            this.brandCreateSaving = true;
+            this.brandCreateError = '';
+            const result = await this.postJson(this.brandQuickUrl, {
+                name,
+                detail: this.brandCreateDetail || '',
+                company_id: this.brandCreateCompanyId || null,
+                is_active: !!this.brandCreateActive,
+            });
+            this.brandCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.brandCreateError = result.data.message || 'Could not create the brand.';
+                return;
+            }
+
+            const item = result.data.item || {};
+            const newId = String(item.id || '');
+            const newName = item.name || name;
+            if (!newId) {
+                this.brandCreateError = 'Brand created but no id returned.';
+                return;
+            }
+
+            if (!this.brands.some(b => String(b.id) === newId) && !this.customBrands.some(b => String(b.id) === newId)) {
+                this.customBrands.push({ id: newId, name: newName });
+            }
+
+            this.categoryCreateBrandId = newId;
+            this.fillSelect('catalog_category_brand', this.allBrands, newId);
+
+            if (this.brandCreateContext === 'customer_type') {
+                this.ctFilterBrandId = newId;
+                this.onCtFilterBrandChange();
+            } else if (this.brandCreateContext === 'category') {
+                // Keep category modal open with new brand selected.
+            } else if (this.type === 'brand') {
+                if (this.selectedBrandId && String(this.selectedBrandId) !== newId && this.lines.some(l => l.product_id)) {
+                    if (!confirm('Selecting the new brand will clear selected products. Continue?')) {
+                        this.brandCreateOpen = false;
+                        return;
+                    }
+                    this.lines = [];
+                    this.selectedProductIds = [];
+                }
+                this.selectedBrandId = newId;
+                this.previousBrandId = newId;
+                this.filterCategoryId = '';
+                this.filterSubCategoryId = '';
+                this.brandPage = 1;
+                this.loadBrandProducts();
+            }
+
+            this.brandCreateOpen = false;
+        },
+
+        openCategoryCreate(context = 'brand') {
+            this.categoryCreateContext = context || 'brand';
+            this.categoryCreateOpen = true;
+            this.categoryCreateError = '';
+            this.categoryCreateName = '';
+            this.categoryCreateActive = true;
+
+            let brandId = '';
+            if (context === 'customer_type') {
+                brandId = this.ctFilterBrandId || '';
+            } else if (context === 'subcategory') {
+                brandId = this.selectedBrandId || this.ctFilterBrandId || '';
+            } else {
+                brandId = this.selectedBrandId || '';
+            }
+            this.categoryCreateBrandId = brandId ? String(brandId) : '';
+
+            this.$nextTick(() => {
+                this.fillSelect('catalog_category_brand', this.allBrands, this.categoryCreateBrandId);
+                document.getElementById('catalog_category_name')?.focus();
+            });
+        },
+
+        async saveCategory() {
+            if (!this.categoryCreateBrandId) {
+                this.categoryCreateError = 'Please select a brand before creating a category.';
+                document.getElementById('catalog_category_brand')?.focus();
+                return;
+            }
+            const name = (this.categoryCreateName || '').trim();
+            if (!name) {
+                this.categoryCreateError = 'Name is required.';
+                return;
+            }
+
+            this.categoryCreateSaving = true;
+            this.categoryCreateError = '';
+            const result = await this.postJson(this.categoryQuickUrl, {
+                name,
+                brand_id: this.categoryCreateBrandId,
+                is_active: !!this.categoryCreateActive,
+            });
+            this.categoryCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.categoryCreateError = result.data.message || 'Could not create the category.';
+                return;
+            }
+
+            const item = result.data.item || {};
+            const newId = String(item.id || '');
+            const newName = item.name || name;
+            const brandId = String(item.brand_id || this.categoryCreateBrandId || '');
+            if (!newId) {
+                this.categoryCreateError = 'Category created but no id returned.';
+                return;
+            }
+
+            const cat = { id: newId, name: newName, brand_id: brandId };
+            if (!this.categories.some(c => String(c.id) === newId)) {
+                this.categories.push(cat);
+            }
+            if (!this.brandCategoryOptions.some(c => String(c.id) === newId)) {
+                this.brandCategoryOptions.push({ id: newId, name: newName });
+                this.brandCategoryOptions.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+            }
+
+            if (this.categoryCreateContext === 'customer_type') {
+                this.ctFilterBrandId = brandId;
+                this.ctFilterCategoryId = newId;
+                this.onCtFilterCategoryChange();
+            } else if (this.categoryCreateContext === 'subcategory') {
+                this.subCategoryCreateCategoryId = newId;
+                this.fillSelect('price_subcategory_category', this.categoriesForSubCreate(), newId);
+            } else {
+                this.filterCategoryId = newId;
+                this.onFilterCategoryChange();
+            }
+
+            this.categoryCreateOpen = false;
+        },
+
+        categoriesForSubCreate() {
+            const brandId = this.selectedBrandId || this.ctFilterBrandId || this.categoryCreateBrandId || '';
+            let list = this.categories || [];
+            if (brandId) {
+                list = list.filter(c => String(c.brand_id) === String(brandId));
+            }
+            // Prefer brandCategoryOptions when available (brand-wise catalog)
+            if (this.type === 'brand' && this.brandCategoryOptions.length) {
+                const fromBrand = this.brandCategoryOptions.map(c => ({
+                    id: String(c.id),
+                    name: c.name,
+                    brand_id: String(brandId || ''),
+                }));
+                const ids = new Set(fromBrand.map(c => c.id));
+                list.forEach((c) => {
+                    if (!ids.has(String(c.id))) {
+                        fromBrand.push({ id: String(c.id), name: c.name, brand_id: String(c.brand_id || '') });
+                    }
+                });
+                return fromBrand.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+            }
+            return list.map(c => ({ id: String(c.id), name: c.name, brand_id: String(c.brand_id || '') }))
+                .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        },
+
+        openSubCategoryCreate(context = 'brand') {
+            this.subCategoryCreateContext = context || 'brand';
+            this.subCategoryCreateOpen = true;
+            this.subCategoryCreateError = '';
+            this.subCategoryCreateName = '';
+            this.subCategoryCreateActive = true;
+            this.subCategoryCreateCategoryId = context === 'customer_type'
+                ? String(this.ctFilterCategoryId || '')
+                : String(this.filterCategoryId || '');
+
+            this.$nextTick(() => {
+                this.fillSelect('price_subcategory_category', this.categoriesForSubCreate(), this.subCategoryCreateCategoryId);
+                document.getElementById('price_subcategory_name')?.focus();
+            });
+        },
+
+        async saveSubCategory() {
+            if (!this.subCategoryCreateCategoryId) {
+                this.subCategoryCreateError = 'Please select a category before creating a subcategory.';
+                document.getElementById('price_subcategory_category')?.focus();
+                return;
+            }
+            const name = (this.subCategoryCreateName || '').trim();
+            if (!name) {
+                this.subCategoryCreateError = 'Name is required.';
+                return;
+            }
+
+            this.subCategoryCreateSaving = true;
+            this.subCategoryCreateError = '';
+            const result = await this.postJson(this.subCategoryQuickUrl, {
+                name,
+                category_id: this.subCategoryCreateCategoryId,
+                is_active: !!this.subCategoryCreateActive,
+            });
+            this.subCategoryCreateSaving = false;
+            if (!result.ok || !result.data.success) {
+                this.subCategoryCreateError = result.data.message || 'Could not create the subcategory.';
+                return;
+            }
+
+            const item = result.data.item || {};
+            const newId = String(item.id || '');
+            const newName = item.name || name;
+            const catId = String(item.category_id || this.subCategoryCreateCategoryId || '');
+            if (!newId) {
+                this.subCategoryCreateError = 'Subcategory created but no id returned.';
+                return;
+            }
+
+            const sub = { id: newId, name: newName, category_id: catId };
+            if (!this.subCategories.some(s => String(s.id) === newId)) {
+                this.subCategories.push(sub);
+            }
+            if (!this.brandSubCategoryOptionsAll.some(s => String(s.id) === newId)) {
+                this.brandSubCategoryOptionsAll.push(sub);
+                this.brandSubCategoryOptionsAll.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+            }
+
+            if (this.subCategoryCreateContext === 'customer_type') {
+                this.ctFilterCategoryId = catId;
+                this.ctFilterSubCategoryId = newId;
+            } else {
+                this.filterCategoryId = catId;
+                this.filterSubCategoryId = newId;
+                this.brandPage = 1;
+            }
+
+            this.subCategoryCreateOpen = false;
         },
 
         openTypeModal() {
@@ -2514,6 +3010,7 @@ function priceMasterForm(config) {
                             min_qty: item.min_qty !== null && item.min_qty !== undefined ? item.min_qty : '',
                             searchQuery: `${item.product_name}${item.sku ? ' (' + item.sku + ')' : ''}`,
                             isOpen: false,
+                            highlightIndex: -1,
                             isLoadingDetails: false,
                         });
                     }
@@ -2539,6 +3036,7 @@ function priceMasterForm(config) {
                             min_qty: item.min_qty !== null && item.min_qty !== undefined ? item.min_qty : '',
                             searchQuery: `${item.product_name}${item.sku ? ' (' + item.sku + ')' : ''}`,
                             isOpen: false,
+                            highlightIndex: -1,
                             isLoadingDetails: false,
                         });
                     }
@@ -2562,12 +3060,82 @@ function priceMasterForm(config) {
                 min_qty: '',
                 searchQuery: '',
                 isOpen: false,
+                highlightIndex: -1,
                 isLoadingDetails: false,
             });
         },
         removeLine(idx) {
             if (this.lines.length <= 1) return;
             this.lines.splice(idx, 1);
+        },
+        scrollHighlightedOption(listEl, index) {
+            if (!listEl || index < 0) return;
+            const option = listEl.querySelector(`[data-index="${index}"]`);
+            if (option && typeof option.scrollIntoView === 'function') {
+                option.scrollIntoView({ block: 'nearest' });
+            }
+        },
+        onLineProductKeydown(event, idx) {
+            const line = this.lines[idx];
+            if (!line) return;
+            const list = this.filteredProducts(line);
+            const key = event.key;
+            if (key === 'ArrowDown') {
+                event.preventDefault();
+                line.isOpen = true;
+                if (!list.length) return;
+                const current = Number.isInteger(line.highlightIndex) ? line.highlightIndex : -1;
+                line.highlightIndex = Math.min(current + 1, list.length - 1);
+                this.$nextTick(() => this.scrollHighlightedOption(document.getElementById(`line-product-list-${idx}`), line.highlightIndex));
+            } else if (key === 'ArrowUp') {
+                event.preventDefault();
+                line.isOpen = true;
+                if (!list.length) return;
+                const current = Number.isInteger(line.highlightIndex) ? line.highlightIndex : 0;
+                line.highlightIndex = Math.max(current - 1, 0);
+                this.$nextTick(() => this.scrollHighlightedOption(document.getElementById(`line-product-list-${idx}`), line.highlightIndex));
+            } else if (key === 'Enter') {
+                if (line.isOpen && list.length && line.highlightIndex >= 0 && line.highlightIndex < list.length) {
+                    event.preventDefault();
+                    this.selectLineProduct(idx, list[line.highlightIndex]);
+                }
+            } else if (key === 'Escape') {
+                if (line.isOpen) {
+                    event.preventDefault();
+                    line.isOpen = false;
+                    line.highlightIndex = -1;
+                }
+            }
+        },
+        onEditProductKeydown(event) {
+            const list = this.filteredEditProducts;
+            const key = event.key;
+            if (key === 'ArrowDown') {
+                event.preventDefault();
+                this.editProductOpen = true;
+                if (!list.length) return;
+                const current = Number.isInteger(this.editHighlightIndex) ? this.editHighlightIndex : -1;
+                this.editHighlightIndex = Math.min(current + 1, list.length - 1);
+                this.$nextTick(() => this.scrollHighlightedOption(this.$refs.editProductList, this.editHighlightIndex));
+            } else if (key === 'ArrowUp') {
+                event.preventDefault();
+                this.editProductOpen = true;
+                if (!list.length) return;
+                const current = Number.isInteger(this.editHighlightIndex) ? this.editHighlightIndex : 0;
+                this.editHighlightIndex = Math.max(current - 1, 0);
+                this.$nextTick(() => this.scrollHighlightedOption(this.$refs.editProductList, this.editHighlightIndex));
+            } else if (key === 'Enter') {
+                if (this.editProductOpen && list.length && this.editHighlightIndex >= 0 && this.editHighlightIndex < list.length) {
+                    event.preventDefault();
+                    this.selectEditProduct(list[this.editHighlightIndex]);
+                }
+            } else if (key === 'Escape') {
+                if (this.editProductOpen) {
+                    event.preventDefault();
+                    this.editProductOpen = false;
+                    this.editHighlightIndex = -1;
+                }
+            }
         },
         filteredProducts(line) {
             let pool = (this.type === 'brand') ? this.brandProducts : this.products;
@@ -2588,10 +3156,10 @@ function priceMasterForm(config) {
                 return pool.slice(0, 40);
             }
             return pool.filter(p =>
-                (p.name && p.name.toLowerCase().includes(q)) ||
-                (p.sku && String(p.sku).toLowerCase().includes(q)) ||
-                (p.category_name && p.category_name.toLowerCase().includes(q)) ||
-                (p.sub_category_name && p.sub_category_name.toLowerCase().includes(q))
+                (p.name && p.name.toLowerCase().startsWith(q)) ||
+                (p.sku && String(p.sku).toLowerCase().startsWith(q)) ||
+                (p.category_name && p.category_name.toLowerCase().startsWith(q)) ||
+                (p.sub_category_name && p.sub_category_name.toLowerCase().startsWith(q))
             ).slice(0, 40);
         },
         selectLineProduct(idx, prod) {
@@ -2600,8 +3168,10 @@ function priceMasterForm(config) {
             line.product_id = String(prod.id);
             line.searchQuery = `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`;
             line.isOpen = false;
-            line.uom_id = prod.base_uom_id ? String(prod.base_uom_id) : '';
-            this.applyProductPricingDefaults(line, prod);
+            line.highlightIndex = -1;
+            line.uom_id = this.resolveDefaultUomId(prod);
+            this.applyProductPricingDefaults(line, prod, true);
+            this.$nextTick(() => this.ensureLineUom(line, prod));
             this.fetchProductDetails(prod.id, line);
         },
         clearLineProduct(idx) {
@@ -2611,6 +3181,7 @@ function priceMasterForm(config) {
             line.uom_id = '';
             line.searchQuery = '';
             line.isOpen = false;
+            line.highlightIndex = -1;
             line.isLoadingDetails = false;
         },
 
@@ -2621,16 +3192,18 @@ function priceMasterForm(config) {
                 return pool.slice(0, 40);
             }
             return pool.filter(p =>
-                (p.name && p.name.toLowerCase().includes(q)) ||
-                (p.sku && String(p.sku).toLowerCase().includes(q))
+                (p.name && p.name.toLowerCase().startsWith(q)) ||
+                (p.sku && String(p.sku).toLowerCase().startsWith(q))
             ).slice(0, 40);
         },
         selectEditProduct(prod) {
             this.editProductId = String(prod.id);
             this.editProductQuery = `${prod.name}${prod.sku ? ' (' + prod.sku + ')' : ''}`;
             this.editProductOpen = false;
-            this.editUomId = prod.base_uom_id ? String(prod.base_uom_id) : '';
+            this.editHighlightIndex = -1;
+            this.editUomId = this.resolveDefaultUomId(prod);
             this.applyEditPricingDefaults(prod);
+            this.$nextTick(() => this.ensureEditUom(prod));
             this.fetchProductDetails(prod.id);
         },
         productById(id) {
@@ -2700,6 +3273,7 @@ function priceMasterForm(config) {
             this.editUomId = '';
             this.editProductQuery = '';
             this.editProductOpen = false;
+            this.editHighlightIndex = -1;
             this.isEditLoadingDetails = false;
         },
     };

@@ -172,11 +172,34 @@ function dmsSearchableSelect(config) {
                 return this.options;
             }
             const q = this.searchQuery.toLowerCase().trim();
-            return this.options.filter(o => {
-                const nameMatch = o.name && o.name.toLowerCase().includes(q);
-                const codeMatch = o.code && o.code.toLowerCase().includes(q);
-                return nameMatch || codeMatch;
-            });
+            const scored = this.options.map(o => {
+                const name = (o.name || '').toLowerCase();
+                const code = (o.code || '').toLowerCase();
+                let score = 0;
+                if (name.startsWith(q) || code.startsWith(q)) score = 300;
+                else if (this.initialsMatch(name, q) || this.initialsMatch(code, q)) score = 200;
+                else if (name.includes(q) || code.includes(q)) score = 100;
+                else if (name.split(/[^a-z0-9]+/).some(w => w.startsWith(q))) score = 150;
+                return { o, score };
+            }).filter(x => x.score > 0);
+
+            scored.sort((a, b) => b.score - a.score || a.o.name.localeCompare(b.o.name));
+            return scored.map(x => x.o);
+        },
+
+        initialsMatch(text, token) {
+            if (!text || !token) return false;
+            const words = text.split(/[^a-z0-9]+/).filter(Boolean);
+            const initials = words.map(w => w.charAt(0)).join('');
+            if (initials.startsWith(token)) return true;
+            for (let i = 0; i < words.length; i++) {
+                let built = '';
+                for (let j = i; j < words.length && built.length < token.length; j++) {
+                    built += words[j].charAt(0);
+                }
+                if (built.startsWith(token)) return true;
+            }
+            return false;
         },
 
         openDropdown() {

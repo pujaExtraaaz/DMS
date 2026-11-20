@@ -23,6 +23,7 @@ Route::middleware('role_or_permission:super-admin|payments.view|payments.create|
 
 Route::prefix('cheques')->name('cheques.')->middleware('role_or_permission:super-admin|cheques.view|cheques.create|cheques.edit|cheques.manage|payments.view|payments.manage')->group(function () {
     Route::get('/', [ChequeController::class, 'index'])->name('index');
+    Route::get('/export', [ChequeController::class, 'index'])->name('export');
     Route::get('/create', [ChequeController::class, 'create'])->name('create');
     Route::post('/', [ChequeController::class, 'store'])->name('store');
     Route::get('/{cheque}', [ChequeController::class, 'show'])->name('show');
@@ -30,6 +31,12 @@ Route::prefix('cheques')->name('cheques.')->middleware('role_or_permission:super
     Route::post('/{cheque}/clear', [ChequeController::class, 'clear'])->name('clear');
     Route::post('/{cheque}/bounce', [ChequeController::class, 'bounce'])->name('bounce');
     Route::post('/{cheque}/cancel', [ChequeController::class, 'cancel'])->name('cancel');
+    Route::post('/{cheque}/mark-stale', [ChequeController::class, 'markStale'])->name('mark-stale');
+});
+
+Route::middleware('role_or_permission:super-admin|cheques.view|cheques.create|organization.view|payments.view')->group(function () {
+    Route::get('/banking/cheque-books', [\App\Http\Controllers\Organization\ChequeBookController::class, 'manage'])->name('cheque-books.index');
+    Route::get('/banking/cheque-books/available-numbers', [\App\Http\Controllers\Organization\ChequeBookController::class, 'availableNumbers'])->name('cheque-books.available-numbers');
 });
 
 Route::prefix('credit-notes')->name('credit-notes.')->middleware('role_or_permission:super-admin|credit-notes.view|credit-notes.create|credit-notes.edit|credit-notes.manage|payments.view|payments.manage')->group(function () {

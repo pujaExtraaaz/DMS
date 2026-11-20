@@ -3,62 +3,38 @@
 @section('content')
 <x-ui.page-header title="Sales Report" description="Comprehensive sales analysis and invoicing details">
     <x-slot name="actions">
+        @if(\Illuminate\Support\Facades\Route::has('invoices.index'))
+            <a href="{{ route('invoices.index') }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Sales Invoices</a>
+        @endif
         <a href="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">⬇ CSV</a>
         <a href="{{ request()->fullUrlWithQuery(['export' => 'pdf']) }}" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">⬇ PDF</a>
+        <button type="button" onclick="window.print()" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">🖨 Print</button>
     </x-slot>
 </x-ui.page-header>
 
-{{-- Filters --}}
-<x-ui.card class="mb-6">
-    <form method="GET" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 items-end">
-        <x-ui.input name="date_from" type="date" label="From" :value="$dateFrom" />
-        <x-ui.input name="date_to" type="date" label="To" :value="$dateTo" />
-        <x-ui.select name="customer_id" label="Party" placeholder="All Parties">
-            <option value=""></option>
-            @foreach($customers as $c)
-                <option value="{{ $c->id }}" @selected(request('customer_id')==$c->id)>{{ $c->name }}</option>
-            @endforeach
-        </x-ui.select>
-        <x-ui.select name="salesperson_id" label="Salesperson" placeholder="All Salespersons">
-            <option value="">All Salespersons</option>
-            <option value="unassigned" @selected(request('salesperson_id') === 'unassigned')>Unassigned</option>
-            @foreach($salespeople as $u)
-                <option value="{{ $u->id }}" @selected(request('salesperson_id')==$u->id)>{{ $u->name }}</option>
-            @endforeach
-        </x-ui.select>
-        <x-ui.select name="status" label="Status" placeholder="All Statuses">
-            <option value="">All Statuses</option>
-            @foreach(['draft', 'issued', 'partial', 'paid', 'cancelled'] as $st)
-                <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst($st) }}</option>
-            @endforeach
-        </x-ui.select>
-        <x-ui.select name="branch_id" label="Branch" placeholder="All Branches">
-            <option value=""></option>
-            @foreach($branches as $b)
-                <option value="{{ $b->id }}" @selected(request('branch_id')==$b->id)>{{ $b->name }}</option>
-            @endforeach
-        </x-ui.select>
-        <x-ui.select name="brand_id" label="Brand" placeholder="All Brands">
-            <option value=""></option>
-            @foreach($brands as $b)
-                <option value="{{ $b->id }}" @selected(request('brand_id')==$b->id)>{{ $b->name }}</option>
-            @endforeach
-        </x-ui.select>
-        <x-ui.select name="category_id" label="Category" placeholder="All Categories">
-            <option value=""></option>
-            @foreach($categories as $c)
-                <option value="{{ $c->id }}" @selected(request('category_id')==$c->id)>{{ $c->name }}</option>
-            @endforeach
-        </x-ui.select>
-        <x-ui.select name="product_id" label="Item" placeholder="All Items">
-            <option value=""></option>
-            @foreach($products as $p)
-                <option value="{{ $p->id }}" @selected(request('product_id')==$p->id)>{{ $p->name }}</option>
-            @endforeach
-        </x-ui.select>
-        <x-ui.button type="submit" variant="secondary" class="whitespace-nowrap">Run Report</x-ui.button>
-    </form>
-</x-ui.card>
+@include('reporting.partials.integrity-hints')
+
+<x-ui.report-filters
+    :date-from="$dateFrom"
+    :date-to="$dateTo"
+    search-placeholder="Search invoice no, party, salesperson initials..."
+    :reset-url="route('reports.sales')"
+    :show-party="true"
+    :show-salesperson="true"
+    :show-unassigned-salesperson="true"
+    :show-status="true"
+    :statuses="['draft', 'issued', 'partial', 'paid', 'cancelled']"
+    :show-branch="true"
+    :show-brand="true"
+    :show-category="true"
+    :show-product="true"
+    :customers="$customers"
+    :salespeople="$salespeople"
+    :branches="$branches"
+    :brands="$brands"
+    :categories="$categories"
+    :products="$products"
+/>
 
 {{-- Summary KPIs --}}
 <div class="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3 lg:grid-cols-6">
@@ -117,7 +93,7 @@
 {{-- Detailed Invoices Table --}}
 <x-ui.card title="Invoice Details">
     <div class="overflow-x-auto">
-        <table class="min-w-full border-collapse text-sm">
+        <table class="min-w-full border-collapse text-sm" data-report-table>
             <thead class="bg-slate-50 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3 text-left font-semibold text-slate-600">Invoice</th>
@@ -145,8 +121,9 @@
                         $totalGrandCol += $invoice->grand_total;
                         $totalPaidCol += $invoice->paid_amount;
                         $totalOutstandingCol += $outstanding;
+                        $rowSearch = trim(($invoice->invoice_no ?? '').' '.($invoice->customer?->name ?? '').' '.($invoice->salesperson?->name ?? '').' '.($invoice->status ?? ''));
                     @endphp
-                    <tr class="hover:bg-slate-50">
+                    <tr class="hover:bg-slate-50" data-search="{{ $rowSearch }}">
                         <td class="px-4 py-3">
                             <a href="{{ route('invoices.show', $invoice) }}" class="text-indigo-600 hover:text-indigo-700 font-medium">{{ $invoice->invoice_no }}</a>
                         </td>
@@ -168,13 +145,13 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="11" class="px-4 py-8">
+                        <td colspan="11" class="px-4 py-8" data-report-empty>
                             <x-ui.empty-state title="No invoices found" description="Adjust filters and try again" />
                         </td>
                     </tr>
                 @endforelse
                 @if($invoices->isNotEmpty())
-                    <tr class="bg-slate-50 font-semibold text-slate-900 border-t-2 border-slate-300">
+                    <tr class="bg-slate-50 font-semibold text-slate-900 border-t-2 border-slate-300" data-report-empty>
                         <td colspan="5" class="px-4 py-4 text-right">TOTALS</td>
                         <td class="px-4 py-4 text-right">{{ $totalItems }}</td>
                         <td class="px-4 py-4 text-right">₹{{ number_format($totalSubtotalCol, 2) }}</td>

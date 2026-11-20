@@ -5,12 +5,10 @@
         $year = $workspace->financialYear();
         $symbol = $company?->currency_symbol ?: '₹';
         $money = function (?string $value) use ($symbol): string {
-            $value = trim((string) ($value ?: '0.00'));
-            if ($value === '') {
-                $value = '0.00';
-            }
+            $raw = preg_replace('/[^\d.\-]/', '', (string) ($value ?? '0')) ?: '0';
+            $number = (float) $raw;
 
-            return str_starts_with($value, $symbol) ? $value : $symbol.$value;
+            return ($number < 0 ? '-' : '').$symbol.number_format(abs($number), 2);
         };
     @endphp
 
@@ -202,7 +200,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     @foreach ([
                         ['Trial balance', 'reports.trial-balance'],
-                        ['Profit & loss', 'reports.profit-and-loss'],
+                        ['Profit & Loss', 'reports.profit-and-loss'],
                         ['Balance sheet', 'reports.balance-sheet'],
                         ['Business units', 'reports.business-units'],
                         ['Departments', 'reports.departments'],

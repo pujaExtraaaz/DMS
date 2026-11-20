@@ -22,6 +22,7 @@ class UpdateContactRequest extends FormRequest
             'remove_photo' => ['nullable', 'boolean'],
             'contact_type' => ['required', 'string', 'max:50'],
             'designation' => ['nullable', 'string', 'max:255'],
+            'designation_id' => ['nullable', 'integer', 'exists:designations,id'],
             'department_id' => ['nullable', 'exists:phone_directory_departments,id'],
             'company_name' => ['nullable', 'string', 'max:255'],
             'category_id' => ['nullable', 'exists:phone_directory_categories,id'],

@@ -7,8 +7,8 @@
     generateEwayModal: false,
     updateVehicleModal: false,
     printSettingsModal: false,
-    printCopyType: 'all',
-    printCopies: 3,
+    printCopyType: 'original',
+    printCopies: 1,
     cancelReason: '1',
     cancelRemarks: '',
     ewayCancelReason: '1',
@@ -20,12 +20,29 @@
     transportMode: @js($invoice->transport_mode ?? '1'),
     transporterId: @js($invoice->transporter_id ?? ''),
     transporterName: @js($invoice->transporter_name ?? ''),
+    lrRrNo: @js($invoice->lr_rr_no ?? ''),
+    lrRrDate: @js($invoice->lr_rr_date?->format('Y-m-d') ?? ''),
+    fromPincode: @js($invoice->consignor_pincode ?: ($company?->pincode ?? '')),
+    fromPlace: @js($invoice->consignor_city ?: ($company?->city ?: ($company?->state ?? ''))),
+    toPincode: @js($invoice->shippingAddress?->pincode ?: ($invoice->consignee_pincode ?: ($invoice->customer?->shipping_pincode ?: ($invoice->customer?->pincode ?? '')))),
+    toPlace: @js($invoice->ship_to_place ?: ($invoice->consignee_city ?: ($invoice->destination ?: ($invoice->customer?->shipping_city ?: ($invoice->customer?->city ?: ($invoice->customer?->state ?? '')))))),
 }">
 
 <x-ui.page-header :title="$invoice->invoice_no" :description="$invoice->customer->name">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('invoices.index')">Back</x-ui.button>
-        <x-ui.button variant="secondary" :href="route('invoices.edit', $invoice)">Edit</x-ui.button>
+        @if(auth()->user()?->can('invoices.edit') || auth()->user()?->can('invoices.manage') || auth()->user()?->can('sales.edit') || auth()->user()?->can('sales.manage') || auth()->user()?->hasRole('super-admin'))
+            <x-ui.button variant="secondary" :href="route('invoices.edit', $invoice)" title="{{ $invoice->isStatutoryLocked() ? 'Statutory documents generated - pricing is locked' : 'Edit invoice details and items' }}">
+                @if($invoice->isStatutoryLocked())
+                    <span class="inline-flex items-center gap-1 text-slate-700">
+                        <svg class="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                        Edit Details
+                    </span>
+                @else
+                    Edit
+                @endif
+            </x-ui.button>
+        @endif
         <button type="button" @click="printSettingsModal = true" class="inline-flex items-center px-3.5 py-2 border border-slate-300 shadow-sm text-sm font-semibold rounded-lg text-slate-700 bg-white hover:bg-slate-50 transition">
             <svg class="w-4 h-4 mr-1.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
             Print
@@ -53,7 +70,11 @@
         </div>
         <x-ui.button variant="secondary" :href="route('invoices.preview', $invoice)">Preview</x-ui.button>
         <x-ui.button variant="secondary" :href="route('invoices.e-invoice.document', $invoice)">E-Invoice Doc</x-ui.button>
-        <x-ui.button variant="secondary" :href="route('invoices.eway.document', $invoice)">E-Way Bill Doc</x-ui.button>
+        @if($invoice->isEWayBillGenerated() || ($invoice->eWayBill && in_array($invoice->eWayBill->status, ['generated', 'active']) && filled($invoice->eWayBill->eway_bill_no)))
+            <x-ui.button variant="secondary" :href="route('invoices.eway.document', $invoice)">E-Way Bill Doc</x-ui.button>
+        @else
+            <x-ui.button type="button" variant="secondary" @click="generateEwayModal = true">Generate E-Way Bill</x-ui.button>
+        @endif
         <form method="POST" action="{{ route('payment-links.create', $invoice) }}" class="inline">@csrf<x-ui.button type="submit" variant="secondary">Payment Link</x-ui.button></form>
         <x-ui.button variant="primary" :href="route('payments.create', ['invoice_id' => $invoice->id])">Record Payment</x-ui.button>
     </x-slot>
@@ -72,7 +93,18 @@
             </x-slot>
             @foreach($invoice->items as $item)
                 <tr>
-                    <td class="px-6 py-4 text-sm">{{ $item->product?->name ?? $item->item_name }}</td>
+                    <td class="px-6 py-4 text-sm">
+                        <div class="font-medium text-slate-900">{{ $item->product?->name ?? $item->item_name }}</div>
+                        @php
+                            $serials = is_array($item->serial_numbers) ? $item->serial_numbers : (filled($item->serial_numbers) ? explode(',', $item->serial_numbers) : []);
+                            $serials = array_filter(array_map('trim', $serials));
+                        @endphp
+                        @if(count($serials) > 0)
+                            <div class="mt-1 text-xs font-mono text-amber-700">
+                                <span class="font-semibold text-slate-500">S/N:</span> {{ implode(', ', $serials) }}
+                            </div>
+                        @endif
+                    </td>
                     <td class="px-6 py-4 text-sm text-right font-mono">{{ $item->quantity }} {{ $item->uom?->code }}</td>
                     <td class="px-6 py-4 text-sm text-right font-mono">₹{{ number_format($item->unit_price, 2) }}</td>
                     <td class="px-6 py-4 text-sm text-right font-mono font-bold">₹{{ number_format($item->line_total, 2) }}</td>
@@ -242,6 +274,80 @@
         <div class="mt-4 space-y-2">
             <form method="POST" action="{{ route('communications.send-invoice', $invoice) }}">@csrf<x-ui.button type="submit" variant="ghost" class="w-full">Send WhatsApp</x-ui.button></form>
             <form method="POST" action="{{ route('communications.send-reminder', $invoice) }}">@csrf<x-ui.button type="submit" variant="ghost" class="w-full">Send Reminder</x-ui.button></form>
+        </div>
+    </x-ui.card>
+</div>
+
+{{-- 3. Audit Trail & Modification History Card --}}
+<div class="mt-6">
+    <x-ui.card>
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+            <div class="flex items-center gap-2">
+                <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <h3 class="text-sm font-bold text-slate-800">Modification History &amp; Audit Trail</h3>
+            </div>
+            <span class="text-xs text-slate-500 font-medium">Original Ref: {{ $invoice->invoice_no }}</span>
+        </div>
+
+        <div class="mt-4">
+            @php
+                $activityLogs = $invoice->activityLogs;
+            @endphp
+            @if($activityLogs->isEmpty())
+                <p class="text-xs text-slate-500 italic py-2">No modification history recorded yet for this invoice.</p>
+            @else
+                <div class="overflow-x-auto">
+                    <table class="w-full text-xs text-left divide-y divide-slate-200">
+                        <thead class="bg-slate-50 text-slate-600 uppercase font-semibold">
+                            <tr>
+                                <th class="p-2.5">Date &amp; Time</th>
+                                <th class="p-2.5">Action</th>
+                                <th class="p-2.5">Modified By</th>
+                                <th class="p-2.5">Summary of Changes</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            @foreach($activityLogs as $log)
+                                <tr class="hover:bg-slate-50">
+                                    <td class="p-2.5 whitespace-nowrap text-slate-500 font-mono">{{ $log->created_at->format('d M Y, h:i A') }}</td>
+                                    <td class="p-2.5 whitespace-nowrap">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold {{ $log->action === 'updated' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700' }}">
+                                            {{ ucfirst($log->action) }}
+                                        </span>
+                                    </td>
+                                    <td class="p-2.5 whitespace-nowrap font-medium text-slate-800">{{ $log->actor_name ?? $log->user?->name ?? 'System' }}</td>
+                                    <td class="p-2.5 text-slate-700">
+                                        @if(is_array($log->properties))
+                                            @if(isset($log->properties['message']))
+                                                <div class="font-medium text-slate-900">{{ $log->properties['message'] }}</div>
+                                            @endif
+                                            @if(isset($log->properties['old']) && isset($log->properties['new']))
+                                                <div class="text-[11px] text-slate-500 mt-0.5">
+                                                    Grand Total:
+                                                    <span class="line-through text-slate-400 font-mono">₹{{ number_format($log->properties['old']['grand_total'] ?? 0, 2) }}</span>
+                                                    →
+                                                    <span class="font-bold text-slate-800 font-mono">₹{{ number_format($log->properties['new']['grand_total'] ?? 0, 2) }}</span>
+                                                    @if(isset($log->properties['diff_grand_total']))
+                                                        <span class="text-[10px] font-mono {{ $log->properties['diff_grand_total'] >= 0 ? 'text-emerald-700' : 'text-rose-700' }}">
+                                                            ({{ $log->properties['diff_grand_total'] >= 0 ? '+' : '' }}₹{{ number_format($log->properties['diff_grand_total'], 2) }})
+                                                        </span>
+                                                    @endif
+                                                </div>
+                                            @elseif(isset($log->properties['note']))
+                                                <div class="text-[11px] text-slate-600">{{ $log->properties['note'] }}</div>
+                                            @endif
+                                        @else
+                                            <span>{{ $log->action }}</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            @endif
         </div>
     </x-ui.card>
 </div>
@@ -463,9 +569,14 @@
                     @endif
                 </div>
             @elseif($ewbStatus === 'failed')
-                <div class="p-3 bg-red-50 rounded-lg border border-red-200 text-red-800 space-y-1">
-                    <div class="font-bold">E-Way Bill Generation Failed</div>
-                    <div class="text-[11px]">{{ $invoice->eWayBill?->last_error ?: 'An error occurred with the E-Way Bill portal.' }}</div>
+                <div class="p-3 bg-red-50 rounded-lg border border-red-200 text-red-800 space-y-1.5">
+                    <div class="font-bold text-red-950 flex items-center gap-1.5">
+                        <svg class="w-4 h-4 text-red-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        <span>E-Way Bill Generation Failed</span>
+                    </div>
+                    <div class="text-[11px] leading-relaxed break-words font-medium text-red-800 bg-white/70 p-2 rounded border border-red-200/60">
+                        {{ $invoice->eWayBill?->last_error ?: 'An error occurred with the Government E-Way Bill portal.' }}
+                    </div>
                 </div>
                 <div class="pt-2">
                     <button type="button" @click="generateEwayModal = true"
@@ -526,8 +637,8 @@
 
                         <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block font-semibold text-slate-700 mb-1">Vehicle No. (For Road)</label>
-                                <input type="text" name="vehicle_no" x-model="vehicleNo" placeholder="E.g. MH-12-AB-1234" class="w-full rounded-lg border-gray-300 text-xs font-mono">
+                                <label class="block font-semibold text-slate-700 mb-1">Vehicle No. <span x-show="transportMode === '1'" class="text-slate-500 font-normal">(For Road)</span></label>
+                                <input type="text" name="vehicle_no" x-model="vehicleNo" placeholder="E.g. MH-12-AB-1234" class="w-full rounded-lg border-gray-300 text-xs font-mono uppercase">
                             </div>
                             <div>
                                 <label class="block font-semibold text-slate-700 mb-1">Vehicle Type</label>
@@ -545,13 +656,46 @@
                             </div>
                             <div>
                                 <label class="block font-semibold text-slate-700 mb-1">Transporter ID / GSTIN</label>
-                                <input type="text" name="transporter_id" x-model="transporterId" placeholder="15-digit GSTIN" class="w-full rounded-lg border-gray-300 text-xs font-mono">
+                                <input type="text" name="transporter_id" x-model="transporterId" placeholder="15-digit GSTIN" class="w-full rounded-lg border-gray-300 text-xs font-mono uppercase">
                             </div>
                         </div>
 
                         <div>
                             <label class="block font-semibold text-slate-700 mb-1">Transporter Name</label>
                             <input type="text" name="transporter_name" x-model="transporterName" placeholder="E.g. SafeX Logistics" class="w-full rounded-lg border-gray-300 text-xs">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100">
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Doc / LR / RR No. <span x-show="transportMode !== '1'" class="text-rose-500">*</span></label>
+                                <input type="text" name="lr_rr_no" x-model="lrRrNo" placeholder="Document / B/L / Airway No." class="w-full rounded-lg border-gray-300 text-xs font-mono">
+                            </div>
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Doc / LR / RR Date <span x-show="transportMode !== '1'" class="text-rose-500">*</span></label>
+                                <input type="date" name="lr_rr_date" x-model="lrRrDate" class="w-full rounded-lg border-gray-300 text-xs">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100">
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Dispatch Pincode *</label>
+                                <input type="text" name="consignor_pincode" x-model="fromPincode" placeholder="6-digit pincode" maxlength="6" class="w-full rounded-lg border-gray-300 text-xs font-mono">
+                            </div>
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Dispatch City / Place *</label>
+                                <input type="text" name="consignor_city" x-model="fromPlace" placeholder="Dispatch city" class="w-full rounded-lg border-gray-300 text-xs">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Delivery Pincode *</label>
+                                <input type="text" name="consignee_pincode" x-model="toPincode" placeholder="6-digit pincode" maxlength="6" class="w-full rounded-lg border-gray-300 text-xs font-mono">
+                            </div>
+                            <div>
+                                <label class="block font-semibold text-slate-700 mb-1">Delivery City / Place *</label>
+                                <input type="text" name="consignee_city" x-model="toPlace" placeholder="Delivery city" class="w-full rounded-lg border-gray-300 text-xs">
+                            </div>
                         </div>
                     </div>
                     <div class="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
@@ -707,8 +851,8 @@
                         <div>
                             <label class="block font-semibold text-slate-700 mb-1">Type of Copy *</label>
                             <select name="copy_type" x-model="printCopyType" @change="if(printCopyType === 'all') { printCopies = 3; } else { printCopies = 1; }" class="w-full rounded-lg border-slate-300 text-xs focus:ring-indigo-500 focus:border-indigo-500">
-                                <option value="all">All Copies (Original + Duplicate + Triplicate)</option>
                                 <option value="original">Original for Recipient</option>
+                                <option value="all">All Copies (Original + Duplicate + Triplicate)</option>
                                 <option value="duplicate">Duplicate for Transporter</option>
                                 <option value="triplicate">Triplicate for Supplier</option>
                                 <option value="extra">Extra Copy</option>
