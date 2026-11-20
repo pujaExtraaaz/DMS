@@ -10,6 +10,7 @@ Route::prefix('phone-directory')->name('phone-directory.')->group(function () {
     // Listing & Contacts Management
     Route::get('/', [PhoneDirectoryController::class, 'index'])->name('index');
     Route::get('/contacts/create', [PhoneDirectoryController::class, 'create'])->name('contacts.create');
+    Route::get('/create', [PhoneDirectoryController::class, 'create'])->name('create');
     Route::post('/contacts', [PhoneDirectoryController::class, 'store'])->name('contacts.store');
     Route::get('/contacts/{contact}', [PhoneDirectoryController::class, 'show'])->name('contacts.show');
     Route::get('/contacts/{contact}/edit', [PhoneDirectoryController::class, 'edit'])->name('contacts.edit');

@@ -33,15 +33,26 @@ class SalesInvoiceTargetObserver
             if ($model instanceof Invoice) {
                 $this->calculationService->recalculateForInvoice($model);
 
-                // If customer or date changed, also recalculate the previous customer/period targets
+                // If salesperson changed, also recalculate the previous salesperson's targets
+                if ($model->wasChanged('salesperson_id') && $model->getOriginal('salesperson_id')) {
+                    $originalSalespersonId = (int) $model->getOriginal('salesperson_id');
+                    $date = $model->getOriginal('invoice_date') ?? $model->invoice_date;
+                    $this->calculationService->recalculateForSalespersonAndDate($originalSalespersonId, $date);
+                }
+
+                // If customer changed, also recalculate the previous customer's targets
                 if ($model->wasChanged('customer_id') && $model->getOriginal('customer_id')) {
                     $originalCustomerId = (int) $model->getOriginal('customer_id');
                     $date = $model->getOriginal('invoice_date') ?? $model->invoice_date;
                     $this->calculationService->recalculateForCustomerIdAndDate($originalCustomerId, $date);
                 }
+
+                // If date changed, also recalculate for previous period targets
                 if ($model->wasChanged('invoice_date') && $model->getOriginal('invoice_date')) {
                     $originalDate = $model->getOriginal('invoice_date');
+                    $salespersonId = (int) ($model->getOriginal('salesperson_id') ?? $model->salesperson_id);
                     $customerId = (int) ($model->getOriginal('customer_id') ?? $model->customer_id);
+                    $this->calculationService->recalculateForSalespersonAndDate($salespersonId, $originalDate);
                     $this->calculationService->recalculateForCustomerIdAndDate($customerId, $originalDate);
                 }
             } elseif ($model instanceof CreditNote) {

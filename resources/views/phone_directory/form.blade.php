@@ -11,6 +11,8 @@
     $catOptions = $categories->map(fn ($c) => ['id' => (string) $c->id, 'name' => $c->name])->values();
     $typeOptions = collect($contactTypes)->map(fn ($label, $key) => ['id' => (string) $key, 'name' => $label])->values();
     $designationOptions = collect($masterDesignations ?? [])->values();
+    $companyOptions = collect($companies ?? [])->map(fn ($c) => ['id' => (string) $c->id, 'name' => $c->name])->values();
+    $classificationOptions = collect($classifications ?? [])->map(fn ($cl) => ['id' => (string) $cl->id, 'name' => $cl->name])->values();
     $resolvedDesignation = \App\Support\ContactDesignations::resolve(
         old('designation', $contact->designation ?? ''),
         old('designation_id', $contact->designation_id) ? (int) old('designation_id', $contact->designation_id) : null
@@ -25,6 +27,8 @@
         categories: @js($catOptions),
         contactTypes: @js($typeOptions),
         designations: @js($designationOptions),
+        companies: @js($companyOptions),
+        classifications: @js($classificationOptions),
         states: @js($states ?? []),
         stateCities: @js($stateCities ?? []),
         countries: @js($countries ?? []),
@@ -34,6 +38,9 @@
         selectedDesignationId: @js((string) old('designation_id', $resolvedDesignation['designation_id'] ?? '')),
         selectedDesignationName: @js((string) old('designation', $resolvedDesignation['designation'] ?? '')),
         otherDesignation: @js((string) old('other_designation', $resolvedDesignation['other_designation'] ?? '')),
+        selectedCompanyId: @js((string) old('company_id', $contact->company_id ?? ($isEdit ? '' : ($defaultCompanyId ?? '')))),
+        companyName: @js((string) old('company_name', $contact->company?->name ?? $contact->company_name ?? '')),
+        selectedClassificationId: @js((string) old('customer_type_id', old('classification_id', $contact->customer_type_id ?? ''))),
         country: @js(old('country', $contact->country ?? 'India')),
         state: @js(old('state', $contact->state ?? '')),
         city: @js(old('city', $contact->city ?? '')),
@@ -44,16 +51,33 @@
         csrf: @js(csrf_token()),
     })"
 >
+    @php
+        $returnTo = request('return_to', old('return_to'));
+        $partyId = request('party_id', old('party_id'));
+        $partyReturnUrl = $partyId ? route('masters.customers.edit', $partyId) : route('masters.customers.create');
+    @endphp
+
     <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-2 text-xs text-slate-500">
+            @if($returnTo === 'party')
+                <a href="{{ $partyReturnUrl }}" class="hover:text-indigo-600 transition">Parties</a>
+                <span>/</span>
+            @endif
             <a href="{{ route('phone-directory.index') }}" class="hover:text-indigo-600 transition">Phone Directory</a>
             <span>/</span>
             <span class="font-medium text-slate-900">{{ $isEdit ? 'Edit Contact' : 'New Contact' }}</span>
         </div>
-        <a href="{{ route('phone-directory.index') }}" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-900 transition">
-            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-            <span>Back to Directory</span>
-        </a>
+        @if($returnTo === 'party')
+            <a href="{{ $partyReturnUrl }}" class="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-900 transition">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                <span>Back to Party Form</span>
+            </a>
+        @else
+            <a href="{{ route('phone-directory.index') }}" class="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-slate-900 transition">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                <span>Back to Directory</span>
+            </a>
+        @endif
     </div>
 
     @if ($errors->any())
@@ -77,6 +101,8 @@
         @if($isEdit)
             @method('PUT')
         @endif
+        <input type="hidden" name="return_to" value="{{ $returnTo }}">
+        <input type="hidden" name="party_id" value="{{ $partyId }}">
 
         <div class="border-b border-slate-200 bg-slate-50 px-6 py-4 flex items-center justify-between gap-3">
             <div>
@@ -145,6 +171,31 @@
 
                     <div>
                         <div class="mb-1 flex items-center justify-between gap-2">
+                            <label class="pd-label mb-0">Party Classification</label>
+                        </div>
+                        <input type="hidden" name="customer_type_id" :value="selectedClassificationId">
+                        <div class="relative" @click.outside="classOpen = false">
+                            <input
+                                type="text"
+                                x-model="classificationQuery"
+                                @focus="classOpen = true"
+                                @input="classOpen = true; onClassificationInput()"
+                                placeholder="Search party classification..."
+                                class="pd-field"
+                                autocomplete="off"
+                            >
+                            <div x-show="classOpen" x-cloak class="pd-dropdown">
+                                <button type="button" @click="selectClassification(null)" class="text-slate-400 italic">Clear Selection</button>
+                                <template x-for="opt in filteredClassifications" :key="opt.id">
+                                    <button type="button" @click="selectClassification(opt)" x-text="opt.name"></button>
+                                </template>
+                                <div x-show="filteredClassifications.length === 0" class="px-3 py-2 text-xs text-slate-400">No classifications found</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="mb-1 flex items-center justify-between gap-2">
                             <label class="pd-label mb-0">Designation / Job Title</label>
                             <button type="button" class="pd-create-link" @click="openCreate('designation')">+ Create Designation</button>
                         </div>
@@ -183,11 +234,6 @@
                     </div>
 
                     <div>
-                        <label class="pd-label">Company / Organization</label>
-                        <input type="text" name="company_name" value="{{ old('company_name', $contact->company_name) }}" placeholder="e.g. Acme Corporation Pvt Ltd" class="pd-field pd-titlecase" @blur="titleCaseInput($event)">
-                    </div>
-
-                    <div>
                         <div class="mb-1 flex items-center justify-between gap-2">
                             <label class="pd-label mb-0">Contact Category</label>
                             <button type="button" class="pd-create-link" @click="openCreate('category')">+ Create Category</button>
@@ -200,6 +246,32 @@
                                 <template x-for="opt in filteredCategories" :key="opt.id">
                                     <button type="button" @click="selectCategory(opt)" x-text="opt.name"></button>
                                 </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="mb-1 flex items-center justify-between gap-2">
+                            <label class="pd-label mb-0">Company / Organization</label>
+                        </div>
+                        <input type="hidden" name="company_id" :value="selectedCompanyId">
+                        <input type="hidden" name="company_name" :value="selectedCompanyName">
+                        <div class="relative" @click.outside="companyOpen = false">
+                            <input
+                                type="text"
+                                x-model="companyQuery"
+                                @focus="companyOpen = true"
+                                @input="companyOpen = true; onCompanyInput()"
+                                placeholder="Search company from Setup → Companies..."
+                                class="pd-field"
+                                autocomplete="off"
+                            >
+                            <div x-show="companyOpen" x-cloak class="pd-dropdown">
+                                <button type="button" @click="selectCompany(null)" class="text-slate-400 italic">Clear Selection</button>
+                                <template x-for="opt in filteredCompanies" :key="opt.id">
+                                    <button type="button" @click="selectCompany(opt)" x-text="opt.name"></button>
+                                </template>
+                                <div x-show="filteredCompanies.length === 0" class="px-3 py-2 text-xs text-slate-400">No companies found</div>
                             </div>
                         </div>
                     </div>
@@ -381,7 +453,7 @@
         {{-- Form Actions Footer --}}
         <div class="border-t border-slate-200 bg-slate-50 px-6 py-4 flex items-center justify-end gap-3">
             <a
-                href="{{ route('phone-directory.index') }}"
+                href="{{ $returnTo === 'party' ? $partyReturnUrl : route('phone-directory.index') }}"
                 class="btn-pd-secondary inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-900 shadow-xs hover:bg-slate-50 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition whitespace-nowrap min-h-[38px]"
             >
                 Cancel
@@ -425,6 +497,8 @@ function contactFormHandler(config) {
         categories: config.categories || [],
         contactTypes: config.contactTypes || [],
         designations: config.designations || [],
+        companies: config.companies || [],
+        classifications: config.classifications || [],
         states: config.states || [],
         stateCities: config.stateCities || {},
         countries: config.countries || [],
@@ -434,12 +508,15 @@ function contactFormHandler(config) {
         selectedDesignationId: config.selectedDesignationId || '',
         selectedDesignationName: config.selectedDesignationName || '',
         otherDesignation: config.otherDesignation || '',
+        selectedCompanyId: config.selectedCompanyId || '',
+        selectedCompanyName: config.companyName || '',
+        selectedClassificationId: config.selectedClassificationId || '',
         country: config.country || 'India',
         state: config.state || '',
         city: config.city || '',
         area: config.area || '',
-        deptQuery: '', catQuery: '', typeQuery: '', desigQuery: '', countryQuery: '', stateQuery: '', cityQuery: '',
-        deptOpen: false, catOpen: false, typeOpen: false, desigOpen: false, countryOpen: false, stateOpen: false, cityOpen: false,
+        deptQuery: '', catQuery: '', typeQuery: '', desigQuery: '', companyQuery: '', classificationQuery: '', countryQuery: '', stateQuery: '', cityQuery: '',
+        deptOpen: false, catOpen: false, typeOpen: false, desigOpen: false, companyOpen: false, classOpen: false, countryOpen: false, stateOpen: false, cityOpen: false,
         countryHi: -1, stateHi: -1, cityHi: -1,
         createModal: false, createKind: '', createName: '', createError: '', createSaving: false,
         storeDeptUrl: config.storeDeptUrl, storeCatUrl: config.storeCatUrl, storeDesignationUrl: config.storeDesignationUrl, csrf: config.csrf,
@@ -451,6 +528,21 @@ function contactFormHandler(config) {
             const matchedDesig = this.designations.find(d => String(d.id) === String(this.selectedDesignationId));
             this.desigQuery = matchedDesig?.name || this.selectedDesignationName || '';
             if (matchedDesig) this.selectedDesignationName = matchedDesig.name;
+
+            const matchedCompany = this.companies.find(c => String(c.id) === String(this.selectedCompanyId));
+            if (matchedCompany) {
+                this.companyQuery = matchedCompany.name;
+                this.selectedCompanyName = matchedCompany.name;
+            } else if (config.companyName) {
+                this.companyQuery = config.companyName;
+                this.selectedCompanyName = config.companyName;
+            }
+
+            const matchedClass = this.classifications.find(c => String(c.id) === String(this.selectedClassificationId));
+            if (matchedClass) {
+                this.classificationQuery = matchedClass.name;
+            }
+
             this.countryQuery = this.country || '';
             this.stateQuery = this.state || '';
             this.cityQuery = this.city || '';
@@ -508,10 +600,18 @@ function contactFormHandler(config) {
             return list.filter((item) => String(mapper(item) || '').toLowerCase().startsWith(q));
         },
 
+        containsFilter(list, query, mapper = (x) => x) {
+            const q = String(query || '').toLowerCase().trim();
+            if (!q) return list;
+            return list.filter((item) => String(mapper(item) || '').toLowerCase().includes(q));
+        },
+
         get filteredDepartments() { return this.startsWithFilter(this.departments, this.deptQuery, o => o.name); },
         get filteredCategories() { return this.startsWithFilter(this.categories, this.catQuery, o => o.name); },
         get filteredTypes() { return this.startsWithFilter(this.contactTypes, this.typeQuery, o => o.name); },
         get filteredDesignations() { return this.startsWithFilter(this.designations, this.desigQuery, o => o.name); },
+        get filteredCompanies() { return this.containsFilter(this.companies, this.companyQuery, o => o.name); },
+        get filteredClassifications() { return this.containsFilter(this.classifications, this.classificationQuery, o => o.name); },
         get filteredCountries() { return this.startsWithFilter(this.countries, this.countryQuery); },
         get filteredStates() { return this.startsWithFilter(this.states, this.stateQuery); },
         get filteredCities() { return this.startsWithFilter(this.stateCities[this.state] || [], this.cityQuery); },
@@ -520,6 +620,28 @@ function contactFormHandler(config) {
         selectDepartment(opt) { this.selectedDepartmentId = opt ? opt.id : ''; this.deptQuery = opt ? opt.name : ''; this.deptOpen = false; },
         selectCategory(opt) { this.selectedCategoryId = opt ? opt.id : ''; this.catQuery = opt ? opt.name : ''; this.catOpen = false; },
         selectType(opt) { this.selectedContactType = opt ? opt.id : ''; this.typeQuery = opt ? opt.name : ''; this.typeOpen = false; },
+        selectCompany(opt) {
+            this.selectedCompanyId = opt ? String(opt.id) : '';
+            this.selectedCompanyName = opt ? opt.name : '';
+            this.companyQuery = opt ? opt.name : '';
+            this.companyOpen = false;
+        },
+        onCompanyInput() {
+            if (!this.companyQuery.trim()) {
+                this.selectedCompanyId = '';
+                this.selectedCompanyName = '';
+            }
+        },
+        selectClassification(opt) {
+            this.selectedClassificationId = opt ? String(opt.id) : '';
+            this.classificationQuery = opt ? opt.name : '';
+            this.classOpen = false;
+        },
+        onClassificationInput() {
+            if (!this.classificationQuery.trim()) {
+                this.selectedClassificationId = '';
+            }
+        },
         selectDesignation(opt) {
             this.selectedDesignationId = opt ? String(opt.id) : '';
             this.selectedDesignationName = opt ? opt.name : '';

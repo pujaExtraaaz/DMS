@@ -15,7 +15,7 @@
         '_ifsc_message' => '',
         '_ifsc_loading' => false,
     ];
-    $initialBankAccounts = old('bank_accounts', ($item->exists && $item->relationLoaded('bankAccounts') && $item->bankAccounts->isNotEmpty()) 
+    $initialBankAccounts = old('bank_accounts', $initialBankAccounts ?? (($item->exists && $item->relationLoaded('bankAccounts') && $item->bankAccounts->isNotEmpty()) 
         ? $item->bankAccounts->map(fn ($b) => [
             'id' => $b->id,
             'account_holder_name' => $b->account_holder_name ?? '',
@@ -29,7 +29,7 @@
             '_ifsc_message' => '',
             '_ifsc_loading' => false,
         ])->toArray() 
-        : [$defaultBankAccount]);
+        : [$defaultBankAccount]));
 
     $defaultAddress = [
         'id' => null,
@@ -88,31 +88,49 @@
             }
 
             return [
+                'id' => ! empty($row['id']) ? (int) $row['id'] : null,
+                'phone_directory_contact_id' => ! empty($row['phone_directory_contact_id']) ? (int) $row['phone_directory_contact_id'] : null,
                 'name' => $row['name'] ?? '',
                 'role' => $rawRole === 'Other' && filled($customRole) ? trim($customRole) : ($row['role'] ?? $rawRole),
                 'designation_id' => $desigId ?: $resolved['designation_id'],
                 'designation' => $row['designation'] ?? $resolved['designation'],
                 'other_designation' => $row['other_designation'] ?? $resolved['other_designation'],
+                'company_name' => $row['company_name'] ?? '',
                 'phone' => $row['phone'] ?? '',
                 'alternate_phone' => $row['alternate_phone'] ?? '',
+                'whatsapp' => $row['whatsapp_number'] ?? ($row['whatsapp'] ?? ''),
+                'whatsapp_number' => $row['whatsapp_number'] ?? ($row['whatsapp'] ?? ''),
                 'email' => $row['email'] ?? '',
                 'is_primary' => (bool) ($row['is_primary'] ?? false),
+                'avatar_bg_class' => $row['avatar_bg_class'] ?? 'bg-slate-100 text-slate-700',
+                'initials' => $row['initials'] ?? mb_substr($row['name'] ?? 'C', 0, 2),
+                'view_url' => !empty($row['phone_directory_contact_id']) ? route('phone-directory.contacts.show', (int)$row['phone_directory_contact_id']) : null,
             ];
         })->values()->all();
+    } elseif (isset($initialContacts) && is_array($initialContacts)) {
+        // Initialized from controller (draft or newly created phone directory contact)
     } elseif ($item->exists && $item->relationLoaded('contacts')) {
         $initialContacts = $item->contacts->map(function ($contact) {
             $resolved = \App\Support\ContactDesignations::resolve($contact->role ?? '', $contact->designation_id);
 
             return [
-                'name' => $contact->name ?? '',
+                'id' => $contact->id,
+                'phone_directory_contact_id' => $contact->phone_directory_contact_id,
+                'name' => $contact->effective_name,
                 'role' => $contact->role ?? '',
                 'designation_id' => $contact->designation_id ?: $resolved['designation_id'],
-                'designation' => $contact->designation?->name ?? $resolved['designation'],
-                'other_designation' => $resolved['other_designation'],
-                'phone' => $contact->phone ?? '',
-                'alternate_phone' => $contact->alternate_phone ?? '',
-                'email' => $contact->email ?? '',
+                'designation' => $contact->phone_directory_contact_id ? ($contact->effective_designation ?: $resolved['designation']) : $resolved['designation'],
+                'other_designation' => $contact->phone_directory_contact_id ? '' : $resolved['other_designation'],
+                'company_name' => $contact->effective_company_name,
+                'phone' => $contact->effective_phone,
+                'alternate_phone' => $contact->effective_alternate_phone,
+                'whatsapp' => $contact->effective_whatsapp_number,
+                'whatsapp_number' => $contact->effective_whatsapp_number,
+                'email' => $contact->effective_email,
                 'is_primary' => (bool) $contact->is_primary,
+                'avatar_bg_class' => $contact->phoneDirectoryContact?->avatar_bg_class ?? 'bg-slate-100 text-slate-700',
+                'initials' => $contact->phoneDirectoryContact?->initials ?? mb_substr($contact->name ?? 'C', 0, 2),
+                'view_url' => $contact->phoneDirectoryContact ? route('phone-directory.contacts.show', $contact->phoneDirectoryContact) : null,
             ];
         })->values()->all();
     } else {
@@ -234,8 +252,31 @@
         </div>
     @endif
 
+    @if(!empty($hasDraft))
+        <div class="mb-4 bg-amber-50/90 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs max-w-5xl">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </div>
+                <div>
+                    <span class="font-bold text-amber-950">In-Progress Party Draft Restored</span>
+                    <p class="text-amber-800 text-[11px] mt-0.5">
+                        Your entered party form details have been restored. You can continue editing or discard the draft.
+                    </p>
+                </div>
+            </div>
+            <form method="POST" action="{{ route('masters.customers.draft.clear') }}" class="inline shrink-0">
+                @csrf
+                <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-amber-900 border border-amber-300 font-semibold rounded-xl hover:bg-amber-100 transition shadow-2xs text-xs">
+                    Discard Draft
+                </button>
+            </form>
+        </div>
+    @endif
+
     <form method="POST"
           action="{{ $item->exists ? route('masters.customers.update', $item) : route('masters.customers.store') }}"
+          id="party-master-form"
           enctype="multipart/form-data"
           class="space-y-6 max-w-5xl"
           x-data="partyFormController()"
@@ -1287,182 +1328,287 @@
             </div>
         </div>
 
-        <div class="space-y-3">
-            <div class="flex items-center justify-between gap-3">
+        <div class="space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h3 class="text-sm font-semibold text-slate-700">Contact Persons</h3>
-                    <p class="text-xs text-slate-500 mt-0.5">Add the people you deal with at this party. One can be marked primary.</p>
+                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                        <span>Contact Persons</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700" x-text="contacts.length"></span>
+                    </h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Select existing contacts from Phone Directory or create new ones. One can be marked primary.</p>
                 </div>
-                <button type="button" @click="addContact()"
-                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shrink-0">
-                    + Add Contact
-                </button>
+                <div class="flex items-center gap-2">
+                    <button type="button" 
+                            @click="saveDraftAndCreateContact()"
+                            :disabled="isSavingDraft"
+                            class="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs shrink-0 disabled:opacity-50">
+                        <svg x-show="!isSavingDraft" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <svg x-show="isSavingDraft" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" x-cloak><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        <span x-text="isSavingDraft ? 'Saving Draft...' : '+ Create New Contact'"></span>
+                    </button>
+                    <button type="button" 
+                            @click="openCustomContactModal()"
+                            class="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition shrink-0"
+                            title="Add custom contact person">
+                        <span>+ Custom Entry</span>
+                    </button>
+                </div>
             </div>
-            <div x-show="contacts.length === 0" class="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-xs text-slate-500">
-                No contact persons yet.
-            </div>
-            <template x-for="(contact, idx) in contacts" :key="idx">
-                <div class="rounded-lg border border-slate-200 p-3 space-y-3">
-                    <div class="flex items-center justify-between">
-                        <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                            <input type="radio" name="contact_primary" :checked="contact.is_primary" @change="setPrimaryContact(idx)" class="text-indigo-600 focus:ring-indigo-500">
-                            Primary contact
-                        </label>
-                        <button type="button" @click="removeContact(idx)" class="text-xs font-semibold text-rose-600 hover:text-rose-800">Remove</button>
+
+            {{-- Search & Select from Phone Directory Combobox --}}
+            <div class="relative" @click.outside="contactDropdownOpen = false">
+                <label class="block text-xs font-medium text-slate-700 mb-1">Select Contact from Phone Directory</label>
+                <div class="relative flex items-center">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
                     </div>
-                    <input type="hidden" :name="`contacts[${idx}][level]`" value="party">
-                    <input type="hidden" :name="`contacts[${idx}][is_primary]`" :value="contact.is_primary ? 1 : 0">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-start">
-                        <div>
-                            <label class="block text-xs font-medium text-slate-700 mb-1">Name *</label>
-                            <input type="text" :name="`contacts[${idx}][name]`" x-model="contact.name" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <input type="text"
+                           x-model="contactSearchQuery"
+                           @focus="contactDropdownOpen = true"
+                           @input="onContactSearchInput()"
+                           @keydown.escape="contactDropdownOpen = false"
+                           placeholder="Search Phone Directory by name, designation, company, phone, email..."
+                           autocomplete="off"
+                           class="block w-full pl-9 pr-10 py-2 rounded-xl border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400">
+                    <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center gap-1">
+                        <svg x-show="contactSearchLoading" class="w-4 h-4 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24" x-cloak>
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <button type="button"
+                                x-show="contactSearchQuery"
+                                @click="contactSearchQuery = ''; contactSearchResults = []; contactDropdownOpen = false"
+                                class="p-1 text-slate-400 hover:text-rose-500 transition"
+                                title="Clear"
+                                x-cloak>
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Dropdown options --}}
+                <div x-show="contactDropdownOpen"
+                     x-transition:enter="transition ease-out duration-100"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-75"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="absolute z-[100] left-0 right-0 mt-1 max-h-72 overflow-y-auto bg-white rounded-2xl shadow-xl border border-slate-200 divide-y divide-slate-100 text-xs"
+                     style="display: none;"
+                     x-cloak>
+                    <template x-for="item in displayContactsDropdownList" :key="item.id">
+                        <div @click="!isContactAlreadySelected(item.id) && selectContact(item)"
+                             :class="{
+                                 'opacity-60 bg-slate-50 cursor-not-allowed': isContactAlreadySelected(item.id),
+                                 'hover:bg-indigo-50/70 cursor-pointer': !isContactAlreadySelected(item.id)
+                             }"
+                             class="p-3 transition-colors flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0"
+                                     :class="item.avatar_bg_class || 'bg-slate-100 text-slate-700'"
+                                     x-text="item.initials || (item.name ? item.name.substring(0, 2).toUpperCase() : 'CO')">
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="font-semibold text-slate-900 truncate" x-text="item.name"></span>
+                                        <template x-if="item.designation">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700" x-text="item.designation"></span>
+                                        </template>
+                                        <template x-if="item.company_name">
+                                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                                                <span class="truncate max-w-[140px]" x-text="item.company_name"></span>
+                                            </span>
+                                        </template>
+                                    </div>
+                                    <div class="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5 flex-wrap">
+                                        <template x-if="item.phone">
+                                            <span class="flex items-center gap-1 font-mono">
+                                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                                                <span x-text="item.phone"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="item.whatsapp_number || item.whatsapp">
+                                            <span class="flex items-center gap-1 font-mono text-emerald-700">
+                                                <span>WA:</span>
+                                                <span x-text="item.whatsapp_number || item.whatsapp"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="item.email">
+                                            <span class="flex items-center gap-1 truncate max-w-[180px]">
+                                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                                <span class="truncate" x-text="item.email"></span>
+                                            </span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="shrink-0">
+                                <template x-if="isContactAlreadySelected(item.id)">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        ✓ Added
+                                    </span>
+                                </template>
+                                <template x-if="!isContactAlreadySelected(item.id)">
+                                    <button type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-semibold hover:bg-indigo-600 hover:text-white transition text-xs">
+                                        + Select
+                                    </button>
+                                </template>
+                            </div>
                         </div>
-                        <div class="relative" x-data="dmsContactDesignation(contact, designationOptions)">
-                            <div class="flex items-center justify-between mb-1 gap-2">
-                                <label class="block text-xs font-medium text-slate-700">Designation</label>
-                                <button type="button"
-                                        @click="openDesignationModal('add', contact)"
-                                        class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline focus:outline-none whitespace-nowrap">
-                                    + Create Designation
+                    </template>
+                    <div x-show="displayContactsDropdownList.length === 0 && !contactSearchLoading" class="p-4 text-center text-slate-400 italic">
+                        <template x-if="contactSearchQuery.trim()">
+                            <span>No contacts found matching "<span x-text="contactSearchQuery"></span>".</span>
+                        </template>
+                        <template x-if="!contactSearchQuery.trim()">
+                            <span>No phone directory contacts available.</span>
+                        </template>
+                    </div>
+                    <div class="p-2 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs">
+                        <button type="button" 
+                                @click="contactDropdownOpen = false; saveDraftAndCreateContact()"
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            <span>+ Create New Contact in Phone Directory</span>
+                        </button>
+                        <a href="{{ route('phone-directory.index') }}" target="_blank" class="px-2 py-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 hover:underline">
+                            Open Directory ↗
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Empty contacts notice --}}
+            <div x-show="contacts.length === 0" class="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 bg-slate-50/50">
+                <svg class="w-8 h-8 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                <div class="font-medium text-slate-700 mb-0.5">No contact persons selected yet</div>
+                <p class="text-slate-500">Search and select contacts from Phone Directory above, use "+ Custom Entry", or click "+ Create New Contact".</p>
+            </div>
+
+            {{-- Selected contacts cards list --}}
+            <div class="space-y-3" x-show="contacts.length > 0">
+                <template x-for="(contact, idx) in contacts" :key="idx">
+                    <div class="rounded-2xl border p-4 transition-all"
+                         :class="{
+                             'border-indigo-300 bg-indigo-50/30 ring-1 ring-indigo-200': contact.is_primary,
+                             'border-slate-200 bg-white hover:border-slate-300': !contact.is_primary
+                         }">
+                        {{-- Hidden inputs to submit to backend --}}
+                        <input type="hidden" :name="`contacts[${idx}][id]`" :value="contact.id || ''">
+                        <input type="hidden" :name="`contacts[${idx}][phone_directory_contact_id]`" :value="contact.phone_directory_contact_id || ''">
+                        <input type="hidden" :name="`contacts[${idx}][name]`" :value="contact.name || ''">
+                        <input type="hidden" :name="`contacts[${idx}][designation_id]`" :value="contact.designation_id || ''">
+                        <input type="hidden" :name="`contacts[${idx}][role]`" :value="contact.role || contact.designation || ''">
+                        <input type="hidden" :name="`contacts[${idx}][designation]`" :value="contact.designation || ''">
+                        <input type="hidden" :name="`contacts[${idx}][other_designation]`" :value="contact.other_designation || ''">
+                        <input type="hidden" :name="`contacts[${idx}][company_name]`" :value="contact.company_name || ''">
+                        <input type="hidden" :name="`contacts[${idx}][phone]`" :value="contact.phone || ''">
+                        <input type="hidden" :name="`contacts[${idx}][alternate_phone]`" :value="contact.alternate_phone || ''">
+                        <input type="hidden" :name="`contacts[${idx}][whatsapp_number]`" :value="contact.whatsapp_number || contact.whatsapp || ''">
+                        <input type="hidden" :name="`contacts[${idx}][whatsapp]`" :value="contact.whatsapp_number || contact.whatsapp || ''">
+                        <input type="hidden" :name="`contacts[${idx}][email]`" :value="contact.email || ''">
+                        <input type="hidden" :name="`contacts[${idx}][level]`" value="party">
+                        <input type="hidden" :name="`contacts[${idx}][is_primary]`" :value="contact.is_primary ? 1 : 0">
+
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
+                                <input type="radio" 
+                                       name="contact_primary_radio" 
+                                       :checked="contact.is_primary" 
+                                       @change="setPrimaryContact(idx)" 
+                                       class="text-indigo-600 focus:ring-indigo-500">
+                                <span>Primary Contact</span>
+                                <span x-show="contact.is_primary" class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white" x-cloak>
+                                    Primary
+                                </span>
+                            </label>
+                            <div class="flex items-center gap-3">
+                                <template x-if="contact.phone_directory_contact_id">
+                                    <a :href="contact.view_url || `{{ url('phone-directory/contacts') }}/${contact.phone_directory_contact_id}`"
+                                       target="_blank"
+                                       class="text-[11px] font-medium text-indigo-600 hover:text-indigo-800 hover:underline inline-flex items-center gap-1">
+                                        <span>View Contact Details</span>
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                    </a>
+                                </template>
+                                <button type="button" 
+                                        @click="removeContact(idx)" 
+                                        class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition inline-flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                    <span>Remove</span>
                                 </button>
                             </div>
-                            
-                            {{-- Hidden inputs to pass data to backend --}}
-                            <input type="hidden" :name="`contacts[${idx}][designation_id]`" :value="contact.designation_id || ''">
-                            <input type="hidden" :name="`contacts[${idx}][role]`" :value="effectiveRole()">
-                            <input type="hidden" :name="`contacts[${idx}][designation]`" :value="contact.designation || ''">
-                            <input type="hidden" :name="`contacts[${idx}][custom_role]`" :value="contact.other_designation || ''">
+                        </div>
 
-                            {{-- Searchable Combobox Trigger --}}
-                            <div class="relative" @click.outside="close()">
-                                <div class="relative flex items-center">
-                                    <input type="text"
-                                           x-model="search"
-                                           @focus="open()"
-                                           @input="open()"
-                                           @keydown="onSearchKeyDown($event)"
-                                           placeholder="Select Designation"
-                                           autocomplete="off"
-                                           class="block w-full rounded-lg border-gray-300 text-sm bg-white focus:border-indigo-500 focus:ring-indigo-500 pr-14 placeholder:text-slate-400">
-                                    
-                                    <div class="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
-                                        {{-- Clear button --}}
-                                        <button type="button"
-                                                x-show="contact.designation"
-                                                @click.stop="clear()"
-                                                title="Clear Designation"
-                                                class="p-1 text-slate-400 hover:text-rose-500 rounded transition"
-                                                x-cloak>
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                            </svg>
-                                        </button>
-                                        
-                                        {{-- Dropdown Toggle Chevron --}}
-                                        <button type="button"
-                                                @click.stop="toggle()"
-                                                tabindex="-1"
-                                                class="p-1 text-slate-400 hover:text-slate-600 rounded transition">
-                                            <svg class="w-3.5 h-3.5 transition-transform duration-200"
-                                                 :class="{ 'rotate-180': isOpen }"
-                                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {{-- Searchable Options Dropdown Menu --}}
-                                <div x-show="isOpen"
-                                     x-ref="optionsMenu"
-                                     x-transition:enter="transition ease-out duration-100"
-                                     x-transition:enter-start="opacity-0 scale-95"
-                                     x-transition:enter-end="opacity-100 scale-100"
-                                     x-transition:leave="transition ease-in duration-75"
-                                     x-transition:leave-start="opacity-100 scale-100"
-                                     x-transition:leave-end="opacity-0 scale-95"
-                                     class="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 divide-y divide-slate-100 text-xs"
-                                     style="display: none;">
-                                    <template x-for="(opt, oIdx) in filteredOptions" :key="opt">
-                                        <div @click="select(opt)"
-                                             :data-index="oIdx"
-                                             :class="{
-                                                 'bg-indigo-50 text-indigo-900 font-semibold': contact.designation === opt,
-                                                 'bg-slate-100': highlightedIndex === oIdx && contact.designation !== opt
-                                             }"
-                                             class="group px-3 py-2 hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer flex items-center justify-between transition-colors">
-                                            <span class="truncate pr-2" x-text="opt"></span>
-                                            <div class="flex items-center gap-1.5 shrink-0" @click.stop>
-                                                <span x-show="contact.designation === opt" class="text-indigo-600 font-bold" x-cloak>✓</span>
-                                                <template x-if="opt !== 'Other'">
-                                                    <div class="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                                        <button type="button"
-                                                                @click="openDesignationModal('edit', contact, opt); close()"
-                                                                class="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded transition"
-                                                                title="Edit this designation">
-                                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                            </svg>
-                                                        </button>
-                                                        <button type="button"
-                                                                @click="openDesignationModal('delete', contact, opt); close()"
-                                                                class="p-1 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded transition"
-                                                                title="Delete this designation">
-                                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                            </svg>
-                                                        </button>
-                                                    </div>
-                                                </template>
-                                            </div>
-                                        </div>
+                        {{-- Card body: Directory Contact or Custom Contact --}}
+                        <div class="pt-3 flex items-start gap-3.5">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs"
+                                 :class="contact.avatar_bg_class || 'bg-slate-100 text-slate-700'"
+                                 x-text="contact.initials || (contact.name ? contact.name.substring(0, 2).toUpperCase() : 'CO')">
+                            </div>
+                            <div class="min-w-0 flex-1 space-y-1.5">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-sm font-bold text-slate-900" x-text="contact.name || 'Unnamed Contact'"></span>
+                                    <template x-if="contact.designation || contact.role">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-800"
+                                              x-text="contact.designation || contact.role"></span>
                                     </template>
-                                    <div x-show="filteredOptions.length === 0" class="px-3 py-2.5 text-center text-slate-400 italic">
-                                        No matching designations
-                                    </div>
-                                    <div class="p-1.5 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-xs">
-                                        <button type="button"
-                                                @click.stop="openDesignationModal('add', contact); close()"
-                                                class="text-left px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 hover:text-indigo-800 rounded transition flex items-center gap-1.5">
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                                            <span>+ Create Designation</span>
-                                        </button>
-                                        <a href="{{ route('masters.designations.index') }}"
-                                           target="_blank"
-                                           class="px-2 py-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 hover:underline">
-                                            Manage All ↗
-                                        </a>
-                                    </div>
+                                    <template x-if="contact.company_name">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200">
+                                            <svg class="w-3 h-3 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                                            <span x-text="contact.company_name"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="contact.phone_directory_contact_id">
+                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                                            Phone Directory
+                                        </span>
+                                    </template>
+                                    <template x-if="!contact.phone_directory_contact_id">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                            Custom Contact
+                                        </span>
+                                    </template>
+                                </div>
+                                <div class="flex items-center gap-4 flex-wrap text-xs text-slate-600">
+                                    <template x-if="contact.phone">
+                                        <span class="flex items-center gap-1.5 font-mono">
+                                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                                            <span x-text="contact.phone"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="contact.alternate_phone">
+                                        <span class="flex items-center gap-1.5 font-mono text-slate-500">
+                                            <span>Alt:</span>
+                                            <span x-text="contact.alternate_phone"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="contact.whatsapp_number || contact.whatsapp">
+                                        <span class="inline-flex items-center gap-1.5 font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                            <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                                            <span x-text="contact.whatsapp_number || contact.whatsapp"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="contact.email">
+                                        <span class="flex items-center gap-1.5">
+                                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                            <span x-text="contact.email"></span>
+                                        </span>
+                                    </template>
                                 </div>
                             </div>
-
-                            {{-- Custom Other Designation Input --}}
-                            <div x-show="contact.designation === 'Other'" class="mt-2" x-cloak>
-                                <label class="block text-[11px] font-medium text-amber-700 mb-0.5">Specify Designation *</label>
-                                <input type="text"
-                                       x-ref="customInput"
-                                       x-model="contact.other_designation"
-                                       @input="contact.role = contact.other_designation"
-                                       placeholder="Enter custom designation"
-                                       maxlength="100"
-                                       class="block w-full rounded-lg border-amber-300 bg-amber-50/30 text-xs focus:border-amber-500 focus:ring-amber-500 placeholder:text-slate-400">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-700 mb-1">Mobile 1</label>
-                            <input type="text" :name="`contacts[${idx}][phone]`" x-model="contact.phone" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-700 mb-1">Mobile 2</label>
-                            <input type="text" :name="`contacts[${idx}][alternate_phone]`" x-model="contact.alternate_phone" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-slate-700 mb-1">Email</label>
-                            <input type="email" :name="`contacts[${idx}][email]`" x-model="contact.email" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                         </div>
                     </div>
-                </div>
-            </template>
+                </template>
+            </div>
+                    </div>
+                </template>
+            </div>
         </div>
 
         <div class="space-y-4">
@@ -1927,6 +2073,176 @@
                                     <span x-text="designationSaving ? 'Deactivating...' : 'Deactivate Designation'"></span>
                                 </button>
                             </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Contact Entry Modal -->
+        <div x-show="customContactModalOpen"
+             x-cloak
+             class="fixed inset-0 z-50 overflow-y-auto"
+             aria-labelledby="custom-contact-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="closeCustomContactModal()">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div x-show="customContactModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 transition-opacity bg-slate-900/50 backdrop-blur-sm"
+                     @click="closeCustomContactModal()"></div>
+
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+                <div x-show="customContactModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     class="relative inline-block w-full max-w-lg p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl sm:my-8"
+                     @click.stop>
+
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div>
+                            <h3 class="text-base font-semibold text-slate-800" id="custom-contact-modal-title">
+                                Add Custom Contact Person
+                            </h3>
+                            <p class="text-xs text-slate-500 mt-0.5">Enter contact details and optionally save to Phone Directory.</p>
+                        </div>
+                        <button type="button" @click="closeCustomContactModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- Error Feedback -->
+                    <div x-show="customContactError" x-cloak class="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-medium text-red-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span x-text="customContactError"></span>
+                    </div>
+
+                    <div class="mt-4 space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Contact Name <span class="text-rose-500">*</span>
+                                </label>
+                                <input type="text"
+                                       x-model="customContactForm.name"
+                                       placeholder="e.g. Rahul Sharma"
+                                       required
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Designation
+                                </label>
+                                <input type="text"
+                                       list="custom-contact-designations-list"
+                                       x-model="customContactForm.designation"
+                                       placeholder="e.g. Purchase Manager"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                                <datalist id="custom-contact-designations-list">
+                                    <template x-for="opt in designationOptions" :key="opt">
+                                        <option :value="opt"></option>
+                                    </template>
+                                </datalist>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                Company / Organization
+                            </label>
+                            <input type="text"
+                                   x-model="customContactForm.company_name"
+                                   placeholder="e.g. ABC Industries"
+                                   class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Primary Mobile <span class="text-rose-500">*</span>
+                                </label>
+                                <input type="text"
+                                       x-model="customContactForm.phone"
+                                       @input="if(customContactForm.same_as_mobile) customContactForm.whatsapp_number = customContactForm.phone"
+                                       placeholder="10-digit mobile"
+                                       required
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-xs font-semibold text-slate-700">WhatsApp Number</label>
+                                    <label class="inline-flex items-center gap-1 text-[11px] text-indigo-600 font-medium cursor-pointer">
+                                        <input type="checkbox"
+                                               x-model="customContactForm.same_as_mobile"
+                                               @change="toggleSameAsMobile()"
+                                               class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 text-xs">
+                                        <span>Same as mobile</span>
+                                    </label>
+                                </div>
+                                <input type="text"
+                                       x-model="customContactForm.whatsapp_number"
+                                       :disabled="customContactForm.same_as_mobile"
+                                       placeholder="WhatsApp number"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono disabled:bg-slate-50 disabled:text-slate-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                Email Address
+                            </label>
+                            <input type="email"
+                                   x-model="customContactForm.email"
+                                   placeholder="contact@example.com"
+                                   class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+
+                        <div class="space-y-2 pt-2 border-t border-slate-100">
+                            <label class="flex items-start gap-2.5 cursor-pointer p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/70 transition">
+                                <input type="checkbox"
+                                       x-model="customContactForm.save_to_phone_directory"
+                                       class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <div class="text-xs">
+                                    <span class="font-semibold text-slate-800">Save to Phone Directory</span>
+                                    <p class="text-[11px] text-slate-500 mt-0.5">
+                                        Saves this contact to Phone Directory (or links existing record if mobile already exists) for reuse across DMS.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <label class="flex items-center gap-2 cursor-pointer pt-1 px-1">
+                                <input type="checkbox"
+                                       x-model="customContactForm.is_primary"
+                                       class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-xs font-medium text-slate-700">Mark as Primary Contact for this Party</span>
+                            </label>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeCustomContactModal()"
+                                    :disabled="customContactSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    @click="submitCustomContact()"
+                                    :disabled="customContactSaving"
+                                    class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-50 shadow-xs transition">
+                                <svg x-show="customContactSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24" x-cloak><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                <span x-text="customContactSaving ? 'Saving...' : 'Add Contact'"></span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -2661,6 +2977,340 @@ function partyFormController() {
         lastAutoGstin: '',
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
         contacts: {!! json_encode($initialContacts) !!},
+        availablePhoneContacts: {!! json_encode($availablePhoneContacts ?? []) !!},
+        contactSearchQuery: '',
+        contactSearchResults: [],
+        contactDropdownOpen: false,
+        contactSearchLoading: false,
+        contactSearchTimer: null,
+        isSavingDraft: false,
+
+        get displayContactsDropdownList() {
+            const list = this.contactSearchQuery.trim() ? this.contactSearchResults : this.availablePhoneContacts;
+            return list || [];
+        },
+
+        onContactSearchInput() {
+            this.contactDropdownOpen = true;
+            clearTimeout(this.contactSearchTimer);
+            const q = this.contactSearchQuery.trim();
+            if (!q) {
+                this.contactSearchResults = [];
+                this.contactSearchLoading = false;
+                return;
+            }
+            this.contactSearchLoading = true;
+            this.contactSearchTimer = setTimeout(() => {
+                this.fetchPhoneDirectoryContacts(q);
+            }, 250);
+        },
+
+        async fetchPhoneDirectoryContacts(query) {
+            try {
+                const url = `{{ route('masters.customers.phone-directory-contacts') }}?q=${encodeURIComponent(query)}`;
+                const res = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const data = await res.json();
+                if (data && data.success && Array.isArray(data.contacts)) {
+                    this.contactSearchResults = data.contacts;
+                } else {
+                    this.contactSearchResults = [];
+                }
+            } catch (err) {
+                console.error('Error fetching contacts:', err);
+                this.contactSearchResults = [];
+            } finally {
+                this.contactSearchLoading = false;
+            }
+        },
+
+        isContactAlreadySelected(phoneContactId) {
+            if (!phoneContactId) return false;
+            return (this.contacts || []).some(c => c.phone_directory_contact_id && Number(c.phone_directory_contact_id) === Number(phoneContactId));
+        },
+
+        selectContact(item) {
+            if (!item) return;
+            if (this.isContactAlreadySelected(item.id)) {
+                return;
+            }
+
+            this.contacts.push({
+                id: null,
+                phone_directory_contact_id: item.id,
+                name: item.name,
+                role: item.designation || 'Contact',
+                designation_id: item.designation_id || null,
+                designation: item.designation || '',
+                other_designation: '',
+                company_name: item.company_name || '',
+                phone: item.phone || '',
+                alternate_phone: item.alternate_phone || '',
+                whatsapp: item.whatsapp || item.whatsapp_number || '',
+                whatsapp_number: item.whatsapp_number || item.whatsapp || '',
+                email: item.email || '',
+                is_primary: this.contacts.length === 0,
+                avatar_bg_class: item.avatar_bg_class || 'bg-slate-100 text-slate-700',
+                initials: item.initials || (item.name ? item.name.substring(0, 2).toUpperCase() : 'CO'),
+                view_url: item.view_url || null,
+            });
+
+            this.contactSearchQuery = '';
+            this.contactDropdownOpen = false;
+        },
+
+        customContactModalOpen: false,
+        customContactSaving: false,
+        customContactError: '',
+        customContactForm: {
+            name: '',
+            designation: '',
+            designation_id: null,
+            company_name: '',
+            phone: '',
+            whatsapp_number: '',
+            same_as_mobile: false,
+            email: '',
+            is_primary: false,
+            save_to_phone_directory: true,
+        },
+
+        openCustomContactModal() {
+            this.customContactError = '';
+            this.customContactSaving = false;
+            this.customContactForm = {
+                name: '',
+                designation: '',
+                designation_id: null,
+                company_name: this.form?.name || '',
+                phone: '',
+                whatsapp_number: '',
+                same_as_mobile: false,
+                email: '',
+                is_primary: this.contacts.length === 0,
+                save_to_phone_directory: true,
+            };
+            this.customContactModalOpen = true;
+        },
+
+        closeCustomContactModal() {
+            this.customContactModalOpen = false;
+            this.customContactError = '';
+        },
+
+        toggleSameAsMobile() {
+            if (this.customContactForm.same_as_mobile) {
+                this.customContactForm.whatsapp_number = this.customContactForm.phone;
+            }
+        },
+
+        async submitCustomContact() {
+            this.customContactError = '';
+            const form = this.customContactForm;
+            if (!form.name || !form.name.trim()) {
+                this.customContactError = 'Contact Name is required.';
+                return;
+            }
+            if (!form.phone || !form.phone.trim()) {
+                this.customContactError = 'Primary Mobile Number is required.';
+                return;
+            }
+
+            if (form.same_as_mobile) {
+                form.whatsapp_number = form.phone.trim();
+            }
+
+            if (form.save_to_phone_directory) {
+                this.customContactSaving = true;
+                try {
+                    const res = await fetch("{{ route('masters.customers.phone-directory-quick-store') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({
+                            contact_name: form.name.trim(),
+                            mobile_number: form.phone.trim(),
+                            whatsapp_number: form.whatsapp_number ? form.whatsapp_number.trim() : null,
+                            email: form.email ? form.email.trim() : null,
+                            designation: form.designation ? form.designation.trim() : null,
+                            designation_id: form.designation_id || null,
+                            company_name: form.company_name ? form.company_name.trim() : null,
+                        })
+                    });
+
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        const msg = data.errors ? Object.values(data.errors).flat().join(', ') : (data.message || 'Failed to save contact to Phone Directory.');
+                        this.customContactError = msg;
+                        this.customContactSaving = false;
+                        return;
+                    }
+
+                    const c = data.contact;
+                    const newContact = {
+                        id: null,
+                        phone_directory_contact_id: c.id,
+                        name: c.name,
+                        role: c.designation || 'Contact',
+                        designation_id: c.designation_id || null,
+                        designation: c.designation || '',
+                        other_designation: '',
+                        company_name: c.company_name || '',
+                        phone: c.phone || '',
+                        alternate_phone: c.alternate_phone || '',
+                        whatsapp: c.whatsapp || '',
+                        whatsapp_number: c.whatsapp_number || '',
+                        email: c.email || '',
+                        is_primary: form.is_primary || this.contacts.length === 0,
+                        avatar_bg_class: c.avatar_bg_class || 'bg-slate-100 text-slate-700',
+                        initials: c.initials || (c.name ? c.name.substring(0, 2).toUpperCase() : 'CO'),
+                        view_url: c.view_url || null,
+                    };
+
+                    if (newContact.is_primary) {
+                        this.contacts.forEach(x => x.is_primary = false);
+                    }
+                    this.contacts.push(newContact);
+                    this.closeCustomContactModal();
+                } catch (err) {
+                    console.error('Error quick storing contact:', err);
+                    this.customContactError = 'An unexpected network error occurred. Please try again.';
+                } finally {
+                    this.customContactSaving = false;
+                }
+            } else {
+                // Direct custom Party contact without saving to Phone Directory
+                const newContact = {
+                    id: null,
+                    phone_directory_contact_id: null,
+                    name: form.name.trim(),
+                    role: form.designation ? form.designation.trim() : 'Contact',
+                    designation_id: form.designation_id || null,
+                    designation: form.designation ? form.designation.trim() : '',
+                    other_designation: '',
+                    company_name: form.company_name ? form.company_name.trim() : '',
+                    phone: form.phone.trim(),
+                    alternate_phone: '',
+                    whatsapp: form.whatsapp_number ? form.whatsapp_number.trim() : '',
+                    whatsapp_number: form.whatsapp_number ? form.whatsapp_number.trim() : '',
+                    email: form.email ? form.email.trim() : '',
+                    is_primary: form.is_primary || this.contacts.length === 0,
+                    avatar_bg_class: 'bg-slate-100 text-slate-700',
+                    initials: form.name.trim().substring(0, 2).toUpperCase(),
+                    view_url: null,
+                };
+
+                if (newContact.is_primary) {
+                    this.contacts.forEach(x => x.is_primary = false);
+                }
+                this.contacts.push(newContact);
+                this.closeCustomContactModal();
+            }
+        },
+
+        addCustomContact() {
+            this.openCustomContactModal();
+        },
+
+        addContact() {
+            this.openCustomContactModal();
+        },
+
+        removeContact(idx) {
+            const wasPrimary = this.contacts[idx]?.is_primary;
+            this.contacts.splice(idx, 1);
+            if (wasPrimary && this.contacts.length) {
+                this.contacts[0].is_primary = true;
+            }
+        },
+
+        setPrimaryContact(idx) {
+            this.contacts.forEach((contact, index) => {
+                contact.is_primary = index === idx;
+            });
+        },
+
+        async saveDraftAndCreateContact() {
+            this.isSavingDraft = true;
+            try {
+                const formEl = document.getElementById('party-master-form') || document.querySelector('form[action*="customers"]');
+                const formData = formEl ? new FormData(formEl) : new FormData();
+                const getVal = (name) => {
+                    const val = formData.get(name);
+                    if (val !== null && val !== undefined && val !== '') return val;
+                    if (this.form && this.form[name] !== undefined && this.form[name] !== null && this.form[name] !== '') return this.form[name];
+                    const el = formEl ? formEl.querySelector(`[name="${name}"]`) : null;
+                    return el ? el.value : '';
+                };
+
+                const draft = {
+                    id: {{ $item->exists ? (int)$item->id : 'null' }},
+                    is_edit: {{ $item->exists ? 'true' : 'false' }},
+                    name: getVal('name'),
+                    trade_name: getVal('trade_name'),
+                    code: getVal('code'),
+                    party_type: this.form?.party_type || getVal('party_type'),
+                    business_group_id: this.selectedBusinessGroupId || getVal('business_group_id'),
+                    customer_type_id: this.selectedCustomerTypeId || getVal('customer_type_id'),
+                    area_id: getVal('area_id'),
+                    route_id: getVal('route_id'),
+                    salesperson_id: getVal('salesperson_id'),
+                    sales_manager_id: getVal('sales_manager_id'),
+                    phone: getVal('phone'),
+                    email: getVal('email'),
+                    opened_on: getVal('opened_on'),
+                    reference_by: getVal('reference_by'),
+                    udyam_number: getVal('udyam_number'),
+                    website: getVal('website'),
+                    location_link: getVal('location_link'),
+                    gstin: getVal('gstin'),
+                    gst_registration_type: getVal('gst_registration_type'),
+                    pan: getVal('pan'),
+                    address: getVal('address'),
+                    state: getVal('state'),
+                    pincode: getVal('pincode'),
+                    credit_limit: getVal('credit_limit'),
+                    credit_days: getVal('credit_days'),
+                    credit_status: getVal('credit_status'),
+                    credit_period_basis: getVal('credit_period_basis'),
+                    interest_rate: getVal('interest_rate'),
+                    target_amount: getVal('target_amount'),
+                    target_start_date: getVal('target_start_date'),
+                    target_end_date: getVal('target_end_date'),
+                    is_active: formEl ? (formEl.querySelector('[name="is_active"]:checked') ? 1 : 0) : 1,
+                    contacts: JSON.parse(JSON.stringify(this.contacts || [])),
+                    addresses: JSON.parse(JSON.stringify(this.addresses || [])),
+                    bank_accounts: JSON.parse(JSON.stringify(this.bankAccounts || [])),
+                    gem_authorizations: JSON.parse(JSON.stringify(this.gemAuthorizations || [])),
+                };
+
+                await fetch("{{ route('masters.customers.draft.save') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ draft })
+                });
+
+                const destUrl = "{{ route('phone-directory.contacts.create') }}?return_to=party" + ({{ $item->exists ? "'" . '&party_id=' . $item->id . "'" : "''" }});
+                window.location.href = destUrl;
+            } catch (err) {
+                console.error('Failed to save draft:', err);
+                const destUrl = "{{ route('phone-directory.contacts.create') }}?return_to=party" + ({{ $item->exists ? "'" . '&party_id=' . $item->id . "'" : "''" }});
+                window.location.href = destUrl;
+            } finally {
+                this.isSavingDraft = false;
+            }
+        },
         designationList: {!! json_encode($designationsData ?? []) !!},
         designationOptions: {!! json_encode($designationOptions) !!},
         designationModalOpen: false,
@@ -2696,34 +3346,6 @@ function partyFormController() {
         getCities(stateName) {
             if (!stateName) return [];
             return this.stateCities[stateName] || [];
-        },
-
-        addContact() {
-            this.contacts.push({
-                name: '',
-                role: '',
-                designation_id: null,
-                designation: '',
-                other_designation: '',
-                phone: '',
-                alternate_phone: '',
-                email: '',
-                is_primary: this.contacts.length === 0,
-            });
-        },
-
-        removeContact(idx) {
-            const wasPrimary = this.contacts[idx]?.is_primary;
-            this.contacts.splice(idx, 1);
-            if (wasPrimary && this.contacts.length) {
-                this.contacts[0].is_primary = true;
-            }
-        },
-
-        setPrimaryContact(idx) {
-            this.contacts.forEach((contact, index) => {
-                contact.is_primary = index === idx;
-            });
         },
 
         addGemAuthorization() {

@@ -13,6 +13,7 @@ use App\Domains\Organization\Models\FinancialYear;
 use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Purchasing\Models\FreightBill;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
+use App\Domains\Purchasing\Models\PurchaseInward;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -135,76 +136,61 @@ class RemoveGrnAndLandedCostTest extends TestCase
         ]);
     }
 
-    public function test_sidebar_does_not_contain_goods_receipts_or_landed_cost(): void
+    public function test_sidebar_does_not_contain_goods_receipts(): void
     {
         $response = $this->actingAs($this->ordinaryUser)->get(route('purchasing.orders.index'));
 
         $response->assertStatus(200);
         $content = $response->getContent();
 
-        // Must preserve Purchase Orders, Purchase Invoices, Freight Bills
+        // Must preserve Purchase Orders, Material Comparison, Receipt Notes, Purchase Invoices, Landed Costs, Freight Bills
         $this->assertStringContainsString('Purchase Orders', $content);
+        $this->assertStringContainsString('Material Comparison', $content);
+        $this->assertStringContainsString('Receipt Notes', $content);
         $this->assertStringContainsString('Purchase Invoices', $content);
+        $this->assertStringContainsString('Landed Costs', $content);
         $this->assertStringContainsString('Freight Bills', $content);
 
-        // Must NOT contain Goods Receipts (GRN) or Landed Cost
-        $this->assertStringNotContainsString('Goods Receipts (GRN)', $content);
-        $this->assertStringNotContainsString('route(\'purchasing.inwards.index\')', $content);
-        $this->assertStringNotContainsString('Landed Cost', $content);
-        $this->assertStringNotContainsString('route(\'purchasing.landed-costs.index\')', $content);
+        // Must NOT contain Goods Receipts or purchasing.inwards route
+        $this->assertStringNotContainsString('Goods Receipts', $content);
+        $this->assertStringNotContainsString('purchasing.inwards', $content);
     }
 
-    public function test_direct_url_to_grn_returns_404_for_ordinary_users(): void
+    public function test_admin_sidebar_also_does_not_contain_goods_receipts(): void
     {
+        $response = $this->actingAs($this->adminUser)->get(route('purchasing.orders.index'));
+
+        $response->assertStatus(200);
+        $content = $response->getContent();
+
+        $this->assertStringNotContainsString('Goods Receipts', $content);
+        $this->assertStringNotContainsString('purchasing.inwards', $content);
+    }
+
+    public function test_direct_url_to_goods_receipts_returns_404_for_all_users(): void
+    {
+        // Ordinary user
         $response = $this->actingAs($this->ordinaryUser)->get(route('purchasing.inwards.index'));
         $response->assertStatus(404);
+
+        $responseRaw = $this->actingAs($this->ordinaryUser)->get('/purchasing/inwards');
+        $responseRaw->assertStatus(404);
+
+        // Admin user
+        $adminResponse = $this->actingAs($this->adminUser)->get(route('purchasing.inwards.index'));
+        $adminResponse->assertStatus(404);
+
+        $adminResponseRaw = $this->actingAs($this->adminUser)->get('/purchasing/inwards');
+        $adminResponseRaw->assertStatus(404);
     }
 
-    public function test_direct_url_to_landed_costs_returns_404_for_ordinary_users(): void
+    public function test_landed_costs_remains_protected_and_accessible(): void
     {
-        $response = $this->actingAs($this->ordinaryUser)->get(route('purchasing.landed-costs.index'));
-        $response->assertStatus(404);
-
-        $createResponse = $this->actingAs($this->ordinaryUser)->get(route('purchasing.landed-costs.create'));
-        $createResponse->assertStatus(404);
-    }
-
-    public function test_purchase_invoice_show_page_does_not_display_landed_cost_action(): void
-    {
-        $invoice = PurchaseInvoice::create([
-            'supplier_id' => $this->supplier->id,
-            'warehouse_id' => $this->warehouse->id,
-            'invoice_no' => 'PINV-2026-001',
-            'invoice_date' => now()->toDateString(),
-            'due_date' => now()->addDays(30)->toDateString(),
-            'status' => 'posted',
-            'subtotal' => 2000,
-            'tax_amount' => 360,
-            'grand_total' => 2360,
-            'created_by' => $this->ordinaryUser->id,
-        ]);
-
-        $response = $this->actingAs($this->ordinaryUser)->get(route('purchasing.invoices.show', $invoice));
+        $response = $this->actingAs($this->adminUser)->get(route('purchasing.landed-costs.index'));
         $response->assertStatus(200);
-        $response->assertDontSee('Allocate Landed Cost');
-    }
 
-    public function test_freight_bill_show_page_does_not_display_landed_cost_action(): void
-    {
-        $freightBill = FreightBill::create([
-            'freight_no' => 'FB-2026-001',
-            'bill_date' => now()->toDateString(),
-            'transporter_name' => 'Speed Logistics',
-            'amount' => 1500,
-            'tax_amount' => 0,
-            'total_amount' => 1500,
-            'status' => 'draft',
-            'created_by' => $this->ordinaryUser->id,
-        ]);
-
-        $response = $this->actingAs($this->ordinaryUser)->get(route('purchasing.freight-bills.show', $freightBill));
-        $response->assertStatus(200);
-        $response->assertDontSee('Use in Landed Cost');
+        $createResponse = $this->actingAs($this->adminUser)->get(route('purchasing.landed-costs.create'));
+        $createResponse->assertStatus(200);
     }
 
     public function test_purchase_orders_remain_fully_functional(): void
@@ -240,5 +226,59 @@ class RemoveGrnAndLandedCostTest extends TestCase
         $showResponse->assertStatus(200);
         $showResponse->assertSee($order->po_no);
         $showResponse->assertSee('Hydraulic Valve');
+    }
+
+    public function test_purchase_invoices_and_historical_inward_records_remain_functional(): void
+    {
+        // Ensure historical purchase inward can exist in database without breaking invoice view
+        $inward = PurchaseInward::create([
+            'company_id' => $this->company->id,
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'inward_no' => 'GRN-HIST-001',
+            'inward_date' => now()->toDateString(),
+            'status' => 'posted',
+            'created_by' => $this->adminUser->id,
+        ]);
+
+        $invoice = PurchaseInvoice::create([
+            'supplier_id' => $this->supplier->id,
+            'warehouse_id' => $this->warehouse->id,
+            'purchase_inward_id' => $inward->id,
+            'invoice_no' => 'PINV-2026-001',
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDays(30)->toDateString(),
+            'status' => 'posted',
+            'subtotal' => 2000,
+            'tax_amount' => 360,
+            'grand_total' => 2360,
+            'created_by' => $this->adminUser->id,
+        ]);
+
+        $response = $this->actingAs($this->adminUser)->get(route('purchasing.invoices.show', $invoice));
+        $response->assertStatus(200);
+        $response->assertSee('PINV-2026-001');
+
+        $previewResponse = $this->actingAs($this->adminUser)->get(route('purchasing.invoices.preview', $invoice));
+        $previewResponse->assertStatus(200);
+        $previewResponse->assertSee('GRN-HIST-001');
+    }
+
+    public function test_freight_bills_remain_functional(): void
+    {
+        $freightBill = FreightBill::create([
+            'freight_no' => 'FB-2026-001',
+            'bill_date' => now()->toDateString(),
+            'transporter_name' => 'Speed Logistics',
+            'amount' => 1500,
+            'tax_amount' => 0,
+            'total_amount' => 1500,
+            'status' => 'draft',
+            'created_by' => $this->adminUser->id,
+        ]);
+
+        $response = $this->actingAs($this->adminUser)->get(route('purchasing.freight-bills.show', $freightBill));
+        $response->assertStatus(200);
+        $response->assertSee('Speed Logistics');
     }
 }

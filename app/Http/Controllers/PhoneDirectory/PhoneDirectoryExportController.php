@@ -19,7 +19,7 @@ class PhoneDirectoryExportController extends Controller
 {
     protected function getFilteredQuery(Request $request)
     {
-        $query = PhoneDirectoryContact::query()->with(['department', 'category']);
+        $query = PhoneDirectoryContact::query()->with(['department', 'category', 'company', 'classification']);
 
         // If specific IDs passed (e.g. from bulk selection)
         if ($request->filled('ids')) {
@@ -36,6 +36,8 @@ class PhoneDirectoryExportController extends Controller
             'department_id' => $request->query('department_id'),
             'designation' => $request->query('designation'),
             'company_name' => $request->query('company_name'),
+            'company_id' => $request->query('company_id'),
+            'classification_id' => $request->query('classification_id') ?: $request->query('customer_type_id'),
             'state' => $request->query('state'),
             'city' => $request->query('city'),
             'status' => $request->query('status'),
@@ -65,6 +67,7 @@ class PhoneDirectoryExportController extends Controller
             'ID',
             'Contact Name',
             'Contact Type',
+            'Classification',
             'Designation',
             'Department',
             'Company / Organization',
@@ -102,9 +105,10 @@ class PhoneDirectoryExportController extends Controller
                     $c->id,
                     $c->contact_name,
                     PhoneDirectoryContact::CONTACT_TYPES[$c->contact_type] ?? ucfirst($c->contact_type),
+                    $c->classification?->name ?? '',
                     $c->designation ?? '',
                     $c->department?->name ?? '',
-                    $c->company_name ?? '',
+                    $c->effective_company_name ?: ($c->company_name ?? ''),
                     $c->category?->name ?? '',
                     $c->mobile_number,
                     $c->alternate_mobile ?? '',
@@ -146,6 +150,7 @@ class PhoneDirectoryExportController extends Controller
             'ID',
             'Contact Name',
             'Contact Type',
+            'Classification',
             'Designation',
             'Department',
             'Company / Organization',
@@ -188,7 +193,7 @@ class PhoneDirectoryExportController extends Controller
             ],
         ];
 
-        $sheet->getStyle('A1:X1')->applyFromArray($headerStyle);
+        $sheet->getStyle('A1:Y1')->applyFromArray($headerStyle);
         $sheet->getRowDimension(1)->setRowHeight(26);
 
         // Data rows
@@ -198,9 +203,10 @@ class PhoneDirectoryExportController extends Controller
                 $c->id,
                 $c->contact_name,
                 PhoneDirectoryContact::CONTACT_TYPES[$c->contact_type] ?? ucfirst($c->contact_type),
+                $c->classification?->name ?? '',
                 $c->designation ?? '',
                 $c->department?->name ?? '',
-                $c->company_name ?? '',
+                $c->effective_company_name ?: ($c->company_name ?? ''),
                 $c->category?->name ?? '',
                 $c->mobile_number,
                 $c->alternate_mobile ?? '',
@@ -225,7 +231,7 @@ class PhoneDirectoryExportController extends Controller
 
             // Zebra striping
             if ($rowIndex % 2 === 0) {
-                $sheet->getStyle("A{$rowIndex}:X{$rowIndex}")->getFill()
+                $sheet->getStyle("A{$rowIndex}:Y{$rowIndex}")->getFill()
                     ->setFillType(Fill::FILL_SOLID)
                     ->getStartColor()->setRGB('F8FAFC');
             }
@@ -234,13 +240,13 @@ class PhoneDirectoryExportController extends Controller
         }
 
         // Auto-size columns
-        foreach (range('A', 'X') as $col) {
+        foreach (range('A', 'Y') as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
         }
 
         // Borders
         $lastRow = max($rowIndex - 1, 1);
-        $sheet->getStyle("A1:X{$lastRow}")->getBorders()->getAllBorders()
+        $sheet->getStyle("A1:Y{$lastRow}")->getBorders()->getAllBorders()
             ->setBorderStyle(Border::BORDER_THIN)
             ->getColor()->setRGB('E2E8F0');
 
@@ -267,7 +273,7 @@ class PhoneDirectoryExportController extends Controller
             'title' => 'Phone Directory Contact List',
             'generatedAt' => now()->format('d M Y, h:i A'),
             'filtersApplied' => array_filter($request->only([
-                'search', 'contact_type', 'department_id', 'state', 'city', 'important', 'status'
+                'search', 'contact_type', 'classification_id', 'department_id', 'designation', 'company_name', 'state', 'city', 'important', 'status'
             ])),
         ])->setPaper('a4', 'landscape');
 
