@@ -1801,12 +1801,30 @@ class InvoiceController extends Controller
 
     public function show(Invoice $invoice): View
     {
-        $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'payments', 'eInvoice', 'eWayBill', 'order', 'scheme.brand', 'schemeAchievement']);
+        $invoice->load([
+            'customer',
+            'salesperson',
+            'items.product',
+            'items.uom',
+            'payments',
+            'eInvoice',
+            'eWayBill',
+            'order',
+            'scheme.brand',
+            'schemeAchievement',
+            'company',
+            'billingAddress',
+            'shippingAddress',
+        ]);
+
+        $company = $invoice->company
+            ?? Company::resolveCurrent()
+            ?? Company::query()->first();
 
         $eInvoiceEligibility = $this->complianceService->evaluateEInvoiceEligibility($invoice);
         $eWayBillEligibility = $this->complianceService->evaluateEWayBillEligibility($invoice);
 
-        return view('sales.invoices.show', compact('invoice', 'eInvoiceEligibility', 'eWayBillEligibility'));
+        return view('sales.invoices.show', compact('invoice', 'company', 'eInvoiceEligibility', 'eWayBillEligibility'));
     }
 
     /**

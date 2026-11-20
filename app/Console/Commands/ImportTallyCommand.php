@@ -21,7 +21,8 @@ class ImportTallyCommand extends Command
         {--dry-run : Analyse XML and preview counts without writing business data}
         {--books : Also import chart/ledgers/vouchers into Books acct_* tables}
         {--force : Confirm idempotent re-import when Tally mappings already exist}
-        {--skip-backup : Skip mysqldump backup (only if a backup already exists)}';
+        {--backup : Attempt mysqldump backup before import (needs exec; local XAMPP only)}
+        {--skip-backup : Deprecated alias — auto-backup is off by default; use --backup to enable}';
 
     protected $description = 'Import TallyPrime XML (masters + inventory + transactions) into DMS safely and idempotently';
 
@@ -73,10 +74,16 @@ class ImportTallyCommand extends Command
             return self::SUCCESS;
         }
 
-        if (! $this->option('skip-backup') && ! $this->createBackup()) {
-            $this->error('Backup failed. Refusing to import. Use --skip-backup only if you already have a backup.');
+        // Auto-backup is opt-in: shared hosts often disable exec()/mysqldump.
+        // Always take a manual DB backup (cPanel / phpMyAdmin) before live imports.
+        if ($this->option('backup')) {
+            if (! $this->createBackup()) {
+                $this->error('Backup failed. Refusing to import. Fix mysqldump/exec or omit --backup after a manual backup.');
 
-            return self::FAILURE;
+                return self::FAILURE;
+            }
+        } else {
+            $this->warn('Skipping auto-backup (default). Ensure you already took a manual DB backup before LIVE import.');
         }
 
         $usersBefore = DB::table('users')->count();
@@ -470,10 +477,16 @@ class ImportTallyCommand extends Command
             $db
         );
 
+        if (! function_exists('exec')) {
+            $this->error('exec() is disabled on this host. Take a manual DB backup and run without --backup.');
+
+            return false;
+        }
+
         $this->info("Creating backup → {$final}");
         $output = [];
         $code = 0;
-        exec($cmd.' 2>&1', $output, $code);
+        \exec($cmd.' 2>&1', $output, $code);
         if ($code !== 0 || ! is_file($tmp) || filesize($tmp) < 100) {
             $this->error(implode("\n", $output) ?: 'mysqldump produced an empty file');
 

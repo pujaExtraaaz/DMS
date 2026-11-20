@@ -1,7 +1,7 @@
 <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('payments.view', 'payments.create', 'cheques.view', 'credit-notes.view')): ?>
     <?php
         $sNum = $num();
-        $sectionActive = $is('payments.*', 'cheques.*', 'credit-notes.*', 'outstanding.*', 'reconciliation.*');
+        $sectionActive = $is('payments.*', 'cheques.*', 'credit-notes.*', 'outstanding.*', 'reconciliation.*', 'cheque-books.*', 'organization.cheque-books.*');
     ?>
     <div
         data-sidebar-section="receivables"
@@ -70,6 +70,7 @@
             <a href="<?php echo e(route('payments.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['payments.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Payment Receipts</span></a>
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('cheques.view', 'cheques.create', 'payments.manage')): ?>
                 <a href="<?php echo e(route('cheques.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['cheques.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Cheque Register</span></a>
+                <a href="<?php echo e(route('cheque-books.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['cheque-books.*', 'organization.cheque-books.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Cheque Books</span></a>
             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('credit-notes.view', 'credit-notes.create', 'payments.manage')): ?>
                 <a href="<?php echo e(route('credit-notes.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['credit-notes.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Credit Notes</span></a>

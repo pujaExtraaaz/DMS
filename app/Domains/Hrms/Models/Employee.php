@@ -20,7 +20,7 @@ class Employee extends Model
 
     protected $fillable = [
         'company_id', 'branch_id', 'user_id', 'department_id', 'designation_id', 'manager_id',
-        'employee_code', 'name', 'email', 'personal_email', 'phone', 'contact_number', 'alternate_contact_number',
+        'employee_code', 'biometric_code', 'name', 'email', 'personal_email', 'phone', 'contact_number', 'alternate_contact_number',
         'joining_date', 'date_of_birth', 'father_name', 'blood_group', 'aadhaar_number', 'pan_number',
         'is_salesperson', 'status', 'address', 'present_address', 'permanent_address',
         'emergency_contact_number', 'emergency_contact_relationship',

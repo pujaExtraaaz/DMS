@@ -319,6 +319,7 @@ class EmployeeController extends Controller
             'designation_id' => 'nullable|exists:designations,id',
             'manager_id' => 'nullable|exists:employees,id',
             'employee_code' => 'nullable|string|max:40|unique:employees,employee_code,'.($employee?->id ?? 'NULL'),
+            'biometric_code' => 'nullable|string|max:50',
             'name' => 'required|string|max:255',
             'email' => 'nullable|email|max:255',
             'personal_email' => 'nullable|email|max:255',

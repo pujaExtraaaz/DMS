@@ -1,9 +1,9 @@
 <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('hrms.view', 'hrms.manage', 'crm.view', 'crm.manage', 'tally.view', 'tally.manage')): ?>
     <?php
         $sNum = $num();
-        $sectionActive = $is('hrms.*') || $is('crm.*') || $is('tally.*');
+        $sectionActive = $is('hrms.*') || $is('crm.*') || $is('tally.*') || $is('ess.*');
         $primaryRoute = $can('hrms.view', 'hrms.manage')
-            ? route('hrms.employees.index')
+            ? route('hrms.dashboard')
             : route('crm.leads.index');
     ?>
     <div
@@ -71,14 +71,25 @@
         
         <div x-show="open && !$root.sidebarCollapsed" x-cloak class="space-y-0.5">
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('hrms.view', 'hrms.manage')): ?>
+                <a href="<?php echo e(route('hrms.dashboard')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.dashboard', 'hrms.reports.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>HR Dashboard</span></a>
                 <a href="<?php echo e(route('hrms.employees.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.employees.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Employees</span></a>
-                <a href="<?php echo e(route('hrms.payroll.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.payroll.*', 'hrms.salary-structures.*', 'hrms.pay-heads.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Payroll</span></a>
+                <a href="<?php echo e(route('hrms.payroll.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.payroll.*', 'hrms.payroll-runs.*', 'hrms.salary-structures.*', 'hrms.pay-heads.*', 'hrms.comp-off.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Payroll</span></a>
                 <a href="<?php echo e(route('hrms.departments.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.departments.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Departments</span></a>
                 <a href="<?php echo e(route('hrms.designations.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.designations.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Designations</span></a>
                 <a href="<?php echo e(route('hrms.managers.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.managers.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Managers</span></a>
-                <a href="<?php echo e(route('hrms.attendances.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.attendances.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Attendance</span></a>
-                <a href="<?php echo e(route('hrms.leave-management.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.leave-management.*', 'hrms.leave-requests.*', 'hrms.leave-balances.*', 'hrms.leave-types.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Leave Management</span></a>
+                <a href="<?php echo e(route('hrms.attendances.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.attendances.*', 'hrms.shifts.*', 'hrms.regularisations.*', 'hrms.essl.*', 'hrms.punch-conflicts.*', 'hrms.reports.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Attendance</span></a>
+                <a href="<?php echo e(route('hrms.regularisations.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.regularisations.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Regularisations</span></a>
+                <a href="<?php echo e(route('hrms.punch-conflicts.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.punch-conflicts.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Punch Conflicts</span></a>
+                <a href="<?php echo e(route('hrms.shifts.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.shifts.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Shifts</span></a>
+                <a href="<?php echo e(route('hrms.holidays.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.holidays.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Holidays</span></a>
+                <a href="<?php echo e(route('hrms.leave-management.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.leave-management.*', 'hrms.leave-requests.*', 'hrms.leave-balances.*', 'hrms.leave-types.*', 'hrms.leave-policies.*', 'hrms.leave-encashments.*', 'hrms.comp-off.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Leave Management</span></a>
+                <a href="<?php echo e(route('hrms.comp-off.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.comp-off.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Comp-off Credit</span></a>
+                <a href="<?php echo e(route('hrms.reports.attendance-register')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.reports.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>HR Reports</span></a>
+                <a href="<?php echo e(route('hrms.essl.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.essl.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>eSSL Sync</span></a>
                 <a href="<?php echo e(route('hrms.expense-claims.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['hrms.expense-claims.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Claims</span></a>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(auth()->user()?->employee): ?>
+                <a href="<?php echo e(route('ess.home')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['ess.*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>My ESS</span></a>
             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($can('crm.view', 'crm.manage')): ?>
                 <a href="<?php echo e(route('crm.leads.index')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['crm.leads.index', 'crm.leads.show', 'crm.leads.edit', 'crm.leads.create', 'crm.leads.bulk-upload*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Leads (CRM)</span></a>

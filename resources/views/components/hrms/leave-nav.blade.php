@@ -1,5 +1,5 @@
 @props([
-    'active' => 'requests', // requests | balances | types
+    'active' => 'requests',
 ])
 
 @php
@@ -19,12 +19,24 @@
             'route' => route('hrms.leave-types.index'),
             'match' => request()->routeIs('hrms.leave-types.*'),
         ],
+        'policies' => [
+            'label' => 'Policies',
+            'route' => route('hrms.leave-policies.index'),
+            'match' => request()->routeIs('hrms.leave-policies.*'),
+        ],
+        'encashments' => [
+            'label' => 'Encashment',
+            'route' => route('hrms.leave-encashments.index'),
+            'match' => request()->routeIs('hrms.leave-encashments.*'),
+        ],
     ];
 
     $creates = [
         'requests' => ['label' => 'New Request', 'href' => route('hrms.leave-requests.create'), 'title' => 'Create leave request'],
         'balances' => ['label' => 'Allocate', 'href' => route('hrms.leave-balances.create'), 'title' => 'Allocate / adjust balance'],
         'types' => ['label' => 'Add Type', 'href' => route('hrms.leave-types.create'), 'title' => 'Create leave type'],
+        'policies' => ['label' => 'Add Policy', 'href' => route('hrms.leave-policies.create'), 'title' => 'Create leave policy'],
+        'encashments' => ['label' => 'New Encashment', 'href' => route('hrms.leave-encashments.create'), 'title' => 'Request encashment'],
     ];
 
     $current = collect($tabs)->search(fn ($tab, $key) => $active === $key || ($tab['match'] ?? false));

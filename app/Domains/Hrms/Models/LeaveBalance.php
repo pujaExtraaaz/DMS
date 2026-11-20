@@ -9,14 +9,18 @@ class LeaveBalance extends Model
 {
     protected $fillable = [
         'employee_id', 'leave_type_id', 'year',
-        'opening_balance', 'used_balance', 'closing_balance',
+        'opening_balance', 'carried_forward', 'accrued_balance',
+        'used_balance', 'encashed_balance', 'closing_balance',
     ];
 
     protected function casts(): array
     {
         return [
             'opening_balance' => 'decimal:2',
+            'carried_forward' => 'decimal:2',
+            'accrued_balance' => 'decimal:2',
             'used_balance' => 'decimal:2',
+            'encashed_balance' => 'decimal:2',
             'closing_balance' => 'decimal:2',
         ];
     }

@@ -86,6 +86,7 @@
             <a href="<?php echo e(route('reports.balance-sheet')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['reports.balance-sheet'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Balance Sheet</span></a>
             <a href="<?php echo e(route('reports.trial-balance')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['reports.trial-balance'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Trial Balance</span></a>
             <a href="<?php echo e(route('reports.od')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['reports.od', 'od.report*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>OD Report</span></a>
+            <a href="<?php echo e(route('group-dashboard')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['group-dashboard*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Group Dashboard</span></a>
             <a href="<?php echo e(route('organization.sister-concerns.reports')); ?>" class="<?php echo e($itemClass); ?> <?php echo e($linkClass(['organization.sister-concerns.reports*'])); ?>"><span x-show="!$root.sidebarCollapsed" x-cloak>Sister Concern Reports</span></a>
         </div>
     </div>
