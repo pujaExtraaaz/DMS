@@ -825,6 +825,21 @@ class ProductController extends Controller
 
     protected function validated(Request $request, ?Product $product = null): array
     {
+        if (! $product) {
+            $routeProduct = $request->route('product');
+            if ($routeProduct instanceof Product) {
+                $product = $routeProduct;
+            } elseif (is_numeric($routeProduct)) {
+                $product = Product::query()->find((int) $routeProduct);
+            } elseif ($request->filled('id') && is_numeric($request->input('id'))) {
+                $product = Product::query()->find((int) $request->input('id'));
+            } elseif ($request->filled('product_id') && is_numeric($request->input('product_id'))) {
+                $product = Product::query()->find((int) $request->input('product_id'));
+            }
+        }
+
+        $productId = $product?->id;
+
         if (! $request->filled('sku') && $request->filled('part_number')) {
             $request->merge(['sku' => $request->input('part_number')]);
         }
@@ -898,15 +913,26 @@ class ProductController extends Controller
                 'required',
                 'string',
                 'max:255',
-                function ($attribute, $value, $fail) use ($product, $request) {
+                function ($attribute, $value, $fail) use ($product, $productId, $request) {
                     $normalized = mb_strtolower(trim((string) $value));
                     if ($normalized === '') {
                         return;
                     }
 
+                    // When updating an existing product: allow the existing product to retain its current name.
+                    if ($productId && $product && $product->exists) {
+                        $currentNormalizedName = mb_strtolower(trim((string) $product->name));
+                        if ($normalized === $currentNormalizedName) {
+                            return;
+                        }
+                    }
+
                     $query = Product::query()
-                        ->whereRaw('LOWER(TRIM(name)) = ?', [$normalized])
-                        ->when($product, fn ($q) => $q->where('id', '!=', $product->id));
+                        ->whereRaw('LOWER(TRIM(name)) = ?', [$normalized]);
+
+                    if ($productId) {
+                        $query->where('id', '!=', $productId);
+                    }
 
                     // Prefer same company scope when available (company isolation).
                     $companyId = $request->filled('company_id')
@@ -936,16 +962,16 @@ class ProductController extends Controller
                     }
                 },
             ],
-            'sku' => 'required_unless:sku_not_applicable,1|nullable|string|max:50|unique:products,sku'.($product ? ','.$product->id : ''),
+            'sku' => 'required_unless:sku_not_applicable,1|nullable|string|max:50|unique:products,sku'.($productId ? ','.$productId : ''),
             'serial_no' => [
                 'nullable',
                 'string',
                 'max:50',
-                function ($attribute, $value, $fail) use ($product) {
+                function ($attribute, $value, $fail) use ($productId) {
                     if ($value !== null && $value !== '') {
                         $query = DB::table('products')->where('serial_no', $value);
-                        if ($product) {
-                            $query->where('id', '!=', $product->id);
+                        if ($productId) {
+                            $query->where('id', '!=', $productId);
                         }
                         if ($query->exists()) {
                             $fail('The product serial number has already been taken.');

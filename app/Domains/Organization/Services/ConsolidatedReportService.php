@@ -298,11 +298,15 @@ class ConsolidatedReportService
         // Calculate Credit Notes (Sales Returns) in this period
         $creditNotesTotal = 0.0;
         if (Schema::hasTable('credit_notes')) {
-            $creditNotesTotal = (float) CreditNote::query()
-                ->where('status', 'posted')
-                ->whereBetween('credit_note_date', [$fromDate, $toDate])
-                ->whereIn('invoice_id', $invoices->pluck('id')->filter())
-                ->sum('grand_total');
+            try {
+                $creditNotesTotal = (float) CreditNote::query()
+                    ->where('status', 'posted')
+                    ->whereBetween('credit_note_date', [$fromDate, $toDate])
+                    ->whereIn('invoice_id', $invoices->pluck('id')->filter())
+                    ->sum('grand_total');
+            } catch (\Throwable) {
+                // Ignore schema mismatches
+            }
         }
 
         if (Schema::hasTable('acct_vouchers')) {
@@ -358,22 +362,26 @@ class ConsolidatedReportService
         // Calculate Debit Notes (Purchase Returns) in this period
         $debitNotesTotal = 0.0;
         if (Schema::hasTable('supplier_payables')) {
-            $dpQuery = DB::table('supplier_payables')
-                ->where('type', 'debit_note')
-                ->whereDate('created_at', '>=', $fromDate)
-                ->whereDate('created_at', '<=', $toDate);
+            try {
+                $dpQuery = DB::table('supplier_payables')
+                    ->where('type', 'debit_note')
+                    ->whereDate('created_at', '>=', $fromDate)
+                    ->whereDate('created_at', '<=', $toDate);
 
-            if (Schema::hasColumn('supplier_payables', 'company_id')) {
-                $dpQuery->whereIn('company_id', $companyIds);
-            } elseif (Schema::hasColumn('supplier_payables', 'supplier_id')) {
-                $supplierIds = Customer::query()->whereIn('company_id', $companyIds)->pluck('id');
-                $dpQuery->whereIn('supplier_id', $supplierIds);
-            }
+                if (Schema::hasColumn('supplier_payables', 'company_id')) {
+                    $dpQuery->whereIn('company_id', $companyIds);
+                } elseif (Schema::hasColumn('supplier_payables', 'supplier_id')) {
+                    $supplierIds = Customer::query()->whereIn('company_id', $companyIds)->pluck('id');
+                    $dpQuery->whereIn('supplier_id', $supplierIds);
+                }
 
-            if (Schema::hasColumn('supplier_payables', 'debit')) {
-                $debitNotesTotal += (float) $dpQuery->sum('debit');
-            } elseif (Schema::hasColumn('supplier_payables', 'amount')) {
-                $debitNotesTotal += (float) $dpQuery->sum('amount');
+                if (Schema::hasColumn('supplier_payables', 'debit')) {
+                    $debitNotesTotal += (float) $dpQuery->sum('debit');
+                } elseif (Schema::hasColumn('supplier_payables', 'amount')) {
+                    $debitNotesTotal += (float) $dpQuery->sum('amount');
+                }
+            } catch (\Throwable) {
+                // Ignore any legacy/mismatched supplier_payables schema errors
             }
         }
 
