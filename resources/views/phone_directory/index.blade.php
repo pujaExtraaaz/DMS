@@ -253,7 +253,7 @@
                         <span>Apply</span>
                     </button>
 
-                    @if(request()->anyFilled(['search', 'contact_type', 'department_id', 'designation', 'company_name', 'state', 'city', 'status', 'category_id', 'important']))
+                    @if(request()->anyFilled(['search', 'contact_type', 'department_id', 'designation', 'company_name', 'classification_id', 'state', 'city', 'status', 'category_id', 'important']))
                         <a
                             href="{{ route('phone-directory.index') }}"
                             class="btn-pd-secondary inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-900 shadow-xs hover:bg-slate-50 hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 transition whitespace-nowrap min-h-[38px]"
@@ -277,6 +277,17 @@
                         <option value="">All Types</option>
                         @foreach($contactTypes as $key => $label)
                             <option value="{{ $key }}" @selected(request('contact_type') === $key)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                {{-- Classification --}}
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Classification</label>
+                    <select name="classification_id" class="w-full rounded-lg border-slate-300 py-1.5 pl-2.5 pr-7 text-xs text-slate-700 focus:border-violet-500 focus:ring-violet-500 shadow-xs">
+                        <option value="">All Classifications</option>
+                        @foreach($classifications as $classification)
+                            <option value="{{ $classification->id }}" @selected((string) request('classification_id') === (string) $classification->id)>{{ $classification->name }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -424,6 +435,11 @@
                             </a>
                         </th>
 
+                        {{-- Classification --}}
+                        <th scope="col" x-show="visibleColumns.classification" class="px-3 py-3 text-left">
+                            Classification
+                        </th>
+
                         {{-- Designation --}}
                         <th scope="col" x-show="visibleColumns.designation" class="px-3 py-3 text-left">
                             Designation
@@ -525,9 +541,10 @@
                                         <span class="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 border border-rose-200">Archived</span>
                                     @endif
                                 </div>
-                                @if($contact->company_name)
-                                    <div class="text-[11px] text-slate-500 truncate max-w-[200px]" title="{{ $contact->company_name }}">
-                                        {{ $contact->company_name }}
+                                @php $displayCompany = $contact->effective_company_name; @endphp
+                                @if($displayCompany)
+                                    <div class="text-[11px] text-slate-500 truncate max-w-[200px]" title="{{ $displayCompany }}">
+                                        {{ $displayCompany }}
                                     </div>
                                 @endif
                             </td>
@@ -553,6 +570,17 @@
                                 </span>
                             </td>
 
+                            {{-- Classification --}}
+                            <td x-show="visibleColumns.classification" class="px-3 py-2.5 text-slate-600">
+                                @if($contact->classification)
+                                    <span class="inline-flex items-center rounded-md bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 text-[11px] font-medium">
+                                        {{ $contact->classification->name }}
+                                    </span>
+                                @else
+                                    <span class="text-slate-400">—</span>
+                                @endif
+                            </td>
+
                             {{-- Designation --}}
                             <td x-show="visibleColumns.designation" class="px-3 py-2.5 text-slate-600">
                                 <span class="truncate block max-w-[150px]" title="{{ $contact->designation }}">{{ $contact->designation ?: '—' }}</span>
@@ -571,7 +599,8 @@
 
                             {{-- Company --}}
                             <td x-show="visibleColumns.company" class="px-3 py-2.5 text-slate-600">
-                                <span class="truncate block max-w-[150px]" title="{{ $contact->company_name }}">{{ $contact->company_name ?: '—' }}</span>
+                                @php $companyLabel = $contact->effective_company_name; @endphp
+                                <span class="truncate block max-w-[150px]" title="{{ $companyLabel }}">{{ $companyLabel ?: '—' }}</span>
                             </td>
 
                             {{-- Phone --}}
@@ -724,7 +753,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="12" class="px-4 py-12 text-center text-slate-500">
+                            <td colspan="13" class="px-4 py-12 text-center text-slate-500">
                                 <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
                                     <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                                 </div>
@@ -834,6 +863,9 @@
                     {{-- Key Badges --}}
                     <div class="flex flex-wrap gap-2">
                         <span class="rounded-full bg-violet-100 px-2.5 py-1 text-violet-800 font-semibold" x-text="quickContact.contact_type_label"></span>
+                        <template x-if="quickContact.classification_name && quickContact.classification_name !== '—'">
+                            <span class="rounded-full bg-purple-100 px-2.5 py-1 text-purple-800 font-semibold" x-text="'Classification: ' + quickContact.classification_name"></span>
+                        </template>
                         <template x-if="quickContact.department_name && quickContact.department_name !== '—'">
                             <span class="rounded-full bg-slate-100 px-2.5 py-1 text-slate-700 font-semibold" x-text="'Dept: ' + quickContact.department_name"></span>
                         </template>
@@ -911,13 +943,14 @@ function phoneDirectoryManager() {
     return {
         selectedIds: [],
         pageIds: @json($contacts->pluck('id')),
-        filtersExpanded: {{ request()->anyFilled(['contact_type', 'department_id', 'designation', 'company_name', 'state', 'city', 'status', 'category_id']) ? 'true' : 'false' }},
+        filtersExpanded: {{ request()->anyFilled(['contact_type', 'department_id', 'designation', 'company_name', 'classification_id', 'state', 'city', 'status', 'category_id']) ? 'true' : 'false' }},
         quickViewOpen: false,
         quickContact: {},
 
         availableColumns: [
             { id: 'profile', label: 'Profile Avatar' },
             { id: 'contact_type', label: 'Contact Type' },
+            { id: 'classification', label: 'Classification' },
             { id: 'designation', label: 'Designation' },
             { id: 'department', label: 'Department' },
             { id: 'company', label: 'Company' },
@@ -929,6 +962,7 @@ function phoneDirectoryManager() {
         visibleColumns: {
             profile: true,
             contact_type: true,
+            classification: true,
             designation: true,
             department: true,
             company: true,

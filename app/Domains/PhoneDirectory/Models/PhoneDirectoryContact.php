@@ -2,7 +2,9 @@
 
 namespace App\Domains\PhoneDirectory\Models;
 
+use App\Domains\Master\Models\CustomerType;
 use App\Domains\Master\Models\Designation;
+use App\Domains\Organization\Models\Company;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -25,6 +27,8 @@ class PhoneDirectoryContact extends Model
         'designation',
         'designation_id',
         'department_id',
+        'company_id',
+        'customer_type_id',
         'company_name',
         'category_id',
         'mobile_number',
@@ -79,6 +83,33 @@ class PhoneDirectoryContact extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(PhoneDirectoryCategory::class, 'category_id');
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class, 'company_id');
+    }
+
+    public function classification(): BelongsTo
+    {
+        return $this->belongsTo(CustomerType::class, 'customer_type_id');
+    }
+
+    public function customerType(): BelongsTo
+    {
+        return $this->belongsTo(CustomerType::class, 'customer_type_id');
+    }
+
+    public function partyContacts(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Domains\Master\Models\PartyContact::class, 'phone_directory_contact_id');
+    }
+
+    public function parties(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(\App\Domains\Master\Models\Customer::class, 'party_contacts', 'phone_directory_contact_id', 'customer_id')
+            ->withPivot(['id', 'is_primary', 'level', 'role', 'designation_id', 'phone', 'email'])
+            ->withTimestamps();
     }
 
     public function creator(): BelongsTo
@@ -192,6 +223,22 @@ class PhoneDirectoryContact extends Model
     }
 
     /**
+     * Get effective company name (from master relationship or fallback to text).
+     */
+    public function getEffectiveCompanyNameAttribute(): string
+    {
+        return $this->company?->name ?? $this->company_name ?? '';
+    }
+
+    /**
+     * Get party classification name.
+     */
+    public function getClassificationNameAttribute(): string
+    {
+        return $this->classification?->name ?? '';
+    }
+
+    /**
      * Scopes
      */
     public function scopeActive(Builder $query): Builder
@@ -237,6 +284,12 @@ class PhoneDirectoryContact extends Model
                 })
                 ->orWhereHas('category', function ($catQuery) use ($prefix) {
                     $catQuery->where('name', 'like', $prefix);
+                })
+                ->orWhereHas('company', function ($compQuery) use ($prefix) {
+                    $compQuery->where('name', 'like', $prefix);
+                })
+                ->orWhereHas('classification', function ($classQuery) use ($prefix) {
+                    $classQuery->where('name', 'like', $prefix);
                 });
         });
     }
@@ -263,9 +316,24 @@ class PhoneDirectoryContact extends Model
             $query->where('designation', 'like', "%{$filters['designation']}%");
         }
 
-        // Company
+        // Company (ID or Name)
+        if (! empty($filters['company_id'])) {
+            $query->where('company_id', $filters['company_id']);
+        }
         if (! empty($filters['company_name'])) {
-            $query->where('company_name', 'like', "%{$filters['company_name']}%");
+            $term = $filters['company_name'];
+            $query->where(function (Builder $q) use ($term) {
+                $q->where('company_name', 'like', "%{$term}%")
+                    ->orWhereHas('company', function (Builder $cq) use ($term) {
+                        $cq->where('name', 'like', "%{$term}%");
+                    });
+            });
+        }
+
+        // Classification
+        $classificationId = $filters['classification_id'] ?? $filters['customer_type_id'] ?? null;
+        if (! empty($classificationId)) {
+            $query->where('customer_type_id', $classificationId);
         }
 
         // State

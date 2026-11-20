@@ -37,16 +37,18 @@ class SalesTargetCalculationService
 
             if ($target->owner_type === 'party' || $target->customer_id) {
                 $invoiceQuery->where('customer_id', $target->customer_id);
+            } elseif ($target->owner_type === 'branch' && $target->branch_id) {
+                $invoiceQuery->where(function ($q) use ($salespersonIds, $target) {
+                    if ($salespersonIds->isNotEmpty()) {
+                        $q->whereIn('salesperson_id', $salespersonIds);
+                    }
+                    $q->orWhereHas('customer', function ($cq) use ($target) {
+                        $cq->where('branch_id', $target->branch_id);
+                    });
+                });
             } else {
                 if ($salespersonIds->isNotEmpty()) {
                     $invoiceQuery->whereIn('salesperson_id', $salespersonIds);
-                }
-
-                // Also check branch match if branch-owned and no specific users
-                if ($target->owner_type === 'branch' && $target->branch_id && $salespersonIds->isEmpty()) {
-                    $invoiceQuery->whereHas('customer', function ($q) use ($target) {
-                        $q->where('branch_id', $target->branch_id);
-                    });
                 }
             }
 
@@ -61,10 +63,13 @@ class SalesTargetCalculationService
             if ($target->owner_type === 'party' || $target->customer_id) {
                 $creditNoteQuery->where('customer_id', $target->customer_id);
             } elseif (!empty($invoiceIds)) {
-                $creditNoteQuery->where(function ($q) use ($invoiceIds, $salespersonIds) {
+                $creditNoteQuery->where(function ($q) use ($invoiceIds, $salespersonIds, $target) {
                     $q->whereIn('invoice_id', $invoiceIds);
                     if ($salespersonIds->isNotEmpty()) {
                         $q->orWhereHas('invoice', fn ($iq) => $iq->whereIn('salesperson_id', $salespersonIds));
+                    }
+                    if ($target->owner_type === 'branch' && $target->branch_id) {
+                        $q->orWhereHas('customer', fn ($cq) => $cq->where('branch_id', $target->branch_id));
                     }
                 });
             } elseif ($salespersonIds->isNotEmpty()) {
@@ -289,13 +294,19 @@ class SalesTargetCalculationService
     {
         $totalAmount = 0.0;
         $totalQuantity = 0.0;
+        $matchedInvoiceIds = [];
 
         foreach ($invoices as $inv) {
+            $matched = false;
             foreach ($inv->items as $item) {
                 if ($this->matchesCriteriaItem($item, $criteriaItem)) {
                     $totalAmount += (float) $item->line_total;
                     $totalQuantity += (float) $item->quantity;
+                    $matched = true;
                 }
+            }
+            if ($matched) {
+                $matchedInvoiceIds[] = $inv->id;
             }
         }
 
@@ -311,6 +322,7 @@ class SalesTargetCalculationService
         return [
             'amount' => max(0, $totalAmount),
             'quantity' => max(0, $totalQuantity),
+            'invoice_ids' => array_values(array_unique($matchedInvoiceIds)),
         ];
     }
 
@@ -319,7 +331,7 @@ class SalesTargetCalculationService
      */
     protected function matchesCriteria($item, SalesTarget $target): bool
     {
-        $product = $item->product;
+        $product = $item->product ?? \App\Domains\Master\Models\Product::find($item->product_id);
         if (!$product) return false;
 
         if ($target->product_id && (int) $item->product_id !== (int) $target->product_id) {
@@ -350,7 +362,7 @@ class SalesTargetCalculationService
      */
     protected function matchesCriteriaItem($item, SalesTargetItem $criteriaItem): bool
     {
-        $product = $item->product;
+        $product = $item->product ?? \App\Domains\Master\Models\Product::find($item->product_id);
         if (!$product) return false;
 
         if ($criteriaItem->product_id && (int) $item->product_id !== (int) $criteriaItem->product_id) {
@@ -454,7 +466,7 @@ class SalesTargetCalculationService
         $customerId = $invoice->customer_id;
 
         $targets = SalesTarget::query()
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'completed'])
             ->where('starts_on', '<=', $invoiceDate)
             ->where('ends_on', '>=', $invoiceDate)
             ->get();
@@ -467,8 +479,18 @@ class SalesTargetCalculationService
                 continue;
             }
 
+            if ($target->owner_type === 'branch' && $target->branch_id) {
+                $salespersonIds = $this->resolveSalespersonIds($target);
+                $isBranchSalesperson = $salespersonId && $salespersonIds->contains($salespersonId);
+                $isBranchCustomer = $invoice->customer && (int) $invoice->customer->branch_id === (int) $target->branch_id;
+                if ($isBranchSalesperson || $isBranchCustomer) {
+                    $this->calculateTarget($target);
+                }
+                continue;
+            }
+
             $salespersonIds = $this->resolveSalespersonIds($target);
-            if ($salespersonIds->isEmpty() || $salespersonIds->contains($salespersonId)) {
+            if ($salespersonIds->isEmpty() || ($salespersonId && $salespersonIds->contains($salespersonId))) {
                 $this->calculateTarget($target);
             }
         }
@@ -485,11 +507,10 @@ class SalesTargetCalculationService
 
         if ($invoice) {
             $this->recalculateForInvoice($invoice);
-            return;
         }
 
         $targets = SalesTarget::query()
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'completed'])
             ->where('starts_on', '<=', $cnDate)
             ->where('ends_on', '>=', $cnDate)
             ->get();
@@ -503,7 +524,36 @@ class SalesTargetCalculationService
             }
 
             $salespersonIds = $this->resolveSalespersonIds($target);
-            if ($salespersonIds->isEmpty()) {
+            $spId = $invoice?->salesperson_id;
+            if ($salespersonIds->isEmpty() || ($spId && $salespersonIds->contains($spId))) {
+                $this->calculateTarget($target);
+            }
+        }
+    }
+
+    /**
+     * Recalculate targets for a specific salesperson and date.
+     */
+    public function recalculateForSalespersonAndDate(?int $salespersonId, $date): void
+    {
+        if (! $salespersonId || ! $date) {
+            return;
+        }
+
+        $dateStr = $date instanceof \Carbon\CarbonInterface ? $date->toDateString() : (string) $date;
+
+        $targets = SalesTarget::query()
+            ->whereIn('status', ['active', 'completed'])
+            ->where('starts_on', '<=', $dateStr)
+            ->where('ends_on', '>=', $dateStr)
+            ->get();
+
+        foreach ($targets as $target) {
+            if ($target->owner_type === 'party') {
+                continue;
+            }
+            $salespersonIds = $this->resolveSalespersonIds($target);
+            if ($salespersonIds->contains($salespersonId)) {
                 $this->calculateTarget($target);
             }
         }

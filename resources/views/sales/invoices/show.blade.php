@@ -1,6 +1,9 @@
 @extends('layouts.dms')
 @section('title', $invoice->invoice_no)
 @section('content')
+@php
+    $company = $company ?? $invoice->selling_company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first();
+@endphp
 <div x-data="{
     cancelEInvoiceModal: false,
     cancelEwayModal: false,
@@ -22,8 +25,8 @@
     transporterName: @js($invoice->transporter_name ?? ''),
     lrRrNo: @js($invoice->lr_rr_no ?? ''),
     lrRrDate: @js($invoice->lr_rr_date?->format('Y-m-d') ?? ''),
-    fromPincode: @js($invoice->consignor_pincode ?: ($company?->pincode ?? '')),
-    fromPlace: @js($invoice->consignor_city ?: ($company?->city ?: ($company?->state ?? ''))),
+    fromPincode: @js($invoice->consignor_pincode ?: (($company ?? $invoice->selling_company)?->pincode ?? '')),
+    fromPlace: @js($invoice->consignor_city ?: (($company ?? $invoice->selling_company)?->city ?: (($company ?? $invoice->selling_company)?->state ?? ''))),
     toPincode: @js($invoice->shippingAddress?->pincode ?: ($invoice->consignee_pincode ?: ($invoice->customer?->shipping_pincode ?: ($invoice->customer?->pincode ?? '')))),
     toPlace: @js($invoice->ship_to_place ?: ($invoice->consignee_city ?: ($invoice->destination ?: ($invoice->customer?->shipping_city ?: ($invoice->customer?->city ?: ($invoice->customer?->state ?? '')))))),
 }">

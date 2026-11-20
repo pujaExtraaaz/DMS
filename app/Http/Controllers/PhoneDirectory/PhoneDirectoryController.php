@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\PhoneDirectory;
 
+use App\Domains\Master\Models\CustomerType;
 use App\Domains\Master\Models\Designation;
+use App\Domains\Organization\Models\Company;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryCategory;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryContact;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryDepartment;
@@ -44,6 +46,8 @@ class PhoneDirectoryController extends Controller
             'department_id' => $request->query('department_id'),
             'designation' => $request->query('designation'),
             'company_name' => $request->query('company_name'),
+            'company_id' => $request->query('company_id'),
+            'classification_id' => $request->query('classification_id') ?: $request->query('customer_type_id'),
             'state' => $request->query('state'),
             'city' => $request->query('city'),
             'status' => $request->query('status'),
@@ -53,7 +57,7 @@ class PhoneDirectoryController extends Controller
 
         // Query
         $query = PhoneDirectoryContact::query()
-            ->with(['department', 'category', 'designationMaster'])
+            ->with(['department', 'category', 'designationMaster', 'company', 'classification'])
             ->filter($filters);
 
         // Sorting
@@ -129,6 +133,9 @@ class PhoneDirectoryController extends Controller
             ->limit(50)
             ->pluck('city');
 
+        $classifications = CustomerType::where('is_active', true)->orderBy('name')->get();
+        $masterCompanies = Company::where('is_active', true)->orderBy('name')->get(['id', 'name']);
+
         return view('phone_directory.index', compact(
             'contacts',
             'summary',
@@ -142,7 +149,9 @@ class PhoneDirectoryController extends Controller
             'states',
             'companies',
             'designations',
-            'cities'
+            'cities',
+            'classifications',
+            'masterCompanies'
         ));
     }
 
@@ -153,6 +162,8 @@ class PhoneDirectoryController extends Controller
         $contact = new PhoneDirectoryContact();
         $departments = PhoneDirectoryDepartment::where('is_active', true)->orderBy('name')->get();
         $categories = PhoneDirectoryCategory::where('is_active', true)->orderBy('name')->get();
+        $companies = Company::where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $classifications = CustomerType::where('is_active', true)->orderBy('name')->get(['id', 'name']);
         $contactTypes = PhoneDirectoryContact::CONTACT_TYPES;
         $states = IndianStates::namesAlphabetical();
         $stateCities = IndianCities::all();
@@ -164,6 +175,9 @@ class PhoneDirectoryController extends Controller
             'isEdit' => false,
             'departments' => $departments,
             'categories' => $categories,
+            'companies' => $companies,
+            'classifications' => $classifications,
+            'defaultCompanyId' => auth()->user()?->company_id,
             'contactTypes' => $contactTypes,
             'states' => $states,
             'stateCities' => $stateCities,
@@ -177,6 +191,17 @@ class PhoneDirectoryController extends Controller
         $data = $request->validated();
         $this->resolveDesignationFields($data);
 
+        if ($request->filled('classification_id') && empty($data['customer_type_id'])) {
+            $data['customer_type_id'] = $request->input('classification_id');
+        }
+
+        if (! empty($data['company_id'])) {
+            $comp = Company::find($data['company_id']);
+            if ($comp) {
+                $data['company_name'] = $comp->name;
+            }
+        }
+
         if ($request->hasFile('profile_photo')) {
             $path = $request->file('profile_photo')->store('phone-directory/photos', 'public');
             $data['profile_photo'] = $path;
@@ -189,6 +214,16 @@ class PhoneDirectoryController extends Controller
 
         $contact = PhoneDirectoryContact::create($data);
 
+        if ($request->input('return_to') === 'party' || $request->query('return_to') === 'party') {
+            $partyId = $request->input('party_id') ?: $request->query('party_id');
+            $returnUrl = $partyId
+                ? route('masters.customers.edit', ['customer' => $partyId, 'selected_contact_id' => $contact->id])
+                : route('masters.customers.create', ['selected_contact_id' => $contact->id]);
+
+            return redirect($returnUrl)
+                ->with('success', "Contact '{$contact->contact_name}' created and added to Party.");
+        }
+
         return redirect()->route('phone-directory.index')
             ->with('success', "Contact '{$contact->contact_name}' created successfully.");
     }
@@ -197,7 +232,7 @@ class PhoneDirectoryController extends Controller
     {
         $this->authorizePermission('phone_directory.view');
 
-        $contact->load(['department', 'category', 'designationMaster', 'creator', 'updater']);
+        $contact->load(['department', 'category', 'designationMaster', 'creator', 'updater', 'company', 'classification']);
 
         if ($request->wantsJson() || $request->ajax()) {
             return response()->json([
@@ -212,6 +247,10 @@ class PhoneDirectoryController extends Controller
                     'contact_type_label' => PhoneDirectoryContact::CONTACT_TYPES[$contact->contact_type] ?? ucfirst($contact->contact_type),
                     'department_name' => $contact->department?->name ?? '—',
                     'category_name' => $contact->category?->name ?? '—',
+                    'company_id' => $contact->company_id,
+                    'company_name' => $contact->effective_company_name ?: ($contact->company_name ?? '—'),
+                    'classification_id' => $contact->customer_type_id,
+                    'classification_name' => $contact->classification?->name ?? '—',
                     'designation_name' => $contact->designation ?: ($contact->designationMaster?->name ?? '—'),
                 ]),
             ]);
@@ -226,6 +265,24 @@ class PhoneDirectoryController extends Controller
 
         $departments = PhoneDirectoryDepartment::where('is_active', true)->orderBy('name')->get();
         $categories = PhoneDirectoryCategory::where('is_active', true)->orderBy('name')->get();
+        $companies = Company::query()
+            ->where(function ($q) use ($contact) {
+                $q->where('is_active', true);
+                if ($contact->company_id) {
+                    $q->orWhere('id', $contact->company_id);
+                }
+            })
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        $classifications = CustomerType::query()
+            ->where(function ($q) use ($contact) {
+                $q->where('is_active', true);
+                if ($contact->customer_type_id) {
+                    $q->orWhere('id', $contact->customer_type_id);
+                }
+            })
+            ->orderBy('name')
+            ->get(['id', 'name']);
         $contactTypes = PhoneDirectoryContact::CONTACT_TYPES;
         $states = IndianStates::namesAlphabetical();
         $stateCities = IndianCities::all();
@@ -237,6 +294,8 @@ class PhoneDirectoryController extends Controller
             'isEdit' => true,
             'departments' => $departments,
             'categories' => $categories,
+            'companies' => $companies,
+            'classifications' => $classifications,
             'contactTypes' => $contactTypes,
             'states' => $states,
             'stateCities' => $stateCities,
@@ -249,6 +308,21 @@ class PhoneDirectoryController extends Controller
     {
         $data = $request->validated();
         $this->resolveDesignationFields($data);
+
+        if ($request->filled('classification_id') && empty($data['customer_type_id'])) {
+            $data['customer_type_id'] = $request->input('classification_id');
+        } elseif ($request->has('classification_id') && empty($request->input('classification_id')) && empty($data['customer_type_id'])) {
+            $data['customer_type_id'] = null;
+        }
+
+        if (! empty($data['company_id'])) {
+            $comp = Company::find($data['company_id']);
+            if ($comp) {
+                $data['company_name'] = $comp->name;
+            }
+        } elseif ($request->has('company_id') && empty($request->input('company_id'))) {
+            $data['company_id'] = null;
+        }
 
         if ($request->boolean('remove_photo')) {
             if ($contact->profile_photo && Storage::disk('public')->exists($contact->profile_photo)) {

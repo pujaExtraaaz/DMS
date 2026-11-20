@@ -10,6 +10,7 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\FinancialYear;
+use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Target\Models\SalesTarget;
 use App\Domains\Target\Models\SalesTargetAchievement;
@@ -461,7 +462,7 @@ class SalesTargetController extends Controller
     /**
      * Show Target Details & Drilldown
      */
-    public function show(SalesTarget $salesTarget): View
+    public function show(SalesTarget $salesTarget, Request $request): View
     {
         $salesTarget->load([
             'salesperson', 'salesTeam.members', 'branch', 'company', 'financialYear',
@@ -470,23 +471,48 @@ class SalesTargetController extends Controller
             'achievement', 'audits.user', 'alerts', 'customer'
         ]);
 
-        // Drill-down: Fetch contributing invoices directly from database
-        $contributingInvoicesQuery = Invoice::with(['customer', 'salesperson', 'items.product'])
-            ->whereNotIn('status', ['cancelled', 'draft', 'void'])
-            ->whereBetween('invoice_date', [$salesTarget->starts_on->toDateString(), $salesTarget->ends_on->toDateString()]);
+        $startDate = $request->input('date_from') ?? $salesTarget->starts_on->toDateString();
+        $endDate = $request->input('date_to') ?? $salesTarget->ends_on->toDateString();
 
-        if ($salesTarget->owner_type === 'party' || $salesTarget->customer_id) {
+        if ($request->filled('financial_year_id')) {
+            $fy = FinancialYear::find($request->financial_year_id);
+            if ($fy) {
+                $startDate = $fy->starts_on->toDateString();
+                $endDate = $fy->ends_on->toDateString();
+            }
+        }
+
+        // Drill-down: Fetch contributing invoices directly from database
+        $contributingInvoicesQuery = Invoice::with(['company', 'customer', 'salesperson', 'items.product', 'creditNotes'])
+            ->whereNotIn('status', ['cancelled', 'draft', 'void'])
+            ->whereBetween('invoice_date', [$startDate, $endDate]);
+
+        if ($request->filled('customer_id')) {
+            $contributingInvoicesQuery->where('customer_id', $request->customer_id);
+        } elseif ($salesTarget->owner_type === 'party' || $salesTarget->customer_id) {
             $contributingInvoicesQuery->where('customer_id', $salesTarget->customer_id);
-        } else {
+        }
+
+        if ($request->filled('salesperson_id')) {
+            $contributingInvoicesQuery->where('salesperson_id', $request->salesperson_id);
+        } elseif ($salesTarget->owner_type !== 'party') {
             $salespersonIds = $this->calculationService->resolveSalespersonIds($salesTarget);
             if ($salespersonIds->isNotEmpty()) {
                 $contributingInvoicesQuery->whereIn('salesperson_id', $salespersonIds);
             }
         }
 
-        $invoices = $contributingInvoicesQuery->orderByDesc('invoice_date')->paginate(10);
+        if ($request->filled('status')) {
+            $contributingInvoicesQuery->where('status', $request->status);
+        }
 
-        return view('sales-targets.show', compact('salesTarget', 'invoices'));
+        $invoices = $contributingInvoicesQuery->orderByDesc('invoice_date')->paginate(15)->withQueryString();
+
+        $financialYears = FinancialYear::orderByDesc('starts_on')->get();
+        $salespeople = \App\Http\Controllers\Sales\InvoiceController::getSalespersons();
+        $parties = Customer::orderBy('name')->get(['id', 'name', 'code']);
+
+        return view('sales-targets.show', compact('salesTarget', 'invoices', 'financialYears', 'salespeople', 'parties'));
     }
 
     /**
@@ -714,37 +740,109 @@ class SalesTargetController extends Controller
      */
     public function salesmanPerformance(Request $request): View
     {
-        $salespeople = User::whereHas('roles', fn ($q) => $q->whereIn('name', ['salesperson', 'sales_person', 'sales-executive']))
-            ->orWhereHas('employee', fn ($q) => $q->where('is_salesperson', true))
-            ->orderBy('name')
-            ->get();
+        $salespeopleQuery = User::query()
+            ->where(function ($q) {
+                $q->whereHas('roles', fn ($r) => $r->whereIn('name', ['salesperson', 'sales_person', 'sales-executive', 'sales-manager']))
+                  ->orWhereHas('employee', fn ($e) => $e->where('is_salesperson', true))
+                  ->orWhereIn('name', ['Kapil Dhir', 'Abdul Majid']);
+            })
+            ->orderBy('name');
 
-        if ($salespeople->isEmpty()) {
-            $salespeople = User::orderBy('name')->take(30)->get();
+        if ($request->filled('salesperson_id')) {
+            $salespeopleQuery->where('id', $request->salesperson_id);
+        }
+
+        $salespeople = $salespeopleQuery->get();
+        if ($salespeople->isEmpty() && !$request->filled('salesperson_id')) {
+            $salespeople = User::orderBy('name')->take(50)->get();
+        }
+
+        $fy = null;
+        if ($request->filled('financial_year_id')) {
+            $fy = FinancialYear::find($request->financial_year_id);
         }
 
         $performanceData = [];
         foreach ($salespeople as $sp) {
-            $targets = SalesTarget::with('achievement')
+            $targetsQuery = SalesTarget::with('achievement')
                 ->where('salesperson_id', $sp->id)
-                ->when($request->filled('financial_year_id'), fn ($q) => $q->where('financial_year_id', $request->financial_year_id))
-                ->when($request->filled('date_from'), fn ($q) => $q->where('starts_on', '>=', $request->date_from))
-                ->when($request->filled('date_to'), fn ($q) => $q->where('ends_on', '<=', $request->date_to))
-                ->whereIn('status', ['active', 'completed'])
-                ->get();
+                ->whereIn('status', ['active', 'completed']);
 
+            if ($request->filled('financial_year_id')) {
+                $targetsQuery->where('financial_year_id', $request->financial_year_id);
+            }
+            if ($request->filled('period_type')) {
+                $targetsQuery->where('period_type', $request->period_type);
+            }
+            if ($request->filled('date_from')) {
+                $targetsQuery->where('starts_on', '>=', $request->date_from);
+            }
+            if ($request->filled('date_to')) {
+                $targetsQuery->where('ends_on', '<=', $request->date_to);
+            }
+
+            $targets = $targetsQuery->get();
+
+            // Date bounds for posted transactions
+            $dateFrom = $request->input('date_from') ?? ($fy?->starts_on?->toDateString());
+            $dateTo = $request->input('date_to') ?? ($fy?->ends_on?->toDateString());
+
+            if (!$dateFrom && $targets->isNotEmpty()) {
+                $dateFrom = $targets->min('starts_on')?->toDateString();
+            }
+            if (!$dateTo && $targets->isNotEmpty()) {
+                $dateTo = $targets->max('ends_on')?->toDateString();
+            }
+
+            // Invoices query for this salesperson
+            $invoicesQuery = Invoice::query()
+                ->where('salesperson_id', $sp->id)
+                ->whereNotIn('status', ['cancelled', 'draft', 'void']);
+
+            if ($dateFrom) {
+                $invoicesQuery->where('invoice_date', '>=', $dateFrom);
+            }
+            if ($dateTo) {
+                $invoicesQuery->where('invoice_date', '<=', $dateTo);
+            }
+
+            $invoicesCount = (clone $invoicesQuery)->count();
+            $postedGrossSales = (float) (clone $invoicesQuery)->sum('grand_total');
+
+            // Credit Notes query for this salesperson's invoices
+            $creditNotesQuery = CreditNote::query()
+                ->where('status', 'posted')
+                ->whereHas('invoice', fn ($iq) => $iq->where('salesperson_id', $sp->id));
+
+            if ($dateFrom) {
+                $creditNotesQuery->where('credit_note_date', '>=', $dateFrom);
+            }
+            if ($dateTo) {
+                $creditNotesQuery->where('credit_note_date', '<=', $dateTo);
+            }
+
+            $salesReturns = (float) $creditNotesQuery->sum('grand_total');
+            $netEligibleSales = max(0, round($postedGrossSales - $salesReturns, 2));
+
+            // Targets calculation
             $totalTgt = (float) $targets->sum('target_amount');
             $totalAch = (float) $targets->sum(fn ($t) => $t->achievement?->achieved_amount ?? 0);
-            $pending = max(0, $totalTgt - $totalAch);
-            $percent = $totalTgt > 0 ? round(($totalAch / $totalTgt) * 100, 1) : 0;
+
+            // If salesperson has active targets, use target achieved amount; otherwise display net eligible sales
+            $displayAchieved = $targets->isNotEmpty() ? $totalAch : $netEligibleSales;
+            $pending = max(0, $totalTgt - $displayAchieved);
+            $percent = $totalTgt > 0 ? round(($displayAchieved / $totalTgt) * 100, 1) : 0;
 
             $performanceData[] = [
                 'user' => $sp,
                 'targets_count' => $targets->count(),
                 'target_amount' => $totalTgt,
-                'achieved_amount' => $totalAch,
+                'achieved_amount' => $displayAchieved,
                 'pending_amount' => $pending,
                 'achievement_percent' => $percent,
+                'invoices_count' => $invoicesCount,
+                'sales_returns' => $salesReturns,
+                'net_eligible_sales' => $netEligibleSales,
                 'achieved_count' => $targets->filter(fn ($t) => $t->achievement?->is_achieved)->count(),
             ];
         }
@@ -752,8 +850,72 @@ class SalesTargetController extends Controller
         usort($performanceData, fn ($a, $b) => $b['achievement_percent'] <=> $a['achievement_percent']);
 
         $financialYears = FinancialYear::orderByDesc('starts_on')->get();
+        $allSalespeople = \App\Http\Controllers\Sales\InvoiceController::getSalespersons();
 
-        return view('sales-targets.salesman-performance', compact('performanceData', 'financialYears'));
+        return view('sales-targets.salesman-performance', compact('performanceData', 'financialYears', 'allSalespeople'));
+    }
+
+    /**
+     * Contributing Invoices Drill-down View
+     */
+    public function contributingInvoices(Request $request): View
+    {
+        $query = Invoice::query()
+            ->with(['company', 'customer', 'salesperson', 'creditNotes'])
+            ->whereNotIn('status', ['draft', 'cancelled', 'void']);
+
+        if ($request->filled('salesperson_id')) {
+            $query->where('salesperson_id', $request->salesperson_id);
+        }
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+        if ($request->filled('company_id')) {
+            $query->where('company_id', $request->company_id);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('financial_year_id')) {
+            $fy = FinancialYear::find($request->financial_year_id);
+            if ($fy) {
+                $query->whereBetween('invoice_date', [$fy->starts_on->toDateString(), $fy->ends_on->toDateString()]);
+            }
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('invoice_date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('invoice_date', '<=', $request->date_to);
+        }
+
+        // Summary totals across full filtered set
+        $totalInvoicesCount = (clone $query)->count();
+        $totalInvoiceAmount = (float) (clone $query)->sum('grand_total');
+
+        // Credit notes on these invoices
+        $invoiceIds = (clone $query)->pluck('id')->all();
+        $totalCreditNotesAmount = 0.0;
+        if (!empty($invoiceIds)) {
+            $totalCreditNotesAmount = (float) CreditNote::whereIn('invoice_id', $invoiceIds)
+                ->where('status', 'posted')
+                ->sum('grand_total');
+        }
+        $netEligibleAmount = max(0, round($totalInvoiceAmount - $totalCreditNotesAmount, 2));
+
+        $invoices = $query->orderByDesc('invoice_date')->paginate(20)->withQueryString();
+
+        $companies = Company::orderBy('name')->get();
+        $salespeople = \App\Http\Controllers\Sales\InvoiceController::getSalespersons();
+        $parties = Customer::orderBy('name')->get(['id', 'name', 'code']);
+        $financialYears = FinancialYear::orderByDesc('starts_on')->get();
+
+        return view('sales-targets.invoices', compact(
+            'invoices', 'totalInvoicesCount', 'totalInvoiceAmount',
+            'totalCreditNotesAmount', 'netEligibleAmount',
+            'companies', 'salespeople', 'parties', 'financialYears'
+        ));
     }
 
     /**

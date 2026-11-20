@@ -55,7 +55,7 @@ unset($__defined_vars, $__key, $__value); ?>
 ?>
 
 <span <?php echo e($attributes->merge(['class' => 'inline-flex items-center rounded-full font-medium ring-1 ring-inset '.$classes])); ?>>
-    <?php echo \App\Support\TitleCase::format((string) $slot); ?>
+    <?php echo e(\App\Support\TitleCase::format((string) $slot)); ?>
 
 </span>
 <?php /**PATH D:\xampp\htdocs\DMS\resources\views/components/ui/badge.blade.php ENDPATH**/ ?>

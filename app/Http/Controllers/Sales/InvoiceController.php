@@ -1128,6 +1128,13 @@ class InvoiceController extends Controller
                 $this->outstandingLedgerService->recordInvoice($invoice);
                 $this->paymentLinkService->createForInvoice($invoice);
 
+                // Recalculate sales target achievements with fully committed invoice items
+                try {
+                    app(\App\Domains\Target\Services\SalesTargetCalculationService::class)->recalculateForInvoice($invoice);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+
                 return $invoice;
             });
         } catch (\InvalidArgumentException $e) {
@@ -1760,6 +1767,13 @@ class InvoiceController extends Controller
                 }
 
                 $invoice->update($updatePayload);
+
+                // Recalculate sales target achievements with newly committed line items & totals
+                try {
+                    app(\App\Domains\Target\Services\SalesTargetCalculationService::class)->recalculateForInvoice($invoice->fresh(['items.product']));
+                } catch (\Throwable $e) {
+                    report($e);
+                }
             });
         } catch (\InvalidArgumentException $e) {
             return back()->withInput()->with('error', $e->getMessage());
@@ -1801,12 +1815,14 @@ class InvoiceController extends Controller
 
     public function show(Invoice $invoice): View
     {
-        $invoice->load(['customer', 'salesperson', 'items.product', 'items.uom', 'payments', 'eInvoice', 'eWayBill', 'order', 'scheme.brand', 'schemeAchievement']);
+        $invoice->load(['company', 'customer', 'salesperson', 'items.product', 'items.uom', 'payments', 'eInvoice', 'eWayBill', 'order', 'scheme.brand', 'schemeAchievement']);
+
+        $company = $invoice->selling_company;
 
         $eInvoiceEligibility = $this->complianceService->evaluateEInvoiceEligibility($invoice);
         $eWayBillEligibility = $this->complianceService->evaluateEWayBillEligibility($invoice);
 
-        return view('sales.invoices.show', compact('invoice', 'eInvoiceEligibility', 'eWayBillEligibility'));
+        return view('sales.invoices.show', compact('invoice', 'company', 'eInvoiceEligibility', 'eWayBillEligibility'));
     }
 
     /**
