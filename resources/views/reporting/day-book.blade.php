@@ -55,13 +55,13 @@
         <table class="min-w-full divide-y divide-slate-200 text-sm" data-report-table>
             <thead class="bg-slate-50 sticky top-0">
                 <tr>
-                    <x-ui.sortable-th column="date" label="Date" :currentSort="$sort" :currentDirection="$direction" />
-                    <x-ui.sortable-th column="type" label="Type" :currentSort="$sort" :currentDirection="$direction" />
-                    <x-ui.sortable-th column="voucher" label="Voucher No" :currentSort="$sort" :currentDirection="$direction" />
-                    <x-ui.sortable-th column="party" label="Party" :currentSort="$sort" :currentDirection="$direction" />
+                    <x-ui.sortable-th column="date" :current-sort="$sort" :current-direction="$direction">Date</x-ui.sortable-th>
+                    <x-ui.sortable-th column="type" :current-sort="$sort" :current-direction="$direction">Type</x-ui.sortable-th>
+                    <x-ui.sortable-th column="voucher" :current-sort="$sort" :current-direction="$direction">Voucher No</x-ui.sortable-th>
+                    <x-ui.sortable-th column="party" :current-sort="$sort" :current-direction="$direction">Party</x-ui.sortable-th>
                     <th class="px-3 py-2 text-left text-xs font-semibold text-slate-500">Narration</th>
-                    <x-ui.sortable-th column="debit" label="Debit" align="right" :currentSort="$sort" :currentDirection="$direction" />
-                    <x-ui.sortable-th column="credit" label="Credit" align="right" :currentSort="$sort" :currentDirection="$direction" />
+                    <x-ui.sortable-th column="debit" align="right" :current-sort="$sort" :current-direction="$direction">Debit</x-ui.sortable-th>
+                    <x-ui.sortable-th column="credit" align="right" :current-sort="$sort" :current-direction="$direction">Credit</x-ui.sortable-th>
                     <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Action</th>
                 </tr>
             </thead>
