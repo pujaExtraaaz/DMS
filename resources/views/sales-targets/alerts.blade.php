@@ -89,7 +89,13 @@
                         </div>
                         <p class="text-xs text-slate-600 mt-1">{{ $alert->message }}</p>
                         <div class="flex items-center gap-3 text-[11px] text-slate-400 mt-2">
-                            <span>Target: <a href="{{ route('sales-targets.show', $alert->target_id) }}" class="font-semibold text-indigo-600 hover:underline">{{ $alert->target?->name }}</a></span>
+                            <span>Target:
+                                @if($alert->target)
+                                    <a href="{{ route('sales-targets.show', $alert->target) }}" class="font-semibold text-indigo-600 hover:underline">{{ $alert->target->name }}</a>
+                                @else
+                                    <span class="font-semibold text-slate-500">—</span>
+                                @endif
+                            </span>
                             <span>&bull;</span>
                             <span>{{ $alert->created_at->format('d M Y, h:i A') }} ({{ $alert->created_at->diffForHumans() }})</span>
                         </div>
@@ -98,9 +104,11 @@
 
                 {{-- Action --}}
                 <div class="shrink-0 flex items-center gap-2">
-                    <a href="{{ route('sales-targets.show', $alert->target_id) }}" class="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition">
-                        View Target
-                    </a>
+                    @if($alert->target)
+                        <a href="{{ route('sales-targets.show', $alert->target) }}" class="rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition">
+                            View Target
+                        </a>
+                    @endif
                     @if(!$alert->is_read)
                         <form action="{{ route('sales-targets.alerts.read', $alert) }}" method="POST">
                             @csrf

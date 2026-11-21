@@ -23,7 +23,7 @@ class DealService
     {
         return DB::transaction(function () use ($data, $actor) {
             $deal = Deal::create([
-                'reference' => $data['reference'] ?? $this->documentNumberService->next('DEAL', now(), 4),
+                'reference' => $data['reference'] ?? $this->documentNumberService->nextDocument('DEAL', now(), 4),
                 'customer_id' => $data['customer_id'],
                 'invoice_id' => $data['invoice_id'] ?? null,
                 'order_id' => $data['order_id'] ?? null,

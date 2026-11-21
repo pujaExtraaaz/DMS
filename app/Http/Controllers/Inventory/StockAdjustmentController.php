@@ -104,7 +104,7 @@ class StockAdjustmentController extends Controller
         try {
             $adjustment = DB::transaction(function () use ($validated, $request, $status) {
                 $adjustment = StockAdjustment::create([
-                    'adjustment_no' => $this->documentNumberService->next('ADJ'),
+                    'adjustment_no' => $this->documentNumberService->nextDocument('ADJ'),
                     'adjustment_date' => $validated['adjustment_date'],
                     'warehouse_id' => $validated['warehouse_id'] ?? null,
                     'reason' => $validated['reason'],

@@ -148,6 +148,18 @@ class GstLookupService
             ];
         }
 
+        if ($provider === 'sandbox' && $this->sandboxCredentialsLookInvalid()) {
+            return [
+                'success' => false,
+                'is_configured' => false,
+                'status_code' => 503,
+                'message' => 'Sandbox GST credentials look invalid: GST_API_KEY and GST_API_SECRET must be different values (key_live_… / secret_live_…). Update .env, then run php artisan config:clear.',
+                'provider' => $provider,
+                'required_keys' => $this->getRequiredConfigKeys($provider),
+                'extracted' => $this->extractedFromGstin($gstin),
+            ];
+        }
+
         try {
             $response = match ($provider) {
                 'sandbox' => $this->callSandbox($gstin),
@@ -220,7 +232,7 @@ class GstLookupService
 
         $cacheKey = 'sandbox:gst_lookup_token:'.md5($apiKey.$apiSecret);
 
-        return Cache::remember($cacheKey, now()->addHours(23), function () use ($baseUrl, $apiKey, $apiSecret) {
+        return Cache::remember($cacheKey, now()->addHours(23), function () use ($baseUrl, $apiKey, $apiSecret, $cacheKey) {
             $timeout = (int) config('services.gst.timeout', 15);
             $authResponse = Http::timeout($timeout)
                 ->withHeaders([
@@ -233,7 +245,8 @@ class GstLookupService
 
             if ($authResponse->status() === 401 || $authResponse->status() === 403) {
                 Log::warning("Sandbox API authentication failure at /authenticate: HTTP {$authResponse->status()}");
-                throw new \InvalidArgumentException('GST verification service authentication failed. Please check provider API credentials.');
+                Cache::forget($cacheKey);
+                throw new \InvalidArgumentException('GST verification service authentication failed. Please check GST_API_KEY / GST_API_SECRET in .env (Sandbox uses separate key_live_… and secret_live_… values).');
             }
 
             if (! $authResponse->successful()) {
@@ -1057,6 +1070,35 @@ class GstLookupService
     protected function looksLikeLandmark(string $value): bool
     {
         return (bool) preg_match('/\b(opp\.?|opposite|near|behind|beside|next to|shop|floor|building|apartment|plot)\b/i', $value);
+    }
+
+    /**
+     * Sandbox expects distinct API key + secret (key_live_… / secret_live_…).
+     * Using the same value for both (or a key as the secret) always returns Bad credentials.
+     */
+    protected function sandboxCredentialsLookInvalid(): bool
+    {
+        $apiKey = trim((string) config('services.gst.api_key'));
+        $apiSecret = trim((string) config('services.gst.api_secret'));
+
+        if ($apiKey === '' || $apiSecret === '') {
+            return true;
+        }
+
+        // JWT access tokens are allowed as a direct key/secret substitute.
+        if (str_starts_with($apiKey, 'eyJ') || str_starts_with($apiSecret, 'eyJ')) {
+            return false;
+        }
+
+        if ($apiKey === $apiSecret) {
+            return true;
+        }
+
+        if (str_starts_with($apiSecret, 'key_')) {
+            return true;
+        }
+
+        return false;
     }
 
     protected function getRequiredCredentialsName(string $provider): string

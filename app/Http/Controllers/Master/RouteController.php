@@ -168,9 +168,17 @@ class RouteController extends Controller
         ]);
     }
 
-    public function quickDestroy(Route $route): \Illuminate\Http\JsonResponse
+    public function quickDestroy(int $route): \Illuminate\Http\JsonResponse
     {
-        $route->delete();
+        $model = Route::query()->find($route);
+        if (! $model) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Delivery route was already removed.',
+            ]);
+        }
+
+        $model->delete();
 
         return response()->json([
             'success' => true,

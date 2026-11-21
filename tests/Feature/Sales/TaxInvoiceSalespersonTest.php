@@ -167,7 +167,7 @@ class TaxInvoiceSalespersonTest extends TestCase
         $this->assertEquals('Ramesh Sharma', $invoice->salesperson->name);
     }
 
-    public function test_salesperson_is_optional_and_historical_sales_without_salesperson_are_valid(): void
+    public function test_blank_salesperson_inherits_customer_assignment_on_create(): void
     {
         $today = Carbon::now()->toDateString();
         $payload = [
@@ -190,8 +190,35 @@ class TaxInvoiceSalespersonTest extends TestCase
         $this->assertNotNull($invoice);
         $response->assertRedirect(route('invoices.show', $invoice));
 
+        // Customer Apex Enterprises is assigned to salesperson1 — blank select inherits that ID.
+        $this->assertEquals($this->salesperson1->id, $invoice->salesperson_id);
+    }
+
+    public function test_create_without_customer_salesperson_can_remain_unassigned(): void
+    {
+        $this->customer->update(['salesperson_id' => null]);
+
+        $today = Carbon::now()->toDateString();
+        $payload = [
+            'customer_id' => $this->customer->id,
+            'salesperson_id' => '',
+            'invoice_date' => $today,
+            'items' => [
+                [
+                    'product_id' => $this->product->id,
+                    'uom_id' => $this->uom->id,
+                    'quantity' => 1,
+                    'unit_price' => 15000,
+                ],
+            ],
+        ];
+
+        $response = $this->actingAs($this->adminUser)->post(route('invoices.store'), $payload);
+
+        $invoice = Invoice::latest('id')->first();
+        $this->assertNotNull($invoice);
+        $response->assertRedirect(route('invoices.show', $invoice));
         $this->assertNull($invoice->salesperson_id);
-        $this->assertNull($invoice->salesperson);
     }
 
     public function test_salesperson_persists_when_invoice_is_edited_and_can_be_updated(): void

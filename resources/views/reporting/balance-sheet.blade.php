@@ -35,10 +35,15 @@
             </thead>
             <tbody class="divide-y divide-slate-100">
                 @foreach($rows as $r)
-                    <tr @class(['bg-slate-50 font-semibold' => ($r['_total'] ?? false)]) data-search="{{ ($r['Section'] ?? '').' '.($r['Line Item'] ?? '') }}">
-                        <td class="px-3 py-2">{{ $r['Section'] }}</td>
-                        <td class="px-3 py-2">{{ $r['Line Item'] }}</td>
-                        <td class="px-3 py-2 text-right">₹ {{ $r['Amount'] }}</td>
+                    @php
+                        $section = $r['Section'] ?? $r['Side'] ?? '';
+                        $lineItem = $r['Line Item'] ?? $r['line_item'] ?? '';
+                        $amount = $r['Amount'] ?? $r['amount'] ?? '';
+                    @endphp
+                    <tr @class(['bg-slate-50 font-semibold' => ($r['_total'] ?? false)]) data-search="{{ $section.' '.$lineItem }}">
+                        <td class="px-3 py-2">{{ $section }}</td>
+                        <td class="px-3 py-2">{{ $lineItem }}</td>
+                        <td class="px-3 py-2 text-right">₹ {{ $amount }}</td>
                     </tr>
                 @endforeach
             </tbody>
