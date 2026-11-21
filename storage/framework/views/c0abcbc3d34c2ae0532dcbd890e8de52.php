@@ -3,6 +3,7 @@
 $__newAttributes = [];
 $__propNames = \Illuminate\View\ComponentAttributeBag::extractPropNames(([
     'column',
+    'label' => null,
     'currentSort' => request('sort'),
     'currentDirection' => request('direction', 'asc'),
     'defaultDirection' => 'asc',
@@ -24,6 +25,7 @@ unset($__newAttributes);
 
 foreach (array_filter(([
     'column',
+    'label' => null,
     'currentSort' => request('sort'),
     'currentDirection' => request('direction', 'asc'),
     'defaultDirection' => 'asc',
@@ -58,6 +60,14 @@ unset($__defined_vars, $__key, $__value); ?>
         'right' => 'text-right justify-end',
         default => 'text-left justify-start',
     };
+
+    $heading = trim((string) ($slot ?? ''));
+    if ($heading === '' && filled($label)) {
+        $heading = (string) $label;
+    }
+    if ($heading === '') {
+        $heading = (string) $column;
+    }
 ?>
 
 <th scope="col" <?php echo e($attributes->merge(['class' => 'px-4 py-3 text-xs font-semibold tracking-wider select-none text-' . $align])); ?>>
@@ -67,9 +77,9 @@ unset($__defined_vars, $__key, $__value); ?>
         data-column="<?php echo e($column); ?>"
         data-direction="<?php echo e($nextDirection); ?>"
         class="group inline-flex items-center gap-1.5 <?php echo e($alignmentClass); ?> <?php echo e($isActive ? 'text-indigo-600 font-bold' : 'text-slate-600 hover:text-slate-900'); ?> transition-colors"
-        title="Sort by <?php echo e(\App\Support\TitleCase::format($column)); ?> (<?php echo e($nextDirection === 'asc' ? 'A-Z / 1-9' : 'Z-A / 9-1'); ?>)"
+        title="Sort by <?php echo e(\App\Support\TitleCase::format($heading)); ?> (<?php echo e($nextDirection === 'asc' ? 'A-Z / 1-9' : 'Z-A / 9-1'); ?>)"
     >
-        <span><?php echo e(\App\Support\TitleCase::format((string)$slot)); ?></span>
+        <span><?php echo e(\App\Support\TitleCase::format($heading)); ?></span>
 
         <span class="inline-flex shrink-0 items-center">
             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isActive): ?>

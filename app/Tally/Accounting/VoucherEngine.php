@@ -43,6 +43,7 @@ class VoucherEngine
         bool $post,
         ?Voucher $voucher = null,
         ?string $assignedNumber = null,
+        bool $relaxRules = false,
     ): Voucher {
         if ($voucher && ! $voucher->isDraft()) {
             app(AuditLogger::class)->record('change_blocked', 'accounting', $voucher, 'Posted and cancelled vouchers cannot be changed.');
@@ -52,7 +53,7 @@ class VoucherEngine
             ]);
         }
 
-        $outcome = DB::transaction(function () use ($company, $branch, $financialYear, $user, $type, $input, $post, $voucher, $assignedNumber) {
+        $outcome = DB::transaction(function () use ($company, $branch, $financialYear, $user, $type, $input, $post, $voucher, $assignedNumber, $relaxRules) {
             $this->assertContext($company, $branch, $financialYear);
 
             if ($voucher) {
@@ -64,7 +65,7 @@ class VoucherEngine
             $date = $this->date($financialYear, (string) ($input['voucher_date'] ?? ''));
             $this->periods->assertDateOpen($company, $date, $financialYear);
             $input = $this->assertFx($company, $input);
-            $lines = $this->lines($company, $type, $input['entries'] ?? [], $post, $input);
+            $lines = $this->lines($company, $type, $input['entries'] ?? [], $post, $input, $relaxRules);
             [$debitCents, $creditCents] = $this->totals($lines);
 
             if ($voucher) {
@@ -102,7 +103,8 @@ class VoucherEngine
             if ($post) {
                 $fresh = $voucher->fresh('entries');
                 $this->assertLinesReadyToPost($fresh);
-                if ($this->queueForApprovalIfRequired($fresh, $user)) {
+                // Tally imports are already authorized source documents — skip approval gate.
+                if (! $relaxRules && $this->queueForApprovalIfRequired($fresh, $user)) {
                     $awaitingApproval = true;
                 } else {
                     $this->applyPostedStatus($fresh);
@@ -557,7 +559,7 @@ class VoucherEngine
      * @param  array<string, mixed>  $input
      * @return list<array<string, mixed>>
      */
-    private function lines(Company $company, VoucherType $type, array $entries, bool $post, array $input = []): array
+    private function lines(Company $company, VoucherType $type, array $entries, bool $post, array $input = [], bool $relaxRules = false): array
     {
         $lines = [];
         $errors = [];
@@ -603,12 +605,15 @@ class VoucherEngine
                 continue;
             }
 
-            $role = $this->roleError($company, $type, $ledger, $debit, $credit);
+            // Tally XML imports already balanced in Tally — skip DMS role templates (RCM Purchase → expense, etc.).
+            if (! $relaxRules) {
+                $role = $this->roleError($company, $type, $ledger, $debit, $credit);
 
-            if ($role) {
-                $errors["entries.$index.ledger_id"] = $role;
+                if ($role) {
+                    $errors["entries.$index.ledger_id"] = $role;
 
-                continue;
+                    continue;
+                }
             }
 
             $centreId = $entry['cost_centre_id'] ?? null;
@@ -616,7 +621,7 @@ class VoucherEngine
 
             if (! $company->usesCostCentres() || ! $ledger->costCentresApplicable()) {
                 $centreId = null;
-            } elseif ($post && ! $centreId) {
+            } elseif ($post && ! $centreId && ! $relaxRules) {
                 $errors["entries.$index.cost_centre_id"] = 'Select a cost centre. This ledger uses cost centres.';
 
                 continue;

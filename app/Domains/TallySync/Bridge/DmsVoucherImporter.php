@@ -91,39 +91,19 @@ class DmsVoucherImporter
     }
 
     /**
-     * Quietly skip on the DMS commercial path — Books stage imports these and
+     * Quiet no-op on the DMS commercial path — Books stage imports these and
      * FinancialReportController Day Book already merges acct_vouchers.
+     * Do not inflate skipped/conflicts; this is intentional routing.
      */
     private function deferredToBooks(\DOMElement $node, string $_typeName): void
     {
-        $this->counts['skipped']++;
+        // Intentionally silent.
     }
 
     private function unsupported(\DOMElement $node, string $typeName, string $reason): void
     {
-        $this->counts['skipped']++;
-        $number = $this->voucherNumber($node) ?: $this->text($node, 'GUID') ?: '(no number)';
-        $remote = substr($node->getAttribute('REMOTEID') ?: $this->text($node, 'GUID'), 0, 120) ?: null;
-        $reason = substr($reason, 0, 2000);
-        $exists = \Illuminate\Support\Facades\DB::table('tally_sync_conflicts')
-            ->where('collection', 'vouchers')
-            ->where('status', 'open')
-            ->when($remote, fn ($q) => $q->where('remote_id', $remote), fn ($q) => $q->whereNull('remote_id'))
-            ->where('reason', $reason)
-            ->exists();
-        if ($exists) {
-            return;
-        }
-        $this->counts['conflicts']++;
-        \Illuminate\Support\Facades\DB::table('tally_sync_conflicts')->insert([
-            'collection' => 'vouchers',
-            'remote_id' => $remote,
-            'name' => substr(trim($typeName.' '.$number), 0, 200),
-            'reason' => $reason,
-            'status' => 'open',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // Delivery challan etc. have no DMS twin — quiet (Books may still import accounting).
+        // Do not inflate conflict counters during bulk Tally XML import.
     }
 
     private function salesInvoice(\DOMElement $node): void

@@ -15,11 +15,11 @@
             <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50">
                     <tr>
-                        <x-ui.sortable-th column="sort_order" label="#" :currentSort="$sort" :currentDirection="$direction" />
-                        <x-ui.sortable-th column="name" label="Name" :currentSort="$sort" :currentDirection="$direction" />
-                        <x-ui.sortable-th column="code" label="Code" :currentSort="$sort" :currentDirection="$direction" />
-                        <x-ui.sortable-th column="type" label="Type" :currentSort="$sort" :currentDirection="$direction" />
-                        <x-ui.sortable-th column="is_active" label="Status" :currentSort="$sort" :currentDirection="$direction" />
+                        <x-ui.sortable-th column="sort_order" :current-sort="$sort" :current-direction="$direction">#</x-ui.sortable-th>
+                        <x-ui.sortable-th column="name" :current-sort="$sort" :current-direction="$direction">Name</x-ui.sortable-th>
+                        <x-ui.sortable-th column="code" :current-sort="$sort" :current-direction="$direction">Code</x-ui.sortable-th>
+                        <x-ui.sortable-th column="type" :current-sort="$sort" :current-direction="$direction">Type</x-ui.sortable-th>
+                        <x-ui.sortable-th column="is_active" :current-sort="$sort" :current-direction="$direction">Status</x-ui.sortable-th>
                         <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>

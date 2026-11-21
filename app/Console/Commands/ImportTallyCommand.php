@@ -7,10 +7,16 @@ use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\FinancialYear;
 use App\Domains\Sync\Support\BooksCompany;
 use App\Domains\TallySync\Bridge\TallyInbound;
+use App\Domains\TallySync\Import\TallyBulkUpsert;
+use App\Domains\TallySync\Import\TallyImportLookupCache;
+use App\Domains\TallySync\Import\TallyXmlStreamer;
+use App\Jobs\ImportTallyVoucherChunkJob;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use ZipArchive;
 
 class ImportTallyCommand extends Command
@@ -23,9 +29,17 @@ class ImportTallyCommand extends Command
         {--dms-only : Import DMS commercial data only (skip Books acct_* / Journal / Contra)}
         {--force : Confirm idempotent re-import when Tally mappings already exist}
         {--backup : Attempt mysqldump backup before import (needs exec; local XAMPP only)}
-        {--skip-backup : Deprecated alias — auto-backup is off by default; use --backup to enable}';
+        {--skip-backup : Deprecated alias — auto-backup is off by default; use --backup to enable}
+        {--queue-vouchers : Dispatch voucher chunks to queue (run queue:work --queue=tally-import)}
+        {--chunk=200 : Voucher/master entities per streamed chunk}
+        {--no-fast : Disable parse-once / streaming fast path (legacy per-stage full-file load)}';
 
-    protected $description = 'Import TallyPrime XML into DMS + Books (Journal/Contra land in Books and appear in DMS Day Book)';
+    protected $description = 'Import TallyPrime XML into DMS + Books (fast: stream once, cache lookups, chunk vouchers)';
+
+    /** @var array<string, array{dir:string, counts:array<string,int>}> */
+    private array $fileIndexes = [];
+
+    private string $runId = '';
 
     /** @var array<string, array{source:int, created:int, updated:int, skipped:int, conflicts:int, file?:string}> */
     private array $report = [];
@@ -43,13 +57,20 @@ class ImportTallyCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
         // Combined DMS + Books by default. Journal/Contra need Books to show in DMS Day Book.
         $withBooks = ! (bool) $this->option('dms-only');
-        $force = (bool) $this->option('force');
+        // Artisan bulk XML import always treats Tally as source of truth (idempotent upsert).
+        // --force is kept for backwards-compatible CLI; it is effectively always on.
+        $force = true;
 
         $this->info('DMS Tally import');
         $this->line('  Database : '.config('database.connections.'.config('database.default').'.database'));
         $this->line('  Company  : '.$companyName);
         $this->line('  Source   : '.$path);
-        $this->line('  Mode     : '.($dryRun ? 'DRY-RUN' : 'LIVE').($withBooks ? ' + BOOKS (combined)' : ' (DMS only)').($force ? ' + FORCE' : ''));
+        $fast = ! (bool) $this->option('no-fast');
+        $queueVouchers = (bool) $this->option('queue-vouchers');
+        $chunkSize = max(50, (int) $this->option('chunk'));
+        $this->runId = Str::lower(Str::random(10));
+
+        $this->line('  Mode     : '.($dryRun ? 'DRY-RUN' : 'LIVE').($withBooks ? ' + BOOKS (combined)' : ' (DMS only)').' + FORCE'.($fast ? ' + FAST' : '').($queueVouchers ? ' + QUEUE-VOUCHERS' : ''));
 
         if (! is_file($path) && ! is_dir($path)) {
             $this->error('Source not found.');
@@ -67,6 +88,17 @@ class ImportTallyCommand extends Command
 
         $this->info('Discovered XML bundles:');
         foreach ($bundles as $role => $file) {
+            if (is_array($file)) {
+                foreach ($file as $i => $path) {
+                    $this->line(sprintf(
+                        '  %-18s %s (%s)',
+                        $i === 0 ? $role : '',
+                        basename($path),
+                        $this->humanSize(filesize($path))
+                    ));
+                }
+                continue;
+            }
             $this->line(sprintf('  %-18s %s (%s)', $role, basename($file), $this->humanSize(filesize($file))));
         }
 
@@ -95,12 +127,6 @@ class ImportTallyCommand extends Command
         $company = $this->ensureCompany($companyName, $seedXml);
         config(['tally_sync.company' => $company->name]);
 
-        if ($this->companyHasTallyData($company) && ! $force) {
-            $this->error('This company already has Tally sync mappings. Re-run with --force for an idempotent upsert (no truncate).');
-
-            return self::FAILURE;
-        }
-
         $this->ensureFinancialYears($company);
         $this->ensureDefaultBranch($company);
 
@@ -111,6 +137,14 @@ class ImportTallyCommand extends Command
         }
 
         $inbound->setForceOverwrite($force);
+
+        $lookup = new TallyImportLookupCache;
+        if ($withBooks) {
+            $booksCompany = BooksCompany::ensureForOrganization($company);
+            $lookup->warmBooks($booksCompany);
+            $inbound->setLookupCache($lookup);
+            $this->line('Lookup cache warmed for Books masters.');
+        }
 
         if ($force) {
             // Drop stale open noise from earlier tax-rate / dual-write bugs so the report reflects this run.
@@ -142,8 +176,30 @@ class ImportTallyCommand extends Command
         }
 
         $stages = $this->buildStages($bundles, $withBooks);
-        foreach ($stages as $stage) {
-            $this->runStage($inbound, $stage);
+
+        if ($fast) {
+            $this->indexSourceFiles($stages, $chunkSize);
+        }
+
+        TallyBulkUpsert::withFastSession(function () use ($inbound, $stages, $fast, $queueVouchers, $companyName, $lookup, $withBooks) {
+            foreach ($stages as $stage) {
+                if ($withBooks && $stage['target'] === 'books') {
+                    // Refresh cache after each master stage so voucher lines resolve new ids.
+                    $booksCompany = \Tally\Models\Company::query()
+                        ->whereRaw('LOWER(name) = ?', [mb_strtolower($companyName)])
+                        ->first();
+                    if ($booksCompany) {
+                        $lookup->warmBooks($booksCompany);
+                        $inbound->setLookupCache($lookup);
+                    }
+                }
+                $this->runStage($inbound, $stage, $fast, $queueVouchers, $companyName);
+            }
+        });
+
+        if ($queueVouchers) {
+            $this->notes[] = 'Voucher chunks queued on [tally-import]. Run: php artisan queue:work --queue=tally-import --timeout=600';
+            $this->notes[] = 'Track progress: php artisan dms:import-tally-status '.$this->runId;
         }
 
         $this->logUnsupportedBundles($bundles);
@@ -175,6 +231,9 @@ class ImportTallyCommand extends Command
         }
 
         $this->info('Import finished. Users/roles preserved.');
+        if ($fast) {
+            $this->line('Fast path used: stream-once index + lookup cache + chunked apply'.($queueVouchers ? ' (vouchers queued)' : ' (vouchers inline chunks)').'.');
+        }
 
         return self::SUCCESS;
     }
@@ -210,13 +269,18 @@ class ImportTallyCommand extends Command
         }
 
         $bundles = [];
+        $transactionFiles = [];
         foreach ($files as $file) {
             $base = strtolower(pathinfo($file, PATHINFO_FILENAME));
+            // Prefer quarterly splits (transaction-apr-jun.xml …); ignore monolithic Transactions-new when splits exist.
+            if (str_contains($base, 'transaction')) {
+                $transactionFiles[] = $file;
+                continue;
+            }
             $role = match (true) {
                 str_contains($base, 'inventor') => 'inventory',
                 str_contains($base, 'accout') || str_contains($base, 'account') => 'accounting',
                 str_contains($base, 'all_master') || $base === 'master' => 'all_masters',
-                str_contains($base, 'transaction') => 'transactions',
                 str_contains($base, 'payroll') => 'payroll',
                 str_contains($base, 'statut') => 'statutory',
                 default => 'other_'.pathinfo($file, PATHINFO_FILENAME),
@@ -224,7 +288,43 @@ class ImportTallyCommand extends Command
             $bundles[$role] = $file;
         }
 
+        if ($transactionFiles !== []) {
+            usort($transactionFiles, function (string $a, string $b): int {
+                return $this->transactionSortKey($a) <=> $this->transactionSortKey($b);
+            });
+
+            $quarterly = array_values(array_filter(
+                $transactionFiles,
+                fn (string $f) => (bool) preg_match(
+                    '/^transaction-(apr-jun|jul-sep|oct-dec|jan-mar)$/i',
+                    pathinfo($f, PATHINFO_FILENAME)
+                )
+            ));
+
+            // When quarterly splits are present, skip the huge Transactions-new / Transactions.xml originals.
+            $bundles['transactions'] = $quarterly !== [] ? $quarterly : $transactionFiles;
+        }
+
         return $bundles;
+    }
+
+    private function transactionSortKey(string $path): string
+    {
+        $base = strtolower(pathinfo($path, PATHINFO_FILENAME));
+        $order = [
+            'transaction-apr-jun' => '1',
+            'transaction-jul-sep' => '2',
+            'transaction-oct-dec' => '3',
+            'transaction-jan-mar' => '4',
+        ];
+
+        foreach ($order as $name => $key) {
+            if ($base === $name) {
+                return $key.$base;
+            }
+        }
+
+        return '9'.$base;
     }
 
     /**
@@ -237,7 +337,10 @@ class ImportTallyCommand extends Command
 
         $accounting = $bundles['accounting'] ?? $bundles['all_masters'] ?? null;
         $inventory = $bundles['inventory'] ?? $bundles['all_masters'] ?? null;
-        $transactions = $bundles['transactions'] ?? null;
+        $transactionFiles = $bundles['transactions'] ?? [];
+        if (is_string($transactionFiles)) {
+            $transactionFiles = [$transactionFiles];
+        }
         $payroll = $bundles['payroll'] ?? null;
         $statutory = $bundles['statutory'] ?? $payroll;
 
@@ -275,10 +378,16 @@ class ImportTallyCommand extends Command
             $stages[] = ['key' => 'currencies', 'target' => 'books', 'file' => $statutory, 'label' => 'currencies → books'];
         }
 
-        if ($transactions) {
-            $stages[] = ['key' => 'vouchers', 'target' => 'dms', 'file' => $transactions, 'label' => 'vouchers → dms'];
+        // Import each quarterly (or single) transactions file one by one — DMS then Books per file.
+        // Skip near-empty stubs (e.g. jan-mar shell with no vouchers).
+        foreach ($transactionFiles as $transactions) {
+            if (! is_file($transactions) || filesize($transactions) < 512) {
+                continue;
+            }
+            $tag = basename($transactions);
+            $stages[] = ['key' => 'vouchers', 'target' => 'dms', 'file' => $transactions, 'label' => "vouchers → dms ({$tag})"];
             if ($withBooks) {
-                $stages[] = ['key' => 'vouchers', 'target' => 'books', 'file' => $transactions, 'label' => 'vouchers → books'];
+                $stages[] = ['key' => 'vouchers', 'target' => 'books', 'file' => $transactions, 'label' => "vouchers → books ({$tag})"];
             }
         }
 
@@ -286,13 +395,114 @@ class ImportTallyCommand extends Command
     }
 
     /**
+     * Parse each unique source XML once into tag/chunk stores (points 1 + 6).
+     *
+     * @param  list<array{key:string,target:string,file:string,label:string}>  $stages
+     */
+    private function indexSourceFiles(array $stages, int $chunkSize): void
+    {
+        $needed = [];
+        foreach ($stages as $stage) {
+            $file = $stage['file'];
+            $tag = strtoupper($this->tagFor($stage['key']));
+            $needed[$file][$tag] = true;
+        }
+
+        foreach ($needed as $file => $tags) {
+            $workDir = storage_path('app/tally-imports/stream_'.$this->runId.'_'.md5($file));
+            $this->info('Streaming index (once): '.basename($file).' → '.implode(', ', array_keys($tags)));
+            $counts = TallyXmlStreamer::indexToDisk($file, array_keys($tags), $workDir, $chunkSize);
+            $this->fileIndexes[$file] = ['dir' => $workDir, 'counts' => $counts];
+            foreach ($counts as $tag => $count) {
+                if ($count > 0) {
+                    $this->line("  {$tag}: {$count}");
+                }
+            }
+        }
+    }
+
+    /**
      * @param  array{key:string,target:string,file:string,label:string}  $stage
      */
-    private function runStage(TallyInbound $inbound, array $stage): void
+    private function runStage(TallyInbound $inbound, array $stage, bool $fast = true, bool $queueVouchers = false, string $companyName = ''): void
     {
         $label = $stage['label'];
+        $tag = strtoupper($this->tagFor($stage['key']));
         $this->info("Importing {$label} from ".basename($stage['file']).'...');
 
+        if (! $fast || ! isset($this->fileIndexes[$stage['file']])) {
+            $this->runStageLegacy($inbound, $stage);
+
+            return;
+        }
+
+        $index = $this->fileIndexes[$stage['file']];
+        $sourceCount = (int) ($index['counts'][$tag] ?? 0);
+        $chunks = TallyXmlStreamer::chunkFiles($index['dir'], $tag);
+
+        if ($chunks === []) {
+            $this->record($label, 0, 0, 0, 0, 0, basename($stage['file']));
+            $this->line('  (no entities)');
+
+            return;
+        }
+
+        // Point 5: voucher chunks → queue or process inline one chunk at a time.
+        if ($stage['key'] === 'vouchers' && $queueVouchers) {
+            $dispatched = 0;
+            foreach ($chunks as $i => $chunkPath) {
+                ImportTallyVoucherChunkJob::dispatch(
+                    $chunkPath,
+                    $stage['target'],
+                    $companyName !== '' ? $companyName : (string) $this->option('company'),
+                    $this->runId,
+                    $i + 1,
+                );
+                $dispatched++;
+            }
+            $this->record($label, $sourceCount, 0, 0, 0, 0, basename($stage['file']));
+            $this->line("  queued {$dispatched} chunk(s) on [tally-import] (source≈{$sourceCount})");
+
+            return;
+        }
+
+        $created = $updated = $skipped = $conflicts = 0;
+        foreach ($chunks as $i => $chunkPath) {
+            $xml = File::get($chunkPath);
+            try {
+                $result = $inbound->apply($stage['key'], $xml, $stage['target']);
+                $created += (int) ($result['created'] ?? 0);
+                $updated += (int) ($result['updated'] ?? 0);
+                $skipped += (int) ($result['skipped'] ?? 0);
+                $conflicts += (int) ($result['conflicts'] ?? 0);
+            } catch (\Throwable $e) {
+                $this->error("  chunk ".($i + 1).'/'.count($chunks).' failed: '.$e->getMessage());
+                $conflicts++;
+            }
+            unset($xml);
+            if (($i + 1) % 5 === 0 || $i + 1 === count($chunks)) {
+                $this->line('  … chunk '.($i + 1).'/'.count($chunks));
+            }
+        }
+
+        $this->record($label, $sourceCount, $created, $updated, $skipped, $conflicts, basename($stage['file']));
+        $this->line(sprintf(
+            '  created=%d updated=%d skipped=%d conflicts=%d (source tags≈%d, chunks=%d)',
+            $created,
+            $updated,
+            $skipped,
+            $conflicts,
+            $sourceCount,
+            count($chunks)
+        ));
+    }
+
+    /**
+     * @param  array{key:string,target:string,file:string,label:string}  $stage
+     */
+    private function runStageLegacy(TallyInbound $inbound, array $stage): void
+    {
+        $label = $stage['label'];
         $xml = $this->readNormalized($stage['file']);
         $sourceCount = $this->countTags($xml, $this->tagFor($stage['key']));
 
@@ -305,7 +515,6 @@ class ImportTallyCommand extends Command
             return;
         }
 
-        // Free large XML ASAP.
         unset($xml);
 
         $this->record(
@@ -336,15 +545,18 @@ class ImportTallyCommand extends Command
         $rows = [];
         $tags = ['GROUP', 'LEDGER', 'UNIT', 'GODOWN', 'STOCKGROUP', 'STOCKITEM', 'COSTCENTRE', 'COSTCATEGORY', 'VOUCHERTYPE', 'VOUCHER', 'ATTENDANCETYPE', 'CURRENCY'];
 
-        foreach ($bundles as $role => $file) {
-            $xml = $this->readNormalized($file);
-            foreach ($tags as $tag) {
-                $c = $this->countTags($xml, $tag);
-                if ($c > 0) {
-                    $rows[] = [$role, basename($file), $tag, $c];
+        foreach ($bundles as $role => $fileOrFiles) {
+            $paths = is_array($fileOrFiles) ? $fileOrFiles : [$fileOrFiles];
+            foreach ($paths as $file) {
+                $xml = $this->readNormalized($file);
+                foreach ($tags as $tag) {
+                    $c = $this->countTags($xml, $tag);
+                    if ($c > 0) {
+                        $rows[] = [$role, basename($file), $tag, $c];
+                    }
                 }
+                unset($xml);
             }
-            unset($xml);
         }
 
         $this->table(['Bundle', 'File', 'Tag', 'Count'], $rows);
@@ -379,21 +591,7 @@ class ImportTallyCommand extends Command
             if ($remaining === []) {
                 continue;
             }
-            $reason = $label.' tags without dedicated DMS models yet ('.implode(', ', $remaining).'). Pay heads/currencies are imported separately.';
-            $this->notes[] = $reason;
-            DB::table('tally_sync_conflicts')->updateOrInsert(
-                [
-                    'collection' => $role,
-                    'remote_id' => basename($bundles[$role]),
-                    'status' => 'open',
-                    'reason' => substr($reason, 0, 2000),
-                ],
-                [
-                    'name' => substr($label, 0, 200),
-                    'updated_at' => now(),
-                    'created_at' => now(),
-                ]
-            );
+            $this->notes[] = $label.' tags without dedicated DMS models yet ('.implode(', ', $remaining).'). Pay heads/currencies are imported separately.';
         }
     }
 

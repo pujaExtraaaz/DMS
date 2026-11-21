@@ -32,11 +32,11 @@
 
         <div class="overflow-x-auto"><table class="min-w-full divide-y divide-slate-200 text-sm">
         <thead class="bg-slate-50"><tr>
-        <x-ui.sortable-th column="employee_code" label="Code" :currentSort="$sort" :currentDirection="$direction" />
-        <x-ui.sortable-th column="name" label="Name" :currentSort="$sort" :currentDirection="$direction" />
-        <x-ui.sortable-th column="department" label="Dept" :currentSort="$sort" :currentDirection="$direction" />
-        <x-ui.sortable-th column="branch" label="Branch" :currentSort="$sort" :currentDirection="$direction" />
-        <x-ui.sortable-th column="status" label="Status" :currentSort="$sort" :currentDirection="$direction" />
+        <x-ui.sortable-th column="employee_code" :current-sort="$sort" :current-direction="$direction">Code</x-ui.sortable-th>
+        <x-ui.sortable-th column="name" :current-sort="$sort" :current-direction="$direction">Name</x-ui.sortable-th>
+        <x-ui.sortable-th column="department" :current-sort="$sort" :current-direction="$direction">Dept</x-ui.sortable-th>
+        <x-ui.sortable-th column="branch" :current-sort="$sort" :current-direction="$direction">Branch</x-ui.sortable-th>
+        <x-ui.sortable-th column="status" :current-sort="$sort" :current-direction="$direction">Status</x-ui.sortable-th>
         <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
         </tr></thead>
         <tbody class="divide-y divide-slate-100">

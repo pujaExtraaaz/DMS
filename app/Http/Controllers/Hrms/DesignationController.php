@@ -16,7 +16,7 @@ class DesignationController extends Controller
 
     public function index(Request $request): View
     {
-        $query = Designation::query()->with('company');
+        $query = Designation::query()->with('company')->withCount('employees');
 
         $this->applySearch(
             $query,
@@ -29,6 +29,7 @@ class DesignationController extends Controller
             'name' => 'name',
             'code' => 'code',
             'is_active' => 'is_active',
+            'employees_count' => 'employees_count',
             'company' => function ($q, $dir) {
                 $q->leftJoin('companies', 'designations.company_id', '=', 'companies.id')
                   ->orderBy('companies.name', $dir)
@@ -67,6 +68,21 @@ class DesignationController extends Controller
     public function store(Request $request): RedirectResponse
     {
         Designation::create($this->validated($request));
+
+        return $this->flashSuccess('Designation created.', 'hrms.designations.index');
+    }
+
+    public function quickStore(Request $request)
+    {
+        $item = Designation::create($this->validated($request));
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'id' => $item->id,
+                'name' => $item->name,
+            ]);
+        }
 
         return $this->flashSuccess('Designation created.', 'hrms.designations.index');
     }

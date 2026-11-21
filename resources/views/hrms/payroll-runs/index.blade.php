@@ -2,7 +2,7 @@
 @section('title', 'Payroll Runs')
 @section('content')
 <x-hrms.payroll-nav active="runs" />
-<div class="mb-4 flex justify-between"><h1 class="text-lg font-bold">Payroll Runs</h1><a href="{{ route('hrms.payroll-runs.create') }}" class="rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">+ New run</a></div>
+<div class="mb-4"><h1 class="text-lg font-bold">Payroll Runs</h1></div>
 <div class="overflow-hidden rounded-2xl border bg-white">
 <table class="min-w-full text-sm"><thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="px-4 py-3 text-left">Period</th><th class="px-4 py-3 text-left">Branch</th><th class="px-4 py-3 text-left">Employees</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3"></th></tr></thead>
 <tbody class="divide-y">@forelse($items as $item)<tr>
