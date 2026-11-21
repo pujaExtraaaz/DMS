@@ -54,7 +54,18 @@ class SalesTargetController extends Controller
             $query->where('company_id', $request->company_id);
         }
         if ($request->filled('financial_year_id')) {
-            $query->where('financial_year_id', $request->financial_year_id);
+            $fyId = (int) $request->financial_year_id;
+            $fyObj = FinancialYear::find($fyId);
+            $query->where(function ($tq) use ($fyId, $fyObj) {
+                $tq->where('financial_year_id', $fyId);
+                if ($fyObj && $fyObj->starts_on && $fyObj->ends_on) {
+                    $tq->orWhere(function ($sub) use ($fyObj) {
+                        $sub->whereNull('financial_year_id')
+                            ->whereDate('starts_on', '>=', $fyObj->starts_on->toDateString())
+                            ->whereDate('ends_on', '<=', $fyObj->ends_on->toDateString());
+                    });
+                }
+            });
         }
         if ($request->filled('period_type')) {
             $query->where('period_type', $request->period_type);
@@ -66,7 +77,13 @@ class SalesTargetController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
         if ($request->filled('salesperson_id')) {
-            $query->where('salesperson_id', $request->salesperson_id);
+            $spId = (int) $request->salesperson_id;
+            $query->where(function ($q) use ($spId) {
+                $q->where('salesperson_id', $spId)
+                  ->orWhereHas('customer', fn ($cq) => $cq->where('salesperson_id', $spId))
+                  ->orWhereHas('salesTeam.members', fn ($mq) => $mq->where('users.id', $spId))
+                  ->orWhereHas('salesTeam', fn ($tq) => $tq->where('leader_id', $spId));
+            });
         }
         if ($request->filled('sales_team_id')) {
             $query->where('sales_team_id', $request->sales_team_id);
@@ -95,10 +112,10 @@ class SalesTargetController extends Controller
 
         // Period dates filter
         if ($request->filled('date_from')) {
-            $query->where('starts_on', '>=', $request->date_from);
+            $query->whereDate('ends_on', '>=', $request->date_from);
         }
         if ($request->filled('date_to')) {
-            $query->where('ends_on', '<=', $request->date_to);
+            $query->whereDate('starts_on', '<=', $request->date_to);
         }
 
         $allTargets = $query->get();
@@ -278,13 +295,36 @@ class SalesTargetController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
         if ($request->filled('salesperson_id')) {
-            $query->where('salesperson_id', $request->salesperson_id);
+            $spId = (int) $request->salesperson_id;
+            $query->where(function ($q) use ($spId) {
+                $q->where('salesperson_id', $spId)
+                  ->orWhereHas('customer', fn ($cq) => $cq->where('salesperson_id', $spId))
+                  ->orWhereHas('salesTeam.members', fn ($mq) => $mq->where('users.id', $spId))
+                  ->orWhereHas('salesTeam', fn ($tq) => $tq->where('leader_id', $spId));
+            });
         }
         if ($request->filled('brand_id')) {
             $query->where('brand_id', $request->brand_id);
         }
         if ($request->filled('financial_year_id')) {
-            $query->where('financial_year_id', $request->financial_year_id);
+            $fyId = (int) $request->financial_year_id;
+            $fyObj = FinancialYear::find($fyId);
+            $query->where(function ($tq) use ($fyId, $fyObj) {
+                $tq->where('financial_year_id', $fyId);
+                if ($fyObj && $fyObj->starts_on && $fyObj->ends_on) {
+                    $tq->orWhere(function ($sub) use ($fyObj) {
+                        $sub->whereNull('financial_year_id')
+                            ->whereDate('starts_on', '>=', $fyObj->starts_on->toDateString())
+                            ->whereDate('ends_on', '<=', $fyObj->ends_on->toDateString());
+                    });
+                }
+            });
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('ends_on', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('starts_on', '<=', $request->date_to);
         }
 
         [$sort, $direction] = $this->applySorting($query, $request, [
@@ -417,6 +457,22 @@ class SalesTargetController extends Controller
             if ($validated['status'] === 'active') {
                 $validated['approved_by'] = auth()->id();
                 $validated['approved_at'] = now();
+            }
+
+            if ($validated['owner_type'] === 'party' && !empty($validated['customer_id']) && empty($validated['salesperson_id'])) {
+                $partyCustomer = Customer::find($validated['customer_id']);
+                $validated['salesperson_id'] = $partyCustomer?->salesperson_id;
+            }
+
+            if (empty($validated['company_id'])) {
+                $validated['company_id'] = Company::resolveCurrent()?->id ?? Company::first()?->id;
+            }
+
+            if (empty($validated['financial_year_id'])) {
+                $matchedFy = FinancialYear::whereDate('starts_on', '<=', $validated['starts_on'])
+                    ->whereDate('ends_on', '>=', $validated['starts_on'])
+                    ->first();
+                $validated['financial_year_id'] = $matchedFy?->id ?? FinancialYear::where('is_current', true)->value('id');
             }
 
             $target = SalesTarget::create($validated);
@@ -744,7 +800,9 @@ class SalesTargetController extends Controller
             ->where(function ($q) {
                 $q->whereHas('roles', fn ($r) => $r->whereIn('name', ['salesperson', 'sales_person', 'sales-executive', 'sales-manager']))
                   ->orWhereHas('employee', fn ($e) => $e->where('is_salesperson', true))
-                  ->orWhereIn('name', ['Kapil Dhir', 'Abdul Majid']);
+                  ->orWhereHas('salesTargets')
+                  ->orWhereHas('salesInvoices')
+                  ->orWhereIn('name', ['Kapil Dhir', 'Abdul Majid', 'Sakshi']);
             })
             ->orderBy('name');
 
@@ -765,27 +823,57 @@ class SalesTargetController extends Controller
         $performanceData = [];
         foreach ($salespeople as $sp) {
             $targetsQuery = SalesTarget::with('achievement')
-                ->where('salesperson_id', $sp->id)
+                ->where(function ($q) use ($sp) {
+                    $q->where('salesperson_id', $sp->id)
+                      ->orWhereHas('salesTeam.members', fn ($mq) => $mq->where('users.id', $sp->id))
+                      ->orWhereHas('salesTeam', fn ($tq) => $tq->where('leader_id', $sp->id));
+                })
                 ->whereIn('status', ['active', 'completed']);
 
             if ($request->filled('financial_year_id')) {
-                $targetsQuery->where('financial_year_id', $request->financial_year_id);
+                $fyId = (int) $request->financial_year_id;
+                $fyObj = FinancialYear::find($fyId);
+                $targetsQuery->where(function ($tq) use ($fyId, $fyObj) {
+                    $tq->where('financial_year_id', $fyId);
+                    if ($fyObj && $fyObj->starts_on && $fyObj->ends_on) {
+                        $tq->orWhere(function ($sub) use ($fyObj) {
+                            $sub->whereNull('financial_year_id')
+                                ->whereDate('starts_on', '>=', $fyObj->starts_on->toDateString())
+                                ->whereDate('ends_on', '<=', $fyObj->ends_on->toDateString());
+                        });
+                    }
+                });
             }
             if ($request->filled('period_type')) {
                 $targetsQuery->where('period_type', $request->period_type);
             }
             if ($request->filled('date_from')) {
-                $targetsQuery->where('starts_on', '>=', $request->date_from);
+                $targetsQuery->whereDate('ends_on', '>=', $request->date_from);
             }
             if ($request->filled('date_to')) {
-                $targetsQuery->where('ends_on', '<=', $request->date_to);
+                $targetsQuery->whereDate('starts_on', '<=', $request->date_to);
             }
 
             $targets = $targetsQuery->get();
 
+            // Ensure achievement calculations are computed
+            foreach ($targets as $t) {
+                if (!$t->achievement) {
+                    $this->calculationService->calculateTarget($t);
+                    $t->refresh();
+                }
+            }
+
             // Date bounds for posted transactions
-            $dateFrom = $request->input('date_from') ?? ($fy?->starts_on?->toDateString());
-            $dateTo = $request->input('date_to') ?? ($fy?->ends_on?->toDateString());
+            $dateFrom = $request->input('date_from');
+            $dateTo = $request->input('date_to');
+
+            if (!$dateFrom && $fy?->starts_on) {
+                $dateFrom = $fy->starts_on->toDateString();
+            }
+            if (!$dateTo && $fy?->ends_on) {
+                $dateTo = $fy->ends_on->toDateString();
+            }
 
             if (!$dateFrom && $targets->isNotEmpty()) {
                 $dateFrom = $targets->min('starts_on')?->toDateString();
@@ -794,16 +882,24 @@ class SalesTargetController extends Controller
                 $dateTo = $targets->max('ends_on')?->toDateString();
             }
 
+            if (!$dateFrom && !$dateTo) {
+                $currentFy = FinancialYear::where('is_current', true)->first();
+                if ($currentFy && $currentFy->starts_on && $currentFy->ends_on) {
+                    $dateFrom = $currentFy->starts_on->toDateString();
+                    $dateTo = $currentFy->ends_on->toDateString();
+                }
+            }
+
             // Invoices query for this salesperson
             $invoicesQuery = Invoice::query()
                 ->where('salesperson_id', $sp->id)
                 ->whereNotIn('status', ['cancelled', 'draft', 'void']);
 
             if ($dateFrom) {
-                $invoicesQuery->where('invoice_date', '>=', $dateFrom);
+                $invoicesQuery->whereDate('invoice_date', '>=', $dateFrom);
             }
             if ($dateTo) {
-                $invoicesQuery->where('invoice_date', '<=', $dateTo);
+                $invoicesQuery->whereDate('invoice_date', '<=', $dateTo);
             }
 
             $invoicesCount = (clone $invoicesQuery)->count();
@@ -811,14 +907,14 @@ class SalesTargetController extends Controller
 
             // Credit Notes query for this salesperson's invoices
             $creditNotesQuery = CreditNote::query()
-                ->where('status', 'posted')
+                ->whereIn('status', ['posted', 'approved'])
                 ->whereHas('invoice', fn ($iq) => $iq->where('salesperson_id', $sp->id));
 
             if ($dateFrom) {
-                $creditNotesQuery->where('credit_note_date', '>=', $dateFrom);
+                $creditNotesQuery->whereDate('credit_note_date', '>=', $dateFrom);
             }
             if ($dateTo) {
-                $creditNotesQuery->where('credit_note_date', '<=', $dateTo);
+                $creditNotesQuery->whereDate('credit_note_date', '<=', $dateTo);
             }
 
             $salesReturns = (float) $creditNotesQuery->sum('grand_total');
@@ -830,8 +926,8 @@ class SalesTargetController extends Controller
 
             // If salesperson has active targets, use target achieved amount; otherwise display net eligible sales
             $displayAchieved = $targets->isNotEmpty() ? $totalAch : $netEligibleSales;
-            $pending = max(0, $totalTgt - $displayAchieved);
-            $percent = $totalTgt > 0 ? round(($displayAchieved / $totalTgt) * 100, 1) : 0;
+            $pending = max(0, round($totalTgt - $displayAchieved, 2));
+            $percent = $totalTgt > 0 ? round(($displayAchieved / $totalTgt) * 100, 2) : 0.0;
 
             $performanceData[] = [
                 'user' => $sp,
@@ -844,6 +940,8 @@ class SalesTargetController extends Controller
                 'sales_returns' => $salesReturns,
                 'net_eligible_sales' => $netEligibleSales,
                 'achieved_count' => $targets->filter(fn ($t) => $t->achievement?->is_achieved)->count(),
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
             ];
         }
 
@@ -899,7 +997,7 @@ class SalesTargetController extends Controller
         $totalCreditNotesAmount = 0.0;
         if (!empty($invoiceIds)) {
             $totalCreditNotesAmount = (float) CreditNote::whereIn('invoice_id', $invoiceIds)
-                ->where('status', 'posted')
+                ->whereIn('status', ['posted', 'approved'])
                 ->sum('grand_total');
         }
         $netEligibleAmount = max(0, round($totalInvoiceAmount - $totalCreditNotesAmount, 2));
@@ -1028,7 +1126,13 @@ class SalesTargetController extends Controller
             $query->where('customer_id', $request->customer_id);
         }
         if ($request->filled('salesperson_id')) {
-            $query->where('salesperson_id', $request->salesperson_id);
+            $spId = (int) $request->salesperson_id;
+            $query->where(function ($q) use ($spId) {
+                $q->where('salesperson_id', $spId)
+                  ->orWhereHas('customer', fn ($cq) => $cq->where('salesperson_id', $spId))
+                  ->orWhereHas('salesTeam.members', fn ($mq) => $mq->where('users.id', $spId))
+                  ->orWhereHas('salesTeam', fn ($tq) => $tq->where('leader_id', $spId));
+            });
         }
         if ($request->filled('target_type')) {
             $query->where('target_type', $request->target_type);
@@ -1043,34 +1147,56 @@ class SalesTargetController extends Controller
             $query->where('brand_id', $request->brand_id);
         }
         if ($request->filled('financial_year_id')) {
-            $query->where('financial_year_id', $request->financial_year_id);
+            $fyId = (int) $request->financial_year_id;
+            $fyObj = FinancialYear::find($fyId);
+            $query->where(function ($tq) use ($fyId, $fyObj) {
+                $tq->where('financial_year_id', $fyId);
+                if ($fyObj && $fyObj->starts_on && $fyObj->ends_on) {
+                    $tq->orWhere(function ($sub) use ($fyObj) {
+                        $sub->whereNull('financial_year_id')
+                            ->whereDate('starts_on', '>=', $fyObj->starts_on->toDateString())
+                            ->whereDate('ends_on', '<=', $fyObj->ends_on->toDateString());
+                    });
+                }
+            });
         }
         if ($request->filled('period_type')) {
             $query->where('period_type', $request->period_type);
         }
         if ($request->filled('date_from')) {
-            $query->where('starts_on', '>=', $request->date_from);
+            $query->whereDate('ends_on', '>=', $request->date_from);
         }
         if ($request->filled('date_to')) {
-            $query->where('ends_on', '<=', $request->date_to);
+            $query->whereDate('starts_on', '<=', $request->date_to);
         }
 
         // Handle Excel / CSV export
         $exportFormat = strtolower((string) $request->input('export'));
-        if ($exportFormat === 'xlsx') {
+        if ($exportFormat === 'xlsx' || $exportFormat === 'csv') {
             $exportData = $query->get();
-            return Excel::download(new SalesTargetsExport($exportData), 'sales-targets-report-' . now()->format('Y-m-d') . '.xlsx');
-        }
-        if ($exportFormat === 'csv') {
-            $exportData = $query->get();
+            foreach ($exportData as $t) {
+                if (!$t->achievement) {
+                    $this->calculationService->calculateTarget($t);
+                    $t->refresh();
+                }
+            }
+            if ($exportFormat === 'xlsx') {
+                return Excel::download(new SalesTargetsExport($exportData), 'sales-targets-report-' . now()->format('Y-m-d') . '.xlsx');
+            }
             return Excel::download(new SalesTargetsExport($exportData), 'sales-targets-report-' . now()->format('Y-m-d') . '.csv', \Maatwebsite\Excel\Excel::CSV);
         }
 
         $targets = $query->paginate(20)->withQueryString();
+        foreach ($targets as $t) {
+            if (!$t->achievement) {
+                $this->calculationService->calculateTarget($t);
+                $t->refresh();
+            }
+        }
 
         $companies = Company::orderBy('name')->get();
         $brands = Brand::orderBy('name')->get();
-        $salespeople = User::orderBy('name')->get();
+        $salespeople = \App\Http\Controllers\Sales\InvoiceController::getSalespersons();
         $teams = SalesTeam::where('is_active', true)->orderBy('name')->get();
         $branches = Branch::orderBy('name')->get();
         $financialYears = FinancialYear::orderByDesc('starts_on')->get();

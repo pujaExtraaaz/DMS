@@ -33,7 +33,8 @@ class SalesTargetCalculationService
             // 2. Base Invoice Query
             $invoiceQuery = Invoice::query()
                 ->whereNotIn('status', ['cancelled', 'draft', 'void'])
-                ->whereBetween('invoice_date', [$startDate, $endDate]);
+                ->whereDate('invoice_date', '>=', $startDate)
+                ->whereDate('invoice_date', '<=', $endDate);
 
             if ($target->owner_type === 'party' || $target->customer_id) {
                 $invoiceQuery->where('customer_id', $target->customer_id);
@@ -46,6 +47,18 @@ class SalesTargetCalculationService
                         $cq->where('branch_id', $target->branch_id);
                     });
                 });
+            } elseif ($target->owner_type === 'team') {
+                if ($salespersonIds->isNotEmpty()) {
+                    $invoiceQuery->whereIn('salesperson_id', $salespersonIds);
+                } else {
+                    $invoiceQuery->whereRaw('1 = 0');
+                }
+            } elseif ($target->owner_type === 'individual') {
+                if ($target->salesperson_id) {
+                    $invoiceQuery->where('salesperson_id', $target->salesperson_id);
+                } else {
+                    $invoiceQuery->whereRaw('1 = 0');
+                }
             } else {
                 if ($salespersonIds->isNotEmpty()) {
                     $invoiceQuery->whereIn('salesperson_id', $salespersonIds);
@@ -57,8 +70,9 @@ class SalesTargetCalculationService
 
             // 3. Credit Notes Query (Posted credit notes for these invoices or salesperson or customer)
             $creditNoteQuery = CreditNote::query()
-                ->where('status', 'posted')
-                ->whereBetween('credit_note_date', [$startDate, $endDate]);
+                ->whereIn('status', ['posted', 'approved'])
+                ->whereDate('credit_note_date', '>=', $startDate)
+                ->whereDate('credit_note_date', '<=', $endDate);
 
             if ($target->owner_type === 'party' || $target->customer_id) {
                 $creditNoteQuery->where('customer_id', $target->customer_id);
@@ -462,18 +476,18 @@ class SalesTargetCalculationService
     public function recalculateForInvoice(Invoice $invoice): void
     {
         $invoiceDate = $invoice->invoice_date?->toDateString() ?? now()->toDateString();
-        $salespersonId = $invoice->salesperson_id;
-        $customerId = $invoice->customer_id;
+        $salespersonId = $invoice->salesperson_id ? (int) $invoice->salesperson_id : null;
+        $customerId = $invoice->customer_id ? (int) $invoice->customer_id : null;
 
         $targets = SalesTarget::query()
             ->whereIn('status', ['active', 'completed'])
-            ->where('starts_on', '<=', $invoiceDate)
-            ->where('ends_on', '>=', $invoiceDate)
+            ->whereDate('starts_on', '<=', $invoiceDate)
+            ->whereDate('ends_on', '>=', $invoiceDate)
             ->get();
 
         foreach ($targets as $target) {
             if ($target->owner_type === 'party') {
-                if ($customerId && (int) $target->customer_id === (int) $customerId) {
+                if ($customerId && (int) $target->customer_id === $customerId) {
                     $this->calculateTarget($target);
                 }
                 continue;
@@ -489,8 +503,23 @@ class SalesTargetCalculationService
                 continue;
             }
 
+            if ($target->owner_type === 'team') {
+                $salespersonIds = $this->resolveSalespersonIds($target);
+                if ($salespersonId && $salespersonIds->contains($salespersonId)) {
+                    $this->calculateTarget($target);
+                }
+                continue;
+            }
+
+            if ($target->owner_type === 'individual') {
+                if ($salespersonId && (int) $target->salesperson_id === $salespersonId) {
+                    $this->calculateTarget($target);
+                }
+                continue;
+            }
+
             $salespersonIds = $this->resolveSalespersonIds($target);
-            if ($salespersonIds->isEmpty() || ($salespersonId && $salespersonIds->contains($salespersonId))) {
+            if ($salespersonId && $salespersonIds->contains($salespersonId)) {
                 $this->calculateTarget($target);
             }
         }
@@ -502,8 +531,9 @@ class SalesTargetCalculationService
     public function recalculateForCreditNote(CreditNote $creditNote): void
     {
         $cnDate = $creditNote->credit_note_date?->toDateString() ?? now()->toDateString();
-        $customerId = $creditNote->customer_id;
+        $customerId = $creditNote->customer_id ? (int) $creditNote->customer_id : null;
         $invoice = $creditNote->invoice;
+        $spId = $invoice?->salesperson_id ? (int) $invoice->salesperson_id : null;
 
         if ($invoice) {
             $this->recalculateForInvoice($invoice);
@@ -511,21 +541,35 @@ class SalesTargetCalculationService
 
         $targets = SalesTarget::query()
             ->whereIn('status', ['active', 'completed'])
-            ->where('starts_on', '<=', $cnDate)
-            ->where('ends_on', '>=', $cnDate)
+            ->whereDate('starts_on', '<=', $cnDate)
+            ->whereDate('ends_on', '>=', $cnDate)
             ->get();
 
         foreach ($targets as $target) {
             if ($target->owner_type === 'party') {
-                if ($customerId && (int) $target->customer_id === (int) $customerId) {
+                if ($customerId && (int) $target->customer_id === $customerId) {
+                    $this->calculateTarget($target);
+                }
+                continue;
+            }
+
+            if ($target->owner_type === 'individual') {
+                if ($spId && (int) $target->salesperson_id === $spId) {
+                    $this->calculateTarget($target);
+                }
+                continue;
+            }
+
+            if ($target->owner_type === 'team') {
+                $salespersonIds = $this->resolveSalespersonIds($target);
+                if ($spId && $salespersonIds->contains($spId)) {
                     $this->calculateTarget($target);
                 }
                 continue;
             }
 
             $salespersonIds = $this->resolveSalespersonIds($target);
-            $spId = $invoice?->salesperson_id;
-            if ($salespersonIds->isEmpty() || ($spId && $salespersonIds->contains($spId))) {
+            if ($spId && $salespersonIds->contains($spId)) {
                 $this->calculateTarget($target);
             }
         }
@@ -544,8 +588,8 @@ class SalesTargetCalculationService
 
         $targets = SalesTarget::query()
             ->whereIn('status', ['active', 'completed'])
-            ->where('starts_on', '<=', $dateStr)
-            ->where('ends_on', '>=', $dateStr)
+            ->whereDate('starts_on', '<=', $dateStr)
+            ->whereDate('ends_on', '>=', $dateStr)
             ->get();
 
         foreach ($targets as $target) {
@@ -574,8 +618,8 @@ class SalesTargetCalculationService
             ->whereIn('status', ['active', 'completed'])
             ->where('owner_type', 'party')
             ->where('customer_id', $customerId)
-            ->where('starts_on', '<=', $dateStr)
-            ->where('ends_on', '>=', $dateStr)
+            ->whereDate('starts_on', '<=', $dateStr)
+            ->whereDate('ends_on', '>=', $dateStr)
             ->get();
 
         foreach ($targets as $target) {

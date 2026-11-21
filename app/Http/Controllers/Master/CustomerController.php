@@ -308,6 +308,150 @@ class CustomerController extends Controller
         ]);
     }
 
+    public function quickStoreBusinessGroup(Request $request): JsonResponse
+    {
+        $name = trim((string) $request->input('name', ''));
+
+        if ($name === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business Group Name is required.',
+            ], 422);
+        }
+
+        if (mb_strlen($name) > 255) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business Group Name cannot exceed 255 characters.',
+            ], 422);
+        }
+
+        $exists = BusinessGroup::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])->exists();
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A business group with this name already exists.',
+            ], 422);
+        }
+
+        $baseCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $name));
+        if ($baseCode === '') {
+            $baseCode = 'BG';
+        }
+        $baseCode = substr($baseCode, 0, 15);
+        $code = $baseCode;
+        $suffix = 1;
+        while (BusinessGroup::where('code', $code)->exists()) {
+            $code = substr($baseCode, 0, 13) . '_' . $suffix;
+            $suffix++;
+        }
+
+        try {
+            $group = BusinessGroup::create([
+                'name' => $name,
+                'code' => $code,
+                'country' => 'India',
+                'logo_emoji' => $request->input('logo_emoji') ?: '🏢',
+                'is_active' => true,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Business group created successfully.',
+                'item' => [
+                    'id' => $group->id,
+                    'name' => $group->name,
+                    'code' => $group->code,
+                    'logo_emoji' => $group->logo_emoji ?: '🏢',
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create business group: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function quickUpdateBusinessGroup(Request $request, BusinessGroup $businessGroup): JsonResponse
+    {
+        $name = trim((string) $request->input('name', ''));
+
+        if ($name === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business Group Name is required.',
+            ], 422);
+        }
+
+        if (mb_strlen($name) > 255) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business Group Name cannot exceed 255 characters.',
+            ], 422);
+        }
+
+        $exists = BusinessGroup::where('id', '!=', $businessGroup->id)
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A business group with this name already exists.',
+            ], 422);
+        }
+
+        $payload = ['name' => $name];
+        if ($request->filled('logo_emoji')) {
+            $payload['logo_emoji'] = $request->input('logo_emoji');
+        }
+
+        $businessGroup->update($payload);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Business group updated successfully.',
+            'item' => [
+                'id' => $businessGroup->id,
+                'name' => $businessGroup->fresh()->name,
+                'code' => $businessGroup->code,
+                'logo_emoji' => $businessGroup->fresh()->logo_emoji ?: '🏢',
+            ],
+        ]);
+    }
+
+    public function quickDestroyBusinessGroup(BusinessGroup $businessGroup): JsonResponse
+    {
+        $blockReason = $businessGroup->getDeleteBlockReason();
+        if ($blockReason) {
+            return response()->json([
+                'success' => false,
+                'message' => $blockReason,
+            ], 422);
+        }
+
+        try {
+            DB::transaction(function () use ($businessGroup) {
+                if (Schema::hasColumn('companies', 'business_group_id')) {
+                    Company::where('business_group_id', $businessGroup->id)->update(['business_group_id' => null]);
+                }
+                $businessGroup->companies()->detach();
+                $businessGroup->delete();
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Business group deleted successfully.',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete business group: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function index(Request $request): View|Response
     {
         if ($request->wantsJson() && $request->has('autocomplete')) {
@@ -343,6 +487,8 @@ class CustomerController extends Controller
             })
             ->when($request->filled('area_id'), fn ($q) => $q->where('area_id', $request->area_id))
             ->when($request->filled('customer_type_id'), fn ($q) => $q->where('customer_type_id', $request->customer_type_id))
+            ->when($request->filled('business_group_id'), fn ($q) => $q->where('business_group_id', $request->business_group_id))
+            ->when($request->filled('salesperson_id'), fn ($q) => $q->where('salesperson_id', $request->salesperson_id))
             ->when($request->filled('status'), function ($q) use ($request) {
                 if ($request->status === 'active') {
                     $q->where('is_active', true);
@@ -454,8 +600,16 @@ class CustomerController extends Controller
             'targetStatus' => $request->string('target_status'),
             'targetStartDate' => $request->string('target_start_date'),
             'targetEndDate' => $request->string('target_end_date'),
+            'businessGroupId' => $request->string('business_group_id'),
+            'salespersonId' => $request->string('salesperson_id'),
             'areas' => Area::where('is_active', true)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
+            'businessGroups' => BusinessGroup::where('is_active', true)->orderBy('name')->get(['id', 'name', 'code', 'logo_emoji']),
+            'salespersons' => User::where(function ($q) {
+                $q->whereHas('roles', fn ($rq) => $rq->whereIn('name', ['salesperson', 'sales_person', 'sales-executive', 'sales-manager', 'sales_manager']))
+                  ->orWhereHas('salesTargets')
+                  ->orWhereHas('salesInvoices');
+            })->orderBy('name')->get(['id', 'name']),
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
         ]);
@@ -484,6 +638,8 @@ class CustomerController extends Controller
             })
             ->when($request->filled('area_id'), fn ($q) => $q->where('area_id', $request->area_id))
             ->when($request->filled('customer_type_id'), fn ($q) => $q->where('customer_type_id', $request->customer_type_id))
+            ->when($request->filled('business_group_id'), fn ($q) => $q->where('business_group_id', $request->business_group_id))
+            ->when($request->filled('salesperson_id'), fn ($q) => $q->where('salesperson_id', $request->salesperson_id))
             ->when($request->filled('status'), function ($q) use ($request) {
                 if ($request->status === 'active') {
                     $q->where('is_active', true);
@@ -1388,7 +1544,7 @@ class CustomerController extends Controller
      */
     public function gstLookup(Request $request): JsonResponse
     {
-        $gstin = $request->input('gstin', $request->query('gstin'));
+        $gstin = strtoupper(trim((string) $request->input('gstin', $request->query('gstin'))));
 
         if (! $gstin) {
             return response()->json([
@@ -1397,8 +1553,22 @@ class CustomerController extends Controller
             ], 422);
         }
 
-        $result = $this->gstLookupService->search((string) $gstin);
+        $duplicateParty = Customer::query()
+            ->whereRaw('UPPER(TRIM(gstin)) = ?', [$gstin])
+            ->when($request->filled('exclude_id'), fn ($q) => $q->where('id', '!=', $request->exclude_id))
+            ->first();
+
+        $result = $this->gstLookupService->search($gstin);
         $status = ! empty($result['success']) ? 200 : ($result['status_code'] ?? 422);
+
+        if ($duplicateParty) {
+            $result['duplicate_party'] = [
+                'id' => $duplicateParty->id,
+                'name' => $duplicateParty->name,
+                'code' => $duplicateParty->code,
+            ];
+            $result['duplicate_warning'] = "A party with this GSTIN already exists: {$duplicateParty->name} ({$duplicateParty->code}).";
+        }
 
         if (! empty($result['success']) && isset($result['party'])) {
             $taxpayerType = $result['party']['taxpayer_type'] ?? null;
@@ -1523,6 +1693,27 @@ class CustomerController extends Controller
 
     protected function validated(Request $request, ?Customer $customer = null): array
     {
+        if ($request->filled('website')) {
+            $website = trim((string) $request->input('website'));
+            if (! preg_match('~^https?://~i', $website)) {
+                $website = 'https://' . $website;
+            }
+            $request->merge(['website' => $website]);
+        }
+        if ($request->filled('location_link')) {
+            $loc = trim((string) $request->input('location_link'));
+            if (! preg_match('~^https?://~i', $loc) && (str_contains($loc, 'maps') || str_contains($loc, 'goo.gl') || str_contains($loc, '.') || str_starts_with($loc, 'geo:'))) {
+                $loc = 'https://' . $loc;
+            }
+            $request->merge(['location_link' => $loc]);
+        }
+        if ($request->filled('gstin')) {
+            $request->merge(['gstin' => strtoupper(trim((string) $request->input('gstin')))]);
+        }
+        if ($request->filled('pan')) {
+            $request->merge(['pan' => strtoupper(trim((string) $request->input('pan')))]);
+        }
+
         $rules = [
             'return_to' => 'nullable|string|max:100',
             'lead_id' => 'nullable|integer|exists:leads,id',
@@ -1541,8 +1732,8 @@ class CustomerController extends Controller
             'opened_on' => 'nullable|date',
             'reference_by' => 'nullable|string|max:255',
             'udyam_number' => 'nullable|string|max:50',
-            'website' => 'nullable|string|max:255',
-            'location_link' => 'nullable|string|max:500',
+            'website' => 'nullable|url|max:255',
+            'location_link' => 'nullable|url|max:500',
             'gem_authorizations' => 'nullable|array',
             'gem_authorizations.*.id' => 'nullable|integer',
             'gem_authorizations.*.brand_id' => 'nullable|integer|exists:brands,id',
@@ -1553,9 +1744,9 @@ class CustomerController extends Controller
             'gem_authorizations.*.remove_document_ids.*' => 'integer',
             'gem_authorizations.*.documents' => 'nullable|array',
             'gem_authorizations.*.documents.*' => 'file|mimes:jpg,jpeg,png,webp,pdf|max:5120',
-            'gstin' => 'nullable|string|max:20',
+            'gstin' => ['nullable', 'string', 'max:15', 'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[0-9A-Z]{1}[0-9A-Z]{1}$/i'],
             'gst_registration_type' => 'nullable|string|max:50',
-            'pan' => 'nullable|string|max:20',
+            'pan' => ['nullable', 'string', 'max:10', 'regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i'],
             'address' => 'nullable|string',
             'state' => 'nullable|string|max:100',
             'pincode' => 'nullable|string|max:12',
@@ -1609,7 +1800,7 @@ class CustomerController extends Controller
             'bank_accounts.*.branch_name' => 'nullable|string|max:255',
             'bank_accounts.*.account_number' => 'nullable|string|max:50',
             'bank_accounts.*.account_type' => 'nullable|in:current,savings',
-            'bank_accounts.*.ifsc_code' => 'nullable|string|max:20',
+            'bank_accounts.*.ifsc_code' => ['nullable', 'string', 'max:11', 'regex:/^[A-Z]{4}0[A-Z0-9]{6}$/i'],
             'bank_accounts.*.is_primary' => 'nullable|boolean',
             'credit_cheques' => 'nullable|array',
             'credit_cheques.*.id' => 'nullable|integer',
@@ -1623,9 +1814,37 @@ class CustomerController extends Controller
             'credit_cheques.*.notes' => 'nullable|string',
         ];
 
-        $validator = Validator::make($request->all(), $rules);
+        $messages = [
+            'gstin.regex' => 'Please enter a valid 15-character GSTIN (e.g. 27AACCN0053F1ZW).',
+            'pan.regex' => 'Please enter a valid 10-character Indian PAN (e.g. ABCDE1234F).',
+            'website.url' => 'Please enter a valid website URL (e.g. https://example.com).',
+            'location_link.url' => 'Please enter a valid map or location URL.',
+            'bank_accounts.*.ifsc_code.regex' => 'Please enter a valid 11-character IFSC code (e.g. HDFC0001234).',
+        ];
 
-        $validator->after(function ($validator) use ($request) {
+        $validator = Validator::make($request->all(), $rules, $messages);
+
+        $validator->after(function ($validator) use ($request, $customer) {
+            // Check for duplicate GSTIN within company scope
+            if ($request->filled('gstin')) {
+                $cleanGstin = strtoupper(trim((string) $request->input('gstin')));
+                $duplicateQuery = Customer::query()
+                    ->whereRaw('UPPER(TRIM(gstin)) = ?', [$cleanGstin])
+                    ->when($customer?->id, fn ($q) => $q->where('id', '!=', $customer->id));
+
+                $companyId = $customer?->company_id ?? auth()->user()?->company_id;
+                if ($companyId) {
+                    $duplicateQuery->where(function ($q) use ($companyId) {
+                        $q->where('company_id', $companyId)->orWhereNull('company_id');
+                    });
+                }
+
+                $existingCustomer = $duplicateQuery->first();
+                if ($existingCustomer) {
+                    $validator->errors()->add('gstin', "A party with this GSTIN already exists: {$existingCustomer->name} ({$existingCustomer->code}).");
+                }
+            }
+
             $addresses = $request->input('addresses', []);
             if (is_array($addresses)) {
                 $defaultBillingCount = 0;
@@ -1733,6 +1952,13 @@ class CustomerController extends Controller
         $data['reference_by'] = filled($data['reference_by'] ?? null) ? trim($data['reference_by']) : null;
         $data['website'] = filled($data['website'] ?? null) ? trim($data['website']) : null;
         $data['location_link'] = filled($data['location_link'] ?? null) ? trim($data['location_link']) : null;
+
+        $pan = strtoupper(trim((string) ($data['pan'] ?? '')));
+        if (empty($pan) && filled($data['gstin'] ?? null) && strlen($data['gstin']) >= 12) {
+            $pan = substr(strtoupper(trim($data['gstin'])), 2, 10);
+        }
+        $data['pan'] = $pan ?: null;
+
         $data['credit_limit'] = $data['credit_limit'] ?? 0;
         $data['credit_days'] = $data['credit_days'] ?? 0;
         $data['interest_rate'] = $data['interest_rate'] ?? 18;
@@ -1748,7 +1974,7 @@ class CustomerController extends Controller
             }
         }
 
-        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['gem_authorizations'], $data['pan'], $data['lead_id'], $data['return_to']);
+        unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['gem_authorizations'], $data['lead_id'], $data['return_to']);
 
         return $data;
     }
@@ -1786,6 +2012,7 @@ class CustomerController extends Controller
                 }
 
                 return [
+                    'id' => ! empty($row['id']) ? (int) $row['id'] : null,
                     'phone_directory_contact_id' => $phoneDirectoryContactId,
                     'designation_id' => $designationId,
                     'level' => in_array($row['level'] ?? null, ['party', 'branch', 'site', 'warehouse', 'transporter', 'driver', 'site_incharge'], true) ? $row['level'] : 'party',
@@ -1808,9 +2035,26 @@ class CustomerController extends Controller
             $contacts[0] = $first;
         }
 
-        $customer->contacts()->delete();
+        $existingContacts = $customer->contacts()->get()->keyBy('id');
+        $handledContactIds = [];
+
         foreach ($contacts as $row) {
-            $customer->contacts()->create($row);
+            $contactId = ! empty($row['id']) ? (int) $row['id'] : null;
+            $payload = collect($row)->except('id')->all();
+
+            if ($contactId && $existingContacts->has($contactId)) {
+                $existingContacts[$contactId]->update($payload);
+                $handledContactIds[] = $contactId;
+            } else {
+                $created = $customer->contacts()->create($payload);
+                $handledContactIds[] = $created->id;
+            }
+        }
+
+        foreach ($existingContacts as $existingId => $contact) {
+            if (! in_array($existingId, $handledContactIds, true)) {
+                $contact->delete();
+            }
         }
 
         // 2. Addresses
@@ -2156,6 +2400,7 @@ class CustomerController extends Controller
                 'target_type' => 'value',
                 'owner_type' => 'party',
                 'customer_id' => $customer->id,
+                'salesperson_id' => $customer->salesperson_id,
                 'company_id' => $customer->company_id,
                 'branch_id' => $customer->branch_id,
                 'financial_year_id' => \App\Domains\Organization\Models\FinancialYear::current($customer->company_id)?->id,
@@ -2185,6 +2430,7 @@ class CustomerController extends Controller
                 'target_type' => 'value',
                 'owner_type' => 'party',
                 'customer_id' => $customer->id,
+                'salesperson_id' => $customer->salesperson_id,
                 'company_id' => $customer->company_id,
                 'branch_id' => $customer->branch_id,
                 'financial_year_id' => \App\Domains\Organization\Models\FinancialYear::current($customer->company_id)?->id,

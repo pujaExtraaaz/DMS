@@ -97,6 +97,11 @@ class BusinessGroup extends Model
             return "Cannot delete sister concern group because {$attachedCount} company(ies) are currently attached to it. Please reassign or detach the companies before deleting this group.";
         }
 
+        $customerCount = $this->customers()->count();
+        if ($customerCount > 0) {
+            return "Cannot delete business group because {$customerCount} party(ies) are currently assigned to it. Please reassign the parties before deleting this group.";
+        }
+
         return null;
     }
 

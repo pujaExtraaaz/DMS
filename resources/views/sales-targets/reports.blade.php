@@ -30,7 +30,17 @@
 
     {{-- Filter Toolbar --}}
     <div class="rounded-xl border border-slate-200/80 bg-white p-4 shadow-xs">
-        <form method="GET" action="{{ route('sales-targets.reports') }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
+        <form method="GET" action="{{ route('sales-targets.reports') }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Financial Year</label>
+                <select name="financial_year_id" class="w-full rounded-lg border-gray-300 text-xs">
+                    <option value="">All FY</option>
+                    @foreach($financialYears as $fy)
+                        <option value="{{ $fy->id }}" @selected(request('financial_year_id') == $fy->id)>{{ $fy->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+
             <div>
                 <label class="block text-[11px] font-semibold text-slate-600 mb-1">Owner Type</label>
                 <select name="owner_type" class="w-full rounded-lg border-gray-300 text-xs">
@@ -91,9 +101,14 @@
                 <input type="date" name="date_from" value="{{ request('date_from') }}" class="w-full rounded-lg border-gray-300 text-xs">
             </div>
 
-            <div class="flex items-end gap-2">
-                <button type="submit" class="w-full rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700">Filter</button>
-                <a href="{{ route('sales-targets.reports') }}" class="rounded-lg border px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">↺</a>
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">To Date</label>
+                <input type="date" name="date_to" value="{{ request('date_to') }}" class="w-full rounded-lg border-gray-300 text-xs">
+            </div>
+
+            <div class="md:col-span-4 lg:col-span-8 flex justify-end items-center gap-2 pt-2 border-t border-slate-100">
+                <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition">Apply Filters</button>
+                <a href="{{ route('sales-targets.reports') }}" class="rounded-lg border border-slate-300 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition">Reset</a>
             </div>
         </form>
     </div>

@@ -40,6 +40,7 @@ class Customer extends Model
         'location_link',
         'address',
         'gstin',
+        'pan',
         'gst_registration_type',
         'state',
         'pincode',
@@ -142,6 +143,10 @@ class Customer extends Model
 
     public function getPanAttribute(): ?string
     {
+        if (filled($this->attributes['pan'] ?? null)) {
+            return strtoupper(trim((string) $this->attributes['pan']));
+        }
+
         return ($this->gstin && strlen($this->gstin) >= 12) ? substr($this->gstin, 2, 10) : null;
     }
 

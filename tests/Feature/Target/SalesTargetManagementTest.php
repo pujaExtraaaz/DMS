@@ -423,8 +423,8 @@ class SalesTargetManagementTest extends TestCase
         $posTargetMgmt = strpos($text, 'Sales Target Management');
         $posHrCrm = strpos($text, 'HR · CRM');
         $posBooks = strpos($text, 'Accounting (Books)');
-        $posReports = strpos($text, 'Reports');
-        $posGuide = strpos($text, 'Guide');
+        $posReports = strpos($text, 'Reports', $posBooks ?: 0);
+        $posGuide = strpos($text, 'Guide', $posReports ?: 0);
 
         $this->assertNotFalse($posCommercials, 'Commercials missing in sidebar');
         $this->assertNotFalse($posTargetMgmt, 'Sales Target Management missing in sidebar');

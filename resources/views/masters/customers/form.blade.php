@@ -300,16 +300,23 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GSTIN</label>
-                    <div class="flex gap-2">
+                    <div class="flex items-center gap-2">
                         <input type="text" name="gstin" x-model="form.gstin" maxlength="15"
                                placeholder="E.G. 27AAAAA0000A1Z5" @input.debounce.400ms="autoFetchGst()"
-                               class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                               class="flex-1 min-w-0 uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono">
                         <button type="button" @click="fetchGstDetails()" :disabled="searchingGst"
-                                class="inline-flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-lg hover:bg-indigo-100 transition disabled:opacity-50">
+                                class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition disabled:opacity-50 shrink-0 whitespace-nowrap min-w-[105px] cursor-pointer"
+                                title="Fetch GST details from official records">
+                            <svg x-show="!searchingGst" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
                             <span x-show="!searchingGst">Fetch GST</span>
-                            <span x-show="searchingGst" class="flex items-center gap-1">
-                                <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
-                                <span>Searching...</span>
+                            <span x-show="searchingGst" class="flex items-center gap-1.5" x-cloak>
+                                <svg class="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span>Fetching...</span>
                             </span>
                         </button>
                     </div>
@@ -1331,13 +1338,26 @@
         <div class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2.5">
                         <span>Contact Persons</span>
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700" x-text="contacts.length"></span>
+                        
+                        {{-- Toggle / Switch to enable or disable contact selection --}}
+                        <button type="button"
+                                @click="hasContactsSection = !hasContactsSection"
+                                :class="hasContactsSection ? 'bg-indigo-600' : 'bg-slate-300'"
+                                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ml-1"
+                                role="switch"
+                                :aria-checked="hasContactsSection"
+                                :title="hasContactsSection ? 'Click to minimize/disable contacts' : 'Click to enable contacts'">
+                            <span class="sr-only">Enable Contact Persons section</span>
+                            <span :class="hasContactsSection ? 'translate-x-4' : 'translate-x-0'"
+                                  class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out"></span>
+                        </button>
                     </h3>
                     <p class="text-xs text-slate-500 mt-0.5">Select existing contacts from Phone Directory or create new ones. One can be marked primary.</p>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2" x-show="hasContactsSection">
                     <button type="button" 
                             @click="saveDraftAndCreateContact()"
                             :disabled="isSavingDraft"
@@ -1355,8 +1375,14 @@
                 </div>
             </div>
 
+            {{-- When disabled/collapsed note --}}
+            <div x-show="!hasContactsSection" x-cloak class="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500 bg-slate-50/50 flex items-center justify-between">
+                <span>Contact persons section is currently minimized. Any saved contacts (<span x-text="contacts.length"></span>) remain attached to this party.</span>
+                <button type="button" @click="hasContactsSection = true" class="text-indigo-600 font-semibold hover:underline">Enable Section</button>
+            </div>
+
             {{-- Search & Select from Phone Directory Combobox --}}
-            <div class="relative" @click.outside="contactDropdownOpen = false">
+            <div x-show="hasContactsSection" class="relative" @click.outside="contactDropdownOpen = false">
                 <label class="block text-xs font-medium text-slate-700 mb-1">Select Contact from Phone Directory</label>
                 <div class="relative flex items-center">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -1603,9 +1629,6 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </template>
-            </div>
                     </div>
                 </template>
             </div>
@@ -2180,6 +2203,18 @@
                                        class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
                             </div>
                             <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Alternate Mobile
+                                </label>
+                                <input type="text"
+                                       x-model="customContactForm.alternate_phone"
+                                       placeholder="Optional alternate mobile"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
                                 <div class="flex items-center justify-between mb-1">
                                     <label class="block text-xs font-semibold text-slate-700">WhatsApp Number</label>
                                     <label class="inline-flex items-center gap-1 text-[11px] text-indigo-600 font-medium cursor-pointer">
@@ -2196,16 +2231,15 @@
                                        placeholder="WhatsApp number"
                                        class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono disabled:bg-slate-50 disabled:text-slate-500">
                             </div>
-                        </div>
-
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 mb-1">
-                                Email Address
-                            </label>
-                            <input type="email"
-                                   x-model="customContactForm.email"
-                                   placeholder="contact@example.com"
-                                   class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Email Address
+                                </label>
+                                <input type="email"
+                                       x-model="customContactForm.email"
+                                       placeholder="contact@example.com"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
                         </div>
 
                         <div class="space-y-2 pt-2 border-t border-slate-100">
@@ -2975,6 +3009,7 @@ function partyFormController() {
             pincode: {!! json_encode(old('pincode', $item->pincode ?? '')) !!},
         },
         lastAutoGstin: '',
+        hasContactsSection: true,
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
         contacts: {!! json_encode($initialContacts) !!},
         availablePhoneContacts: {!! json_encode($availablePhoneContacts ?? []) !!},
@@ -3072,6 +3107,7 @@ function partyFormController() {
             designation_id: null,
             company_name: '',
             phone: '',
+            alternate_phone: '',
             whatsapp_number: '',
             same_as_mobile: false,
             email: '',
@@ -3088,6 +3124,7 @@ function partyFormController() {
                 designation_id: null,
                 company_name: this.form?.name || '',
                 phone: '',
+                alternate_phone: '',
                 whatsapp_number: '',
                 same_as_mobile: false,
                 email: '',
@@ -3137,6 +3174,7 @@ function partyFormController() {
                         body: JSON.stringify({
                             contact_name: form.name.trim(),
                             mobile_number: form.phone.trim(),
+                            alternate_mobile: form.alternate_phone ? form.alternate_phone.trim() : null,
                             whatsapp_number: form.whatsapp_number ? form.whatsapp_number.trim() : null,
                             email: form.email ? form.email.trim() : null,
                             designation: form.designation ? form.designation.trim() : null,
@@ -3197,7 +3235,7 @@ function partyFormController() {
                     other_designation: '',
                     company_name: form.company_name ? form.company_name.trim() : '',
                     phone: form.phone.trim(),
-                    alternate_phone: '',
+                    alternate_phone: form.alternate_phone ? form.alternate_phone.trim() : '',
                     whatsapp: form.whatsapp_number ? form.whatsapp_number.trim() : '',
                     whatsapp_number: form.whatsapp_number ? form.whatsapp_number.trim() : '',
                     email: form.email ? form.email.trim() : '',
@@ -4139,6 +4177,13 @@ function partyFormController() {
                                 ? `Principal address applied. ${extraCount} additional GST place(s) available under Addresses if needed.`
                                 : 'Details updated from GST records. Phone, email, party type, credit, and bank details remain manual.')
                     };
+                    if (data.duplicate_warning) {
+                        this.gstFeedback = {
+                            type: 'warning',
+                            message: data.duplicate_warning,
+                            note: 'Notice: Another party with this GSTIN is already registered. You can review details or update that party instead.'
+                        };
+                    }
                 } else {
                     this.gstPendingExtraAddresses = [];
                     this.gstLookupInfo = null;

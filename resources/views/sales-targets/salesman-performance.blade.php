@@ -25,7 +25,16 @@
 
     {{-- Filter Bar --}}
     <div class="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
-        <form method="GET" action="{{ route('sales-targets.salesman-performance') }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+        <form method="GET" action="{{ route('sales-targets.salesman-performance') }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+            <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Salesperson</label>
+                <select name="salesperson_id" class="w-full rounded-lg border-gray-300 text-xs">
+                    <option value="">All Salespeople</option>
+                    @foreach($allSalespeople as $sp)
+                        <option value="{{ $sp->id }}" @selected(request('salesperson_id') == $sp->id)>{{ $sp->name }}</option>
+                    @endforeach
+                </select>
+            </div>
             <div>
                 <label class="block text-[11px] font-semibold text-slate-600 mb-1">Financial Year</label>
                 <select name="financial_year_id" class="w-full rounded-lg border-gray-300 text-xs">
