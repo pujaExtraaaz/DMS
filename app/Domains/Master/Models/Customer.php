@@ -292,6 +292,13 @@ class Customer extends Model
         return $this->hasMany(PartyContact::class);
     }
 
+    public function phoneDirectoryContacts(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(\App\Domains\PhoneDirectory\Models\PhoneDirectoryContact::class, 'party_contacts', 'customer_id', 'phone_directory_contact_id')
+            ->withPivot(['id', 'is_primary', 'level', 'role', 'designation_id', 'phone', 'email'])
+            ->withTimestamps();
+    }
+
     public function gemAuthorizations(): HasMany
     {
         return $this->hasMany(PartyGemAuthorization::class);

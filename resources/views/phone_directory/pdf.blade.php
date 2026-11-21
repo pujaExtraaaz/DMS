@@ -105,15 +105,16 @@
         <thead>
             <tr>
                 <th style="width: 25px; text-align: center;">#</th>
-                <th style="width: 130px;">Contact Name</th>
-                <th style="width: 80px;">Type</th>
-                <th style="width: 100px;">Designation</th>
-                <th style="width: 80px;">Department</th>
-                <th style="width: 110px;">Company</th>
-                <th style="width: 85px;">Primary Mobile</th>
-                <th style="width: 110px;">Email</th>
+                <th style="width: 120px;">Contact Name</th>
+                <th style="width: 70px;">Type</th>
+                <th style="width: 80px;">Classification</th>
+                <th style="width: 90px;">Designation</th>
+                <th style="width: 75px;">Department</th>
+                <th style="width: 100px;">Company</th>
+                <th style="width: 80px;">Primary Mobile</th>
+                <th style="width: 100px;">Email</th>
                 <th>Location</th>
-                <th style="width: 50px; text-align: center;">Status</th>
+                <th style="width: 45px; text-align: center;">Status</th>
             </tr>
         </thead>
         <tbody>
@@ -127,9 +128,10 @@
                         @endif
                     </td>
                     <td>{{ \App\Domains\PhoneDirectory\Models\PhoneDirectoryContact::CONTACT_TYPES[$c->contact_type] ?? ucfirst($c->contact_type) }}</td>
+                    <td>{{ $c->classification?->name ?? '—' }}</td>
                     <td>{{ $c->designation ?: '—' }}</td>
                     <td>{{ $c->department?->name ?? '—' }}</td>
-                    <td>{{ $c->company_name ?: '—' }}</td>
+                    <td>{{ $c->effective_company_name ?: ($c->company_name ?: '—') }}</td>
                     <td><strong>{{ $c->mobile_number }}</strong></td>
                     <td>{{ $c->email ?: '—' }}</td>
                     <td>{{ $c->formatted_location }}</td>
@@ -137,7 +139,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="10" style="text-align: center; padding: 15px; color: #94a3b8;">
+                    <td colspan="11" style="text-align: center; padding: 15px; color: #94a3b8;">
                         No contacts found matching the selected criteria.
                     </td>
                 </tr>

@@ -15,6 +15,7 @@ Route::prefix('sales-targets')->name('sales-targets.')->middleware('role_or_perm
     Route::post('/alerts/read-all', [SalesTargetController::class, 'markAllAlertsRead'])->name('alerts.read-all');
     Route::get('/reports', [SalesTargetController::class, 'reports'])->name('reports');
     Route::post('/recalculate', [SalesTargetController::class, 'recalculate'])->name('recalculate');
+    Route::get('/invoices', [SalesTargetController::class, 'contributingInvoices'])->name('invoices');
 
     Route::get('/{salesTarget}', [SalesTargetController::class, 'show'])->name('show');
     Route::get('/{salesTarget}/edit', [SalesTargetController::class, 'edit'])->name('edit');

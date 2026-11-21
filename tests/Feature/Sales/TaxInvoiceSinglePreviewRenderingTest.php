@@ -315,4 +315,15 @@ class TaxInvoiceSinglePreviewRenderingTest extends TestCase
         $response->assertOk();
         $this->assertEquals('application/pdf', $response->headers->get('content-type'));
     }
+
+    public function test_invoice_show_page_renders_cleanly_without_undefined_variable_errors(): void
+    {
+        $invoice = $this->createInvoice($this->customerA, 'INV-2026-SHOW');
+
+        $response = $this->actingAs($this->user)
+            ->get(route('invoices.show', $invoice));
+
+        $response->assertOk();
+        $response->assertSee($invoice->invoice_no);
+    }
 }

@@ -10,6 +10,7 @@ use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 
 class Quotation extends Model
 {
@@ -69,7 +70,13 @@ class Quotation extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(QuotationItem::class)->orderBy('sort_order')->orderBy('id');
+        $relation = $this->hasMany(QuotationItem::class);
+
+        if (Schema::hasColumn('quotation_items', 'sort_order')) {
+            return $relation->orderBy('sort_order')->orderBy('id');
+        }
+
+        return $relation->orderBy('id');
     }
 
     public function convertedOrder(): BelongsTo

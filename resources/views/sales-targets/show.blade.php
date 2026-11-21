@@ -190,50 +190,99 @@
     @endif
 
     {{-- Contributing Sales Invoices Drill-down --}}
-    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-3">
-        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
                 <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-700">Contributing Sales Invoices</h2>
-                <p class="text-[11px] text-slate-500">Live source invoices from which target achievement is calculated.</p>
+                <p class="text-[11px] text-slate-500">Live source invoices and credit note adjustments from which target achievement is calculated.</p>
             </div>
-            <span class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
-                Total: {{ $invoices->total() }} Invoices
-            </span>
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-md">
+                    Total: {{ $invoices->total() }} Invoices
+                </span>
+                <a href="{{ route('sales-targets.invoices', ['salesperson_id' => $salesTarget->salesperson_id, 'customer_id' => $salesTarget->customer_id]) }}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                    Full Drill-down →
+                </a>
+            </div>
         </div>
+
+        {{-- Filter Toolbar --}}
+        <form method="GET" action="{{ route('sales-targets.show', $salesTarget) }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200/70">
+            <div>
+                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">Salesperson</label>
+                <select name="salesperson_id" class="w-full rounded border-gray-300 text-xs py-1">
+                    <option value="">All / Target Default</option>
+                    @foreach($salespeople as $sp)
+                        <option value="{{ $sp->id }}" @selected(request('salesperson_id') == $sp->id)>{{ $sp->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">Party / Customer</label>
+                <select name="customer_id" class="w-full rounded border-gray-300 text-xs py-1">
+                    <option value="">All / Target Default</option>
+                    @foreach($parties as $p)
+                        <option value="{{ $p->id }}" @selected(request('customer_id') == $p->id)>{{ $p->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">From Date</label>
+                <input type="date" name="date_from" value="{{ request('date_from', $salesTarget->starts_on->toDateString()) }}" class="w-full rounded border-gray-300 text-xs py-1">
+            </div>
+            <div>
+                <label class="block text-[10px] font-semibold text-slate-600 mb-0.5">To Date</label>
+                <input type="date" name="date_to" value="{{ request('date_to', $salesTarget->ends_on->toDateString()) }}" class="w-full rounded border-gray-300 text-xs py-1">
+            </div>
+            <div class="flex items-end gap-1.5">
+                <button type="submit" class="w-full rounded bg-indigo-600 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">Filter Invoices</button>
+                <a href="{{ route('sales-targets.show', $salesTarget) }}" class="rounded border bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">↺</a>
+            </div>
+        </form>
 
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-slate-200 text-xs text-left">
                 <thead class="bg-slate-50 text-slate-600 font-semibold uppercase">
                     <tr>
+                        <th class="px-3 py-2">Company</th>
                         <th class="px-3 py-2">Invoice No</th>
-                        <th class="px-3 py-2">Date</th>
-                        <th class="px-3 py-2">Customer</th>
+                        <th class="px-3 py-2">Invoice Date</th>
+                        <th class="px-3 py-2">Customer / Party Name</th>
                         <th class="px-3 py-2">Salesperson</th>
-                        <th class="px-3 py-2 text-right">Taxable Subtotal</th>
-                        <th class="px-3 py-2 text-right">Grand Total (₹)</th>
+                        <th class="px-3 py-2 text-right">Invoice Amount (₹)</th>
+                        <th class="px-3 py-2 text-right">Credit Note Adj. (₹)</th>
+                        <th class="px-3 py-2 text-right">Eligible Sales (₹)</th>
                         <th class="px-3 py-2 text-center">Status</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     @forelse($invoices as $inv)
+                        @php
+                            $cnTotal = $inv->credit_notes_total;
+                            $eligible = max(0, (float)$inv->grand_total - $cnTotal);
+                        @endphp
                         <tr class="hover:bg-slate-50">
+                            <td class="px-3 py-2 text-slate-700 font-medium">{{ $inv->company?->name ?? '—' }}</td>
                             <td class="px-3 py-2 font-mono font-semibold text-indigo-600">
-                                <a href="{{ route('sales.invoices.show', $inv) }}" class="hover:underline">
+                                <a href="{{ route('invoices.show', $inv) }}" class="hover:underline">
                                     {{ $inv->invoice_no }}
                                 </a>
                             </td>
                             <td class="px-3 py-2 text-slate-600">{{ $inv->invoice_date?->format('d M Y') }}</td>
                             <td class="px-3 py-2 font-medium text-slate-800">{{ $inv->customer?->name }}</td>
                             <td class="px-3 py-2 text-slate-600">{{ $inv->salesperson?->name ?? '—' }}</td>
-                            <td class="px-3 py-2 text-right text-slate-600">₹ {{ number_format($inv->subtotal, 2) }}</td>
-                            <td class="px-3 py-2 text-right font-bold text-slate-900">₹ {{ number_format($inv->grand_total, 2) }}</td>
+                            <td class="px-3 py-2 text-right text-slate-700">₹ {{ number_format($inv->grand_total, 2) }}</td>
+                            <td class="px-3 py-2 text-right font-medium {{ $cnTotal > 0 ? 'text-rose-600' : 'text-slate-400' }}">
+                                {{ $cnTotal > 0 ? '₹ ' . number_format($cnTotal, 2) : '—' }}
+                            </td>
+                            <td class="px-3 py-2 text-right font-bold text-emerald-700">₹ {{ number_format($eligible, 2) }}</td>
                             <td class="px-3 py-2 text-center">
                                 <span class="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-50 text-emerald-700">{{ ucfirst($inv->status) }}</span>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="py-8 text-center text-xs text-slate-400">
+                            <td colspan="9" class="py-8 text-center text-xs text-slate-400">
                                 No sales invoices have been posted in this target timeframe for this owner yet.
                             </td>
                         </tr>

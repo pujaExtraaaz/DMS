@@ -65,10 +65,11 @@
 
                     <p class="text-sm text-violet-100 font-medium">{{ $contact->designation ?: 'Professional Contact' }}</p>
 
-                    @if($contact->company_name)
+                    @php $heroCompany = $contact->effective_company_name; @endphp
+                    @if($heroCompany)
                         <p class="text-sm font-semibold text-white/90 flex items-center justify-center sm:justify-start gap-1.5">
                             <svg class="h-4 w-4 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-                            <span>{{ $contact->company_name }}</span>
+                            <span>{{ $heroCompany }}</span>
                         </p>
                     @endif
 
@@ -153,12 +154,22 @@
             {{-- Organization & Categorization --}}
             <div>
                 <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Organization & Master Details</h3>
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
                     <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
                         <span class="text-[10px] font-bold uppercase text-slate-400 block">Contact Type</span>
                         <span class="text-xs font-semibold text-slate-800">
                             {{ \App\Domains\PhoneDirectory\Models\PhoneDirectoryContact::CONTACT_TYPES[$contact->contact_type] ?? ucfirst($contact->contact_type) }}
                         </span>
+                    </div>
+
+                    <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                        <span class="text-[10px] font-bold uppercase text-slate-400 block">Party Classification</span>
+                        <span class="text-xs font-semibold text-slate-800">{{ $contact->classification?->name ?? '—' }}</span>
+                    </div>
+
+                    <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                        <span class="text-[10px] font-bold uppercase text-slate-400 block">Company / Organization</span>
+                        <span class="text-xs font-semibold text-slate-800 truncate block" title="{{ $contact->effective_company_name }}">{{ $contact->effective_company_name ?: '—' }}</span>
                     </div>
 
                     <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">

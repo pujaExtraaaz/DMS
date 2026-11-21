@@ -14,6 +14,7 @@ use App\Domains\Master\Models\Route;
 use App\Domains\Master\Services\GstLookupService;
 use App\Domains\Master\Services\IfscLookupService;
 use App\Domains\Organization\Models\BusinessGroup;
+use App\Domains\PhoneDirectory\Models\PhoneDirectoryContact;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Support\AuditLogService;
@@ -539,6 +540,187 @@ class CustomerController extends Controller
         return response()->json($results);
     }
 
+    public function searchPhoneDirectoryContacts(Request $request): JsonResponse
+    {
+        $q = trim((string) $request->input('q', ''));
+
+        $contacts = PhoneDirectoryContact::query()
+            ->with(['designationMaster', 'company'])
+            ->whereNull('archived_at')
+            ->where('status', 'active')
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($sub) use ($q) {
+                    $sub->where('contact_name', 'like', "%{$q}%")
+                        ->orWhere('mobile_number', 'like', "%{$q}%")
+                        ->orWhere('alternate_mobile', 'like', "%{$q}%")
+                        ->orWhere('whatsapp_number', 'like', "%{$q}%")
+                        ->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('designation', 'like', "%{$q}%")
+                        ->orWhereHas('designationMaster', fn ($dq) => $dq->where('name', 'like', "%{$q}%"))
+                        ->orWhere('company_name', 'like', "%{$q}%")
+                        ->orWhereHas('company', fn ($cq) => $cq->where('name', 'like', "%{$q}%"));
+                });
+            })
+            ->orderBy('contact_name', 'asc')
+            ->limit(30)
+            ->get()
+            ->map(function (PhoneDirectoryContact $contact) {
+                return [
+                    'id' => $contact->id,
+                    'phone_directory_contact_id' => $contact->id,
+                    'name' => $contact->contact_name,
+                    'designation' => $contact->designation ?: ($contact->designationMaster?->name ?? ''),
+                    'designation_id' => $contact->designation_id,
+                    'company_name' => $contact->effective_company_name ?: ($contact->company_name ?? ''),
+                    'company_id' => $contact->company_id,
+                    'phone' => $contact->mobile_number,
+                    'alternate_phone' => $contact->alternate_mobile,
+                    'mobile' => $contact->mobile_number,
+                    'alternate_mobile' => $contact->alternate_mobile,
+                    'whatsapp' => $contact->whatsapp_number,
+                    'whatsapp_number' => $contact->whatsapp_number,
+                    'email' => $contact->email,
+                    'avatar_bg_class' => $contact->avatar_bg_class,
+                    'initials' => $contact->initials,
+                    'view_url' => route('phone-directory.contacts.show', $contact),
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'contacts' => $contacts,
+        ]);
+    }
+
+    public function quickStorePhoneDirectoryContact(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'contact_name' => 'required|string|max:255',
+            'mobile_number' => 'required|string|max:20',
+            'designation_id' => 'nullable|integer|exists:designations,id',
+            'designation' => 'nullable|string|max:100',
+            'company_id' => 'nullable|integer|exists:companies,id',
+            'company_name' => 'nullable|string|max:255',
+            'whatsapp_number' => 'nullable|string|max:30',
+            'email' => 'nullable|email|max:255',
+        ]);
+
+        $cleanMobile = preg_replace('/[^0-9]/', '', $validated['mobile_number']);
+        $last10 = substr($cleanMobile, -10);
+
+        // Check if a contact with this mobile number already exists in Phone Directory
+        $existing = null;
+        if (strlen($last10) >= 10) {
+            $existing = PhoneDirectoryContact::with(['designationMaster', 'company'])
+                ->whereNull('archived_at')
+                ->where(function ($q) use ($validated, $last10) {
+                    $q->where('mobile_number', $validated['mobile_number'])
+                        ->orWhere('mobile_number', 'like', "%{$last10}");
+                })
+                ->first();
+        }
+
+        if ($existing) {
+            return response()->json([
+                'success' => true,
+                'already_exists' => true,
+                'message' => 'Found existing contact in Phone Directory with this mobile number.',
+                'contact' => [
+                    'id' => $existing->id,
+                    'phone_directory_contact_id' => $existing->id,
+                    'name' => $existing->contact_name,
+                    'designation' => $existing->designation ?: ($existing->designationMaster?->name ?? ''),
+                    'designation_id' => $existing->designation_id,
+                    'company_name' => $existing->effective_company_name ?: ($existing->company_name ?? ''),
+                    'company_id' => $existing->company_id,
+                    'phone' => $existing->mobile_number,
+                    'alternate_phone' => $existing->alternate_mobile,
+                    'mobile' => $existing->mobile_number,
+                    'whatsapp' => $existing->whatsapp_number,
+                    'whatsapp_number' => $existing->whatsapp_number,
+                    'email' => $existing->email,
+                    'avatar_bg_class' => $existing->avatar_bg_class,
+                    'initials' => $existing->initials,
+                    'view_url' => route('phone-directory.contacts.show', $existing),
+                ],
+            ]);
+        }
+
+        // Create new Phone Directory contact
+        $companyId = $validated['company_id'] ?? null;
+        $companyName = $validated['company_name'] ?? null;
+        if (! $companyId && empty($companyName)) {
+            $companyId = auth()->user()?->company_id;
+            $companyName = \App\Domains\Organization\Models\Company::find($companyId)?->name;
+        }
+
+        $designationId = $validated['designation_id'] ?? null;
+        $designation = $validated['designation'] ?? null;
+        if ($designationId && empty($designation)) {
+            $designation = \App\Domains\Master\Models\Designation::find($designationId)?->name;
+        }
+
+        $contact = PhoneDirectoryContact::create([
+            'contact_name' => $validated['contact_name'],
+            'mobile_number' => $validated['mobile_number'],
+            'whatsapp_number' => $validated['whatsapp_number'] ?? null,
+            'email' => $validated['email'] ?? null,
+            'company_id' => $companyId,
+            'company_name' => $companyName,
+            'designation_id' => $designationId,
+            'designation' => $designation,
+            'contact_type' => 'customer',
+            'status' => 'active',
+            'country' => 'India',
+            'created_by' => auth()->id(),
+        ]);
+
+        $contact->load(['designationMaster', 'company']);
+
+        return response()->json([
+            'success' => true,
+            'already_exists' => false,
+            'message' => 'Contact saved to Phone Directory successfully.',
+            'contact' => [
+                'id' => $contact->id,
+                'phone_directory_contact_id' => $contact->id,
+                'name' => $contact->contact_name,
+                'designation' => $contact->designation ?: ($contact->designationMaster?->name ?? ''),
+                'designation_id' => $contact->designation_id,
+                'company_name' => $contact->effective_company_name ?: ($contact->company_name ?? ''),
+                'company_id' => $contact->company_id,
+                'phone' => $contact->mobile_number,
+                'alternate_phone' => $contact->alternate_mobile,
+                'mobile' => $contact->mobile_number,
+                'whatsapp' => $contact->whatsapp_number,
+                'whatsapp_number' => $contact->whatsapp_number,
+                'email' => $contact->email,
+                'avatar_bg_class' => $contact->avatar_bg_class,
+                'initials' => $contact->initials,
+                'view_url' => route('phone-directory.contacts.show', $contact),
+            ],
+        ]);
+    }
+
+    public function saveDraftSession(Request $request): JsonResponse
+    {
+        $draft = $request->input('draft', $request->all());
+        $request->session()->put('party_form_draft', $draft);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function clearDraftSession(Request $request): RedirectResponse|JsonResponse
+    {
+        $request->session()->forget('party_form_draft');
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json(['success' => true]);
+        }
+
+        return redirect()->back()->with('status', 'Draft discarded successfully.');
+    }
+
     public function create(Request $request): View|RedirectResponse
     {
         $companyId = auth()->user()?->company_id;
@@ -604,9 +786,90 @@ class CustomerController extends Controller
             ],
         ];
 
+        if ($request->query('clear_draft')) {
+            $request->session()->forget('party_form_draft');
+            $savedDraft = null;
+        } else {
+            $savedDraft = $request->session()->get('party_form_draft');
+        }
+
+        $initialContacts = null;
+        $initialBankAccounts = null;
+        $initialGemAuthorizations = null;
+        $initialBusinessGroupId = null;
+
+        if ($savedDraft && empty($savedDraft['is_edit'])) {
+            foreach ($savedDraft as $k => $v) {
+                if (in_array($k, $customer->getFillable(), true) && ! is_array($v)) {
+                    $customer->setAttribute($k, $v);
+                }
+            }
+            if (! empty($savedDraft['code'])) {
+                $customer->code = $savedDraft['code'];
+            }
+            if (isset($savedDraft['contacts']) && is_array($savedDraft['contacts'])) {
+                $initialContacts = $savedDraft['contacts'];
+            }
+            if (isset($savedDraft['bank_accounts']) && is_array($savedDraft['bank_accounts'])) {
+                $initialBankAccounts = $savedDraft['bank_accounts'];
+            }
+            if (isset($savedDraft['addresses']) && is_array($savedDraft['addresses'])) {
+                $initialAddresses = $savedDraft['addresses'];
+            }
+            if (isset($savedDraft['gem_authorizations']) && is_array($savedDraft['gem_authorizations'])) {
+                $initialGemAuthorizations = $savedDraft['gem_authorizations'];
+            }
+            if (! empty($savedDraft['business_group_id'])) {
+                $initialBusinessGroupId = $savedDraft['business_group_id'];
+            }
+        }
+
+        if ($selectedContactId = $request->query('selected_contact_id')) {
+            $newPhoneContact = PhoneDirectoryContact::with(['designationMaster', 'company'])->find($selectedContactId);
+            if ($newPhoneContact) {
+                if ($initialContacts === null) {
+                    $initialContacts = [];
+                }
+                $alreadyExists = collect($initialContacts)->contains(function ($c) use ($selectedContactId) {
+                    return (! empty($c['phone_directory_contact_id']) && (int) $c['phone_directory_contact_id'] === (int) $selectedContactId);
+                });
+                if (! $alreadyExists) {
+                    $initialContacts[] = [
+                        'id' => null,
+                        'phone_directory_contact_id' => $newPhoneContact->id,
+                        'name' => $newPhoneContact->contact_name,
+                        'role' => $newPhoneContact->designation ?: ($newPhoneContact->designationMaster?->name ?? 'Contact'),
+                        'designation_id' => $newPhoneContact->designation_id,
+                        'designation' => $newPhoneContact->designation ?: ($newPhoneContact->designationMaster?->name ?? ''),
+                        'other_designation' => '',
+                        'company_name' => $newPhoneContact->effective_company_name ?: ($newPhoneContact->company_name ?? ''),
+                        'phone' => $newPhoneContact->mobile_number,
+                        'alternate_phone' => $newPhoneContact->alternate_mobile,
+                        'whatsapp' => $newPhoneContact->whatsapp_number,
+                        'whatsapp_number' => $newPhoneContact->whatsapp_number,
+                        'email' => $newPhoneContact->email,
+                        'is_primary' => count($initialContacts) === 0,
+                        'avatar_bg_class' => $newPhoneContact->avatar_bg_class,
+                        'initials' => $newPhoneContact->initials,
+                        'view_url' => route('phone-directory.contacts.show', $newPhoneContact),
+                    ];
+
+                    if ($savedDraft) {
+                        $savedDraft['contacts'] = $initialContacts;
+                        $request->session()->put('party_form_draft', $savedDraft);
+                    }
+                }
+            }
+        }
+
         return view('masters.customers.form', [
             'item' => $customer,
             'initialAddresses' => $initialAddresses,
+            'initialContacts' => $initialContacts,
+            'initialBankAccounts' => $initialBankAccounts,
+            'initialGemAuthorizations' => $initialGemAuthorizations,
+            'initialBusinessGroupId' => $initialBusinessGroupId,
+            'hasDraft' => ! empty($savedDraft),
             'lead' => $lead,
             'returnTo' => $request->query('return_to', $request->query('amp;return_to', old('return_to'))),
             'returnUrl' => $request->query('return_url', $request->query('amp;return_url', old('return_url'))),
@@ -711,6 +974,7 @@ class CustomerController extends Controller
         }
 
         $returnUrl = $this->safeInternalReturnUrl($request->input('return_url', $request->input('amp;return_url')));
+        $request->session()->forget('party_form_draft');
         if ($returnUrl) {
             $separator = str_contains($returnUrl, '?') ? '&' : '?';
             $isPurchasingOrder = str_contains($returnUrl, '/purchasing');
@@ -780,9 +1044,97 @@ class CustomerController extends Controller
         return null;
     }
 
-    public function edit(Customer $customer): View
+    public function edit(Request $request, Customer $customer): View
     {
-        $customer->load(['contacts', 'addresses', 'bankAccounts', 'creditCheques', 'businessGroup', 'gemAuthorizations.documents', 'gemAuthorizations.brand']);
+        $customer->load([
+            'contacts.phoneDirectoryContact.designationMaster',
+            'contacts.phoneDirectoryContact.company',
+            'contacts.designation',
+            'addresses',
+            'bankAccounts',
+            'creditCheques',
+            'businessGroup',
+            'gemAuthorizations.documents',
+            'gemAuthorizations.brand',
+        ]);
+
+        $savedDraft = $request->session()->get('party_form_draft');
+        $isDraftForThisCustomer = ($savedDraft && ! empty($savedDraft['id']) && (int) $savedDraft['id'] === (int) $customer->id);
+
+        if ($isDraftForThisCustomer) {
+            foreach ($savedDraft as $k => $v) {
+                if (in_array($k, $customer->getFillable(), true) && ! is_array($v)) {
+                    $customer->setAttribute($k, $v);
+                }
+            }
+        }
+
+        $initialContacts = null;
+        if ($isDraftForThisCustomer && isset($savedDraft['contacts']) && is_array($savedDraft['contacts'])) {
+            $initialContacts = $savedDraft['contacts'];
+        } else {
+            $initialContacts = $customer->contacts->map(function ($c) {
+                $resolved = \App\Support\ContactDesignations::resolve($c->role ?? '', $c->designation_id);
+
+                return [
+                    'id' => $c->id,
+                    'phone_directory_contact_id' => $c->phone_directory_contact_id,
+                    'name' => $c->effective_name,
+                    'role' => $c->role ?? '',
+                    'designation_id' => $c->designation_id ?? $c->phoneDirectoryContact?->designation_id ?: $resolved['designation_id'],
+                    'designation' => $c->phone_directory_contact_id ? ($c->effective_designation ?: $resolved['designation']) : $resolved['designation'],
+                    'other_designation' => $c->phone_directory_contact_id ? '' : $resolved['other_designation'],
+                    'company_name' => $c->effective_company_name,
+                    'phone' => $c->effective_phone,
+                    'alternate_phone' => $c->effective_alternate_phone,
+                    'whatsapp' => $c->effective_whatsapp_number,
+                    'whatsapp_number' => $c->effective_whatsapp_number,
+                    'email' => $c->effective_email,
+                    'is_primary' => (bool) $c->is_primary,
+                    'avatar_bg_class' => $c->phoneDirectoryContact?->avatar_bg_class ?? 'bg-slate-100 text-slate-700',
+                    'initials' => $c->phoneDirectoryContact?->initials ?? mb_substr($c->name ?? 'C', 0, 2),
+                    'view_url' => $c->phoneDirectoryContact ? route('phone-directory.contacts.show', $c->phoneDirectoryContact) : null,
+                ];
+            })->values()->all();
+        }
+
+        if ($selectedContactId = $request->query('selected_contact_id')) {
+            $newPhoneContact = PhoneDirectoryContact::with(['designationMaster', 'company'])->find($selectedContactId);
+            if ($newPhoneContact) {
+                if ($initialContacts === null) {
+                    $initialContacts = [];
+                }
+                $alreadyExists = collect($initialContacts)->contains(function ($c) use ($selectedContactId) {
+                    return (! empty($c['phone_directory_contact_id']) && (int) $c['phone_directory_contact_id'] === (int) $selectedContactId);
+                });
+                if (! $alreadyExists) {
+                    $initialContacts[] = [
+                        'id' => null,
+                        'phone_directory_contact_id' => $newPhoneContact->id,
+                        'name' => $newPhoneContact->contact_name,
+                        'role' => $newPhoneContact->designation ?: ($newPhoneContact->designationMaster?->name ?? 'Contact'),
+                        'designation_id' => $newPhoneContact->designation_id,
+                        'designation' => $newPhoneContact->designation ?: ($newPhoneContact->designationMaster?->name ?? ''),
+                        'other_designation' => '',
+                        'company_name' => $newPhoneContact->effective_company_name ?: ($newPhoneContact->company_name ?? ''),
+                        'phone' => $newPhoneContact->mobile_number,
+                        'alternate_phone' => $newPhoneContact->alternate_mobile,
+                        'whatsapp' => $newPhoneContact->whatsapp_number,
+                        'whatsapp_number' => $newPhoneContact->whatsapp_number,
+                        'email' => $newPhoneContact->email,
+                        'is_primary' => count($initialContacts) === 0,
+                        'avatar_bg_class' => $newPhoneContact->avatar_bg_class,
+                        'initials' => $newPhoneContact->initials,
+                        'view_url' => route('phone-directory.contacts.show', $newPhoneContact),
+                    ];
+
+                    if ($isDraftForThisCustomer) {
+                        $savedDraft['contacts'] = $initialContacts;
+                        $request->session()->put('party_form_draft', $savedDraft);
+                    }
+                }
+            }
+        }
 
         $addresses = $customer->activeAddresses()->get()->map(function ($a) {
             return [
@@ -820,7 +1172,14 @@ class CustomerController extends Controller
 
         return view('masters.customers.form', [
             'item' => $customer,
-            'initialAddresses' => $addresses,
+            'initialAddresses' => ($isDraftForThisCustomer && isset($savedDraft['addresses'])) ? $savedDraft['addresses'] : $addresses,
+            'initialContacts' => $initialContacts,
+            'initialBankAccounts' => ($isDraftForThisCustomer && isset($savedDraft['bank_accounts'])) ? $savedDraft['bank_accounts'] : null,
+            'initialGemAuthorizations' => ($isDraftForThisCustomer && isset($savedDraft['gem_authorizations'])) ? $savedDraft['gem_authorizations'] : null,
+            'initialBusinessGroupId' => ($isDraftForThisCustomer && isset($savedDraft['business_group_id'])) ? $savedDraft['business_group_id'] : $customer->business_group_id,
+            'hasDraft' => $isDraftForThisCustomer,
+            'returnTo' => $request->query('return_to', $request->query('amp;return_to', old('return_to'))),
+            'returnUrl' => $request->query('return_url', $request->query('amp;return_url', old('return_url'))),
             ...$this->formData($customer),
         ]);
     }
@@ -836,6 +1195,8 @@ class CustomerController extends Controller
             $customer->update($data);
             $this->syncChildRows($request, $customer);
         });
+
+        $request->session()->forget('party_form_draft');
 
         return $this->flashSuccess('Party updated successfully.', 'masters.customers.index');
     }
@@ -1005,7 +1366,7 @@ class CustomerController extends Controller
             'salesperson',
             'salesManager',
             'salesTargets' => fn ($q) => $q->latest('starts_on')->with(['achievement', 'creator']),
-            'contacts' => fn ($q) => $q->orderBy('is_primary', 'desc')->orderBy('name'),
+            'contacts' => fn ($q) => $q->orderBy('is_primary', 'desc')->orderBy('name')->with(['phoneDirectoryContact.designationMaster', 'phoneDirectoryContact.company', 'designation']),
             'addresses' => fn ($q) => $q->orderBy('is_default_billing', 'desc')->orderBy('is_default_delivery', 'desc'),
             'bankAccounts' => fn ($q) => $q->orderBy('is_primary', 'desc'),
             'gemAuthorizations.brand',
@@ -1209,6 +1570,8 @@ class CustomerController extends Controller
             'is_active' => 'boolean',
             'contacts' => 'nullable|array',
             'contacts.*.id' => 'nullable|integer',
+            'contacts.*.phone_directory_contact_id' => 'nullable|integer|exists:phone_directory_contacts,id',
+            'contacts.*.company_name' => 'nullable|string|max:255',
             'contacts.*.designation_id' => 'nullable|integer',
             'contacts.*.name' => 'nullable|string|max:255',
             'contacts.*.role' => 'nullable|string|max:100',
@@ -1217,6 +1580,8 @@ class CustomerController extends Controller
             'contacts.*.other_designation' => 'nullable|string|max:100',
             'contacts.*.phone' => 'nullable|string|max:20',
             'contacts.*.alternate_phone' => 'nullable|string|max:20',
+            'contacts.*.whatsapp' => 'nullable|string|max:30',
+            'contacts.*.whatsapp_number' => 'nullable|string|max:30',
             'contacts.*.email' => 'nullable|email|max:255',
             'contacts.*.location' => 'nullable|string|max:100',
             'contacts.*.level' => 'nullable|in:party,branch,site,warehouse,transporter,driver,site_incharge,primary,secondary,accounts,support',
@@ -1392,9 +1757,15 @@ class CustomerController extends Controller
     {
         // 1. Contacts
         $contacts = collect($request->input('contacts', []))
-            ->filter(fn ($row) => filled($row['name'] ?? null))
+            ->filter(fn ($row) => filled($row['name'] ?? null) || filled($row['phone_directory_contact_id'] ?? null))
             ->map(function ($row) {
-                $rawRole = trim((string) ($row['role'] ?? $row['designation'] ?? ''));
+                $phoneDirectoryContactId = ! empty($row['phone_directory_contact_id']) ? (int) $row['phone_directory_contact_id'] : null;
+                $phoneContact = null;
+                if ($phoneDirectoryContactId) {
+                    $phoneContact = PhoneDirectoryContact::with('designationMaster')->find($phoneDirectoryContactId);
+                }
+
+                $rawRole = trim((string) ($row['role'] ?? $row['designation'] ?? ($phoneContact?->designation ?: ($phoneContact?->designationMaster?->name ?? ''))));
                 $customRole = trim((string) ($row['custom_role'] ?? $row['other_designation'] ?? $row['other_role'] ?? ''));
 
                 if ($rawRole === 'Other') {
@@ -1407,7 +1778,7 @@ class CustomerController extends Controller
                     $finalRole = null;
                 }
 
-                $designationId = ! empty($row['designation_id']) ? (int) $row['designation_id'] : null;
+                $designationId = ! empty($row['designation_id']) ? (int) $row['designation_id'] : ($phoneContact?->designation_id ?? null);
                 if (! $designationId && $rawRole !== '' && $rawRole !== 'Other') {
                     $designationId = \App\Domains\Master\Models\Designation::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($rawRole)])->value('id');
                 } elseif (! $designationId && $rawRole === 'Other') {
@@ -1415,19 +1786,27 @@ class CustomerController extends Controller
                 }
 
                 return [
+                    'phone_directory_contact_id' => $phoneDirectoryContactId,
                     'designation_id' => $designationId,
                     'level' => in_array($row['level'] ?? null, ['party', 'branch', 'site', 'warehouse', 'transporter', 'driver', 'site_incharge'], true) ? $row['level'] : 'party',
-                    'name' => $row['name'] ?? null,
+                    'name' => $row['name'] ?? ($phoneContact?->contact_name ?? null),
                     'role' => $finalRole,
-                    'phone' => $row['phone'] ?? null,
-                    'alternate_phone' => $row['alternate_phone'] ?? null,
-                    'email' => $row['email'] ?? null,
+                    'phone' => $row['phone'] ?? ($phoneContact?->mobile_number ?? null),
+                    'alternate_phone' => $row['alternate_phone'] ?? ($phoneContact?->alternate_mobile ?? null),
+                    'whatsapp_number' => $row['whatsapp_number'] ?? ($row['whatsapp'] ?? ($phoneContact?->whatsapp_number ?? null)),
+                    'email' => $row['email'] ?? ($phoneContact?->email ?? null),
                     'location' => $row['location'] ?? null,
                     'is_primary' => (bool) ($row['is_primary'] ?? false),
                     'is_active' => true,
                 ];
             })
             ->values();
+
+        if ($contacts->isNotEmpty() && ! $contacts->contains('is_primary', true)) {
+            $first = $contacts->first();
+            $first['is_primary'] = true;
+            $contacts[0] = $first;
+        }
 
         $customer->contacts()->delete();
         foreach ($contacts as $row) {
@@ -2012,6 +2391,32 @@ class CustomerController extends Controller
                 })
                 ->orderBy('name')
                 ->get(['id', 'name', 'code', 'is_active']),
+            'availablePhoneContacts' => PhoneDirectoryContact::query()
+                ->with(['designationMaster', 'company'])
+                ->whereNull('archived_at')
+                ->where('status', 'active')
+                ->orderBy('contact_name')
+                ->limit(50)
+                ->get()
+                ->map(function ($c) {
+                    return [
+                        'id' => $c->id,
+                        'name' => $c->contact_name,
+                        'designation' => $c->designation ?: ($c->designationMaster?->name ?? ''),
+                        'designation_id' => $c->designation_id,
+                        'company_name' => $c->effective_company_name ?: ($c->company_name ?? ''),
+                        'phone' => $c->mobile_number,
+                        'alternate_phone' => $c->alternate_mobile,
+                        'whatsapp' => $c->whatsapp_number,
+                        'whatsapp_number' => $c->whatsapp_number,
+                        'email' => $c->email,
+                        'avatar_bg_class' => $c->avatar_bg_class,
+                        'initials' => $c->initials,
+                        'view_url' => route('phone-directory.contacts.show', $c),
+                    ];
+                })
+                ->values()
+                ->all(),
         ];
     }
 }

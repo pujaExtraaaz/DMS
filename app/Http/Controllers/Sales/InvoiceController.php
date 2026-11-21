@@ -1128,6 +1128,13 @@ class InvoiceController extends Controller
                 $this->outstandingLedgerService->recordInvoice($invoice);
                 $this->paymentLinkService->createForInvoice($invoice);
 
+                // Recalculate sales target achievements with fully committed invoice items
+                try {
+                    app(\App\Domains\Target\Services\SalesTargetCalculationService::class)->recalculateForInvoice($invoice);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+
                 return $invoice;
             });
         } catch (\InvalidArgumentException $e) {
@@ -1760,6 +1767,13 @@ class InvoiceController extends Controller
                 }
 
                 $invoice->update($updatePayload);
+
+                // Recalculate sales target achievements with newly committed line items & totals
+                try {
+                    app(\App\Domains\Target\Services\SalesTargetCalculationService::class)->recalculateForInvoice($invoice->fresh(['items.product']));
+                } catch (\Throwable $e) {
+                    report($e);
+                }
             });
         } catch (\InvalidArgumentException $e) {
             return back()->withInput()->with('error', $e->getMessage());
@@ -1802,6 +1816,7 @@ class InvoiceController extends Controller
     public function show(Invoice $invoice): View
     {
         $invoice->load([
+            'company',
             'customer',
             'salesperson',
             'items.product',
@@ -1812,12 +1827,12 @@ class InvoiceController extends Controller
             'order',
             'scheme.brand',
             'schemeAchievement',
-            'company',
             'billingAddress',
             'shippingAddress',
         ]);
 
-        $company = $invoice->company
+        $company = $invoice->selling_company
+            ?? $invoice->company
             ?? Company::resolveCurrent()
             ?? Company::query()->first();
 

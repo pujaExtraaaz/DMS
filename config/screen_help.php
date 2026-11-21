@@ -116,17 +116,6 @@ return [
         ],
     ],
 
-    'purchasing.inwards' => [
-        'title' => 'Inward / GRN',
-        'summary' => 'Receive goods, assign serials/batches, post stock IN.',
-        'steps' => [
-            'Select approved PO.',
-            'Enter received qty (within tolerance).',
-            'Assign unique serials or batch + expiry.',
-            'Post — stock ledger updates; duplicates are blocked.',
-        ],
-    ],
-
     'purchasing.invoices' => [
         'title' => 'Purchase Invoices',
         'summary' => 'Supplier bill with vendor price comparison and payable due date.',

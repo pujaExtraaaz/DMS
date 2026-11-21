@@ -310,13 +310,17 @@ class ConsolidatedReportService
         }
 
         if (Schema::hasTable('acct_vouchers')) {
-            $voucherCreditNotes = (float) DB::table('acct_vouchers')
-                ->whereIn('company_id', $companyIds)
-                ->where('voucher_type', 'credit_note')
-                ->where('status', 'posted')
-                ->whereBetween('voucher_date', [$fromDate, $toDate])
-                ->sum('total_credit');
-            $creditNotesTotal = max($creditNotesTotal, $voucherCreditNotes);
+            try {
+                $voucherCreditNotes = (float) DB::table('acct_vouchers')
+                    ->whereIn('company_id', $companyIds)
+                    ->where('voucher_type', 'credit_note')
+                    ->where('status', 'posted')
+                    ->whereBetween('voucher_date', [$fromDate, $toDate])
+                    ->sum('total_credit');
+                $creditNotesTotal = max($creditNotesTotal, $voucherCreditNotes);
+            } catch (\Throwable) {
+                // Ignore schema mismatches
+            }
         }
 
         $netSales = max(0.0, $grossSales - $creditNotesTotal);
@@ -377,8 +381,8 @@ class ConsolidatedReportService
 
                 if (Schema::hasColumn('supplier_payables', 'debit')) {
                     $debitNotesTotal += (float) $dpQuery->sum('debit');
-                } elseif (Schema::hasColumn('supplier_payables', 'amount')) {
-                    $debitNotesTotal += (float) $dpQuery->sum('amount');
+                } elseif (Schema::hasColumn('supplier_payables', 'balance')) {
+                    $debitNotesTotal += (float) $dpQuery->sum('balance');
                 }
             } catch (\Throwable) {
                 // Ignore any legacy/mismatched supplier_payables schema errors
@@ -386,13 +390,17 @@ class ConsolidatedReportService
         }
 
         if (Schema::hasTable('acct_vouchers')) {
-            $voucherDebitNotes = (float) DB::table('acct_vouchers')
-                ->whereIn('company_id', $companyIds)
-                ->where('voucher_type', 'debit_note')
-                ->where('status', 'posted')
-                ->whereBetween('voucher_date', [$fromDate, $toDate])
-                ->sum('total_debit');
-            $debitNotesTotal = max($debitNotesTotal, $voucherDebitNotes);
+            try {
+                $voucherDebitNotes = (float) DB::table('acct_vouchers')
+                    ->whereIn('company_id', $companyIds)
+                    ->where('voucher_type', 'debit_note')
+                    ->where('status', 'posted')
+                    ->whereBetween('voucher_date', [$fromDate, $toDate])
+                    ->sum('total_debit');
+                $debitNotesTotal = max($debitNotesTotal, $voucherDebitNotes);
+            } catch (\Throwable) {
+                // Ignore schema mismatches
+            }
         }
 
         $netPurchases = max(0.0, $totalPurchases - $debitNotesTotal);
@@ -731,96 +739,112 @@ class ConsolidatedReportService
 
         // 1. Freight Bills (direct logistics & transport expenses)
         if (Schema::hasTable('freight_bills')) {
-            $freightQ = DB::table('freight_bills')
-                ->whereBetween('bill_date', [$fromDate, $toDate])
-                ->where(function ($q) {
-                    $q->whereNull('status')->orWhere('status', '!=', 'cancelled');
-                });
+            try {
+                $freightQ = DB::table('freight_bills')
+                    ->whereBetween('bill_date', [$fromDate, $toDate])
+                    ->where(function ($q) {
+                        $q->whereNull('status')->orWhere('status', '!=', 'cancelled');
+                    });
 
-            if (Schema::hasColumn('freight_bills', 'company_id')) {
-                $freightQ->whereIn('company_id', $companyIds);
-            }
+                if (Schema::hasColumn('freight_bills', 'company_id')) {
+                    $freightQ->whereIn('company_id', $companyIds);
+                }
 
-            $freightTotal = (float) $freightQ->sum('total_amount');
-            $freightCount = (int) $freightQ->count();
+                $freightTotal = (float) $freightQ->sum('total_amount');
+                $freightCount = (int) $freightQ->count();
 
-            if ($freightTotal > 0) {
-                $totalExpenses += $freightTotal;
-                $expenseCount += $freightCount;
-                $breakdown['freight'] = [
-                    'label' => 'Freight & Logistics',
-                    'amount' => $freightTotal,
-                    'count' => $freightCount,
-                ];
+                if ($freightTotal > 0) {
+                    $totalExpenses += $freightTotal;
+                    $expenseCount += $freightCount;
+                    $breakdown['freight'] = [
+                        'label' => 'Freight & Logistics',
+                        'amount' => $freightTotal,
+                        'count' => $freightCount,
+                    ];
+                }
+            } catch (\Throwable) {
+                // Ignore schema mismatches
             }
         }
 
         // 2. Accounting Expense Claims (acct_expense_claims)
         if (Schema::hasTable('acct_expense_claims')) {
-            $claimQ = DB::table('acct_expense_claims')
-                ->whereIn('company_id', $companyIds)
-                ->whereBetween('claim_date', [$fromDate, $toDate])
-                ->whereNotIn('status', ['rejected', 'cancelled']);
+            try {
+                $claimQ = DB::table('acct_expense_claims')
+                    ->whereIn('company_id', $companyIds)
+                    ->whereBetween('claim_date', [$fromDate, $toDate])
+                    ->whereNotIn('status', ['rejected', 'cancelled']);
 
-            $claimTotal = (float) $claimQ->sum('amount');
-            $claimCount = (int) $claimQ->count();
+                $claimTotal = (float) $claimQ->sum('amount');
+                $claimCount = (int) $claimQ->count();
 
-            if ($claimTotal > 0) {
-                $totalExpenses += $claimTotal;
-                $expenseCount += $claimCount;
-                $breakdown['acct_claims'] = [
-                    'label' => 'Operating Expense Claims',
-                    'amount' => $claimTotal,
-                    'count' => $claimCount,
-                ];
+                if ($claimTotal > 0) {
+                    $totalExpenses += $claimTotal;
+                    $expenseCount += $claimCount;
+                    $breakdown['acct_claims'] = [
+                        'label' => 'Operating Expense Claims',
+                        'amount' => $claimTotal,
+                        'count' => $claimCount,
+                    ];
+                }
+            } catch (\Throwable) {
+                // Ignore schema mismatches
             }
         }
 
         // 3. HRMS Expense Claims (expense_claims)
         if (Schema::hasTable('expense_claims') && Schema::hasTable('employees')) {
-            $hrmsClaimQ = DB::table('expense_claims')
-                ->join('employees', 'expense_claims.employee_id', '=', 'employees.id')
-                ->whereIn('employees.company_id', $companyIds)
-                ->whereBetween('expense_claims.claim_date', [$fromDate, $toDate])
-                ->whereNotIn('expense_claims.status', ['rejected', 'cancelled']);
+            try {
+                $hrmsClaimQ = DB::table('expense_claims')
+                    ->join('employees', 'expense_claims.employee_id', '=', 'employees.id')
+                    ->whereIn('employees.company_id', $companyIds)
+                    ->whereBetween('expense_claims.claim_date', [$fromDate, $toDate])
+                    ->whereNotIn('expense_claims.status', ['rejected', 'cancelled']);
 
-            $hrmsTotal = (float) $hrmsClaimQ->sum('expense_claims.amount');
-            $hrmsCount = (int) $hrmsClaimQ->count();
+                $hrmsTotal = (float) $hrmsClaimQ->sum('expense_claims.amount');
+                $hrmsCount = (int) $hrmsClaimQ->count();
 
-            if ($hrmsTotal > 0) {
-                $totalExpenses += $hrmsTotal;
-                $expenseCount += $hrmsCount;
-                $breakdown['hrms_claims'] = [
-                    'label' => 'Staff Expense Reimbursements',
-                    'amount' => $hrmsTotal,
-                    'count' => $hrmsCount,
-                ];
+                if ($hrmsTotal > 0) {
+                    $totalExpenses += $hrmsTotal;
+                    $expenseCount += $hrmsCount;
+                    $breakdown['hrms_claims'] = [
+                        'label' => 'Staff Expense Reimbursements',
+                        'amount' => $hrmsTotal,
+                        'count' => $hrmsCount,
+                    ];
+                }
+            } catch (\Throwable) {
+                // Ignore schema mismatches
             }
         }
 
         // 4. Deal Expenses (deal_expenses)
         if (Schema::hasTable('deal_expenses')) {
-            $dealQ = DB::table('deal_expenses')
-                ->whereBetween('created_at', [$fromDate . ' 00:00:00', $toDate . ' 23:59:59'])
-                ->where(function ($q) {
-                    $q->whereNull('status')->orWhereNotIn('status', ['rejected', 'cancelled']);
-                });
+            try {
+                $dealQ = DB::table('deal_expenses')
+                    ->whereBetween('created_at', [$fromDate . ' 00:00:00', $toDate . ' 23:59:59'])
+                    ->where(function ($q) {
+                        $q->whereNull('status')->orWhereNotIn('status', ['rejected', 'cancelled']);
+                    });
 
-            if (Schema::hasColumn('deal_expenses', 'company_id')) {
-                $dealQ->whereIn('company_id', $companyIds);
-            }
+                if (Schema::hasColumn('deal_expenses', 'company_id')) {
+                    $dealQ->whereIn('company_id', $companyIds);
+                }
 
-            $dealTotal = (float) $dealQ->sum('amount');
-            $dealCount = (int) $dealQ->count();
+                $dealTotal = (float) $dealQ->sum('amount');
+                $dealCount = (int) $dealQ->count();
 
-            if ($dealTotal > 0) {
-                $totalExpenses += $dealTotal;
-                $expenseCount += $dealCount;
-                $breakdown['deal_expenses'] = [
-                    'label' => 'Deal & Project Expenses',
-                    'amount' => $dealTotal,
-                    'count' => $dealCount,
-                ];
+                if ($dealTotal > 0) {
+                    $totalExpenses += $dealTotal;
+                    $expenseCount += $dealCount;
+                    $breakdown['deal_expenses'] = [
+                        'label' => 'Deal & Project Expenses',
+                        'amount' => $dealTotal,
+                        'count' => $dealCount,
+                    ];
+                }
+            } catch (\Throwable) {
+                // Ignore schema mismatches
             }
         }
 

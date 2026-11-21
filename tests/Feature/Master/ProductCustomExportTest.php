@@ -160,24 +160,22 @@ class ProductCustomExportTest extends TestCase
     }
 
     /**
-     * Requirement A: The Products listing displays the Customize Export Columns trigger and modal.
+     * Requirement: The Products listing displays Export dropdown with Quick options and no Customize Columns.
      */
-    public function test_products_listing_renders_customize_export_columns_elements(): void
+    public function test_products_listing_renders_export_dropdown_without_customize_columns(): void
     {
         $response = $this->actingAs($this->adminUser)->get(route('masters.products.index'));
 
         $response->assertOk();
-        $response->assertSee('Customize Export Columns');
-        $response->assertSee('Select All');
-        $response->assertSee('Clear All');
         $response->assertSee('data-export-button', false);
-        $response->assertSee('openExportModal()', false);
-        $response->assertSee('closeExportModal()', false);
-        $response->assertSee('submitExport()', false);
-        $response->assertSee('Basic Details');
-        $response->assertSee('Classification');
-        $response->assertSee('Tax & Pricing');
-        $response->assertSee('Inventory');
+        $response->assertSee('Quick Excel (.xlsx)');
+        $response->assertSee('Quick CSV (.csv)');
+        $response->assertSee('Quick PDF (.pdf)');
+        $response->assertDontSee('Customize Columns...');
+        $response->assertDontSee('Customize Export Columns');
+        $response->assertDontSee('openExportModal()', false);
+        $response->assertDontSee('closeExportModal()', false);
+        $response->assertDontSee('submitExport()', false);
     }
 
     /**
