@@ -127,6 +127,25 @@ class DocumentNumberService
         return $query->whereNull('company_id')->first();
     }
 
+    /**
+     * Prefer configured voucher numbering series; fall back to legacy daily prefix sequences.
+     */
+    public function nextDocument(
+        string $documentType,
+        ?Carbon $date = null,
+        int $padding = 4,
+        ?int $companyId = null,
+        ?int $branchId = null,
+        ?callable $collisionCheck = null,
+    ): string {
+        $series = $this->resolveSeries($documentType, $companyId);
+        if ($series && ($series->isAutomatic() || $series->isManualOverride() || $series->isMultiUserAuto())) {
+            return $this->nextFromSeries($series, $date, $companyId, $collisionCheck);
+        }
+
+        return $this->next($documentType, $date, $padding, $companyId, $branchId);
+    }
+
     public function peekFromSeries(DocumentNumberSeries|string $seriesOrType, ?Carbon $date = null, ?int $companyId = null): ?string
     {
         $series = $seriesOrType instanceof DocumentNumberSeries

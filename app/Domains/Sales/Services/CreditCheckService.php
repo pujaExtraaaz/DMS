@@ -122,4 +122,40 @@ class CreditCheckService
 
         return ['status' => 'overridden', 'result' => $result];
     }
+
+    /**
+     * Block new tax invoices when party credit is on hold / blocked / over limit.
+     *
+     * @return array{status: string, result: array<string, mixed>}
+     */
+    public function assertForInvoice(Customer $customer, float $invoiceAmount, ?string $overrideReason = null): array
+    {
+        $result = $this->evaluate($customer, $invoiceAmount);
+
+        if (! $result['blocked']) {
+            return ['status' => 'passed', 'result' => $result];
+        }
+
+        $reasonText = implode(' ', $result['reasons']);
+
+        if (! $overrideReason || trim($overrideReason) === '') {
+            throw ValidationException::withMessages([
+                'credit_check' => $reasonText.' Provide an override reason to continue, or set the party credit status back to Open.',
+            ]);
+        }
+
+        $this->auditLogService->record(
+            $customer,
+            'credit_override',
+            null,
+            [
+                'reason' => $overrideReason,
+                'document' => 'invoice',
+                'amount' => $invoiceAmount,
+                'result' => $result,
+            ]
+        );
+
+        return ['status' => 'overridden', 'result' => $result];
+    }
 }

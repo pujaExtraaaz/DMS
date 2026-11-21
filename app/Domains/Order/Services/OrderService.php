@@ -127,8 +127,8 @@ class OrderService
             $fulfilmentMode = !empty($data['fulfilment_mode']) ? $data['fulfilment_mode'] : null;
 
             $order = Order::create([
-                'order_no' => $this->documentNumberService->next(
-                    'ORD',
+                'order_no' => $this->documentNumberService->nextDocument(
+                    $this->documentNumberService->resolveSeries('SO') ? 'SO' : 'ORD',
                     now(),
                     4
                 ),

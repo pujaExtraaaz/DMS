@@ -40,6 +40,7 @@ class Customer extends Model
         'location_link',
         'address',
         'gstin',
+        'pan',
         'gst_registration_type',
         'state',
         'pincode',
@@ -140,9 +141,16 @@ class Customer extends Model
 
     protected $appends = ['pan', 'party_type_label', 'party_type_key'];
 
-    public function getPanAttribute(): ?string
+    public function getPanAttribute(?string $value = null): ?string
     {
-        return ($this->gstin && strlen($this->gstin) >= 12) ? substr($this->gstin, 2, 10) : null;
+        $stored = $value ?? ($this->attributes['pan'] ?? null);
+        if (filled($stored)) {
+            return strtoupper(trim((string) $stored));
+        }
+
+        $gstin = $this->attributes['gstin'] ?? null;
+
+        return ($gstin && strlen((string) $gstin) >= 12) ? substr((string) $gstin, 2, 10) : null;
     }
 
     public function getPartyTypeKeyAttribute(): string

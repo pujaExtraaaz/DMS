@@ -73,7 +73,7 @@ class LandedCostService
             $allocations = $this->computeAllocations($lines, $method, $additional, $data['manual_allocations'] ?? []);
 
             $landed = LandedCost::create([
-                'landed_no' => $this->documentNumberService->next('LC'),
+                'landed_no' => $this->documentNumberService->nextDocument('LC'),
                 'landed_date' => $data['landed_date'],
                 'purchase_invoice_id' => $invoice->id,
                 'freight_bill_id' => $data['freight_bill_id'] ?? null,

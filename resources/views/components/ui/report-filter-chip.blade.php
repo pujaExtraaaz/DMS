@@ -38,7 +38,7 @@
     })"
     @click.outside="close()"
 >
-    <input type="hidden" name="{{ $name }}" :value="selectedId" @if($required) required @endif>
+    <input type="hidden" name="{{ $name }}" x-ref="hiddenInput" :value="selectedId" @if($required) required @endif>
 
     <button
         type="button"
@@ -137,17 +137,26 @@ function dmsReportFilterChip(config) {
             }
         },
         close() { this.open = false; this.query = ''; },
+        syncHidden() {
+            if (this.$refs.hiddenInput) {
+                this.$refs.hiddenInput.value = this.selectedId == null ? '' : String(this.selectedId);
+            }
+        },
+        submitForm() {
+            this.syncHidden();
+            this.$nextTick(() => this.$el.closest('form')?.requestSubmit());
+        },
         select(opt) {
-            this.selectedId = opt.id;
+            this.selectedId = String(opt.id);
             this.selectedName = opt.name;
             this.close();
-            this.$el.closest('form')?.requestSubmit();
+            this.submitForm();
         },
         clear() {
             this.selectedId = '';
             this.selectedName = '';
             this.close();
-            this.$el.closest('form')?.requestSubmit();
+            this.submitForm();
         },
         pickFirst() {
             if (this.filtered.length) this.select(this.filtered[0]);

@@ -140,13 +140,21 @@ class AreaController extends Controller
         ]);
     }
 
-    public function quickDestroy(Area $area): JsonResponse
+    public function quickDestroy(int $area): JsonResponse
     {
-        if ($blocked = $this->areaDeleteBlock($area)) {
+        $model = Area::query()->find($area);
+        if (! $model) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Area was already removed.',
+            ]);
+        }
+
+        if ($blocked = $this->areaDeleteBlock($model)) {
             return response()->json(['success' => false, 'message' => $blocked], 422);
         }
 
-        $area->delete();
+        $model->delete();
 
         return response()->json([
             'success' => true,

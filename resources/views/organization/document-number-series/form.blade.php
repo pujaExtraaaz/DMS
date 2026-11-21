@@ -1,5 +1,8 @@
 @extends('layouts.dms')
 @section('title', $item->exists ? 'Edit Voucher Numbering' : 'Create Voucher Numbering')
+@php
+    $fyStyleValue = old('financial_year_style', $item->financial_year_style ?? 'yy_yy');
+@endphp
 @section('content')
 <x-ui.page-header :title="$item->exists ? 'Edit Voucher Numbering' : 'Create Voucher Numbering'">
     <x-slot name="actions">
@@ -11,87 +14,20 @@
     <form method="POST"
           action="{{ $item->exists ? route('organization.document-number-series.update', $item) : route('organization.document-number-series.store') }}"
           class="space-y-5 max-w-3xl"
-          x-data="{
-              prefix: '{{ old('prefix', $item->prefix ?? 'AVITPO') }}',
-              suffix: '{{ old('suffix', $item->suffix ?? '') }}',
-              includeFy: {{ old('include_financial_year', $item->include_financial_year ?? true) ? 'true' : 'false' }},
-              fyStyle: '{{ old('financial_year_style', $item->financial_year_style ?? 'yy_yy') }}',
-              separator: '{{ old('separator', $item->separator ?? '-') }}',
-              padding: {{ (int) old('padding', $item->padding ?? 4) }},
-              startingNumber: {{ (int) old('starting_number', $item->starting_number ?? 1) }},
-              prefixZero: {{ old('prefix_zero', $item->prefix_zero ?? true) ? 'true' : 'false' }},
-              method: '{{ old('numbering_method', $item->numbering_method ?? 'automatic') }}',
-              restartRules: {{ Js::from(old('restart_rules', $item->restart_rules ?? [])) }},
-              prefixRules: {{ Js::from(old('prefix_rules', $item->prefix_rules ?? [])) }},
-              suffixRules: {{ Js::from(old('suffix_rules', $item->suffix_rules ?? [])) }},
-              methodDescriptions: {
-                  'automatic': 'Generate voucher numbers automatically using the configured prefix, separator and sequence.',
-                  'automatic_manual_override': 'Generate numbers automatically by default, but allow authorized users to enter or modify the voucher number manually.',
-                  'manual': 'Require users to enter the voucher number themselves on each document.',
-                  'multi_user_auto': 'Generate unique voucher numbers automatically for multiple users creating vouchers simultaneously with database-level concurrency protection.'
-              },
-              methodHelp() {
-                  return this.methodDescriptions[this.method] || '';
-              },
-              addRestartRule() {
-                  this.restartRules.push({ applicable_from: '', applicable_to: '', starting_number: 1, periodicity: 'yearly' });
-              },
-              removeRestartRule(idx) {
-                  this.restartRules.splice(idx, 1);
-              },
-              addPrefixRule() {
-                  this.prefixRules.push({ applicable_from: '', applicable_to: '', prefix: '' });
-              },
-              removePrefixRule(idx) {
-                  this.prefixRules.splice(idx, 1);
-              },
-              addSuffixRule() {
-                  this.suffixRules.push({ applicable_from: '', applicable_to: '', suffix: '' });
-              },
-              removeSuffixRule(idx) {
-                  this.suffixRules.splice(idx, 1);
-              },
-              fySample() {
-                  if (this.fyStyle === 'YYYY-YY') return '2026-27';
-                  if (this.fyStyle === 'name') return '2026-27';
-                  return '2627';
-              },
-              preview() {
-                  const sep = this.separator === '' ? '-' : this.separator;
-                  const parts = [];
-                  let p = (this.prefix || '').toString().trim().toUpperCase();
-                  if (this.prefixRules && this.prefixRules.length > 0 && this.prefixRules[0].prefix) {
-                      p = this.prefixRules[0].prefix.toString().trim().toUpperCase();
-                  }
-                  if (p) parts.push(p);
-
-                  const fy = this.fySample();
-                  const cleanP = p.replace(/[-/]/g, '');
-                  const cleanFy = fy.replace(/[-/]/g, '');
-                  if (this.includeFy && (!p || !cleanP.includes(cleanFy))) {
-                      parts.push(fy);
-                  }
-
-                  const pad = Math.max(1, Math.min(8, parseInt(this.padding, 10) || 4));
-                  let startNo = parseInt(this.startingNumber, 10) || 1;
-                  if (this.restartRules && this.restartRules.length > 0 && this.restartRules[0].starting_number) {
-                      startNo = parseInt(this.restartRules[0].starting_number, 10) || startNo;
-                  }
-
-                  if (this.prefixZero) {
-                      parts.push(String(startNo).padStart(pad, '0'));
-                  } else {
-                      parts.push(String(startNo));
-                  }
-
-                  let s = (this.suffix || '').toString();
-                  if (this.suffixRules && this.suffixRules.length > 0 && this.suffixRules[0].suffix) {
-                      s = this.suffixRules[0].suffix.toString();
-                  }
-
-                  return parts.join(sep) + s;
-              }
-          }">
+          x-data="documentNumberSeriesForm(@js([
+              'prefix' => old('prefix', $item->prefix ?? 'AVITPO'),
+              'suffix' => old('suffix', $item->suffix ?? ''),
+              'includeFy' => (bool) old('include_financial_year', $item->include_financial_year ?? true),
+              'fyStyle' => $fyStyleValue,
+              'separator' => old('separator', $item->separator ?? '-'),
+              'padding' => (int) old('padding', $item->padding ?? 4),
+              'startingNumber' => (int) old('starting_number', $item->starting_number ?? 1),
+              'prefixZero' => filter_var(old('prefix_zero', $item->prefix_zero ?? true), FILTER_VALIDATE_BOOLEAN) ? '1' : '0',
+              'method' => old('numbering_method', $item->numbering_method ?? 'automatic'),
+              'restartRules' => old('restart_rules', $item->restart_rules ?? []),
+              'prefixRules' => old('prefix_rules', $item->prefix_rules ?? []),
+              'suffixRules' => old('suffix_rules', $item->suffix_rules ?? []),
+          ]))">
         @csrf
         @if($item->exists) @method('PUT') @endif
 
@@ -113,11 +49,11 @@
 
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Numbering Method *</label>
-                <select name="numbering_method" x-model="method" class="block w-full rounded-lg border-gray-300 text-sm" required>
-                    <option value="automatic">Automatic</option>
-                    <option value="automatic_manual_override">Automatic (Manual Override)</option>
-                    <option value="manual">Manual</option>
-                    <option value="multi_user_auto">Multi-user Auto</option>
+                <select name="numbering_method" x-model="method" data-no-search class="block w-full rounded-lg border-gray-300 text-sm" required>
+                    <option value="automatic" @selected(old('numbering_method', $item->numbering_method ?? 'automatic') === 'automatic')>Automatic</option>
+                    <option value="automatic_manual_override" @selected(old('numbering_method', $item->numbering_method ?? 'automatic') === 'automatic_manual_override')>Automatic (Manual Override)</option>
+                    <option value="manual" @selected(old('numbering_method', $item->numbering_method ?? 'automatic') === 'manual')>Manual</option>
+                    <option value="multi_user_auto" @selected(old('numbering_method', $item->numbering_method ?? 'automatic') === 'multi_user_auto')>Multi-user Auto</option>
                 </select>
                 <p class="mt-1 text-xs text-slate-500" x-text="methodHelp()"></p>
             </div>
@@ -145,10 +81,11 @@
 
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Financial Year Style *</label>
-                <select name="financial_year_style" x-model="fyStyle" class="block w-full rounded-lg border-gray-300 text-sm" required>
-                    <option value="yy_yy">2627 (yy + yy)</option>
-                    <option value="YYYY-YY">2026-27</option>
-                    <option value="name">Use FY name</option>
+                {{-- data-no-search: searchable select desyncs Alpine x-model (trigger shows yy_yy while value is YYYY-YY). --}}
+                <select name="financial_year_style" x-model="fyStyle" data-no-search class="block w-full rounded-lg border-gray-300 text-sm" required>
+                    <option value="yy_yy" @selected($fyStyleValue === 'yy_yy')>2627 (yy + yy)</option>
+                    <option value="YYYY-YY" @selected($fyStyleValue === 'YYYY-YY')>2026-27</option>
+                    <option value="name" @selected($fyStyleValue === 'name')>Use FY name</option>
                 </select>
             </div>
         </div>
@@ -202,9 +139,10 @@
 
                     <div>
                         <label class="block text-xs font-medium text-slate-700 mb-1">Prefix with Zero *</label>
-                        <select name="prefix_zero" x-model="prefixZero" class="block w-full rounded-lg border-gray-300 text-sm">
-                            <option :value="true">Yes (e.g. 0001)</option>
-                            <option :value="false">No (e.g. 1)</option>
+                        <select name="prefix_zero" x-model="prefixZero" data-no-search class="block w-full rounded-lg border-gray-300 text-sm">
+                            {{-- Use 1/0 — Laravel boolean validation rejects the strings "true"/"false". --}}
+                            <option value="1">Yes (e.g. 0001)</option>
+                            <option value="0">No (e.g. 1)</option>
                         </select>
                         <p class="mt-1 text-xs text-slate-500">Whether numerical part is zero-padded</p>
                     </div>
@@ -216,7 +154,7 @@
                 <div class="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
                     <div>
                         <h4 class="text-sm font-semibold text-slate-800">B. Restart Numbering Configuration</h4>
-                        <p class="text-xs text-slate-500">Set sequence reset frequency and starting numbers for specific date periods.</p>
+                        <p class="text-xs text-slate-500">Periodicity auto-fills Applicable From/To as an n-day window starting today.</p>
                     </div>
                     <button type="button" @click="addRestartRule()" class="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">+ Add Period</button>
                 </div>
@@ -244,7 +182,12 @@
                                         <input type="number" min="1" :name="`restart_rules[${idx}][starting_number]`" x-model.number="rule.starting_number" class="w-24 rounded-md border-gray-300 text-xs" required>
                                     </td>
                                     <td class="py-2 pr-2">
-                                        <select :name="`restart_rules[${idx}][periodicity]`" x-model="rule.periodicity" class="w-full rounded-md border-gray-300 text-xs" required>
+                                        <select :name="`restart_rules[${idx}][periodicity]`"
+                                                x-model="rule.periodicity"
+                                                @change="applyPeriodicityDates(rule)"
+                                                data-no-search
+                                                class="w-full rounded-md border-gray-300 text-xs"
+                                                required>
                                             <option value="daily">Daily</option>
                                             <option value="weekly">Weekly</option>
                                             <option value="monthly">Monthly</option>
@@ -368,7 +311,7 @@
                 </span>
             </div>
             <p class="mt-1 font-mono text-lg font-semibold text-indigo-900" x-text="method === 'manual' ? '[MANUAL VOUCHER NUMBER]' : preview()"></p>
-            <p class="mt-1 text-xs text-indigo-700" x-show="method !== 'manual'">Example format: AVITPO-2627-001</p>
+            <p class="mt-1 text-xs text-indigo-700" x-show="method !== 'manual'">Live preview updates when prefix / FY style / padding change.</p>
             <p class="mt-1 text-xs text-amber-700" x-show="method === 'manual'">Users must enter the voucher number on each transaction form.</p>
         </div>
 
@@ -376,3 +319,148 @@
     </form>
 </x-ui.card>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('documentNumberSeriesForm', (initial = {}) => ({
+        prefix: initial.prefix ?? 'AVITPO',
+        suffix: initial.suffix ?? '',
+        includeFy: initial.includeFy ?? true,
+        fyStyle: initial.fyStyle ?? 'yy_yy',
+        separator: initial.separator ?? '-',
+        padding: Number(initial.padding ?? 4),
+        startingNumber: Number(initial.startingNumber ?? 1),
+        prefixZero: String(initial.prefixZero ?? '1'),
+        method: initial.method ?? 'automatic',
+        restartRules: Array.isArray(initial.restartRules) ? initial.restartRules : [],
+        prefixRules: Array.isArray(initial.prefixRules) ? initial.prefixRules : [],
+        suffixRules: Array.isArray(initial.suffixRules) ? initial.suffixRules : [],
+        methodDescriptions: {
+            automatic: 'Generate voucher numbers automatically using the configured prefix, separator and sequence.',
+            automatic_manual_override: 'Generate numbers automatically by default, but allow authorized users to enter or modify the voucher number manually.',
+            manual: 'Require users to enter the voucher number themselves on each document.',
+            multi_user_auto: 'Generate unique voucher numbers automatically for multiple users creating vouchers simultaneously with database-level concurrency protection.'
+        },
+
+        methodHelp() {
+            return this.methodDescriptions[this.method] || '';
+        },
+
+        formatDate(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        },
+
+        addDays(date, days) {
+            const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+            next.setDate(next.getDate() + days);
+            return next;
+        },
+
+        /**
+         * Map periodicity → n-day window from today (inclusive).
+         * daily=1, weekly=7, monthly=30, yearly=365, never=open-ended.
+         */
+        applyPeriodicityDates(rule) {
+            if (!rule) return;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const period = String(rule.periodicity || 'yearly').toLowerCase();
+            const daysByPeriod = {
+                daily: 1,
+                weekly: 7,
+                monthly: 30,
+                yearly: 365,
+            };
+
+            rule.applicable_from = this.formatDate(today);
+
+            if (period === 'never') {
+                rule.applicable_to = '';
+                return;
+            }
+
+            const days = daysByPeriod[period] ?? 365;
+            rule.applicable_to = this.formatDate(this.addDays(today, days - 1));
+        },
+
+        addRestartRule() {
+            const rule = {
+                applicable_from: '',
+                applicable_to: '',
+                starting_number: 1,
+                periodicity: 'yearly',
+            };
+            this.applyPeriodicityDates(rule);
+            this.restartRules.push(rule);
+        },
+
+        removeRestartRule(idx) {
+            this.restartRules.splice(idx, 1);
+        },
+
+        addPrefixRule() {
+            this.prefixRules.push({ applicable_from: '', applicable_to: '', prefix: '' });
+        },
+
+        removePrefixRule(idx) {
+            this.prefixRules.splice(idx, 1);
+        },
+
+        addSuffixRule() {
+            this.suffixRules.push({ applicable_from: '', applicable_to: '', suffix: '' });
+        },
+
+        removeSuffixRule(idx) {
+            this.suffixRules.splice(idx, 1);
+        },
+
+        fySample() {
+            if (this.fyStyle === 'YYYY-YY') return '2026-27';
+            if (this.fyStyle === 'name') return '2026-27';
+            return '2627';
+        },
+
+        preview() {
+            const sep = this.separator === '' ? '-' : this.separator;
+            const parts = [];
+            let p = (this.prefix || '').toString().trim().toUpperCase();
+            if (this.prefixRules && this.prefixRules.length > 0 && this.prefixRules[0].prefix) {
+                p = this.prefixRules[0].prefix.toString().trim().toUpperCase();
+            }
+            if (p) parts.push(p);
+
+            const fy = this.fySample();
+            const cleanP = p.replace(/[-/]/g, '');
+            const cleanFy = fy.replace(/[-/]/g, '');
+            if (this.includeFy && (!p || !cleanP.includes(cleanFy))) {
+                parts.push(fy);
+            }
+
+            const pad = Math.max(1, Math.min(8, parseInt(this.padding, 10) || 4));
+            let startNo = parseInt(this.startingNumber, 10) || 1;
+            if (this.restartRules && this.restartRules.length > 0 && this.restartRules[0].starting_number) {
+                startNo = parseInt(this.restartRules[0].starting_number, 10) || startNo;
+            }
+
+            const padZeros = this.prefixZero === true || this.prefixZero === 1 || this.prefixZero === '1';
+            if (padZeros) {
+                parts.push(String(startNo).padStart(pad, '0'));
+            } else {
+                parts.push(String(startNo));
+            }
+
+            let s = (this.suffix || '').toString();
+            if (this.suffixRules && this.suffixRules.length > 0 && this.suffixRules[0].suffix) {
+                s = this.suffixRules[0].suffix.toString();
+            }
+
+            return parts.join(sep) + s;
+        },
+    }));
+});
+</script>
+@endpush

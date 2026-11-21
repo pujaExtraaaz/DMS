@@ -93,7 +93,7 @@ class NameCase
         'color_variant',
         'model',
         'brand',
-        'category',
+        'category_name',
         'subcategory',
         'topic',
         'subject',
@@ -121,6 +121,12 @@ class NameCase
         'domain_name',
         'currency_formal_name',
         'nature',
+        // Enum / slug fields (must keep lowercase values for validation Rule::in)
+        'category',
+        'kind',
+        'weekly_off_mode',
+        'holiday_category',
+        'holiday_kind',
         // Tally connector API payloads — never title-case technical keys or raw XML.
         'key',
         'xml',

@@ -71,9 +71,70 @@
         <x-ui.input name="phone" label="Official Phone" :value="old('phone', $item->phone)" />
         <x-ui.select name="company_id" label="Company"><option value="">—</option>@foreach($companies as $c)<option value="{{ $c->id }}" @selected(old('company_id', $item->company_id)==$c->id)>{{ $c->name }}</option>@endforeach</x-ui.select>
         <x-ui.select name="branch_id" label="Branch"><option value="">—</option>@foreach($branches as $b)<option value="{{ $b->id }}" @selected(old('branch_id', $item->branch_id)==$b->id)>{{ $b->name }}</option>@endforeach</x-ui.select>
-        <x-ui.select name="department_id" label="Department"><option value="">—</option>@foreach($departments as $d)<option value="{{ $d->id }}" @selected(old('department_id', $item->department_id)==$d->id)>{{ $d->name }}</option>@endforeach</x-ui.select>
-        <x-ui.select name="designation_id" label="Designation"><option value="">—</option>@foreach($designations as $d)<option value="{{ $d->id }}" @selected(old('designation_id', $item->designation_id)==$d->id)>{{ $d->name }}</option>@endforeach</x-ui.select>
-        <x-ui.select name="manager_id" label="Manager"><option value="">—</option>@foreach($managers as $m)<option value="{{ $m->id }}" @selected(old('manager_id', $item->manager_id)==$m->id)>{{ $m->name }}</option>@endforeach</x-ui.select>
+
+        <div x-data="hrmsQuickCreate({
+            selectId: 'department_id',
+            url: @js(route('hrms.departments.quick-store')),
+            companyId: () => document.getElementById('company_id')?.value || @js(old('company_id', $item->company_id)),
+        })">
+            <div class="mb-1 flex items-center justify-between gap-2">
+                <label for="department_id" class="block text-sm font-medium text-gray-700">Department</label>
+                <button type="button" @click="open = true" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">+ Create</button>
+            </div>
+            <select id="department_id" name="department_id" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <option value="">—</option>
+                @foreach($departments as $d)
+                    <option value="{{ $d->id }}" @selected(old('department_id', $item->department_id)==$d->id)>{{ $d->name }}</option>
+                @endforeach
+            </select>
+            <div x-show="open" x-cloak class="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                <input type="text" x-model="name" placeholder="New department name" class="block w-full rounded-lg border-gray-300 text-sm" @keydown.enter.prevent="save()">
+                <div class="flex gap-2">
+                    <button type="button" @click="save()" :disabled="saving" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Save</button>
+                    <button type="button" @click="open=false" class="rounded-lg border px-3 py-1.5 text-xs text-slate-600">Cancel</button>
+                </div>
+                <p x-show="error" x-text="error" class="text-xs text-rose-600"></p>
+            </div>
+        </div>
+
+        <div x-data="hrmsQuickCreate({
+            selectId: 'designation_id',
+            url: @js(route('hrms.designations.quick-store')),
+            companyId: () => document.getElementById('company_id')?.value || @js(old('company_id', $item->company_id)),
+        })">
+            <div class="mb-1 flex items-center justify-between gap-2">
+                <label for="designation_id" class="block text-sm font-medium text-gray-700">Designation</label>
+                <button type="button" @click="open = true" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">+ Create</button>
+            </div>
+            <select id="designation_id" name="designation_id" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <option value="">—</option>
+                @foreach($designations as $d)
+                    <option value="{{ $d->id }}" @selected(old('designation_id', $item->designation_id)==$d->id)>{{ $d->name }}</option>
+                @endforeach
+            </select>
+            <div x-show="open" x-cloak class="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                <input type="text" x-model="name" placeholder="New designation name" class="block w-full rounded-lg border-gray-300 text-sm" @keydown.enter.prevent="save()">
+                <div class="flex gap-2">
+                    <button type="button" @click="save()" :disabled="saving" class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Save</button>
+                    <button type="button" @click="open=false" class="rounded-lg border px-3 py-1.5 text-xs text-slate-600">Cancel</button>
+                </div>
+                <p x-show="error" x-text="error" class="text-xs text-rose-600"></p>
+            </div>
+        </div>
+
+        <div>
+            <div class="mb-1 flex items-center justify-between gap-2">
+                <label for="manager_id" class="block text-sm font-medium text-gray-700">Manager</label>
+                <a href="{{ route('hrms.employees.create', ['return_url' => request()->fullUrl()]) }}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">+ Create</a>
+            </div>
+            <select id="manager_id" name="manager_id" class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <option value="">—</option>
+                @foreach($managers as $m)
+                    <option value="{{ $m->id }}" @selected(old('manager_id', $item->manager_id)==$m->id)>{{ $m->name }}</option>
+                @endforeach
+            </select>
+        </div>
+
         <x-ui.select name="user_id" label="Linked User"><option value="">—</option>@foreach($users as $u)<option value="{{ $u->id }}" @selected(old('user_id', $item->user_id)==$u->id)>{{ $u->name }}</option>@endforeach</x-ui.select>
         <x-ui.input name="joining_date" label="Joining Date" type="date" :value="old('joining_date', optional($item->joining_date)->format('Y-m-d'))" />
         <x-ui.select name="status" label="Status">@foreach(['active','on_leave','resigned','terminated','inactive'] as $s)<option value="{{ $s }}" @selected(old('status', $item->status)==$s)>{{ ucfirst(str_replace('_',' ',$s)) }}</option>@endforeach</x-ui.select>
@@ -286,6 +347,62 @@ function employeeForm(config) {
                 this.ifscMessage = 'Unable to fetch bank details. Please enter details manually.';
             } finally {
                 this._ifscLoading = false;
+            }
+        },
+    };
+}
+
+function hrmsQuickCreate(config) {
+    return {
+        open: false,
+        name: '',
+        saving: false,
+        error: '',
+        async save() {
+            this.error = '';
+            const name = (this.name || '').trim();
+            if (!name) {
+                this.error = 'Name is required.';
+                return;
+            }
+            this.saving = true;
+            try {
+                const companyId = typeof config.companyId === 'function' ? config.companyId() : config.companyId;
+                const res = await fetch(config.url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({
+                        name,
+                        company_id: companyId || null,
+                        is_active: true,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.id) {
+                    this.error = data.message || (data.errors ? Object.values(data.errors).flat().join(' ') : 'Could not create.');
+                    return;
+                }
+                const select = document.getElementById(config.selectId);
+                if (select) {
+                    const opt = document.createElement('option');
+                    opt.value = data.id;
+                    opt.textContent = data.name;
+                    opt.selected = true;
+                    select.appendChild(opt);
+                    select.value = String(data.id);
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                this.name = '';
+                this.open = false;
+            } catch (e) {
+                this.error = 'Could not create. Please try again.';
+            } finally {
+                this.saving = false;
             }
         },
     };

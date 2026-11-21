@@ -53,6 +53,28 @@
                 </select>
 
                 <select
+                    name="business_group_id"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">Business Group: All</option>
+                    @foreach($businessGroups ?? [] as $bg)
+                        <option value="{{ $bg->id }}" @selected(request('business_group_id') == $bg->id)>{{ $bg->name }}</option>
+                    @endforeach
+                </select>
+
+                <select
+                    name="salesperson_id"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">Salesperson: All</option>
+                    @foreach($salespersons ?? [] as $sp)
+                        <option value="{{ $sp->id }}" @selected(request('salesperson_id') == $sp->id)>{{ $sp->name }}</option>
+                    @endforeach
+                </select>
+
+                <select
                     name="status"
                     data-dynamic-filter
                     class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"

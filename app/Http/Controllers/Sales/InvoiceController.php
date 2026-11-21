@@ -56,6 +56,7 @@ class InvoiceController extends Controller
         protected SalePricingService $salePricingService,
         protected StockMovementService $stockMovementService,
         protected OutstandingLedgerService $outstandingLedgerService,
+        protected \App\Domains\Sales\Services\CreditCheckService $creditCheckService,
         protected PaymentLinkService $paymentLinkService,
         protected DueDateService $dueDateService,
         protected ProductDiscountService $productDiscountService,
@@ -107,6 +108,40 @@ class InvoiceController extends Controller
         }
 
         return $salespeople;
+    }
+
+    /**
+     * Resolve the salesperson user ID for a tax invoice.
+     * Prefer the explicit form value, then linked order, then customer assignment.
+     * On create, a blank select still inherits order/customer salesperson.
+     * On update, a blank select explicitly clears the assignment.
+     */
+    public static function resolveSalespersonId(
+        array $validated,
+        ?Order $linkedOrder = null,
+        ?Customer $customer = null,
+        ?Invoice $existingInvoice = null
+    ): ?int {
+        $posted = array_key_exists('salesperson_id', $validated);
+        $value = $posted ? $validated['salesperson_id'] : null;
+
+        if ($posted && filled($value)) {
+            return (int) $value;
+        }
+
+        if ($posted && blank($value) && $existingInvoice) {
+            return null;
+        }
+
+        if ($linkedOrder?->salesperson_id) {
+            return (int) $linkedOrder->salesperson_id;
+        }
+
+        if ($customer?->salesperson_id) {
+            return (int) $customer->salesperson_id;
+        }
+
+        return $existingInvoice?->salesperson_id ? (int) $existingInvoice->salesperson_id : null;
     }
 
     /**
@@ -692,8 +727,17 @@ class InvoiceController extends Controller
         $this->financialYearService->assertOpen($validated['invoice_date']);
 
         try {
-            $invoice = DB::transaction(function () use ($validated) {
+            $invoice = DB::transaction(function () use ($validated, $request) {
                 $customer = Customer::findOrFail($validated['customer_id']);
+
+                $estimatedTotal = collect($validated['items'] ?? [])->sum(function ($item) {
+                    return (float) ($item['line_total'] ?? 0) ?: ((float) ($item['quantity'] ?? 0) * (float) ($item['rate'] ?? 0));
+                });
+                $this->creditCheckService->assertForInvoice(
+                    $customer,
+                    $estimatedTotal,
+                    $request->input('credit_override_reason')
+                );
 
                 $linkedOrder = null;
                 if (!empty($validated['order_id'])) {
@@ -886,9 +930,7 @@ class InvoiceController extends Controller
                     $lrRrNo = trim((string)($validated['lr_rr_no'] ?? '')) ?: null;
                     $lrRrDate = !empty($validated['lr_rr_date']) ? $validated['lr_rr_date'] : null;
 
-                    $salespersonId = array_key_exists('salesperson_id', $validated)
-                        ? (!empty($validated['salesperson_id']) ? (int) $validated['salesperson_id'] : null)
-                        : ($linkedOrder?->salesperson_id ?? null);
+                    $salespersonId = self::resolveSalespersonId($validated, $linkedOrder, $customer);
 
                     $buyerGstin = trim((string) ($billingAddress?->gstin ?: ($customer->gstin ?: '')));
                     $isB2B = $buyerGstin !== '' && strtoupper($buyerGstin) !== 'URP' && strlen($buyerGstin) === 15;
@@ -1511,9 +1553,12 @@ class InvoiceController extends Controller
                 ])->toArray();
 
                 $updatePayload = [
-                    'salesperson_id' => array_key_exists('salesperson_id', $validated)
-                        ? (!empty($validated['salesperson_id']) ? (int) $validated['salesperson_id'] : null)
-                        : $invoice->salesperson_id,
+                    'salesperson_id' => self::resolveSalespersonId(
+                        $validated,
+                        $invoice->order,
+                        $invoice->customer ?? Customer::find($invoice->customer_id),
+                        $invoice
+                    ),
                     'delivery_note_no' => $deliveryNoteNo,
                     'delivery_note_na' => $deliveryNoteNa,
                     'dispatch_doc_no' => trim((string)($validated['dispatch_doc_no'] ?? '')) ?: null,

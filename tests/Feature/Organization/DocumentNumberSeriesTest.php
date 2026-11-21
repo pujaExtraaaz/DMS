@@ -188,6 +188,12 @@ class DocumentNumberSeriesTest extends TestCase
         $types = DocumentNumberSeries::documentTypes();
         $this->assertArrayHasKey('QTN', $types);
         $this->assertEquals('Quotation', $types['QTN']);
+        $this->assertArrayHasKey('INV', $types);
+        $this->assertEquals('Tax Invoice', $types['INV']);
+        $this->assertArrayHasKey('CN', $types);
+        $this->assertArrayHasKey('ADJ', $types);
+        $this->assertArrayHasKey('PAY', $types);
+        $this->assertArrayHasKey('JWO', $types);
     }
 
     public function test_quotation_automatic_numbering(): void

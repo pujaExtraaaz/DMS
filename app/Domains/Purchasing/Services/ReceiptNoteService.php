@@ -479,7 +479,7 @@ class ReceiptNoteService
     protected function resolveReceiptNoteNumber(?int $companyId, Carbon $date): string
     {
         try {
-            return $this->documentNumberService->next('RN', $date, 4, $companyId);
+            return $this->documentNumberService->nextDocument('RN', $date, 4, $companyId);
         } catch (\Throwable $e) {
             $count = ReceiptNote::query()
                 ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
@@ -491,7 +491,7 @@ class ReceiptNoteService
     protected function resolveReturnNumber(?int $companyId, Carbon $date): string
     {
         try {
-            return $this->documentNumberService->next('DC-RET', $date, 4, $companyId);
+            return $this->documentNumberService->nextDocument('DC-RET', $date, 4, $companyId);
         } catch (\Throwable $e) {
             $count = ReceiptNoteReturn::query()
                 ->when($companyId, fn ($q) => $q->where('company_id', $companyId))

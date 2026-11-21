@@ -63,7 +63,9 @@ Route::prefix('hrms')->name('hrms.')->middleware('role_or_permission:super-admin
     Route::get('punch-conflicts', [PunchConflictController::class, 'index'])->name('punch-conflicts.index');
     Route::post('punch-conflicts/resolve', [PunchConflictController::class, 'resolve'])->name('punch-conflicts.resolve');
 
+    Route::post('departments/quick-store', [DepartmentController::class, 'quickStore'])->name('departments.quick-store');
     Route::resource('departments', DepartmentController::class)->except(['show']);
+    Route::post('designations/quick-store', [DesignationController::class, 'quickStore'])->name('designations.quick-store');
     Route::resource('designations', DesignationController::class)->except(['show']);
     Route::get('managers', [ManagerController::class, 'index'])->name('managers.index');
 

@@ -301,6 +301,43 @@ class SalesTarget extends Model
     }
 
     /**
+     * Include targets whose period overlaps [dateFrom, dateTo] (inclusive).
+     * Prefer this over requiring the whole period to sit inside the filter window.
+     */
+    public function scopePeriodOverlaps($query, ?string $dateFrom = null, ?string $dateTo = null)
+    {
+        if ($dateFrom) {
+            $query->whereDate('ends_on', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $query->whereDate('starts_on', '<=', $dateTo);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Match an explicit financial_year_id, or (when FY is known) targets with a null
+     * FY whose period overlaps that financial year.
+     */
+    public function scopeForFinancialYear($query, $financialYearId, ?FinancialYear $financialYear = null)
+    {
+        $fy = $financialYear ?: FinancialYear::query()->find($financialYearId);
+        if (! $fy) {
+            return $query->where('financial_year_id', $financialYearId);
+        }
+
+        return $query->where(function ($q) use ($financialYearId, $fy) {
+            $q->where('financial_year_id', $financialYearId)
+                ->orWhere(function ($inner) use ($fy) {
+                    $inner->whereNull('financial_year_id')
+                        ->whereDate('ends_on', '>=', $fy->starts_on->toDateString())
+                        ->whereDate('starts_on', '<=', $fy->ends_on->toDateString());
+                });
+        });
+    }
+
+    /**
      * Query scope to filter targets by calculated progress status
      */
     public function scopeProgressStatus($query, string $status)

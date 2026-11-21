@@ -27,7 +27,7 @@ class SchemeService
     {
         return DB::transaction(function () use ($data, $actor) {
             $scheme = Scheme::create([
-                'code' => $data['code'] ?? $this->documentNumberService->next('SCH', now(), 4),
+                'code' => $data['code'] ?? $this->documentNumberService->nextDocument('SCH', now(), 4),
                 'name' => $data['name'],
                 'scheme_type' => $data['scheme_type'] ?? null,
                 'brand_id' => $data['brand_id'] ?? null,

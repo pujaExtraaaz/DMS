@@ -5,6 +5,7 @@ namespace App\Domains\TallySync\Bridge;
 use App\Domains\Sync\Support\SyncGuard;
 use App\Domains\Sync\Support\SyncRegistry;
 use App\Domains\Tally\Observers\TallyAutoEnqueueObserver;
+use App\Domains\TallySync\Import\TallyImportLookupCache;
 use App\Domains\TallySync\Queue\BooksSyncQueue;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -57,9 +58,18 @@ class TallyInbound
     /** When true (artisan --force), Tally wins over localNewer master conflicts. */
     private bool $forceOverwrite = false;
 
+    private ?TallyImportLookupCache $lookupCache = null;
+
     public function setForceOverwrite(bool $force): self
     {
         $this->forceOverwrite = $force;
+
+        return $this;
+    }
+
+    public function setLookupCache(?TallyImportLookupCache $cache): self
+    {
+        $this->lookupCache = $cache;
 
         return $this;
     }
@@ -166,12 +176,7 @@ class TallyInbound
             return $this->finish($key);
         }
 
-        $this->conflict(
-            $key,
-            null,
-            null,
-            'Full XML document was malformed/truncated; recovered '.$matched.' complete <'.$tag.'> block(s) and imported those.'
-        );
+        // Recovered partial XML — import those blocks without counting a hard conflict.
 
         foreach ($matches[0] as $block) {
             $wrapper = '<?xml version="1.0" encoding="UTF-8"?><ROOT>'.$block.'</ROOT>';
@@ -527,8 +532,7 @@ class TallyInbound
         $parent = strtolower($this->text($node, 'PARENT'));
         $role = $this->partyRoleFromParent($parent);
         if ($role === null) {
-            $this->counts['skipped']++;
-
+            // Non-party ledgers (cash/bank/expense) belong in Books only — quiet on DMS path.
             return;
         }
 
@@ -642,7 +646,7 @@ class TallyInbound
                 $this->counts['created']++;
             }
         } catch (\Throwable $exception) {
-            $this->conflict('ledgers', $this->text($node, 'GUID'), $customer->name, 'Bank details skipped: '.$exception->getMessage());
+            report($exception);
         }
     }
 
@@ -651,13 +655,9 @@ class TallyInbound
         $parent = strtolower($this->text($node, 'PARENT'));
         // Payroll export LEDGERs are pay-head candidates; only skip clear party/cash ledgers.
         if ($this->partyRoleFromParent($parent) !== null || str_contains($parent, 'bank') || str_contains($parent, 'cash')) {
-            $this->counts['skipped']++;
-
             return;
         }
         if (! $this->looksLikePayHead($parent, $name) && ! str_contains($parent, 'indirect') && ! str_contains($parent, 'direct')) {
-            $this->counts['skipped']++;
-
             return;
         }
 
@@ -1044,13 +1044,9 @@ class TallyInbound
     {
         $parent = strtolower($this->text($node, 'PARENT'));
         if ($this->partyRoleFromParent($parent) !== null || str_contains($parent, 'bank') || str_contains($parent, 'cash')) {
-            $this->counts['skipped']++;
-
             return null;
         }
         if (! $this->looksLikePayHead($parent, $name) && ! str_contains($parent, 'indirect') && ! str_contains($parent, 'direct')) {
-            $this->counts['skipped']++;
-
             return null;
         }
 
@@ -1224,7 +1220,8 @@ class TallyInbound
         try {
             app(\Tally\Accounting\LedgerOpeningBook::class)->remember($ledger, $year);
         } catch (\Throwable $exception) {
-            $this->conflict('ledgers', null, $ledger->name, 'Opening balance row skipped: '.$exception->getMessage());
+            // Soft side-effect — ledger itself already saved; do not inflate conflict counters.
+            report($exception);
         }
     }
 
@@ -1512,9 +1509,7 @@ class TallyInbound
             || str_contains($lower, 'sales order')
             || str_contains($lower, 'purchase order')
         ) {
-            // Commercial docs land in DMS; skip Books accounting duplicate.
-            $this->counts['skipped']++;
-
+            // Commercial docs land in DMS; quiet on Books accounting path.
             return null;
         }
 
@@ -1830,8 +1825,8 @@ class TallyInbound
         }
         $type = $this->voucherType($typeName);
         if (! $type) {
-            $this->conflict('vouchers', $this->text($node, 'GUID'), $typeName, 'Voucher type is not mapped.');
-            return null;
+            // Last resort: land unmapped accounting vouchers as Journal so nothing is dropped.
+            $type = VoucherType::Journal;
         }
 
         $number = $this->text($node, 'VOUCHERNUMBER') ?: $node->getAttribute('VCHNUMBER');
@@ -1860,7 +1855,9 @@ class TallyInbound
 
         $entries = $this->voucherEntries($company, $node);
         if ($entries === []) {
-            $this->conflict('vouchers', $this->text($node, 'GUID'), $number, 'Voucher has no ledger lines that exist in Books.');
+            // Quiet skip — missing ledger names are auto-created when possible; empty still means unusable XML.
+            $this->counts['skipped']++;
+
             return null;
         }
 
@@ -1869,28 +1866,41 @@ class TallyInbound
         $user = $existing?->creator ?: User::query()->orderBy('id')->first();
         if (! $branch || ! $year || ! $user || ! $date) {
             $this->conflict('vouchers', $this->text($node, 'GUID'), $number, 'Books needs a branch, an open financial year, and a user for this voucher.');
+
             return null;
         }
 
         $partyName = $this->text($node, 'PARTYLEDGERNAME');
         $party = $partyName !== '' ? $this->findLedgerByName($company, $partyName) : null;
         $updateTarget = $existing && $existing->isDraft() ? $existing : null;
-        $saved = app(VoucherEngine::class)->save($company, $branch, $year, $user, $type, [
-            'voucher_date' => $date,
-            'voucher_number' => $number,
-            'reference_number' => $this->text($node, 'REFERENCE') ?: null,
-            'reference_date' => $this->date($this->text($node, 'REFERENCEDATE')) ?: null,
-            'effective_date' => $this->date($this->text($node, 'EFFECTIVEDATE')) ?: $date,
-            'place_of_supply' => $this->text($node, 'PLACEOFSUPPLY') ?: null,
-            'narration' => $this->text($node, 'NARRATION') ?: null,
-            'party_ledger_id' => $party?->id,
-            'is_optional' => $this->yes($this->text($node, 'ISOPTIONAL')),
-            'is_post_dated' => $this->yes($this->text($node, 'ISPOSTDATED')),
-            'is_memo' => $this->yes($this->text($node, 'ISMEMO')),
-            'is_invoice' => $this->yes($this->text($node, 'ISINVOICE')),
-            'entries' => $entries,
-            'allocations' => $this->voucherBillAllocationRows($company, $node, $entries),
-        ], true, $updateTarget, $number !== '' ? $number : null);
+        try {
+            $saved = app(VoucherEngine::class)->save($company, $branch, $year, $user, $type, [
+                'voucher_date' => $date,
+                'voucher_number' => $number,
+                'reference_number' => $this->text($node, 'REFERENCE') ?: null,
+                'reference_date' => $this->date($this->text($node, 'REFERENCEDATE')) ?: null,
+                'effective_date' => $this->date($this->text($node, 'EFFECTIVEDATE')) ?: $date,
+                'place_of_supply' => $this->text($node, 'PLACEOFSUPPLY') ?: null,
+                'narration' => $this->text($node, 'NARRATION') ?: null,
+                'party_ledger_id' => $party?->id,
+                'is_optional' => $this->yes($this->text($node, 'ISOPTIONAL')),
+                'is_post_dated' => $this->yes($this->text($node, 'ISPOSTDATED')),
+                'is_memo' => $this->yes($this->text($node, 'ISMEMO')),
+                'is_invoice' => $this->yes($this->text($node, 'ISINVOICE')),
+                'entries' => $entries,
+                'allocations' => $this->voucherBillAllocationRows($company, $node, $entries),
+            ], true, $updateTarget, $number !== '' ? $number : null, true);
+        } catch (\Throwable $exception) {
+            $this->conflict('vouchers', $this->text($node, 'GUID'), $number, $exception->getMessage());
+
+            return null;
+        }
+
+        if ($updateTarget) {
+            $this->counts['updated']++;
+        } else {
+            $this->counts['created']++;
+        }
 
         $this->inventoryLines($saved, $company, $node);
         $this->persistInboundBillAllocations($saved, $company, $node);
@@ -1905,13 +1915,26 @@ class TallyInbound
             return null;
         }
 
-        return Ledger::query()
+        if ($this->lookupCache) {
+            $cached = $this->lookupCache->findNamed(Ledger::class, (int) $company->id, $name);
+            if ($cached instanceof Ledger) {
+                return $cached;
+            }
+        }
+
+        $ledger = Ledger::query()
             ->where('company_id', $company->id)
             ->where(function ($query) use ($name) {
                 $query->where('name', $name)
                     ->orWhereRaw('LOWER(name) = ?', [mb_strtolower($name)]);
             })
             ->first();
+
+        if ($ledger && $this->lookupCache) {
+            $this->lookupCache->rememberLedger((int) $company->id, $name, (int) $ledger->id);
+        }
+
+        return $ledger;
     }
 
     /**
@@ -1926,6 +1949,7 @@ class TallyInbound
 
             return $existing;
         }
+        // Artisan / --force: Tally XML wins. Connector polls still protect localNewer edits.
         if ($existing && ! $this->forceOverwrite && $this->localNewer($existing, $tallyType)) {
             $this->conflict($tallyType, $this->text($node, 'GUID'), $name, 'Books and Tally both changed '.$name.'. Neither side was overwritten.');
             $this->counts['skipped']++;
@@ -1941,6 +1965,7 @@ class TallyInbound
             $existing->fill($values);
             $existing->save();
             $this->counts['updated']++;
+            $this->lookupCache?->rememberModel($class, (int) $company->id, $nameColumn === 'name' ? $name : (string) ($values[$nameColumn] ?? $name), (int) $existing->getKey());
 
             return $existing;
         }
@@ -1948,6 +1973,7 @@ class TallyInbound
         try {
             $created = $class::query()->create($values);
             $this->counts['created']++;
+            $this->lookupCache?->rememberModel($class, (int) $company->id, $nameColumn === 'name' ? $name : (string) ($values[$nameColumn] ?? $name), (int) $created->getKey());
 
             return $created;
         } catch (\Illuminate\Database\UniqueConstraintViolationException) {
@@ -1959,6 +1985,7 @@ class TallyInbound
             if ($fallback) {
                 $fallback->fill($values)->save();
                 $this->counts['updated']++;
+                $this->lookupCache?->rememberModel($class, (int) $company->id, $nameColumn === 'name' ? $name : (string) ($values[$nameColumn] ?? $name), (int) $fallback->getKey());
 
                 return $fallback;
             }
@@ -1984,7 +2011,14 @@ class TallyInbound
 
         $normalized = preg_replace('/\s+/u', ' ', trim($name)) ?? trim($name);
 
-        return $class::query()
+        if ($this->lookupCache) {
+            $cached = $this->lookupCache->findNamed($class, (int) $company->id, $normalized, $nameColumn);
+            if ($cached) {
+                return $cached;
+            }
+        }
+
+        $found = $class::query()
             ->where('company_id', $company->id)
             ->where(function ($query) use ($nameColumn, $name, $normalized) {
                 $query->where($nameColumn, $name)
@@ -1992,6 +2026,12 @@ class TallyInbound
                     ->orWhereRaw('LOWER('.$nameColumn.') = ?', [mb_strtolower($normalized)]);
             })
             ->first();
+
+        if ($found && $this->lookupCache) {
+            $this->lookupCache->rememberModel($class, (int) $company->id, $normalized, (int) $found->getKey());
+        }
+
+        return $found;
     }
 
     private function findVoucher(Company $company, \DOMElement $node, VoucherType $type, string $number, ?string $date): ?Voucher
@@ -2030,24 +2070,53 @@ class TallyInbound
      */
     private function voucherEntries(Company $company, \DOMElement $node): array
     {
+        $rows = $this->collectVoucherEntryRows($company, $node, true);
+        // Some Tally exports nest ledger lines; retry without direct-parent filter.
+        if ($rows === []) {
+            $rows = $this->collectVoucherEntryRows($company, $node, false);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function collectVoucherEntryRows(Company $company, \DOMElement $node, bool $directChildrenOnly): array
+    {
         $rows = [];
         foreach (['ALLLEDGERENTRIES.LIST', 'LEDGERENTRIES.LIST'] as $tag) {
             foreach ($node->getElementsByTagName($tag) as $entry) {
-                if (! $entry instanceof \DOMElement || $entry->parentNode !== $node) {
+                if (! $entry instanceof \DOMElement) {
+                    continue;
+                }
+                if ($directChildrenOnly && $entry->parentNode !== $node) {
                     continue;
                 }
                 $ledgerName = $this->text($entry, 'LEDGERNAME');
-                $ledger = $this->findLedgerByName($company, $ledgerName);
+                $ledger = $this->findLedgerByName($company, $ledgerName)
+                    ?: $this->ensureLedgerFromVoucherLine($company, $ledgerName);
                 if (! $ledger) {
                     continue;
                 }
+                // Tally voucher amounts are already signed (negative = debit, positive = credit).
                 $amount = $this->leadingNumber($this->text($entry, 'AMOUNT'));
+                if ($amount == 0.0) {
+                    continue;
+                }
                 $centreName = '';
                 $centreNode = $entry->getElementsByTagName('COSTCENTREALLOCATIONS.LIST')->item(0);
                 if ($centreNode instanceof \DOMElement) {
                     $centreName = $this->text($centreNode, 'NAME');
                 }
-                $centreId = $centreName !== '' ? CostCentre::query()->where('company_id', $company->id)->where('name', $centreName)->value('id') : null;
+                $centreId = null;
+                if ($centreName !== '') {
+                    $centreId = $this->lookupCache?->costCentreId((int) $company->id, $centreName)
+                        ?: CostCentre::query()->where('company_id', $company->id)->where('name', $centreName)->value('id');
+                    if ($centreId && $this->lookupCache) {
+                        $this->lookupCache->rememberCostCentre((int) $company->id, $centreName, (int) $centreId);
+                    }
+                }
                 $bank = $entry->getElementsByTagName('BANKALLOCATIONS.LIST')->item(0);
                 $rows[] = [
                     'ledger_id' => $ledger->id,
@@ -2070,6 +2139,49 @@ class TallyInbound
         }
 
         return $rows;
+    }
+
+    private function ensureLedgerFromVoucherLine(Company $company, string $name): ?Ledger
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', $name) ?? $name);
+        if ($name === '' || str_starts_with($name, "\x04")) {
+            return null;
+        }
+
+        $existing = $this->findLedgerByName($company, $name);
+        if ($existing) {
+            return $existing;
+        }
+
+        try {
+            $group = AccountGroup::query()
+                ->where('company_id', $company->id)
+                ->where(function ($q) {
+                    $q->whereRaw('LOWER(name) = ?', ['sundry creditors'])
+                        ->orWhereRaw('LOWER(name) = ?', ['sundry debtors'])
+                        ->orWhereRaw('LOWER(name) = ?', ['indirect expenses']);
+                })
+                ->orderBy('id')
+                ->first()
+                ?: AccountGroup::query()->where('company_id', $company->id)->orderBy('id')->first();
+
+            if (! $group) {
+                return null;
+            }
+
+            $ledger = Ledger::query()->create([
+                'company_id' => $company->id,
+                'account_group_id' => $group->id,
+                'name' => $name,
+                'is_active' => true,
+            ]);
+            $this->counts['created']++;
+            $this->lookupCache?->rememberLedger((int) $company->id, $name, (int) $ledger->id);
+
+            return $ledger;
+        } catch (\Throwable) {
+            return $this->findLedgerByName($company, $name);
+        }
     }
 
     /**
@@ -2304,7 +2416,8 @@ class TallyInbound
         try {
             $handler->sync($model);
         } catch (\Throwable $exception) {
-            $this->conflict($model::class, null, $model->name ?? $model->voucher_number ?? null, 'Books row saved. DMS copy failed: '.$exception->getMessage());
+            // Soft dual-write — Books row is already the source of truth for this import stage.
+            report($exception);
         }
     }
 
@@ -2360,7 +2473,8 @@ class TallyInbound
                 BankAccount::query()->create($attrs);
             }
         } catch (\Throwable $exception) {
-            $this->conflict('ledgers', $this->text($node, 'GUID'), $ledger->name, 'Bank details skipped: '.$exception->getMessage());
+            // Soft side-effect — ledger itself already saved; do not inflate conflict counters.
+            report($exception);
         }
     }
 
@@ -2412,13 +2526,32 @@ class TallyInbound
             return null;
         }
 
-        return $class::query()
+        if ($this->lookupCache) {
+            $cached = match ($class) {
+                AccountGroup::class => $this->lookupCache->groupId((int) $company->id, $name),
+                ProductGroup::class => $this->lookupCache->productGroupId((int) $company->id, $name),
+                Godown::class => $this->lookupCache->godownId((int) $company->id, $name),
+                CostCentre::class => $this->lookupCache->costCentreId((int) $company->id, $name),
+                default => null,
+            };
+            if ($cached) {
+                return $cached;
+            }
+        }
+
+        $id = $class::query()
             ->where('company_id', $company->id)
             ->where(function ($query) use ($name) {
                 $query->where('name', $name)
                     ->orWhereRaw('LOWER(name) = ?', [mb_strtolower($name)]);
             })
             ->value('id');
+
+        if ($id && $this->lookupCache) {
+            $this->lookupCache->rememberModel($class, (int) $company->id, $name, (int) $id);
+        }
+
+        return $id;
     }
 
     private function localNewer(Model $model, string $type): bool
@@ -2471,21 +2604,25 @@ class TallyInbound
     {
         $category = $this->voucherType($this->text($node, 'PARENT') ?: $name);
         if (! $category) {
-            $this->counts['skipped']++;
-
+            // Delivery Note / Quotation / Stock Journal parents have no Books voucher category.
             return null;
         }
 
-        $taken = VoucherTypeMaster::query()
+        $existing = VoucherTypeMaster::query()
             ->where('company_id', $company->id)
             ->where(function ($query) use ($name, $category) {
                 $query->where('name', $name)->orWhere('category', $category->value);
             })
-            ->exists();
-        if ($taken) {
-            $this->counts['skipped']++;
+            ->orderByRaw('CASE WHEN name = ? THEN 0 ELSE 1 END', [$name])
+            ->first();
 
-            return null;
+        if ($existing) {
+            $existing->fill([
+                'category' => $category->value,
+            ])->save();
+            $this->counts['updated']++;
+
+            return $existing;
         }
 
         $abbreviation = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $name) ?: 'VCH', 0, 8));

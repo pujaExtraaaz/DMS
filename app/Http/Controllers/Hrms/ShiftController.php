@@ -75,6 +75,9 @@ class ShiftController extends Controller
 
     public function assign(Request $request): RedirectResponse
     {
+        $request->merge([
+            'weekly_off_mode' => strtolower((string) $request->input('weekly_off_mode', 'fixed')),
+        ]);
         $data = $request->validate([
             'employee_id' => 'required|exists:employees,id',
             'shift_id' => 'required|exists:shifts,id',

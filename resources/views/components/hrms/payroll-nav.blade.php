@@ -9,15 +9,15 @@
             'route' => route('hrms.payroll-runs.index'),
             'match' => request()->routeIs('hrms.payroll-runs.*'),
         ],
-        'structures' => [
-            'label' => 'Salary Structures',
-            'route' => route('hrms.salary-structures.index'),
-            'match' => request()->routeIs('hrms.salary-structures.*'),
-        ],
         'heads' => [
             'label' => 'Pay Heads',
             'route' => route('hrms.pay-heads.index'),
             'match' => request()->routeIs('hrms.pay-heads.*'),
+        ],
+        'structures' => [
+            'label' => 'Salary Structures',
+            'route' => route('hrms.salary-structures.index'),
+            'match' => request()->routeIs('hrms.salary-structures.*'),
         ],
         'compoff' => [
             'label' => 'Comp-off',
