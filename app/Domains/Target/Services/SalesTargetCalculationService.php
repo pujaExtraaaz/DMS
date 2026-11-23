@@ -47,22 +47,12 @@ class SalesTargetCalculationService
                         $cq->where('branch_id', $target->branch_id);
                     });
                 });
-            } elseif ($target->owner_type === 'team') {
-                if ($salespersonIds->isNotEmpty()) {
-                    $invoiceQuery->whereIn('salesperson_id', $salespersonIds);
-                } else {
-                    $invoiceQuery->whereRaw('1 = 0');
-                }
-            } elseif ($target->owner_type === 'individual') {
-                if ($target->salesperson_id) {
-                    $invoiceQuery->where('salesperson_id', $target->salesperson_id);
-                } else {
-                    $invoiceQuery->whereRaw('1 = 0');
-                }
+            } elseif ($salespersonIds->isNotEmpty()) {
+                // Individual / team targets must match invoice.salesperson_id (users.id).
+                $invoiceQuery->whereIn('salesperson_id', $salespersonIds);
             } else {
-                if ($salespersonIds->isNotEmpty()) {
-                    $invoiceQuery->whereIn('salesperson_id', $salespersonIds);
-                }
+                // No resolvable salesperson IDs → do not attribute arbitrary invoices.
+                $invoiceQuery->whereRaw('1 = 0');
             }
 
             $matchedInvoices = (clone $invoiceQuery)->with(['items.product'])->get();

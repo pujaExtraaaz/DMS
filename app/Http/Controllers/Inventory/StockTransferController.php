@@ -227,7 +227,7 @@ class StockTransferController extends Controller
                     ]);
                 }
 
-                $reclassificationNo = $this->documentNumberService->next('SNT');
+                $reclassificationNo = $this->documentNumberService->nextDocument('SNT');
 
                 $reclassification = StockReclassification::create([
                     'reclassification_no' => $reclassificationNo,
@@ -318,7 +318,7 @@ class StockTransferController extends Controller
         try {
             $transfer = DB::transaction(function () use ($validated, $request) {
                 $transfer = StockTransfer::create([
-                    'transfer_no' => $this->documentNumberService->next('TRF'),
+                    'transfer_no' => $this->documentNumberService->nextDocument('TRF'),
                     'transfer_date' => $validated['transfer_date'],
                     'from_warehouse_id' => $validated['from_warehouse_id'],
                     'to_warehouse_id' => $validated['to_warehouse_id'],

@@ -305,8 +305,9 @@
                                placeholder="E.G. 27AAAAA0000A1Z5" @input.debounce.400ms="autoFetchGst()"
                                class="flex-1 min-w-0 uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono">
                         <button type="button" @click="fetchGstDetails()" :disabled="searchingGst"
+                                :aria-busy="searchingGst ? 'true' : 'false'"
                                 class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition disabled:opacity-50 shrink-0 whitespace-nowrap min-w-[105px] cursor-pointer"
-                                title="Fetch GST details from official records">
+                                title="Fetch party details from official GSTIN records">
                             <svg x-show="!searchingGst" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                             </svg>
@@ -770,7 +771,7 @@
                     <button type="button" @click="addAddress()"
                             class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                        Add Address
+                        + Add Address
                     </button>
                 </div>
             </div>
@@ -932,15 +933,7 @@
                                 </div>
                             </div>
                             <div>
-                                <div class="flex items-center justify-between mb-1 gap-2">
-                                    <label class="block text-xs font-medium text-slate-700">City (optional)</label>
-                                    <button type="button"
-                                            @click="openCityModal(idx)"
-                                            :disabled="!addr.state"
-                                            class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">
-                                        + Add City
-                                    </button>
-                                </div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">City (optional)</label>
                                 <div class="relative" x-data="cityDropdown(addr, stateCities, idx)" @click.outside="close()">
                                     <!-- Hidden input for standard form submission -->
                                     <input type="hidden" :name="`addresses[${idx}][city]`" :value="addr.city">
@@ -1072,9 +1065,6 @@
                         @foreach($areas as $a)
                             <option value="{{ $a->id }}" @selected(old('area_id', $item->area_id)==$a->id)>{{ $a->name }}</option>
                         @endforeach
-                        <template x-for="area in customAreas" :key="area.id">
-                            <option :value="area.id" x-text="area.name"></option>
-                        </template>
                     </select>
                 </div>
 
@@ -1093,9 +1083,6 @@
                         @foreach($routes as $r)
                             <option value="{{ $r->id }}" @selected(old('route_id', $item->route_id)==$r->id)>{{ $r->name }}</option>
                         @endforeach
-                        <template x-for="route in customRoutes" :key="route.id">
-                            <option :value="route.id" x-text="route.name"></option>
-                        </template>
                     </select>
                 </div>
             </div>
@@ -1358,19 +1345,14 @@
                     <p class="text-xs text-slate-500 mt-0.5">Select existing contacts from Phone Directory or create new ones. One can be marked primary.</p>
                 </div>
                 <div class="flex items-center gap-2" x-show="hasContactsSection">
-                    <button type="button" 
+                    <button type="button"
                             @click="saveDraftAndCreateContact()"
                             :disabled="isSavingDraft"
+                            title="Save party draft, then open Phone Directory to add a new contact"
                             class="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs shrink-0 disabled:opacity-50">
-                        <svg x-show="!isSavingDraft" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                        <svg x-show="isSavingDraft" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" x-cloak><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        <span x-text="isSavingDraft ? 'Saving Draft...' : '+ Create New Contact'"></span>
-                    </button>
-                    <button type="button" 
-                            @click="openCustomContactModal()"
-                            class="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition shrink-0"
-                            title="Add custom contact person">
-                        <span>+ Custom Entry</span>
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span x-bind:hidden="isSavingDraft">+ Custom Entry</span>
+                        <span x-bind:hidden="!isSavingDraft" hidden>Saving Draft…</span>
                     </button>
                 </div>
             </div>
@@ -1392,10 +1374,11 @@
                     </div>
                     <input type="text"
                            x-model="contactSearchQuery"
-                           @focus="contactDropdownOpen = true"
+                           @focus="openContactDirectoryDropdown()"
+                           @click="openContactDirectoryDropdown()"
                            @input="onContactSearchInput()"
                            @keydown.escape="contactDropdownOpen = false"
-                           placeholder="Search Phone Directory by name, designation, company, phone, email..."
+                           placeholder="Search by mobile number or contact initials (e.g. 98… / RK)…"
                            autocomplete="off"
                            class="block w-full pl-9 pr-10 py-2 rounded-xl border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400">
                     <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center gap-1">
@@ -1512,7 +1495,7 @@
             <div x-show="contacts.length === 0" class="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 bg-slate-50/50">
                 <svg class="w-8 h-8 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
                 <div class="font-medium text-slate-700 mb-0.5">No contact persons selected yet</div>
-                <p class="text-slate-500">Search and select contacts from Phone Directory above, use "+ Custom Entry", or click "+ Create New Contact".</p>
+                <p class="text-slate-500">Click the search box to browse Phone Directory contacts, or use "+ Custom Entry" to add a new contact and return here.</p>
             </div>
 
             {{-- Selected contacts cards list --}}
@@ -2846,7 +2829,13 @@ function partyFormController() {
         },
 
         areaOptions() {
-            return [...this.knownAreas, ...this.customAreas];
+            const seen = new Set();
+            return [...this.knownAreas, ...this.customAreas].filter((area) => {
+                const id = String(area.id);
+                if (!id || seen.has(id)) return false;
+                seen.add(id);
+                return true;
+            });
         },
 
         selectedLookupName(kind) {
@@ -2935,20 +2924,58 @@ function partyFormController() {
             const customKey = kind === 'area' ? 'customAreas' : 'customRoutes';
             const knownKey = kind === 'area' ? 'knownAreas' : 'knownRoutes';
             const select = kind === 'area' ? this.$refs.areaSelect : this.$refs.routeSelect;
+            const itemId = String(item.id);
+
             if (isEdit) {
-                const option = select?.querySelector(`option[value="${item.id}"]`);
-                if (option) option.textContent = item.name;
-                const custom = this[customKey].find(row => String(row.id) === item.id);
+                // Remove duplicate option nodes with the same value, keep one updated label.
+                if (select) {
+                    const matches = [...select.querySelectorAll(`option[value="${itemId}"]`)];
+                    matches.forEach((option, index) => {
+                        if (index === 0) {
+                            option.textContent = item.name;
+                        } else {
+                            option.remove();
+                        }
+                    });
+                }
+                const custom = this[customKey].find(row => String(row.id) === itemId);
                 if (custom) Object.assign(custom, item);
-                const known = this[knownKey].find(row => String(row.id) === item.id);
+                const known = this[knownKey].find(row => String(row.id) === itemId);
                 if (known) Object.assign(known, item);
                 return;
             }
-            if (!this[customKey].some(row => String(row.id) === item.id) && !this[knownKey].some(row => String(row.id) === item.id)) {
-                this[customKey].push(item);
+
+            if (!this[knownKey].some(row => String(row.id) === itemId) && !this[customKey].some(row => String(row.id) === itemId)) {
+                this[knownKey].push(item);
             }
-            if (select && !select.querySelector(`option[value="${item.id}"]`)) {
-                select.add(new Option(item.name, item.id));
+
+            if (select) {
+                const matches = [...select.querySelectorAll(`option[value="${itemId}"]`)];
+                if (matches.length === 0) {
+                    select.add(new Option(item.name, itemId));
+                } else {
+                    matches[0].textContent = item.name;
+                    matches.slice(1).forEach((option) => option.remove());
+                }
+            }
+        },
+
+        removeLookupFromUi(kind, selectedId) {
+            const id = String(selectedId);
+            const select = kind === 'area' ? this.$refs.areaSelect : this.$refs.routeSelect;
+            select?.querySelectorAll(`option[value="${id}"]`).forEach((option) => option.remove());
+            if (kind === 'area') {
+                this.customAreas = this.customAreas.filter(row => String(row.id) !== id);
+                this.knownAreas = this.knownAreas.filter(row => String(row.id) !== id);
+                if (String(this.selectedAreaId) === id) {
+                    this.selectedAreaId = '';
+                }
+            } else {
+                this.customRoutes = this.customRoutes.filter(row => String(row.id) !== id);
+                this.knownRoutes = this.knownRoutes.filter(row => String(row.id) !== id);
+                if (String(this.selectedRouteId) === id) {
+                    this.selectedRouteId = '';
+                }
             }
         },
 
@@ -2966,22 +2993,18 @@ function partyFormController() {
                         'X-CSRF-TOKEN': '{{ csrf_token() }}'
                     }
                 });
-                const data = await response.json();
-                if (!response.ok || !data.success) {
+                const data = await response.json().catch(() => ({}));
+                // 404 / already-missing: clear stale dropdown option so Create Party stays usable.
+                if (response.status === 404 || data.success) {
+                    this.removeLookupFromUi(this.lookupKind, selectedId);
+                    this.closeLookupModal();
+                    return;
+                }
+                if (!response.ok) {
                     this.lookupError = data.message || 'Failed to delete.';
                     return;
                 }
-                const select = this.lookupKind === 'area' ? this.$refs.areaSelect : this.$refs.routeSelect;
-                select?.querySelector(`option[value="${selectedId}"]`)?.remove();
-                if (this.lookupKind === 'area') {
-                    this.customAreas = this.customAreas.filter(row => String(row.id) !== String(selectedId));
-                    this.knownAreas = this.knownAreas.filter(row => String(row.id) !== String(selectedId));
-                    this.selectedAreaId = '';
-                } else {
-                    this.customRoutes = this.customRoutes.filter(row => String(row.id) !== String(selectedId));
-                    this.knownRoutes = this.knownRoutes.filter(row => String(row.id) !== String(selectedId));
-                    this.selectedRouteId = '';
-                }
+                this.removeLookupFromUi(this.lookupKind, selectedId);
                 this.closeLookupModal();
             } catch (err) {
                 this.lookupError = 'An error occurred while deleting. Please try again.';
@@ -3021,28 +3044,36 @@ function partyFormController() {
         isSavingDraft: false,
 
         get displayContactsDropdownList() {
-            const list = this.contactSearchQuery.trim() ? this.contactSearchResults : this.availablePhoneContacts;
-            return list || [];
+            if (this.contactSearchQuery.trim()) {
+                return this.contactSearchResults || [];
+            }
+            if ((this.contactSearchResults || []).length) {
+                return this.contactSearchResults;
+            }
+            return this.availablePhoneContacts || [];
+        },
+
+        openContactDirectoryDropdown() {
+            this.contactDropdownOpen = true;
+            // Always refresh directory list when opened so all contacts appear.
+            if (!this.contactSearchQuery.trim()) {
+                this.fetchPhoneDirectoryContacts('');
+            }
         },
 
         onContactSearchInput() {
             this.contactDropdownOpen = true;
             clearTimeout(this.contactSearchTimer);
             const q = this.contactSearchQuery.trim();
-            if (!q) {
-                this.contactSearchResults = [];
-                this.contactSearchLoading = false;
-                return;
-            }
             this.contactSearchLoading = true;
             this.contactSearchTimer = setTimeout(() => {
                 this.fetchPhoneDirectoryContacts(q);
-            }, 250);
+            }, 200);
         },
 
         async fetchPhoneDirectoryContacts(query) {
             try {
-                const url = `{{ route('masters.customers.phone-directory-contacts') }}?q=${encodeURIComponent(query)}`;
+                const url = `{{ route('masters.customers.phone-directory-contacts') }}?q=${encodeURIComponent(query || '')}`;
                 const res = await fetch(url, {
                     headers: {
                         'Accept': 'application/json',
@@ -3052,6 +3083,9 @@ function partyFormController() {
                 const data = await res.json();
                 if (data && data.success && Array.isArray(data.contacts)) {
                     this.contactSearchResults = data.contacts;
+                    if (!query) {
+                        this.availablePhoneContacts = data.contacts;
+                    }
                 } else {
                     this.contactSearchResults = [];
                 }
@@ -3254,11 +3288,11 @@ function partyFormController() {
         },
 
         addCustomContact() {
-            this.openCustomContactModal();
+            this.saveDraftAndCreateContact();
         },
 
         addContact() {
-            this.openCustomContactModal();
+            this.saveDraftAndCreateContact();
         },
 
         removeContact(idx) {
@@ -3329,7 +3363,7 @@ function partyFormController() {
                     gem_authorizations: JSON.parse(JSON.stringify(this.gemAuthorizations || [])),
                 };
 
-                await fetch("{{ route('masters.customers.draft.save') }}", {
+                const response = await fetch("{{ route('masters.customers.draft.save') }}", {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -3339,12 +3373,20 @@ function partyFormController() {
                     body: JSON.stringify({ draft })
                 });
 
-                const destUrl = "{{ route('phone-directory.contacts.create') }}?return_to=party" + ({{ $item->exists ? "'" . '&party_id=' . $item->id . "'" : "''" }});
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => ({}));
+                    throw new Error(payload.message || 'Draft could not be saved. Stay on this page and try again.');
+                }
+
+                const destUrl = @json(
+                    route('phone-directory.contacts.create')
+                    . '?return_to=party'
+                    . ($item->exists ? '&party_id=' . $item->id : '')
+                );
                 window.location.href = destUrl;
             } catch (err) {
                 console.error('Failed to save draft:', err);
-                const destUrl = "{{ route('phone-directory.contacts.create') }}?return_to=party" + ({{ $item->exists ? "'" . '&party_id=' . $item->id . "'" : "''" }});
-                window.location.href = destUrl;
+                alert(err?.message || 'Could not save party draft before opening Phone Directory. Your entries were not redirected so you do not lose data.');
             } finally {
                 this.isSavingDraft = false;
             }

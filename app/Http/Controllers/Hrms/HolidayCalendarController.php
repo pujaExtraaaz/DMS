@@ -103,6 +103,10 @@ class HolidayCalendarController extends Controller
 
     public function storeHoliday(Request $request, HolidayCalendar $holiday): RedirectResponse
     {
+        $request->merge([
+            'category' => strtolower((string) $request->input('category')),
+            'kind' => strtolower((string) $request->input('kind')),
+        ]);
         $data = $request->validate([
             'holiday_date' => 'required|date',
             'name' => 'required|string|max:120',
@@ -117,6 +121,10 @@ class HolidayCalendarController extends Controller
 
     public function updateHoliday(Request $request, Holiday $holidayItem): RedirectResponse
     {
+        $request->merge([
+            'category' => strtolower((string) $request->input('category')),
+            'kind' => strtolower((string) $request->input('kind')),
+        ]);
         $data = $request->validate([
             'holiday_date' => 'required|date',
             'name' => 'required|string|max:120',

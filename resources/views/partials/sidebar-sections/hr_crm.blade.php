@@ -83,7 +83,6 @@
                 <a href="{{ route('hrms.shifts.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.shifts.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Shifts</span></a>
                 <a href="{{ route('hrms.holidays.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.holidays.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Holidays</span></a>
                 <a href="{{ route('hrms.leave-management.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.leave-management.*', 'hrms.leave-requests.*', 'hrms.leave-balances.*', 'hrms.leave-types.*', 'hrms.leave-policies.*', 'hrms.leave-encashments.*', 'hrms.comp-off.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Leave Management</span></a>
-                <a href="{{ route('hrms.comp-off.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.comp-off.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Comp-off Credit</span></a>
                 <a href="{{ route('hrms.reports.attendance-register') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.reports.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>HR Reports</span></a>
                 <a href="{{ route('hrms.essl.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.essl.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>eSSL Sync</span></a>
                 <a href="{{ route('hrms.expense-claims.index') }}" class="{{ $itemClass }} {{ $linkClass(['hrms.expense-claims.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Claims</span></a>

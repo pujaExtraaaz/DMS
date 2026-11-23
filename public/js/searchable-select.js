@@ -940,6 +940,19 @@
         }
     });
 
+    function syncAllTriggerDisplays() {
+        document.querySelectorAll('select[data-dms-searchable-initialized]').forEach((select) => {
+            select.dispatchEvent(new CustomEvent('dms:select-value-updated', { bubbles: false }));
+        });
+    }
+
+    // Alpine often sets <option selected> without going through select.value —
+    // re-sync custom triggers after Alpine finishes initializing.
+    document.addEventListener('alpine:initialized', () => {
+        requestAnimationFrame(syncAllTriggerDisplays);
+        setTimeout(syncAllTriggerDisplays, 50);
+    });
+
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {

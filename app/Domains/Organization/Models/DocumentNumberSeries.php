@@ -304,12 +304,40 @@ class DocumentNumberSeries extends Model
     public static function documentTypes(): array
     {
         return [
+            // Purchasing
             'PO' => 'Purchase Order',
             'PI' => 'Purchase Invoice',
             'GRN' => 'Goods Receipt',
+            'RN' => 'Receipt Note',
+            'DC-RET' => 'Delivery Challan Return',
+            'FRT' => 'Freight Bill',
+            'LC' => 'Landed Cost',
+            'DN' => 'Debit Note',
+            // Sales & orders
             'SO' => 'Sales Order',
-            'INV' => 'Sales Invoice',
+            'ORD' => 'Order',
             'QTN' => 'Quotation',
+            'INV' => 'Tax Invoice',
+            'PRF' => 'Proforma Invoice',
+            'CN' => 'Credit Note',
+            'DC' => 'Delivery Challan',
+            // Money
+            'PAY' => 'Payment',
+            'REC' => 'Receipt',
+            'CON' => 'Contra',
+            'JRN' => 'Journal',
+            'INT' => 'Interest',
+            // Inventory
+            'ADJ' => 'Stock Journal',
+            'TRF' => 'Stock Transfer',
+            'SNT' => 'Stock Reclassification',
+            'PHY' => 'Physical Stock',
+            'RJI' => 'Rejections In',
+            'RJO' => 'Rejections Out',
+            // Job work / deals / schemes
+            'JWO' => 'Job Work Out Order',
+            'DEAL' => 'Deal',
+            'SCH' => 'Scheme',
         ];
     }
 

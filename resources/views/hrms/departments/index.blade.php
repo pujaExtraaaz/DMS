@@ -14,10 +14,11 @@
             <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50">
                     <tr>
-                        <x-ui.sortable-th column="name" label="Name" :currentSort="$sort" :currentDirection="$direction" />
-                        <x-ui.sortable-th column="code" label="Code" :currentSort="$sort" :currentDirection="$direction" />
-                        <x-ui.sortable-th column="company" label="Company" :currentSort="$sort" :currentDirection="$direction" />
-                        <x-ui.sortable-th column="is_active" label="Status" :currentSort="$sort" :currentDirection="$direction" />
+                        <x-ui.sortable-th column="name" :current-sort="$sort" :current-direction="$direction">Name</x-ui.sortable-th>
+                        <x-ui.sortable-th column="code" :current-sort="$sort" :current-direction="$direction">Code</x-ui.sortable-th>
+                        <x-ui.sortable-th column="company" :current-sort="$sort" :current-direction="$direction">Company</x-ui.sortable-th>
+                        <x-ui.sortable-th column="employees_count" :current-sort="$sort" :current-direction="$direction">Employees</x-ui.sortable-th>
+                        <x-ui.sortable-th column="is_active" :current-sort="$sort" :current-direction="$direction">Status</x-ui.sortable-th>
                         <th class="px-3 py-2 text-right text-xs font-semibold text-slate-500">Actions</th>
                     </tr>
                 </thead>
@@ -27,6 +28,7 @@
                             <td class="px-3 py-2 font-medium text-slate-900">{{ $item->name }}</td>
                             <td class="px-3 py-2 font-mono text-xs text-slate-600">{{ $item->code }}</td>
                             <td class="px-3 py-2 text-slate-600">{{ $item->company?->name ?? '—' }}</td>
+                            <td class="px-3 py-2 font-semibold text-slate-800">{{ $item->employees_count }}</td>
                             <td class="px-3 py-2">
                                 <x-ui.badge :variant="$item->is_active ? 'success' : 'secondary'">{{ $item->is_active ? 'Active' : 'Inactive' }}</x-ui.badge>
                             </td>
@@ -35,7 +37,7 @@
                             </td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">No departments found.</td></tr>
+                        <tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">No departments found.</td></tr>
                     @endforelse
                 </tbody>
             </table>

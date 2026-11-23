@@ -131,7 +131,7 @@ class DocumentNumberSeriesController extends Controller
             'separator' => 'nullable|string|max:5',
             'padding' => 'required|integer|min:1|max:8',
             'starting_number' => 'nullable|integer|min:1',
-            'prefix_zero' => 'nullable|boolean',
+            'prefix_zero' => 'nullable',
             'numbering_method' => ['required', 'string', Rule::in(array_keys(DocumentNumberSeries::numberingMethods()))],
             'restart_each_fy' => 'nullable|boolean',
             'is_active' => 'nullable|boolean',
@@ -151,7 +151,12 @@ class DocumentNumberSeriesController extends Controller
         $data['separator'] = $data['separator'] ?? '-';
         $data['name'] = $data['name'] ?: (DocumentNumberSeries::documentTypes()[$data['document_type']] ?? $data['document_type']);
         $data['starting_number'] = max(1, (int) ($request->input('starting_number') ?: 1));
-        $data['prefix_zero'] = $request->has('prefix_zero') ? $request->boolean('prefix_zero') : true;
+        // Accept 1/0/true/false/"true"/"false" from Alpine or native selects.
+        $rawPrefixZero = $request->input('prefix_zero', true);
+        $data['prefix_zero'] = filter_var($rawPrefixZero, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($data['prefix_zero'] === null) {
+            $data['prefix_zero'] = true;
+        }
 
         $data['restart_rules'] = $this->cleanAndValidateRules($request->input('restart_rules', []), 'restart_rules');
         $data['prefix_rules'] = $this->cleanAndValidateRules($request->input('prefix_rules', []), 'prefix_rules');

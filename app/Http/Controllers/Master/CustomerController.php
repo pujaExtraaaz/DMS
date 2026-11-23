@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 use App\Support\Traits\ExportsListing;
@@ -604,12 +605,8 @@ class CustomerController extends Controller
             'salespersonId' => $request->string('salesperson_id'),
             'areas' => Area::where('is_active', true)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
-            'businessGroups' => BusinessGroup::where('is_active', true)->orderBy('name')->get(['id', 'name', 'code', 'logo_emoji']),
-            'salespersons' => User::where(function ($q) {
-                $q->whereHas('roles', fn ($rq) => $rq->whereIn('name', ['salesperson', 'sales_person', 'sales-executive', 'sales-manager', 'sales_manager']))
-                  ->orWhereHas('salesTargets')
-                  ->orWhereHas('salesInvoices');
-            })->orderBy('name')->get(['id', 'name']),
+            'businessGroups' => BusinessGroup::query()->orderBy('name')->get(['id', 'name', 'code', 'logo_emoji']),
+            'salespersons' => \App\Http\Controllers\Sales\InvoiceController::getSalespersons(),
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
         ]);
@@ -699,13 +696,16 @@ class CustomerController extends Controller
     public function searchPhoneDirectoryContacts(Request $request): JsonResponse
     {
         $q = trim((string) $request->input('q', ''));
+        $digits = preg_replace('/\D+/', '', $q) ?? '';
+        $initialsQuery = strtoupper(preg_replace('/[^A-Za-z]/', '', $q) ?? '');
+        $isInitialsSearch = $q !== '' && $digits === '' && strlen($initialsQuery) >= 1 && strlen($initialsQuery) <= 4;
 
         $contacts = PhoneDirectoryContact::query()
             ->with(['designationMaster', 'company'])
             ->whereNull('archived_at')
             ->where('status', 'active')
-            ->when($q !== '', function ($query) use ($q) {
-                $query->where(function ($sub) use ($q) {
+            ->when($q !== '', function ($query) use ($q, $digits, $initialsQuery, $isInitialsSearch) {
+                $query->where(function ($sub) use ($q, $digits, $initialsQuery, $isInitialsSearch) {
                     $sub->where('contact_name', 'like', "%{$q}%")
                         ->orWhere('mobile_number', 'like', "%{$q}%")
                         ->orWhere('alternate_mobile', 'like', "%{$q}%")
@@ -715,10 +715,36 @@ class CustomerController extends Controller
                         ->orWhereHas('designationMaster', fn ($dq) => $dq->where('name', 'like', "%{$q}%"))
                         ->orWhere('company_name', 'like', "%{$q}%")
                         ->orWhereHas('company', fn ($cq) => $cq->where('name', 'like', "%{$q}%"));
+
+                    // Number search: match digits inside phone fields (ignores spaces/dashes).
+                    if ($digits !== '') {
+                        $sub->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(mobile_number,''), ' ', ''), '-', ''), '+', ''), '/', '') LIKE ?",
+                            ['%'.$digits.'%']
+                        )->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(alternate_mobile,''), ' ', ''), '-', ''), '+', ''), '/', '') LIKE ?",
+                            ['%'.$digits.'%']
+                        )->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(whatsapp_number,''), ' ', ''), '-', ''), '+', ''), '/', '') LIKE ?",
+                            ['%'.$digits.'%']
+                        );
+                    }
+
+                    // Initials search: "RK" matches "Rajesh Kumar", "RS" matches "Rajesh Sharma".
+                    if ($isInitialsSearch) {
+                        $sub->orWhereRaw(
+                            "UPPER(CONCAT(
+                                LEFT(TRIM(contact_name), 1),
+                                IFNULL(LEFT(TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(CONCAT(contact_name, ' '), ' ', 2), ' ', -1)), 1), ''),
+                                IFNULL(LEFT(TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(CONCAT(contact_name, '  '), ' ', 3), ' ', -1)), 1), '')
+                            )) LIKE ?",
+                            [$initialsQuery.'%']
+                        );
+                    }
                 });
             })
             ->orderBy('contact_name', 'asc')
-            ->limit(30)
+            ->limit($q === '' ? 100 : 40)
             ->get()
             ->map(function (PhoneDirectoryContact $contact) {
                 return [
@@ -1732,8 +1758,8 @@ class CustomerController extends Controller
             'opened_on' => 'nullable|date',
             'reference_by' => 'nullable|string|max:255',
             'udyam_number' => 'nullable|string|max:50',
-            'website' => 'nullable|url|max:255',
-            'location_link' => 'nullable|url|max:500',
+            'website' => ['nullable', 'string', 'max:255', 'regex:/^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w\-._~:\/?#\[\]@!$&\'()*+,;=]*)?$/i'],
+            'location_link' => ['nullable', 'string', 'max:500', 'regex:/^(https?:\/\/)?([\w-]+\.)+[\w-]+(\/[\w\-._~:\/?#\[\]@!$&\'()*+,;=]*)?$/i'],
             'gem_authorizations' => 'nullable|array',
             'gem_authorizations.*.id' => 'nullable|integer',
             'gem_authorizations.*.brand_id' => 'nullable|integer|exists:brands,id',
@@ -1744,7 +1770,12 @@ class CustomerController extends Controller
             'gem_authorizations.*.remove_document_ids.*' => 'integer',
             'gem_authorizations.*.documents' => 'nullable|array',
             'gem_authorizations.*.documents.*' => 'file|mimes:jpg,jpeg,png,webp,pdf|max:5120',
-            'gstin' => ['nullable', 'string', 'max:15', 'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[0-9A-Z]{1}[0-9A-Z]{1}$/i'],
+            'gstin' => [
+                'nullable',
+                'string',
+                'max:20',
+                'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[0-9A-Z]{1}[0-9A-Z]{1}$/i',
+            ],
             'gst_registration_type' => 'nullable|string|max:50',
             'pan' => ['nullable', 'string', 'max:10', 'regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i'],
             'address' => 'nullable|string',
@@ -1814,11 +1845,18 @@ class CustomerController extends Controller
             'credit_cheques.*.notes' => 'nullable|string',
         ];
 
+        $request->merge([
+            'gstin' => filled($request->input('gstin')) ? strtoupper(trim((string) $request->input('gstin'))) : null,
+            'pan' => filled($request->input('pan')) ? strtoupper(trim((string) $request->input('pan'))) : null,
+            'website' => filled($request->input('website')) ? trim((string) $request->input('website')) : null,
+            'location_link' => filled($request->input('location_link')) ? trim((string) $request->input('location_link')) : null,
+        ]);
+
         $messages = [
             'gstin.regex' => 'Please enter a valid 15-character GSTIN (e.g. 27AACCN0053F1ZW).',
             'pan.regex' => 'Please enter a valid 10-character Indian PAN (e.g. ABCDE1234F).',
-            'website.url' => 'Please enter a valid website URL (e.g. https://example.com).',
-            'location_link.url' => 'Please enter a valid map or location URL.',
+            'website.regex' => 'Please enter a valid website URL (e.g. https://example.com).',
+            'location_link.regex' => 'Please enter a valid map or location URL.',
             'bank_accounts.*.ifsc_code.regex' => 'Please enter a valid 11-character IFSC code (e.g. HDFC0001234).',
         ];
 
@@ -1974,6 +2012,14 @@ class CustomerController extends Controller
             }
         }
 
+        if (! empty($data['gstin'])) {
+            $data['gstin'] = strtoupper(trim((string) $data['gstin']));
+        }
+        if (! empty($data['pan'])) {
+            $data['pan'] = strtoupper(trim((string) $data['pan']));
+        } elseif (! empty($data['gstin']) && strlen($data['gstin']) >= 12) {
+            $data['pan'] = substr($data['gstin'], 2, 10);
+        }
         unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['gem_authorizations'], $data['lead_id'], $data['return_to']);
 
         return $data;
@@ -2039,12 +2085,11 @@ class CustomerController extends Controller
         $handledContactIds = [];
 
         foreach ($contacts as $row) {
-            $contactId = ! empty($row['id']) ? (int) $row['id'] : null;
+            $id = ! empty($row['id']) ? (int) $row['id'] : null;
             $payload = collect($row)->except('id')->all();
-
-            if ($contactId && $existingContacts->has($contactId)) {
-                $existingContacts[$contactId]->update($payload);
-                $handledContactIds[] = $contactId;
+            if ($id && $existingContacts->has($id)) {
+                $existingContacts[$id]->update($payload);
+                $handledContactIds[] = $id;
             } else {
                 $created = $customer->contacts()->create($payload);
                 $handledContactIds[] = $created->id;
@@ -2300,6 +2345,14 @@ class CustomerController extends Controller
                 $this->deleteGemDocuments($authorization->documents);
                 $authorization->delete();
             });
+
+        // Keep legacy customer GEM summary columns in sync for reports/filters.
+        $primaryGem = $customer->gemAuthorizations()->orderByDesc('gem_authorized')->orderByDesc('id')->first();
+        $customer->updateQuietly([
+            'gem_registered' => (bool) $customer->gemAuthorizations()->where('gem_registered', true)->exists(),
+            'gem_authorization_code' => $primaryGem?->authorization_number,
+            'gem_valid_until' => $customer->gem_valid_until,
+        ]);
     }
 
     protected function syncGemDocuments(Request $request, \App\Domains\Master\Models\PartyGemAuthorization $authorization, int $index, bool $registered): void

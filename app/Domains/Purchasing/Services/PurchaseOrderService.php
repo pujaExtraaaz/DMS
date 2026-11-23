@@ -374,7 +374,7 @@ class PurchaseOrderService
                 'purchase_order_id' => $order->id,
                 'warehouse_id' => $warehouseId,
                 'supplier_id' => $order->supplier_id,
-                'inward_no' => $this->documentNumberService->next('GRN'),
+                'inward_no' => $this->documentNumberService->nextDocument('GRN'),
                 'inward_date' => $data['inward_date'],
                 'supplier_challan_no' => $data['supplier_challan_no'] ?? null,
                 'status' => 'posted',

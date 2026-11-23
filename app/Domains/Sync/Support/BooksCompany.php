@@ -474,6 +474,19 @@ final class BooksCompany
 
     public static function rememberMaps(OrganizationCompany $organization, Company $books, Branch $branch, FinancialYear $year, array $branches, array $years): void
     {
+        // Guard FK: never insert a link whose organization_company_id is missing from companies.
+        if (! DB::table('companies')->where('id', $organization->id)->exists()) {
+            throw new \RuntimeException(
+                "Cannot link Books company: DMS company #{$organization->id} does not exist in companies."
+            );
+        }
+
+        if (! Company::query()->where('id', $books->id)->exists()) {
+            throw new \RuntimeException(
+                "Cannot link Books company: acct company #{$books->id} does not exist."
+            );
+        }
+
         $payload = [
             'acct_company_id' => $books->id,
             'acct_branch_id' => $branch->id,
@@ -492,5 +505,48 @@ final class BooksCompany
             'organization_company_id' => $organization->id,
             'created_at' => now(),
         ]);
+    }
+
+    /**
+     * Remove orphan accounting_company_links rows (broken FK after partial SQL import)
+     * and provision missing Books links for active DMS companies.
+     *
+     * @return array{removed_orphans:int, provisioned:int, healthy:int}
+     */
+    public static function repairLinks(bool $provisionMissing = true): array
+    {
+        $removed = 0;
+        $links = DB::table('accounting_company_links')->get();
+
+        foreach ($links as $link) {
+            $orgOk = DB::table('companies')->where('id', $link->organization_company_id)->exists();
+            $acctOk = Company::query()->where('id', $link->acct_company_id)->exists();
+            if ($orgOk && $acctOk) {
+                continue;
+            }
+            DB::table('accounting_company_links')->where('id', $link->id)->delete();
+            $removed++;
+        }
+
+        $provisioned = 0;
+        $healthy = 0;
+
+        if ($provisionMissing) {
+            $companies = OrganizationCompany::query()->orderBy('id')->get();
+            foreach ($companies as $organization) {
+                $books = self::ensureForOrganization($organization);
+                if ($books) {
+                    $provisioned++;
+                }
+            }
+        }
+
+        $healthy = (int) DB::table('accounting_company_links')->count();
+
+        return [
+            'removed_orphans' => $removed,
+            'provisioned' => $provisioned,
+            'healthy' => $healthy,
+        ];
     }
 }

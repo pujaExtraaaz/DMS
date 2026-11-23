@@ -76,7 +76,7 @@ class FreightBillController extends Controller
             $amount = (float) $validated['amount'];
 
             $bill = FreightBill::create([
-                'freight_no' => $this->documentNumberService->next('FRT'),
+                'freight_no' => $this->documentNumberService->nextDocument('FRT'),
                 'bill_date' => $validated['bill_date'],
                 'transporter_name' => $validated['transporter_name'] ?? null,
                 'vehicle_no' => $validated['vehicle_no'] ?? null,

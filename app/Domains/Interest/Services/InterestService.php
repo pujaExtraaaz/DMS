@@ -152,7 +152,7 @@ class InterestService
             $locked = InterestLedger::query()->whereKey($ledger->id)->lockForUpdate()->firstOrFail();
 
             $document = InterestDocument::create([
-                'document_no' => $this->documentNumberService->next('INT', now(), 4),
+                'document_no' => $this->documentNumberService->nextDocument('INT', now(), 4),
                 'customer_id' => $locked->customer_id,
                 'interest_ledger_id' => $locked->id,
                 'document_date' => now()->toDateString(),

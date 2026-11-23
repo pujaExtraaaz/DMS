@@ -42,7 +42,7 @@ class CreditNoteService
             }
 
             $creditNote = CreditNote::create([
-                'credit_note_no' => $this->documentNumberService->next('CN', now(), 4),
+                'credit_note_no' => $this->documentNumberService->nextDocument('CN', now(), 4),
                 'customer_id' => $data['customer_id'],
                 'invoice_id' => $data['invoice_id'] ?? null,
                 'credit_note_date' => $data['credit_note_date'],

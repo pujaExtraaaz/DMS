@@ -41,34 +41,42 @@ class SalesTargetController extends Controller
     ) {}
 
     /**
-     * Target Dashboard
+     * Keep only the owner FK that matches owner_type, and auto-fill FY from period when missing.
      */
-    public function dashboard(Request $request): View
+    protected function normalizeTargetOwnerPayload(array $validated): array
     {
-        $query = SalesTarget::with([
-            'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement', 'customer'
-        ]);
+        $ownerType = $validated['owner_type'] ?? 'individual';
 
-        // Filters
+        $validated['salesperson_id'] = $ownerType === 'individual' ? ($validated['salesperson_id'] ?? null) : null;
+        $validated['sales_team_id'] = $ownerType === 'team' ? ($validated['sales_team_id'] ?? null) : null;
+        $validated['branch_id'] = $ownerType === 'branch' ? ($validated['branch_id'] ?? null) : null;
+        $validated['customer_id'] = $ownerType === 'party' ? ($validated['customer_id'] ?? null) : null;
+
+        if (empty($validated['financial_year_id']) && ! empty($validated['starts_on'])) {
+            $fy = FinancialYear::query()
+                ->whereDate('starts_on', '<=', $validated['starts_on'])
+                ->whereDate('ends_on', '>=', $validated['starts_on'])
+                ->orderByDesc('is_current')
+                ->first();
+            if ($fy) {
+                $validated['financial_year_id'] = $fy->id;
+            }
+        }
+
+        return $validated;
+    }
+
+    /**
+     * Shared list/report filters for sales_targets.
+     * Date filters use period overlap; FY matches id or overlapping null-FY periods.
+     */
+    protected function applySalesTargetFilters($query, Request $request, array $options = [])
+    {
         if ($request->filled('company_id')) {
             $query->where('company_id', $request->company_id);
         }
-        if ($request->filled('financial_year_id')) {
-            $fyId = (int) $request->financial_year_id;
-            $fyObj = FinancialYear::find($fyId);
-            $query->where(function ($tq) use ($fyId, $fyObj) {
-                $tq->where('financial_year_id', $fyId);
-                if ($fyObj && $fyObj->starts_on && $fyObj->ends_on) {
-                    $tq->orWhere(function ($sub) use ($fyObj) {
-                        $sub->whereNull('financial_year_id')
-                            ->whereDate('starts_on', '>=', $fyObj->starts_on->toDateString())
-                            ->whereDate('ends_on', '<=', $fyObj->ends_on->toDateString());
-                    });
-                }
-            });
-        }
-        if ($request->filled('period_type')) {
-            $query->where('period_type', $request->period_type);
+        if ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
         }
         if ($request->filled('owner_type')) {
             $query->where('owner_type', $request->owner_type);
@@ -88,9 +96,6 @@ class SalesTargetController extends Controller
         if ($request->filled('sales_team_id')) {
             $query->where('sales_team_id', $request->sales_team_id);
         }
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
-        }
         if ($request->filled('brand_id')) {
             $query->where('brand_id', $request->brand_id);
         }
@@ -103,20 +108,37 @@ class SalesTargetController extends Controller
         if ($request->filled('target_type')) {
             $query->where('target_type', $request->target_type);
         }
+        if ($request->filled('period_type')) {
+            $query->where('period_type', $request->period_type);
+        }
+        if ($request->filled('progress_status')) {
+            $query->progressStatus($request->progress_status);
+        }
         if ($request->filled('status')) {
             $query->where('status', $request->status);
-        } else {
-            // Default active
+        } elseif (! empty($options['default_active'])) {
             $query->whereIn('status', ['active', 'completed']);
         }
+        if ($request->filled('financial_year_id')) {
+            $query->forFinancialYear($request->financial_year_id);
+        }
+        if ($request->filled('date_from') || $request->filled('date_to')) {
+            $query->periodOverlaps($request->input('date_from'), $request->input('date_to'));
+        }
 
-        // Period dates filter
-        if ($request->filled('date_from')) {
-            $query->whereDate('ends_on', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $query->whereDate('starts_on', '<=', $request->date_to);
-        }
+        return $query;
+    }
+
+    /**
+     * Target Dashboard
+     */
+    public function dashboard(Request $request): View
+    {
+        $query = SalesTarget::with([
+            'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement', 'customer'
+        ]);
+
+        $this->applySalesTargetFilters($query, $request, ['default_active' => true]);
 
         $allTargets = $query->get();
 
@@ -260,72 +282,26 @@ class SalesTargetController extends Controller
             'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement', 'items', 'customer'
         ]);
 
-        // Search
-        $this->applySearch($query, $request->input('search'), [
-            'name', 'target_type', 'owner_type', 'status', 'notes'
-        ]);
-
+        // Search (grouped so OR customer match cannot bypass other filters)
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->orWhereHas('customer', function ($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('code', 'like', "%{$search}%");
+                    ->orWhere('target_type', 'like', "%{$search}%")
+                    ->orWhere('owner_type', 'like', "%{$search}%")
+                    ->orWhere('status', 'like', "%{$search}%")
+                    ->orWhere('notes', 'like', "%{$search}%")
+                    ->orWhereHas('customer', function ($cq) use ($search) {
+                        $cq->where('name', 'like', "%{$search}%")
+                            ->orWhere('code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('salesperson', function ($sq) use ($search) {
+                        $sq->where('name', 'like', "%{$search}%");
+                    });
             });
         }
 
-        if ($request->filled('company_id')) {
-            $query->where('company_id', $request->company_id);
-        }
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
-        }
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-        if ($request->filled('progress_status')) {
-            $query->progressStatus($request->progress_status);
-        }
-        if ($request->filled('target_type')) {
-            $query->where('target_type', $request->target_type);
-        }
-        if ($request->filled('owner_type')) {
-            $query->where('owner_type', $request->owner_type);
-        }
-        if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
-        }
-        if ($request->filled('salesperson_id')) {
-            $spId = (int) $request->salesperson_id;
-            $query->where(function ($q) use ($spId) {
-                $q->where('salesperson_id', $spId)
-                  ->orWhereHas('customer', fn ($cq) => $cq->where('salesperson_id', $spId))
-                  ->orWhereHas('salesTeam.members', fn ($mq) => $mq->where('users.id', $spId))
-                  ->orWhereHas('salesTeam', fn ($tq) => $tq->where('leader_id', $spId));
-            });
-        }
-        if ($request->filled('brand_id')) {
-            $query->where('brand_id', $request->brand_id);
-        }
-        if ($request->filled('financial_year_id')) {
-            $fyId = (int) $request->financial_year_id;
-            $fyObj = FinancialYear::find($fyId);
-            $query->where(function ($tq) use ($fyId, $fyObj) {
-                $tq->where('financial_year_id', $fyId);
-                if ($fyObj && $fyObj->starts_on && $fyObj->ends_on) {
-                    $tq->orWhere(function ($sub) use ($fyObj) {
-                        $sub->whereNull('financial_year_id')
-                            ->whereDate('starts_on', '>=', $fyObj->starts_on->toDateString())
-                            ->whereDate('ends_on', '<=', $fyObj->ends_on->toDateString());
-                    });
-                }
-            });
-        }
-        if ($request->filled('date_from')) {
-            $query->whereDate('ends_on', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $query->whereDate('starts_on', '<=', $request->date_to);
-        }
+        $this->applySalesTargetFilters($query, $request);
 
         [$sort, $direction] = $this->applySorting($query, $request, [
             'name' => 'name',
@@ -453,6 +429,7 @@ class SalesTargetController extends Controller
         }
 
         $target = DB::transaction(function () use ($validated, $request) {
+            $validated = $this->normalizeTargetOwnerPayload($validated);
             $validated['created_by'] = auth()->id();
             if ($validated['status'] === 'active') {
                 $validated['approved_by'] = auth()->id();
@@ -629,6 +606,7 @@ class SalesTargetController extends Controller
 
         DB::transaction(function () use ($salesTarget, $validated, $request) {
             $oldValues = $salesTarget->toArray();
+            $validated = $this->normalizeTargetOwnerPayload($validated);
 
             // Increment revision number and record reason
             $validated['revision_number'] = $salesTarget->revision_number + 1;
@@ -831,58 +809,37 @@ class SalesTargetController extends Controller
                 ->whereIn('status', ['active', 'completed']);
 
             if ($request->filled('financial_year_id')) {
-                $fyId = (int) $request->financial_year_id;
-                $fyObj = FinancialYear::find($fyId);
-                $targetsQuery->where(function ($tq) use ($fyId, $fyObj) {
-                    $tq->where('financial_year_id', $fyId);
-                    if ($fyObj && $fyObj->starts_on && $fyObj->ends_on) {
-                        $tq->orWhere(function ($sub) use ($fyObj) {
-                            $sub->whereNull('financial_year_id')
-                                ->whereDate('starts_on', '>=', $fyObj->starts_on->toDateString())
-                                ->whereDate('ends_on', '<=', $fyObj->ends_on->toDateString());
-                        });
-                    }
-                });
+                $targetsQuery->forFinancialYear($request->financial_year_id, $fy);
             }
             if ($request->filled('period_type')) {
                 $targetsQuery->where('period_type', $request->period_type);
             }
-            if ($request->filled('date_from')) {
-                $targetsQuery->whereDate('ends_on', '>=', $request->date_from);
-            }
-            if ($request->filled('date_to')) {
-                $targetsQuery->whereDate('starts_on', '<=', $request->date_to);
+            if ($request->filled('date_from') || $request->filled('date_to')) {
+                $targetsQuery->periodOverlaps($request->input('date_from'), $request->input('date_to'));
             }
 
             $targets = $targetsQuery->get();
 
             // Ensure achievement calculations are computed
             foreach ($targets as $t) {
-                if (!$t->achievement) {
+                if (! $t->achievement) {
                     $this->calculationService->calculateTarget($t);
                     $t->refresh();
                 }
             }
 
-            // Date bounds for posted transactions
-            $dateFrom = $request->input('date_from');
-            $dateTo = $request->input('date_to');
+            // Date bounds for posted transactions (prefer filter/FY, else target period span)
+            $dateFrom = $request->input('date_from') ?? ($fy?->starts_on?->toDateString());
+            $dateTo = $request->input('date_to') ?? ($fy?->ends_on?->toDateString());
 
-            if (!$dateFrom && $fy?->starts_on) {
-                $dateFrom = $fy->starts_on->toDateString();
-            }
-            if (!$dateTo && $fy?->ends_on) {
-                $dateTo = $fy->ends_on->toDateString();
-            }
-
-            if (!$dateFrom && $targets->isNotEmpty()) {
+            if (! $dateFrom && $targets->isNotEmpty()) {
                 $dateFrom = $targets->min('starts_on')?->toDateString();
             }
-            if (!$dateTo && $targets->isNotEmpty()) {
+            if (! $dateTo && $targets->isNotEmpty()) {
                 $dateTo = $targets->max('ends_on')?->toDateString();
             }
 
-            if (!$dateFrom && !$dateTo) {
+            if (! $dateFrom && ! $dateTo) {
                 $currentFy = FinancialYear::where('is_current', true)->first();
                 if ($currentFy && $currentFy->starts_on && $currentFy->ends_on) {
                     $dateFrom = $currentFy->starts_on->toDateString();
@@ -890,7 +847,7 @@ class SalesTargetController extends Controller
                 }
             }
 
-            // Invoices query for this salesperson
+            // Invoices attributed to this salesperson (users.id)
             $invoicesQuery = Invoice::query()
                 ->where('salesperson_id', $sp->id)
                 ->whereNotIn('status', ['cancelled', 'draft', 'void']);
@@ -905,7 +862,6 @@ class SalesTargetController extends Controller
             $invoicesCount = (clone $invoicesQuery)->count();
             $postedGrossSales = (float) (clone $invoicesQuery)->sum('grand_total');
 
-            // Credit Notes query for this salesperson's invoices
             $creditNotesQuery = CreditNote::query()
                 ->whereIn('status', ['posted', 'approved'])
                 ->whereHas('invoice', fn ($iq) => $iq->where('salesperson_id', $sp->id));
@@ -920,12 +876,14 @@ class SalesTargetController extends Controller
             $salesReturns = (float) $creditNotesQuery->sum('grand_total');
             $netEligibleSales = max(0, round($postedGrossSales - $salesReturns, 2));
 
-            // Targets calculation
             $totalTgt = (float) $targets->sum('target_amount');
+            // Prefer cached target achievements when targets exist; otherwise fall back to live net sales.
             $totalAch = (float) $targets->sum(fn ($t) => $t->achievement?->achieved_amount ?? 0);
-
-            // If salesperson has active targets, use target achieved amount; otherwise display net eligible sales
             $displayAchieved = $targets->isNotEmpty() ? $totalAch : $netEligibleSales;
+            // Keep UI consistent with net eligible when achievement cache is stale/zero but invoices exist.
+            if ($targets->isNotEmpty() && $totalAch <= 0 && $netEligibleSales > 0) {
+                $displayAchieved = $netEligibleSales;
+            }
             $pending = max(0, round($totalTgt - $displayAchieved, 2));
             $percent = $totalTgt > 0 ? round(($displayAchieved / $totalTgt) * 100, 2) : 0.0;
 
@@ -937,6 +895,7 @@ class SalesTargetController extends Controller
                 'pending_amount' => $pending,
                 'achievement_percent' => $percent,
                 'invoices_count' => $invoicesCount,
+                'gross_posted_sales' => $postedGrossSales,
                 'sales_returns' => $salesReturns,
                 'net_eligible_sales' => $netEligibleSales,
                 'achieved_count' => $targets->filter(fn ($t) => $t->achievement?->is_achieved)->count(),
@@ -1113,69 +1072,15 @@ class SalesTargetController extends Controller
             'salesperson', 'salesTeam', 'branch', 'brand', 'product', 'category', 'achievement', 'customer'
         ]);
 
-        if ($request->filled('company_id')) {
-            $query->where('company_id', $request->company_id);
-        }
-        if ($request->filled('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
-        }
-        if ($request->filled('owner_type')) {
-            $query->where('owner_type', $request->owner_type);
-        }
-        if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
-        }
-        if ($request->filled('salesperson_id')) {
-            $spId = (int) $request->salesperson_id;
-            $query->where(function ($q) use ($spId) {
-                $q->where('salesperson_id', $spId)
-                  ->orWhereHas('customer', fn ($cq) => $cq->where('salesperson_id', $spId))
-                  ->orWhereHas('salesTeam.members', fn ($mq) => $mq->where('users.id', $spId))
-                  ->orWhereHas('salesTeam', fn ($tq) => $tq->where('leader_id', $spId));
-            });
-        }
-        if ($request->filled('target_type')) {
-            $query->where('target_type', $request->target_type);
-        }
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-        if ($request->filled('progress_status')) {
-            $query->progressStatus($request->progress_status);
-        }
-        if ($request->filled('brand_id')) {
-            $query->where('brand_id', $request->brand_id);
-        }
-        if ($request->filled('financial_year_id')) {
-            $fyId = (int) $request->financial_year_id;
-            $fyObj = FinancialYear::find($fyId);
-            $query->where(function ($tq) use ($fyId, $fyObj) {
-                $tq->where('financial_year_id', $fyId);
-                if ($fyObj && $fyObj->starts_on && $fyObj->ends_on) {
-                    $tq->orWhere(function ($sub) use ($fyObj) {
-                        $sub->whereNull('financial_year_id')
-                            ->whereDate('starts_on', '>=', $fyObj->starts_on->toDateString())
-                            ->whereDate('ends_on', '<=', $fyObj->ends_on->toDateString());
-                    });
-                }
-            });
-        }
-        if ($request->filled('period_type')) {
-            $query->where('period_type', $request->period_type);
-        }
-        if ($request->filled('date_from')) {
-            $query->whereDate('ends_on', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $query->whereDate('starts_on', '<=', $request->date_to);
-        }
+        $this->applySalesTargetFilters($query, $request);
+        $query->orderByDesc('starts_on')->orderByDesc('id');
 
-        // Handle Excel / CSV export
+        // Handle Excel / CSV export — same filtered set as the on-screen report
         $exportFormat = strtolower((string) $request->input('export'));
         if ($exportFormat === 'xlsx' || $exportFormat === 'csv') {
-            $exportData = $query->get();
+            $exportData = (clone $query)->get();
             foreach ($exportData as $t) {
-                if (!$t->achievement) {
+                if (! $t->achievement) {
                     $this->calculationService->calculateTarget($t);
                     $t->refresh();
                 }

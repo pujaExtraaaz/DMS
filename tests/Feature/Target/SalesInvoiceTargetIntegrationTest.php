@@ -697,6 +697,86 @@ class SalesInvoiceTargetIntegrationTest extends TestCase
     }
 
     /**
+     * Sakshi scenario: assigned target + posted invoices − sales return.
+     * Assigned 3,00,000; invoices 50k+40k; return 10k → net 80k, pending 2,20,000, 26.67%.
+     */
+    public function test_sakshi_scenario_target_achievement_matches_invoice_and_return_math(): void
+    {
+        $sakshi = User::factory()->create([
+            'company_id' => $this->company->id,
+            'branch_id' => $this->branch->id,
+            'name' => 'Sakshi',
+            'email' => 'sakshi@dms.test',
+        ]);
+        $sakshi->assignRole('salesperson');
+
+        $target = SalesTarget::create([
+            'name' => 'Sakshi Monthly Target',
+            'target_type' => 'value',
+            'owner_type' => 'individual',
+            'salesperson_id' => $sakshi->id,
+            'financial_year_id' => $this->financialYear->id,
+            'period_type' => 'monthly',
+            'starts_on' => '2026-05-01',
+            'ends_on' => '2026-05-31',
+            'target_amount' => 300000,
+            'status' => 'active',
+            'created_by' => $this->adminUser->id,
+        ]);
+
+        $this->createInvoice([
+            'salesperson_id' => $sakshi->id,
+            'invoice_date' => '2026-05-05',
+            'grand_total' => 50000,
+        ]);
+        $invoice2 = $this->createInvoice([
+            'salesperson_id' => $sakshi->id,
+            'invoice_date' => '2026-05-12',
+            'grand_total' => 40000,
+        ]);
+
+        $creditNote = CreditNote::create([
+            'credit_note_no' => 'CN-SAKSHI-001',
+            'customer_id' => $this->customer->id,
+            'invoice_id' => $invoice2->id,
+            'credit_note_date' => '2026-05-20',
+            'reason' => 'return',
+            'status' => 'posted',
+            'subtotal' => 10000,
+            'tax_amount' => 0,
+            'grand_total' => 10000,
+            'affects_stock' => false,
+            'created_by_name' => 'Admin',
+        ]);
+        app(SalesTargetCalculationService::class)->recalculateForCreditNote($creditNote);
+
+        $ach = SalesTargetAchievement::where('sales_target_id', $target->id)->first();
+        $this->assertNotNull($ach);
+        $this->assertEquals(80000.0, (float) $ach->achieved_amount);
+        $this->assertEquals(220000.0, (float) $ach->pending_amount);
+        $this->assertEquals(26.67, (float) $ach->achievement_percent);
+
+        $perf = $this->actingAs($this->adminUser)->get(route('sales-targets.salesman-performance', [
+            'salesperson_id' => $sakshi->id,
+        ]));
+        $perf->assertOk();
+        $perf->assertSee('Sakshi');
+        $perf->assertSee('300,000.00');
+        $perf->assertSee('80,000.00');
+        $perf->assertSee('220,000.00');
+        $perf->assertSee('26.67');
+
+        $report = $this->actingAs($this->adminUser)->get(route('sales-targets.reports', [
+            'salesperson_id' => $sakshi->id,
+            'date_from' => '2026-05-01',
+            'date_to' => '2026-05-15', // overlaps May period (must not require ends_on <= date_to)
+        ]));
+        $report->assertOk();
+        $report->assertSee('Sakshi Monthly Target');
+        $report->assertDontSee('No report records found');
+    }
+
+    /**
      * 12. Salesman performance view displays all required metrics.
      */
     public function test_salesman_performance_view_displays_all_required_metrics(): void

@@ -141,13 +141,16 @@ class Customer extends Model
 
     protected $appends = ['pan', 'party_type_label', 'party_type_key'];
 
-    public function getPanAttribute(): ?string
+    public function getPanAttribute(?string $value = null): ?string
     {
-        if (filled($this->attributes['pan'] ?? null)) {
-            return strtoupper(trim((string) $this->attributes['pan']));
+        $stored = $value ?? ($this->attributes['pan'] ?? null);
+        if (filled($stored)) {
+            return strtoupper(trim((string) $stored));
         }
 
-        return ($this->gstin && strlen($this->gstin) >= 12) ? substr($this->gstin, 2, 10) : null;
+        $gstin = $this->attributes['gstin'] ?? null;
+
+        return ($gstin && strlen((string) $gstin) >= 12) ? substr((string) $gstin, 2, 10) : null;
     }
 
     public function getPartyTypeKeyAttribute(): string
