@@ -4,6 +4,7 @@
 <div id="listing-container" data-dynamic-container x-data="freightBillIndex()">
     <x-ui.page-header title="Freight Bills">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('purchasing.freight-bills.create')">+ New Freight Bill</x-ui.button>
         </x-slot>
     </x-ui.page-header>

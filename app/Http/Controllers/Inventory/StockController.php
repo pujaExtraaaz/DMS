@@ -9,11 +9,15 @@ use App\Domains\Inventory\Services\InTransitStockService;
 use App\Domains\Master\Models\Product;
 use App\Domains\Organization\Models\Warehouse;
 use App\Http\Controllers\Controller;
+use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StockController extends Controller
 {
@@ -23,7 +27,7 @@ class StockController extends Controller
         protected InTransitStockService $inTransitStockService
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $query = $this->inTransitStockService->buildStockQuery($request);
 
@@ -68,6 +72,10 @@ class StockController extends Controller
             defaultSort: 'product',
             defaultDirection: 'asc'
         );
+
+        if ($export = $this->exportStock($request, $query)) {
+            return $export;
+        }
 
         $stockLevels = $query->paginate(20)->withQueryString();
 
@@ -134,5 +142,58 @@ class StockController extends Controller
             'invoices' => $details,
             'total_in_transit' => (float) $details->sum('in_transit_qty'),
         ]);
+    }
+
+    protected function exportStock(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)->get();
+
+        $headers = [
+            'SKU', 'Product Name', 'Brand', 'Category', 'Warehouse',
+            'Physical Stock', 'In-Transit Stock', 'Total Expected Stock',
+            'Expected Delivery Date', 'Base UOM', 'Purchase Price (₹)', 'Selling Price (₹)', 'Inventory Valuation (₹)'
+        ];
+
+        $rows = $records->map(function ($row) {
+            $product = $row->product;
+            $warehouse = $row->warehouse;
+            $qty = (float) ($row->quantity ?? 0);
+            $inTransit = (float) ($row->in_transit_quantity ?? 0);
+            $totalExpected = (float) ($row->total_expected_quantity ?? ($qty + $inTransit));
+            $purchasePrice = (float) ($product?->purchase_price ?? 0);
+            $sellingPrice = (float) ($product?->selling_price ?? 0);
+            $valuation = round($qty * $purchasePrice, 2);
+
+            return [
+                'SKU' => $product?->sku ?? $product?->code ?? '',
+                'Product Name' => $product?->name ?? '',
+                'Brand' => $product?->brand?->name ?? '',
+                'Category' => $product?->category?->name ?? '',
+                'Warehouse' => $warehouse?->name ?? '',
+                'Physical Stock' => $qty,
+                'In-Transit Stock' => $inTransit,
+                'Total Expected Stock' => $totalExpected,
+                'Expected Delivery Date' => $row->expected_delivery_date ? (string) $row->expected_delivery_date : '',
+                'Base UOM' => $product?->baseUom?->name ?? $product?->baseUom?->code ?? '',
+                'Purchase Price (₹)' => number_format($purchasePrice, 2, '.', ''),
+                'Selling Price (₹)' => number_format($sellingPrice, 2, '.', ''),
+                'Inventory Valuation (₹)' => number_format($valuation, 2, '.', ''),
+            ];
+        })->all();
+
+        if ($format === 'xlsx') {
+            return DocumentExporter::exportTabular('stock-inventory-' . now()->format('Y-m-d'), 'Current Stock Inventory', $headers, array_map(fn ($r) => array_values($r), $rows), 'xlsx');
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($rows, $headers, 'stock-inventory-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($rows, array_combine($headers, $headers), 'Stock Inventory Report', 'stock-inventory-' . now()->format('Y-m-d') . '.pdf');
     }
 }

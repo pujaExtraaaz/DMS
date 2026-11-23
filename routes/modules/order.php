@@ -75,6 +75,12 @@ Route::prefix('orders')
             )
             ->name('export');
 
+        Route::get('/{order}/export/{format}', [OrderController::class, 'exportSingle'])
+            ->middleware(
+                'role_or_permission:super-admin|orders.view|orders.manage'
+            )
+            ->name('export.single');
+
         Route::get('/pdf', [OrderController::class, 'pdf'])
             ->middleware(
                 'role_or_permission:super-admin|orders.view|orders.manage'

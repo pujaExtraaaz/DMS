@@ -5,6 +5,7 @@
 <div id="listing-container" data-dynamic-container x-data="stockTransferIndex()" class="space-y-2">
     <x-ui.page-header title="Stock Transfers">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('inventory.transfers.create', ['tab' => $tab ?? 'location'])">
                 + New Transfer
             </x-ui.button>

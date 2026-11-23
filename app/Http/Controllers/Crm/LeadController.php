@@ -21,12 +21,16 @@ use App\Models\User;
 use App\Support\AuditLogService;
 use App\Support\CodeGenerator;
 use App\Support\DocumentNumberService;
+use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
 use App\Support\IndianStates;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LeadController extends Controller
 {
@@ -377,7 +381,7 @@ class LeadController extends Controller
         return $data;
     }
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $query = Lead::query()
             ->with(['source', 'assignee', 'campaign', 'subCategory', 'convertedCustomer', 'latestFollowup'])
@@ -461,6 +465,10 @@ class LeadController extends Controller
             'name',
             'asc'
         );
+
+        if ($export = $this->exportLeads($request, $query)) {
+            return $export;
+        }
 
         $items = $query->paginate(15)->withQueryString();
         $segments = LeadSegment::forUserBranch()->orderBy('name')->get();
@@ -872,5 +880,57 @@ class LeadController extends Controller
             'lost' => 'Lost',
             default => ucfirst(str_replace('_', ' ', (string) $status)),
         };
+    }
+
+    protected function exportLeads(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)->get();
+
+        $headers = [
+            'Lead Name', 'Company / Organization', 'Email', 'Secondary Email', 'Mobile',
+            'Secondary Mobile', 'City', 'State', 'Category', 'Sub Category', 'Industry',
+            'Source', 'Assigned To', 'Campaign', 'Status', 'Priority', 'Next Followup Date',
+            'Converted Customer', 'Requirements / Notes', 'Created At'
+        ];
+
+        $rows = $records->map(function (Lead $lead) {
+            return [
+                'Lead Name' => $lead->name,
+                'Company / Organization' => $lead->company_name ?: $lead->organization ?? '',
+                'Email' => $lead->email ?? '',
+                'Secondary Email' => $lead->secondary_email ?? '',
+                'Mobile' => $lead->mobile ?: $lead->phone ?? '',
+                'Secondary Mobile' => $lead->secondary_mobile ?: $lead->landline ?? '',
+                'City' => $lead->city ?? '',
+                'State' => $lead->state ?? '',
+                'Category' => ucfirst((string) $lead->category),
+                'Sub Category' => $lead->subCategory?->name ?? $lead->sub_category ?? '',
+                'Industry' => $lead->industry ?? '',
+                'Source' => $lead->source?->name ?? '',
+                'Assigned To' => $lead->assignee?->name ?? '',
+                'Campaign' => $lead->campaign?->name ?? '',
+                'Status' => ucfirst(str_replace('_', ' ', (string) $lead->status)),
+                'Priority' => ucfirst((string) $lead->priority),
+                'Next Followup Date' => optional($lead->next_followup_at)->format('Y-m-d H:i'),
+                'Converted Customer' => $lead->convertedCustomer?->name ?? '',
+                'Requirements / Notes' => $lead->requirements ?: $lead->notes ?? '',
+                'Created At' => optional($lead->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->all();
+
+        if ($format === 'xlsx') {
+            return DocumentExporter::exportTabular('crm-leads-' . now()->format('Y-m-d'), 'CRM Leads Register', $headers, array_map(fn ($r) => array_values($r), $rows), 'xlsx');
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($rows, $headers, 'crm-leads-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($rows, array_combine($headers, $headers), 'CRM Leads Report', 'crm-leads-' . now()->format('Y-m-d') . '.pdf');
     }
 }

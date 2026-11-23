@@ -5,6 +5,7 @@
 <div id="listing-container" data-dynamic-container class="space-y-2" x-data="currentStockPage()">
 <x-ui.page-header title="Current Stock">
     <x-slot name="actions">
+        <x-ui.export-menu />
         <x-ui.button variant="secondary" :href="route('inventory.stock-register.index')">Stock Register</x-ui.button>
         <x-ui.button variant="secondary" :href="route('reports.stock-ledger')">View Stock Ledger</x-ui.button>
     </x-slot>

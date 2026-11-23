@@ -191,6 +191,13 @@ class CustomerTypeController extends Controller
             ], 422);
         }
 
+        if ($customerType->customers()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This classification is assigned to one or more parties and cannot be deleted.',
+            ], 422);
+        }
+
         $customerType->delete();
 
         return response()->json([
@@ -226,6 +233,14 @@ class CustomerTypeController extends Controller
 
     public function destroy(CustomerType $customer_type): RedirectResponse
     {
+        if ($customer_type->priceMasters()->exists()) {
+            return back()->with('error', 'This classification is used on a price list and cannot be deleted.');
+        }
+
+        if ($customer_type->customers()->exists()) {
+            return back()->with('error', 'This classification is assigned to one or more parties and cannot be deleted.');
+        }
+
         $customer_type->delete();
 
         return $this->flashSuccess('Customer Type deleted successfully.', 'masters.customer-types.index');

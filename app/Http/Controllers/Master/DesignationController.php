@@ -6,7 +6,9 @@ use App\Domains\Master\Models\Designation;
 use App\Domains\Master\Models\PartyContact;
 use App\Domains\PhoneDirectory\Models\PhoneDirectoryContact;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,9 +18,9 @@ use Illuminate\View\View;
 
 class DesignationController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = Designation::query()
             ->withCount(['partyContacts', 'employees'])
@@ -31,6 +33,18 @@ class DesignationController extends Controller
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'code', 'description']);
+
+        if ($export = $this->exportIfRequested($request, $query, 'Designations', 'Designations', ['Designation Name', 'Code', 'Description', 'Assigned Party Contacts', 'Assigned Employees', 'Status', 'Created Date'], fn ($item) => [
+            $item->name,
+            $item->code ?: '—',
+            $item->description ?: '—',
+            (string) ($item->party_contacts_count ?? 0),
+            (string) ($item->employees_count ?? 0),
+            $item->is_active ? 'Active' : 'Inactive',
+            $item->created_at?->format('d/m/Y') ?? '—',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,

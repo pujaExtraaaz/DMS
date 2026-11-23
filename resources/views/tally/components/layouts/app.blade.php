@@ -225,7 +225,8 @@
         </div>
     </div>
     @php
-        $working = app(\Tally\Context\WorkingCalendar::class)->present($workspace->company(), auth()->user(), $workspace->financialYear());
+        $workspaceCtx = $workspace ?? app(\Tally\Context\WorkspaceContext::class);
+        $working = app(\Tally\Context\WorkingCalendar::class)->present($workspaceCtx->company(), auth()->user(), $workspaceCtx->financialYear());
     @endphp
     <div id="date-dialog" class="dialog" hidden>
         <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="date-dialog-title">

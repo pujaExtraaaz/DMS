@@ -8,6 +8,7 @@
     @foreach($suppliers as $s)
         <option value="{{ $s->id }}"
                 data-credit-days="{{ $s->credit_days ?? 0 }}"
+                title="{{ $s->name }}"
                 @selected($selectedSupplier === (string) $s->id)>
             {{ $s->name }}
         </option>

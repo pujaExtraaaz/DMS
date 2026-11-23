@@ -4,6 +4,7 @@
 <div id="listing-container" class="space-y-6">
     <x-ui.page-header title="Receipt Notes">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('purchasing.receipt-notes.create')">
                 <svg class="w-4 h-4 mr-1.5 inline -mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>

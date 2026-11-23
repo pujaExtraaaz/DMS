@@ -3,6 +3,10 @@
 @section('title', 'E-Way Bill - '.$invoice->invoice_no)
 
 @section('content')
+@php
+    $company = ($company ?? null)
+        ?: ($invoice->selling_company ?? $invoice->company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first());
+@endphp
 <x-ui.page-header title="E-Way Bill" :description="$invoice->invoice_no">
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('invoices.show', $invoice)">Back to Invoice</x-ui.button>

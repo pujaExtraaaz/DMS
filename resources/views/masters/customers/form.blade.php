@@ -96,6 +96,7 @@
                 'designation' => $row['designation'] ?? $resolved['designation'],
                 'other_designation' => $row['other_designation'] ?? $resolved['other_designation'],
                 'company_name' => $row['company_name'] ?? '',
+                'company_website' => $row['company_website'] ?? '',
                 'phone' => $row['phone'] ?? '',
                 'alternate_phone' => $row['alternate_phone'] ?? '',
                 'whatsapp' => $row['whatsapp_number'] ?? ($row['whatsapp'] ?? ''),
@@ -122,6 +123,7 @@
                 'designation' => $contact->phone_directory_contact_id ? ($contact->effective_designation ?: $resolved['designation']) : $resolved['designation'],
                 'other_designation' => $contact->phone_directory_contact_id ? '' : $resolved['other_designation'],
                 'company_name' => $contact->effective_company_name,
+                'company_website' => $contact->effective_company_website,
                 'phone' => $contact->effective_phone,
                 'alternate_phone' => $contact->effective_alternate_phone,
                 'whatsapp' => $contact->effective_whatsapp_number,
@@ -150,6 +152,8 @@
                 'gem_registered' => (string) ($row['gem_registered'] ?? '0'),
                 'gem_authorized' => (string) ($row['gem_authorized'] ?? '0'),
                 'authorization_number' => $row['authorization_number'] ?? '',
+                'category' => $row['category'] ?? '',
+                'date_of_issue' => $row['date_of_issue'] ?? '',
                 'documents' => $saved ? $saved->documents->map(fn ($doc) => [
                     'id' => $doc->id,
                     'name' => $doc->original_name,
@@ -167,6 +171,8 @@
             'gem_registered' => $row->gem_registered ? '1' : '0',
             'gem_authorized' => $row->gem_authorized ? '1' : '0',
             'authorization_number' => $row->authorization_number ?? '',
+            'category' => $row->category ?? '',
+            'date_of_issue' => $row->date_of_issue ? $row->date_of_issue->format('Y-m-d') : '',
             'documents' => $row->documents->map(fn ($doc) => [
                 'id' => $doc->id,
                 'name' => $doc->original_name,
@@ -300,19 +306,25 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GSTIN</label>
-                    <div class="flex items-stretch gap-2">
+                    <div class="flex items-center gap-2">
                         <input type="text" name="gstin" x-model="form.gstin" maxlength="15"
                                placeholder="E.G. 27AAAAA0000A1Z5" @input.debounce.400ms="autoFetchGst()"
-                               class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        <button type="button"
-                                @click="fetchGstDetails()"
-                                :disabled="searchingGst"
+                               class="flex-1 min-w-0 uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                        <button type="button" @click="fetchGstDetails()" :disabled="searchingGst"
                                 :aria-busy="searchingGst ? 'true' : 'false'"
-                                title="Fetch party details from GSTIN"
-                                style="min-width: 7.25rem;"
-                                class="shrink-0 rounded-lg border border-indigo-700 bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 disabled:cursor-wait disabled:opacity-70">
-                            <span x-bind:hidden="searchingGst">Fetch Data</span>
-                            <span x-bind:hidden="!searchingGst" hidden>Searching…</span>
+                                class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition disabled:opacity-50 shrink-0 whitespace-nowrap min-w-[105px] cursor-pointer"
+                                title="Fetch party details from official GSTIN records">
+                            <svg x-show="!searchingGst" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <span x-show="!searchingGst">Fetch GST</span>
+                            <span x-show="searchingGst" class="flex items-center gap-1.5" x-cloak>
+                                <svg class="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span>Fetching...</span>
+                            </span>
                         </button>
                     </div>
 
@@ -700,6 +712,17 @@
                                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                                         <p x-show="row.gem_authorized !== '1'" class="mt-1 text-[11px] text-slate-500">Not required when this party is not authorized on GEM.</p>
                                     </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Category</label>
+                                        <input type="text" :name="`gem_authorizations[${idx}][category]`" x-model="row.category" maxlength="255"
+                                               placeholder="Enter category"
+                                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Date of Issue</label>
+                                        <input type="date" :name="`gem_authorizations[${idx}][date_of_issue]`" x-model="row.date_of_issue"
+                                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    </div>
                                     <div class="md:col-span-2" x-show="row.gem_registered === '1'" x-cloak>
                                         <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GEM Star Rating Photo/Document</label>
                                         <div class="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/40 p-3 space-y-2">
@@ -765,7 +788,7 @@
                     <button type="button" @click="addAddress()"
                             class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                        Add Address
+                        + Add Address
                     </button>
                 </div>
             </div>
@@ -1319,13 +1342,26 @@
         <div class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2.5">
                         <span>Contact Persons</span>
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700" x-text="contacts.length"></span>
+                        
+                        {{-- Toggle / Switch to enable or disable contact selection --}}
+                        <button type="button"
+                                @click="hasContactsSection = !hasContactsSection"
+                                :class="hasContactsSection ? 'bg-indigo-600' : 'bg-slate-300'"
+                                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ml-1"
+                                role="switch"
+                                :aria-checked="hasContactsSection"
+                                :title="hasContactsSection ? 'Click to minimize/disable contacts' : 'Click to enable contacts'">
+                            <span class="sr-only">Enable Contact Persons section</span>
+                            <span :class="hasContactsSection ? 'translate-x-4' : 'translate-x-0'"
+                                  class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out"></span>
+                        </button>
                     </h3>
                     <p class="text-xs text-slate-500 mt-0.5">Select existing contacts from Phone Directory or create new ones. One can be marked primary.</p>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2" x-show="hasContactsSection">
                     <button type="button"
                             @click="saveDraftAndCreateContact()"
                             :disabled="isSavingDraft"
@@ -1338,8 +1374,14 @@
                 </div>
             </div>
 
+            {{-- When disabled/collapsed note --}}
+            <div x-show="!hasContactsSection" x-cloak class="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500 bg-slate-50/50 flex items-center justify-between">
+                <span>Contact persons section is currently minimized. Any saved contacts (<span x-text="contacts.length"></span>) remain attached to this party.</span>
+                <button type="button" @click="hasContactsSection = true" class="text-indigo-600 font-semibold hover:underline">Enable Section</button>
+            </div>
+
             {{-- Search & Select from Phone Directory Combobox --}}
-            <div class="relative" @click.outside="contactDropdownOpen = false">
+            <div x-show="hasContactsSection" class="relative" @click.outside="contactDropdownOpen = false">
                 <label class="block text-xs font-medium text-slate-700 mb-1">Select Contact from Phone Directory</label>
                 <div class="relative flex items-center">
                     <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -1490,6 +1532,7 @@
                         <input type="hidden" :name="`contacts[${idx}][designation]`" :value="contact.designation || ''">
                         <input type="hidden" :name="`contacts[${idx}][other_designation]`" :value="contact.other_designation || ''">
                         <input type="hidden" :name="`contacts[${idx}][company_name]`" :value="contact.company_name || ''">
+                        <input type="hidden" :name="`contacts[${idx}][company_website]`" :value="contact.company_website || ''">
                         <input type="hidden" :name="`contacts[${idx}][phone]`" :value="contact.phone || ''">
                         <input type="hidden" :name="`contacts[${idx}][alternate_phone]`" :value="contact.alternate_phone || ''">
                         <input type="hidden" :name="`contacts[${idx}][whatsapp_number]`" :value="contact.whatsapp_number || contact.whatsapp || ''">
@@ -1546,6 +1589,12 @@
                                             <svg class="w-3 h-3 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
                                             <span x-text="contact.company_name"></span>
                                         </span>
+                                    </template>
+                                    <template x-if="contact.company_website">
+                                        <a :href="contact.company_website" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 hover:text-indigo-600 hover:bg-slate-200 transition" title="Visit Company Website">
+                                            <svg class="w-2.5 h-2.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                            <span>Website</span>
+                                        </a>
                                     </template>
                                     <template x-if="contact.phone_directory_contact_id">
                                         <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
@@ -2161,6 +2210,18 @@
                                        class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
                             </div>
                             <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Alternate Mobile
+                                </label>
+                                <input type="text"
+                                       x-model="customContactForm.alternate_phone"
+                                       placeholder="Optional alternate mobile"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
                                 <div class="flex items-center justify-between mb-1">
                                     <label class="block text-xs font-semibold text-slate-700">WhatsApp Number</label>
                                     <label class="inline-flex items-center gap-1 text-[11px] text-indigo-600 font-medium cursor-pointer">
@@ -2177,16 +2238,15 @@
                                        placeholder="WhatsApp number"
                                        class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono disabled:bg-slate-50 disabled:text-slate-500">
                             </div>
-                        </div>
-
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-700 mb-1">
-                                Email Address
-                            </label>
-                            <input type="email"
-                                   x-model="customContactForm.email"
-                                   placeholder="contact@example.com"
-                                   class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Email Address
+                                </label>
+                                <input type="email"
+                                       x-model="customContactForm.email"
+                                       placeholder="contact@example.com"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
                         </div>
 
                         <div class="space-y-2 pt-2 border-t border-slate-100">
@@ -2996,6 +3056,7 @@ function partyFormController() {
             pincode: {!! json_encode(old('pincode', $item->pincode ?? '')) !!},
         },
         lastAutoGstin: '',
+        hasContactsSection: true,
         bankAccounts: {!! json_encode($initialBankAccounts) !!},
         contacts: {!! json_encode($initialContacts) !!},
         availablePhoneContacts: {!! json_encode($availablePhoneContacts ?? []) !!},
@@ -3080,6 +3141,7 @@ function partyFormController() {
                 designation: item.designation || '',
                 other_designation: '',
                 company_name: item.company_name || '',
+                company_website: item.company_website || '',
                 phone: item.phone || '',
                 alternate_phone: item.alternate_phone || '',
                 whatsapp: item.whatsapp || item.whatsapp_number || '',
@@ -3104,6 +3166,7 @@ function partyFormController() {
             designation_id: null,
             company_name: '',
             phone: '',
+            alternate_phone: '',
             whatsapp_number: '',
             same_as_mobile: false,
             email: '',
@@ -3120,6 +3183,7 @@ function partyFormController() {
                 designation_id: null,
                 company_name: this.form?.name || '',
                 phone: '',
+                alternate_phone: '',
                 whatsapp_number: '',
                 same_as_mobile: false,
                 email: '',
@@ -3169,6 +3233,7 @@ function partyFormController() {
                         body: JSON.stringify({
                             contact_name: form.name.trim(),
                             mobile_number: form.phone.trim(),
+                            alternate_mobile: form.alternate_phone ? form.alternate_phone.trim() : null,
                             whatsapp_number: form.whatsapp_number ? form.whatsapp_number.trim() : null,
                             email: form.email ? form.email.trim() : null,
                             designation: form.designation ? form.designation.trim() : null,
@@ -3195,6 +3260,7 @@ function partyFormController() {
                         designation: c.designation || '',
                         other_designation: '',
                         company_name: c.company_name || '',
+                        company_website: c.company_website || '',
                         phone: c.phone || '',
                         alternate_phone: c.alternate_phone || '',
                         whatsapp: c.whatsapp || '',
@@ -3229,7 +3295,7 @@ function partyFormController() {
                     other_designation: '',
                     company_name: form.company_name ? form.company_name.trim() : '',
                     phone: form.phone.trim(),
-                    alternate_phone: '',
+                    alternate_phone: form.alternate_phone ? form.alternate_phone.trim() : '',
                     whatsapp: form.whatsapp_number ? form.whatsapp_number.trim() : '',
                     whatsapp_number: form.whatsapp_number ? form.whatsapp_number.trim() : '',
                     email: form.email ? form.email.trim() : '',
@@ -3393,9 +3459,11 @@ function partyFormController() {
                 key: 'gem-new-' + Date.now() + '-' + Math.random().toString(16).slice(2),
                 id: '',
                 brand_id: '',
-                gem_registered: '0',
+                gem_registered: '1',
                 gem_authorized: '0',
                 authorization_number: '',
+                category: '',
+                date_of_issue: '',
                 documents: [],
             });
         },
@@ -4179,6 +4247,13 @@ function partyFormController() {
                                 ? `Principal address applied. ${extraCount} additional GST place(s) available under Addresses if needed.`
                                 : 'Details updated from GST records. Phone, email, party type, credit, and bank details remain manual.')
                     };
+                    if (data.duplicate_warning) {
+                        this.gstFeedback = {
+                            type: 'warning',
+                            message: data.duplicate_warning,
+                            note: 'Notice: Another party with this GSTIN is already registered. You can review details or update that party instead.'
+                        };
+                    }
                 } else {
                     this.gstPendingExtraAddresses = [];
                     this.gstLookupInfo = null;

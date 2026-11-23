@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Order;
 use App\Domains\Order\Services\OrderService;
+use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
 
 use Barryvdh\DomPDF\Facade\Pdf;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -155,10 +157,10 @@ class OrderController extends Controller
                 ->orderBy('name')
                 ->get(),
 
-            'salespersons' => User::role([
+            'salespersons' => User::whereHas('roles', fn ($q) => $q->whereIn('name', [
                 'salesperson',
                 'sales-manager',
-            ])
+            ]))
                 ->orderBy('name')
                 ->get(),
 
@@ -1197,57 +1199,163 @@ class OrderController extends Controller
     }
     public function export(
         Request $request
-    ): StreamedResponse {
+    ): Response|StreamedResponse {
+        $format = strtolower((string) $request->input('format', $request->input('export', 'csv')));
+        if (! in_array($format, ['csv', 'xlsx', 'excel', 'pdf'], true)) {
+            $format = 'csv';
+        }
+
         $orders = $this->filteredOrdersQuery($request)
             ->with([
-                'customer',
+                'customer.area',
                 'salesperson',
+                'warehouse',
+                'items.product.brand',
+                'items.uom',
             ])
             ->orderByDesc('order_date')
             ->orderByDesc('id')
             ->get();
 
-        $filename = 'orders-'.now()->format('Ymd-His').'.csv';
+        $filename = 'Sales-Orders-' . now()->format('Ymd-His');
 
-        return response()->streamDownload(
-            function () use ($orders) {
-                $handle = fopen('php://output', 'w');
+        $headers = [
+            'Order No',
+            'Order Date',
+            'Due Date',
+            'Customer Name',
+            'Customer Code',
+            'Customer GSTIN',
+            'Customer Phone',
+            'Customer Area',
+            'Salesperson',
+            'Warehouse',
+            'Status',
+            'Fulfilment Mode',
+            'Back Order',
+            'Billing Address',
+            'Shipping Address',
+            'Payment Terms',
+            'Terms of Delivery',
+            'Reference No',
+            'Subtotal (₹)',
+            'Discount (₹)',
+            'Tax Amount (₹)',
+            'Grand Total (₹)',
+            'Advance Amount (₹)',
+            'Balance Due (₹)',
+            'Advance %',
+            'Total Items',
+            'Notes',
+            'Approved By',
+            'Approved At',
+            'Created Date',
+        ];
 
-                fputcsv($handle, [
-                    'Order No',
-                    'Order Date',
-                    'Customer',
-                    'Customer Code',
-                    'Salesperson',
-                    'Status',
-                    'Subtotal',
-                    'Discount',
-                    'Tax',
-                    'Grand Total',
-                ]);
+        $masterRows = [];
+        $itemsRows = [];
+        $totalSum = 0;
 
-                foreach ($orders as $order) {
-                    fputcsv($handle, [
-                        $order->order_no,
-                        $order->order_date?->format('Y-m-d'),
-                        $order->customer?->name,
-                        $order->customer?->code,
-                        $order->salesperson?->name,
-                        $order->status,
-                        $order->subtotal,
-                        $order->discount_amount,
-                        $order->tax_amount,
-                        $order->grand_total,
-                    ]);
-                }
+        foreach ($orders as $order) {
+            $totalSum += (float) $order->grand_total;
+            $masterRows[] = [
+                $order->order_no,
+                $order->order_date?->format('d/m/Y') ?? '—',
+                $order->due_date?->format('d/m/Y') ?? '—',
+                $order->customer?->name ?? '—',
+                $order->customer?->code ?? '—',
+                $order->customer?->gstin ?? '—',
+                $order->customer?->phone ?? '—',
+                $order->customer?->area?->name ?? '—',
+                $order->salesperson?->name ?? ($order->salesperson_name ?? '—'),
+                $order->warehouse?->name ?? '—',
+                ucfirst($order->status),
+                ucfirst($order->fulfilment_mode ?? 'Direct'),
+                $order->back_order ? 'Yes' : 'No',
+                $order->billing_address ?: ($order->customer?->address ?: '—'),
+                $order->shipping_address ?: ($order->billing_address ?: ($order->customer?->address ?: '—')),
+                $order->payment_terms ?: '—',
+                $order->terms_of_delivery ?: '—',
+                $order->reference_no ?: '—',
+                number_format((float) $order->subtotal, 2, '.', ''),
+                number_format((float) $order->discount_amount, 2, '.', ''),
+                number_format((float) $order->tax_amount, 2, '.', ''),
+                number_format((float) $order->grand_total, 2, '.', ''),
+                number_format((float) $order->advance_amount, 2, '.', ''),
+                number_format((float) ($order->balance_amount ?? ($order->grand_total - $order->advance_amount)), 2, '.', ''),
+                $order->advance_percentage ? $order->advance_percentage . '%' : '0%',
+                $order->items->count(),
+                $order->notes ?: '—',
+                $order->approved_by_name ?: '—',
+                $order->approved_at?->format('d/m/Y H:i') ?? '—',
+                $order->created_at?->format('d/m/Y H:i') ?? '—',
+            ];
 
-                fclose($handle);
-            },
-            $filename,
-            [
-                'Content-Type' => 'text/csv; charset=UTF-8',
-            ]
-        );
+            foreach ($order->items as $item) {
+                $itemsRows[] = [
+                    $order->order_no,
+                    $order->order_date?->format('d/m/Y') ?? '—',
+                    $order->customer?->name ?? '—',
+                    $order->customer?->code ?? '—',
+                    $item->product?->name ?? '—',
+                    $item->product?->sku ?? '—',
+                    $item->product?->brand?->name ?? '—',
+                    $item->product?->hsn_code ?? '—',
+                    number_format((float) $item->quantity, 2, '.', ''),
+                    number_format((float) $item->delivered_qty, 2, '.', ''),
+                    $item->uom?->code ?? ($item->product?->baseUom?->code ?? '—'),
+                    number_format((float) $item->unit_price, 2, '.', ''),
+                    number_format((float) $item->line_total, 2, '.', ''),
+                ];
+            }
+        }
+
+        if ($format === 'xlsx' || $format === 'excel') {
+            $sheets = [
+                [
+                    'title' => 'Orders',
+                    'headers' => $headers,
+                    'rows' => $masterRows,
+                    'meta' => [
+                        '_title' => 'Sales Orders Report',
+                        'Total Orders' => count($masterRows),
+                        'Total Value' => '₹ ' . number_format($totalSum, 2),
+                        'Exported At' => now()->format('d M Y H:i:s'),
+                    ],
+                    'totals' => ['Total Order Value' => '₹ ' . number_format($totalSum, 2)],
+                ],
+                [
+                    'title' => 'Order Items',
+                    'headers' => ['Order No', 'Order Date', 'Customer Name', 'Customer Code', 'Product Name', 'SKU / Part No', 'Brand', 'HSN/SAC', 'Ordered Qty', 'Delivered Qty', 'UOM', 'Unit Price (₹)', 'Line Total (₹)'],
+                    'rows' => $itemsRows,
+                    'meta' => ['_title' => 'Sales Order Line Items (' . count($itemsRows) . ' Items)'],
+                ],
+            ];
+
+            return DocumentExporter::exportMultiSheetExcel($filename . '.xlsx', $sheets);
+        }
+
+        if ($format === 'csv') {
+            return DocumentExporter::exportCsv($filename . '.csv', $headers, $masterRows, [
+                '_title' => 'Sales Orders Report',
+                'Total Records' => count($masterRows),
+                'Exported At' => now()->format('d M Y H:i:s'),
+            ], ['Total Order Value' => '₹ ' . number_format($totalSum, 2)]);
+        }
+
+        return ReportExporter::pdf($filename . '.pdf', 'Sales Orders Report', $headers, $masterRows, [
+            'Generated' => now()->format('d M Y H:i'),
+            'Total Orders' => (string) count($masterRows),
+            'Total Value' => '₹ ' . number_format($totalSum, 2),
+        ]);
+    }
+
+    public function exportSingle(Order $order, string $format): Response|StreamedResponse
+    {
+        $format = strtolower($format);
+        abort_unless(in_array($format, ['pdf', 'xlsx', 'excel', 'csv'], true), 404);
+
+        return DocumentExporter::exportSalesOrder($order, $format);
     }
 
     public function pdf(

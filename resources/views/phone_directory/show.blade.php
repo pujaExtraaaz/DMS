@@ -67,10 +67,18 @@
 
                     @php $heroCompany = $contact->effective_company_name; @endphp
                     @if($heroCompany)
-                        <p class="text-sm font-semibold text-white/90 flex items-center justify-center sm:justify-start gap-1.5">
-                            <svg class="h-4 w-4 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
-                            <span>{{ $heroCompany }}</span>
-                        </p>
+                        <div class="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                            <p class="text-sm font-semibold text-white/90 flex items-center gap-1.5">
+                                <svg class="h-4 w-4 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
+                                <span>{{ $heroCompany }}</span>
+                            </p>
+                            @if($contact->company_website)
+                                <a href="{{ $contact->company_website }}" target="_blank" rel="noopener noreferrer" class="text-xs text-violet-200 hover:text-white underline inline-flex items-center gap-0.5" title="Visit Company Website">
+                                    <span>Website</span>
+                                    <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                </a>
+                            @endif
+                        </div>
                     @endif
 
                     <div class="pt-3 flex flex-wrap items-center justify-center sm:justify-start gap-2">
@@ -170,6 +178,18 @@
                     <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
                         <span class="text-[10px] font-bold uppercase text-slate-400 block">Company / Organization</span>
                         <span class="text-xs font-semibold text-slate-800 truncate block" title="{{ $contact->effective_company_name }}">{{ $contact->effective_company_name ?: '—' }}</span>
+                    </div>
+
+                    <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                        <span class="text-[10px] font-bold uppercase text-slate-400 block">Company Website</span>
+                        @if($contact->company_website)
+                            <a href="{{ $contact->company_website }}" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-violet-600 hover:text-violet-800 hover:underline truncate flex items-center gap-1" title="{{ $contact->company_website }}">
+                                <span class="truncate">{{ $contact->company_website }}</span>
+                                <svg class="h-3 w-3 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                            </a>
+                        @else
+                            <span class="text-xs text-slate-400">—</span>
+                        @endif
                     </div>
 
                     <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">

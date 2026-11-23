@@ -4,6 +4,7 @@
 <div id="listing-container" data-dynamic-container x-data="warehouseIndex()">
     <x-ui.page-header title="Warehouses">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('organization.warehouses.create')">+ Add Warehouse</x-ui.button>
         </x-slot>
     </x-ui.page-header>

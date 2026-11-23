@@ -87,4 +87,9 @@ class PartyContact extends Model
         return $this->phoneDirectoryContact?->effective_company_name
             ?: ($this->phoneDirectoryContact?->company_name ?? '');
     }
+
+    public function getEffectiveCompanyWebsiteAttribute(): ?string
+    {
+        return $this->phoneDirectoryContact?->company_website;
+    }
 }

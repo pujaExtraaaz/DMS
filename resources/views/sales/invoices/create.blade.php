@@ -3,7 +3,7 @@
 
 @section('content')
 @php
-    $company = $company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first();
+    $company = ($company ?? null) ?: (\App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first());
     $companyState = $company?->state ?? '';
     $companyGstin = $company?->gstin ?? '';
     $ewayThreshold = \App\Domains\Sales\Services\GstComplianceService::EWAY_BILL_THRESHOLD;

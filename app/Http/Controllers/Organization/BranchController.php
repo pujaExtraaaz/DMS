@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Support\IndianCities;
 use App\Support\IndianStates;
 use App\Support\NameCase;
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
 use App\Support\WorldCountries;
 use Illuminate\Http\JsonResponse;
@@ -19,12 +20,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BranchController extends Controller
 {
-    use SortableAndSearchable;
+    use SortableAndSearchable, ExportsListing;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $query = Branch::query()
             ->with('company')
@@ -46,6 +49,29 @@ class BranchController extends Controller
             defaultSort: 'name',
             defaultDirection: 'asc'
         );
+
+        if ($export = $this->exportIfRequested(
+            $request,
+            $query,
+            'branches',
+            'Branches Master',
+            ['Branch Name', 'Code', 'Company', 'Type', 'Phone', 'Email', 'Address', 'City', 'State', 'Status', 'Created At'],
+            fn (Branch $b) => [
+                'name' => $b->name,
+                'code' => $b->code ?? '',
+                'company' => $b->company?->name ?? '',
+                'type' => $b->branch_type ?? '',
+                'phone' => $b->phone ?? '',
+                'email' => $b->email ?? '',
+                'address' => $b->address ?? '',
+                'city' => $b->city ?? '',
+                'state' => $b->state ?? '',
+                'status' => $b->is_active ? 'Active' : 'Inactive',
+                'created_at' => optional($b->created_at)->format('Y-m-d H:i:s'),
+            ]
+        )) {
+            return $export;
+        }
 
         $items = $query->paginate(15)->withQueryString();
 

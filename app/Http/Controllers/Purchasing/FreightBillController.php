@@ -7,13 +7,16 @@ use App\Domains\Purchasing\Models\FreightBillAllocation;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Http\Controllers\Controller;
 use App\Support\DocumentNumberService;
+use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
+use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
-
-use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FreightBillController extends Controller
 {
@@ -21,7 +24,7 @@ class FreightBillController extends Controller
 
     public function __construct(protected DocumentNumberService $documentNumberService) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $query = FreightBill::query()
             ->with('creator')
@@ -38,6 +41,10 @@ class FreightBillController extends Controller
             defaultSort: 'bill_date',
             defaultDirection: 'desc'
         );
+
+        if ($export = $this->exportFreightBills($request, $query)) {
+            return $export;
+        }
 
         $items = $query->paginate(15)->withQueryString();
 
@@ -281,5 +288,78 @@ class FreightBillController extends Controller
             return $this->flashError('Failed to delete freight bill: ' . $e->getMessage(), 'purchasing.freight-bills.index')
                 ->with('error', 'Failed to delete freight bill: ' . $e->getMessage());
         }
+    }
+
+    protected function exportFreightBills(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)
+            ->with(['creator', 'allocations.allocatable'])
+            ->get();
+
+        $headers = [
+            'Freight No', 'Bill Date', 'Transporter Name', 'Vehicle No', 'LR No',
+            'Amount (₹)', 'Tax Amount (₹)', 'Total Amount (₹)', 'Allocation Basis',
+            'Status', 'Notes', 'Created At'
+        ];
+
+        $billRows = $records->map(function (FreightBill $fb) {
+            return [
+                'Freight No' => $fb->freight_no,
+                'Bill Date' => optional($fb->bill_date)->format('Y-m-d'),
+                'Transporter Name' => $fb->transporter_name ?? '',
+                'Vehicle No' => $fb->vehicle_no ?? '',
+                'LR No' => $fb->lr_no ?? '',
+                'Amount (₹)' => number_format((float) $fb->amount, 2, '.', ''),
+                'Tax Amount (₹)' => number_format((float) $fb->tax_amount, 2, '.', ''),
+                'Total Amount (₹)' => number_format((float) $fb->total_amount, 2, '.', ''),
+                'Allocation Basis' => ucfirst((string) $fb->allocation_basis),
+                'Status' => ucfirst((string) $fb->status),
+                'Notes' => $fb->notes ?? '',
+                'Created At' => optional($fb->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->all();
+
+        if ($format === 'xlsx') {
+            $allocHeaders = [
+                'Freight No', 'Bill Date', 'Transporter', 'Document Type', 'Document No', 'Allocated Amount (₹)'
+            ];
+
+            $allocRows = [];
+            foreach ($records as $fb) {
+                foreach ($fb->allocations as $alloc) {
+                    $docNo = $alloc->allocatable?->invoice_no ?? $alloc->allocatable?->invoice_number ?? $alloc->allocatable_id;
+                    $allocRows[] = [
+                        'Freight No' => $fb->freight_no,
+                        'Bill Date' => optional($fb->bill_date)->format('Y-m-d'),
+                        'Transporter' => $fb->transporter_name ?? '',
+                        'Document Type' => class_basename((string) $alloc->allocatable_type),
+                        'Document No' => $docNo,
+                        'Allocated Amount (₹)' => number_format((float) $alloc->amount, 2, '.', ''),
+                    ];
+                }
+            }
+
+            return DocumentExporter::exportMultiSheetExcel([
+                'Freight Bills' => [
+                    'columns' => array_combine($headers, $headers),
+                    'rows' => $billRows,
+                ],
+                'Allocations' => [
+                    'columns' => array_combine($allocHeaders, $allocHeaders),
+                    'rows' => $allocRows,
+                ],
+            ], 'freight-bills-master-' . now()->format('Y-m-d'));
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($billRows, $headers, 'freight-bills-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($billRows, array_combine($headers, $headers), 'Freight Bills Report', 'freight-bills-' . now()->format('Y-m-d') . '.pdf');
     }
 }

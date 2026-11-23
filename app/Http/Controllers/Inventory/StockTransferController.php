@@ -13,6 +13,8 @@ use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Warehouse;
 use App\Http\Controllers\Controller;
 use App\Support\DocumentNumberService;
+use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -20,6 +22,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use InvalidArgumentException;
 
 class StockTransferController extends Controller
@@ -31,7 +35,7 @@ class StockTransferController extends Controller
         protected DocumentNumberService $documentNumberService,
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $tab = $request->input('tab', 'location');
 
@@ -70,6 +74,10 @@ class StockTransferController extends Controller
                 defaultDirection: 'desc'
             );
 
+            if ($export = $this->exportReclassifications($request, $query)) {
+                return $export;
+            }
+
             $reclassifications = $query->paginate(15)->withQueryString();
 
             return view('inventory.transfers.index', [
@@ -102,6 +110,10 @@ class StockTransferController extends Controller
             defaultSort: 'transfer_date',
             defaultDirection: 'desc'
         );
+
+        if ($export = $this->exportTransfers($request, $query)) {
+            return $export;
+        }
 
         $transfers = $query->paginate(15)->withQueryString();
 
@@ -895,5 +907,119 @@ class StockTransferController extends Controller
                 warehouseId: $transfer->from_warehouse_id,
             );
         }
+    }
+
+    protected function exportTransfers(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)
+            ->with(['fromWarehouse', 'toWarehouse', 'creator', 'items.product', 'items.uom'])
+            ->get();
+
+        $headers = [
+            'Transfer No', 'Transfer Date', 'From Warehouse', 'To Warehouse', 'Status',
+            'Received At', 'Total Items', 'Notes', 'Created By', 'Created At'
+        ];
+
+        $transferRows = $records->map(function (StockTransfer $t) {
+            return [
+                'Transfer No' => $t->transfer_no,
+                'Transfer Date' => optional($t->transfer_date)->format('Y-m-d'),
+                'From Warehouse' => $t->fromWarehouse?->name ?? '',
+                'To Warehouse' => $t->toWarehouse?->name ?? '',
+                'Status' => ucfirst((string) $t->status),
+                'Received At' => optional($t->received_at)->format('Y-m-d H:i:s'),
+                'Total Items' => $t->items->count(),
+                'Notes' => $t->notes ?? '',
+                'Created By' => $t->creator?->name ?? '',
+                'Created At' => optional($t->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->all();
+
+        if ($format === 'xlsx') {
+            $itemHeaders = [
+                'Transfer No', 'Transfer Date', 'From Warehouse', 'To Warehouse',
+                'Product Code', 'Product Name', 'Quantity', 'UOM'
+            ];
+
+            $itemRows = [];
+            foreach ($records as $t) {
+                foreach ($t->items as $item) {
+                    $itemRows[] = [
+                        'Transfer No' => $t->transfer_no,
+                        'Transfer Date' => optional($t->transfer_date)->format('Y-m-d'),
+                        'From Warehouse' => $t->fromWarehouse?->name ?? '',
+                        'To Warehouse' => $t->toWarehouse?->name ?? '',
+                        'Product Code' => $item->product?->code ?? $item->product?->sku ?? '',
+                        'Product Name' => $item->product?->name ?? '',
+                        'Quantity' => (float) $item->quantity,
+                        'UOM' => $item->uom?->code ?? $item->uom?->name ?? '',
+                    ];
+                }
+            }
+
+            return DocumentExporter::exportMultiSheetExcel([
+                'Stock Transfers' => [
+                    'columns' => array_combine($headers, $headers),
+                    'rows' => $transferRows,
+                ],
+                'Transfer Items' => [
+                    'columns' => array_combine($itemHeaders, $itemHeaders),
+                    'rows' => $itemRows,
+                ],
+            ], 'stock-transfers-master-' . now()->format('Y-m-d'));
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($transferRows, $headers, 'stock-transfers-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($transferRows, array_combine($headers, $headers), 'Stock Transfers Report', 'stock-transfers-' . now()->format('Y-m-d') . '.pdf');
+    }
+
+    protected function exportReclassifications(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)->get();
+
+        $headers = [
+            'Reclassification No', 'Date', 'Warehouse', 'From Product Code', 'From Product Name',
+            'To Product Code', 'To Product Name', 'Quantity', 'UOM', 'Notes', 'Created By', 'Created At'
+        ];
+
+        $rows = $records->map(function (StockReclassification $r) {
+            return [
+                'Reclassification No' => $r->reclassification_no,
+                'Date' => optional($r->reclassification_date)->format('Y-m-d'),
+                'Warehouse' => $r->warehouse?->name ?? '',
+                'From Product Code' => $r->fromProduct?->code ?? $r->fromProduct?->sku ?? '',
+                'From Product Name' => $r->fromProduct?->name ?? '',
+                'To Product Code' => $r->toProduct?->code ?? $r->toProduct?->sku ?? '',
+                'To Product Name' => $r->toProduct?->name ?? '',
+                'Quantity' => (float) $r->quantity,
+                'UOM' => $r->uom?->code ?? $r->uom?->name ?? '',
+                'Notes' => $r->notes ?? '',
+                'Created By' => $r->creator?->name ?? '',
+                'Created At' => optional($r->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->all();
+
+        if ($format === 'xlsx') {
+            return DocumentExporter::exportTabular('stock-reclassifications-' . now()->format('Y-m-d'), 'Stock Reclassifications', $headers, array_map(fn ($row) => array_values($row), $rows), 'xlsx');
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($rows, $headers, 'stock-reclassifications-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($rows, array_combine($headers, $headers), 'Stock Reclassifications Report', 'stock-reclassifications-' . now()->format('Y-m-d') . '.pdf');
     }
 }
