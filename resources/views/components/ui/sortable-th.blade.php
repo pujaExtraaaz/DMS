@@ -1,6 +1,7 @@
 @props([
     'column',
     'label' => null,
+    'tooltip' => null,
     'currentSort' => request('sort'),
     'currentDirection' => request('direction', 'asc'),
     'defaultDirection' => 'asc',
@@ -26,25 +27,27 @@
         default => 'text-left justify-start',
     };
 
-    $heading = trim((string) ($slot ?? ''));
-    if ($heading === '' && filled($label)) {
-        $heading = (string) $label;
-    }
+    // Prefer plain label; strip any accidental HTML from slot content (was showing raw <span> in headers).
+    $heading = filled($label) ? (string) $label : trim(strip_tags((string) ($slot ?? '')));
     if ($heading === '') {
         $heading = (string) $column;
     }
+    $displayHeading = \App\Support\TitleCase::format($heading);
+    $titleAttr = filled($tooltip)
+        ? (string) $tooltip
+        : ('Sort by '.$displayHeading.' ('.($nextDirection === 'asc' ? 'A-Z / 1-9' : 'Z-A / 9-1').')');
 @endphp
 
-<th scope="col" {{ $attributes->merge(['class' => 'px-4 py-3 text-xs font-semibold tracking-wider select-none text-' . $align]) }}>
+<th scope="col" {{ $attributes->merge(['class' => 'px-3 py-2 text-xs font-semibold tracking-wider select-none text-' . $align]) }}>
     <a
         href="{{ $url }}"
         data-sort-link
         data-column="{{ $column }}"
         data-direction="{{ $nextDirection }}"
         class="group inline-flex items-center gap-1.5 {{ $alignmentClass }} {{ $isActive ? 'text-indigo-600 font-bold' : 'text-slate-600 hover:text-slate-900' }} transition-colors"
-        title="Sort by {{ \App\Support\TitleCase::format($heading) }} ({{ $nextDirection === 'asc' ? 'A-Z / 1-9' : 'Z-A / 9-1' }})"
+        title="{{ $titleAttr }}"
     >
-        <span>{{ \App\Support\TitleCase::format($heading) }}</span>
+        <span>{{ $displayHeading }}</span>
 
         <span class="inline-flex shrink-0 items-center">
             @if($isActive)

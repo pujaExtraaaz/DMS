@@ -156,7 +156,9 @@
     <div class="overflow-x-auto border rounded-lg">
     <table class="min-w-full text-sm">
     <thead class="bg-gray-50"><tr>
-    <th class="px-3 py-2 text-left w-44">Brand</th>
+    <th class="px-3 py-2 text-left w-40">Brand</th>
+    <th class="px-3 py-2 text-left w-36">Category</th>
+    <th class="px-3 py-2 text-left w-36">Sub Category</th>
     <th class="px-3 py-2 text-left min-w-[250px]">Product</th>
     <th class="px-3 py-2 text-left">Batch Name</th>
     <th class="px-3 py-2 text-left">UOM</th>
@@ -166,8 +168,9 @@
     <th class="px-3 py-2 text-left whitespace-nowrap">Purchase Disc. %</th>
     <th class="px-3 py-2 text-left">Unit Cost</th>
     <th class="px-3 py-2 text-left">Tax %</th>
-    <th class="px-3 py-2 text-left">Cgst %</th>
-    <th class="px-3 py-2 text-left">Sgst %</th>
+    <th class="px-3 py-2 text-left po-cgst-header">Cgst %</th>
+    <th class="px-3 py-2 text-left po-sgst-header">Sgst %</th>
+    <th class="px-3 py-2 text-left po-igst-header" style="display:none;">Igst %</th>
     <th class="px-3 py-2"></th>
     </tr></thead>
     <tbody id="po-lines">
@@ -183,9 +186,13 @@
             @include('purchasing.orders.partials.line-row', [
                 'idx' => $idx,
                 'brands' => $brands,
+                'categories' => $categories ?? collect(),
+                'subCategories' => $subCategories ?? collect(),
                 'products' => $products,
                 'uoms' => $uoms,
                 'selectedBrandId' => $selectedBrandId,
+                'selectedCategoryId' => $oldItem['category_id'] ?? ($selectedProduct->category_id ?? null),
+                'selectedSubCategoryId' => $oldItem['sub_category_id'] ?? ($selectedProduct->sub_category_id ?? null),
                 'selectedProductId' => $oldItem['product_id'] ?? null,
                 'selectedProductName' => $selectedProduct ? $selectedProduct->name : '',
                 'batchNo' => $oldItem['batch_no'] ?? $oldItem['batch_name'] ?? '',
@@ -198,6 +205,7 @@
                 'taxPercent' => $oldItem['tax_percent'] ?? 0,
                 'cgstPercent' => $oldItem['cgst_percent'] ?? 0,
                 'sgstPercent' => $oldItem['sgst_percent'] ?? 0,
+                'igstPercent' => $oldItem['igst_percent'] ?? 0,
                 'showRemove' => count($oldItems) > 1,
             ])
         @endforeach
@@ -205,17 +213,22 @@
         @include('purchasing.orders.partials.line-row', [
             'idx' => 0,
             'brands' => $brands,
+            'categories' => $categories ?? collect(),
+            'subCategories' => $subCategories ?? collect(),
             'products' => $products,
             'uoms' => $uoms,
             'showRemove' => false,
         ])
     @endif
     </tbody></table></div>
+    <input type="hidden" name="is_inter_state" id="po_is_inter_state" value="{{ old('is_inter_state', '0') }}">
 
     <template id="po-line-template">
         @include('purchasing.orders.partials.line-row', [
             'idx' => '__INDEX__',
             'brands' => $brands,
+            'categories' => $categories ?? collect(),
+            'subCategories' => $subCategories ?? collect(),
             'products' => $products,
             'uoms' => $uoms,
             'showRemove' => true,
@@ -330,17 +343,32 @@
             'name' => $p->name,
             'sku' => $p->sku ?? '',
             'brand_id' => $p->brand_id ? (string)$p->brand_id : '',
+            'category_id' => $p->category_id ? (string)$p->category_id : '',
+            'sub_category_id' => $p->sub_category_id ? (string)$p->sub_category_id : '',
             'tax_rate' => (float)($p->tax_rate ?? 0),
             'purchase_price' => (float)($p->purchase_price ?? 0),
             'mrp' => (float) ($p->calculation_mrp ?? $p->mrp ?? 0),
             'base_uom_id' => $p->base_uom_id ? (string)$p->base_uom_id : '',
         ];
     })->values();
+    $poCategoriesData = ($categories ?? collect())->map(fn ($c) => [
+        'id' => (string) $c->id,
+        'name' => $c->name,
+        'brand_id' => $c->brand_id ? (string) $c->brand_id : '',
+    ])->values();
+    $poSubCategoriesData = ($subCategories ?? collect())->map(fn ($sc) => [
+        'id' => (string) $sc->id,
+        'name' => $sc->name,
+        'category_id' => $sc->category_id ? (string) $sc->category_id : '',
+    ])->values();
 @endphp
 <script>
 let poi = {{ (!empty($oldItems) && is_array($oldItems)) ? count($oldItems) : 1 }};
 
 const poProductsList = {!! json_encode($poProductsData) !!};
+const poCategoriesList = {!! json_encode($poCategoriesData) !!};
+const poSubCategoriesList = {!! json_encode($poSubCategoriesData) !!};
+let poIsInterState = false;
 
 let activeRow = null;
 let highlightedIndex = -1;
@@ -399,12 +427,121 @@ function handlePoBrandChange(brandSelect) {
         console.error('clearPoProductSelection failed', e);
     }
 
+    refillPoCategoryOptions(row, brandId, '');
+    refillPoSubCategoryOptions(row, '', '');
+
     if (brandId) {
         setPoProductPickerEnabled(row, true);
         brandSelect.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
     } else {
         setPoProductPickerEnabled(row, false);
     }
+}
+
+function refillPoCategoryOptions(row, brandId, selectedId = '') {
+    const select = row.querySelector('.po-category');
+    if (!select) return;
+    select.innerHTML = '<option value="">All categories</option>';
+    if (!brandId) {
+        select.disabled = true;
+        select.classList.add('bg-slate-100', 'text-slate-400');
+        return;
+    }
+    select.disabled = false;
+    select.classList.remove('bg-slate-100', 'text-slate-400');
+    poCategoriesList
+        .filter((c) => !c.brand_id || String(c.brand_id) === String(brandId))
+        .forEach((c) => {
+            const opt = new Option(c.name, c.id);
+            if (String(selectedId) === String(c.id)) opt.selected = true;
+            select.add(opt);
+        });
+}
+
+function refillPoSubCategoryOptions(row, categoryId, selectedId = '') {
+    const select = row.querySelector('.po-subcategory');
+    if (!select) return;
+    select.innerHTML = '<option value="">All sub categories</option>';
+    if (!categoryId) {
+        select.disabled = true;
+        select.classList.add('bg-slate-100', 'text-slate-400');
+        return;
+    }
+    select.disabled = false;
+    select.classList.remove('bg-slate-100', 'text-slate-400');
+    poSubCategoriesList
+        .filter((sc) => String(sc.category_id) === String(categoryId))
+        .forEach((sc) => {
+            const opt = new Option(sc.name, sc.id);
+            if (String(selectedId) === String(sc.id)) opt.selected = true;
+            select.add(opt);
+        });
+}
+
+function handlePoCategoryChange(categorySelect) {
+    const row = categorySelect.closest('tr');
+    if (!row) return;
+    refillPoSubCategoryOptions(row, categorySelect.value, '');
+    try { clearPoProductSelection(categorySelect); } catch (e) {}
+    if (row.querySelector('.po-brand')?.value) {
+        setPoProductPickerEnabled(row, true);
+    }
+}
+
+function handlePoSubCategoryChange(subSelect) {
+    const row = subSelect.closest('tr');
+    if (!row) return;
+    try { clearPoProductSelection(subSelect); } catch (e) {}
+    if (row.querySelector('.po-brand')?.value) {
+        setPoProductPickerEnabled(row, true);
+    }
+}
+
+function normalizePoState(value) {
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+function detectPoInterState() {
+    const supplierState = normalizePoState(document.getElementById('billing_state')?.textContent);
+    const deliveryState = normalizePoState(document.getElementById('delivery_state')?.textContent);
+    return supplierState !== '' && deliveryState !== '' && supplierState !== deliveryState;
+}
+
+function applyPoGstMode(forceRecalc = true) {
+    poIsInterState = detectPoInterState();
+    const flag = document.getElementById('po_is_inter_state');
+    if (flag) flag.value = poIsInterState ? '1' : '0';
+
+    document.querySelectorAll('.po-cgst-header').forEach((el) => { el.style.display = poIsInterState ? 'none' : ''; });
+    document.querySelectorAll('.po-sgst-header').forEach((el) => { el.style.display = poIsInterState ? 'none' : ''; });
+    document.querySelectorAll('.po-igst-header').forEach((el) => { el.style.display = poIsInterState ? '' : 'none'; });
+
+    document.querySelectorAll('#po-lines tr.po-line-row, #po-line-template tr.po-line-row').forEach((row) => {
+        const cgstCell = row.querySelector('.po-cgst-cell');
+        const sgstCell = row.querySelector('.po-sgst-cell');
+        const igstCell = row.querySelector('.po-igst-cell');
+        const tax = parseFloat(row.querySelector('.po-tax')?.value) || 0;
+        const cgst = row.querySelector('.po-cgst');
+        const sgst = row.querySelector('.po-sgst');
+        const igst = row.querySelector('.po-igst');
+
+        if (cgstCell) cgstCell.style.display = poIsInterState ? 'none' : '';
+        if (sgstCell) sgstCell.style.display = poIsInterState ? 'none' : '';
+        if (igstCell) igstCell.style.display = poIsInterState ? '' : 'none';
+
+        if (poIsInterState) {
+            if (cgst) cgst.value = '0';
+            if (sgst) sgst.value = '0';
+            if (igst) igst.value = tax.toFixed(2);
+        } else {
+            if (igst) igst.value = '0';
+            if (cgst && sgst && forceRecalc) {
+                const half = (tax / 2).toFixed(2);
+                cgst.value = half;
+                sgst.value = half;
+            }
+        }
+    });
 }
 
 function openPoProductDropdown(triggerEl, initialQuery = null) {
@@ -526,8 +663,18 @@ function handleDropdownFilter(query, selectedId = null) {
         selectedId = select ? select.value : '';
     }
 
+    const categorySelect = activeRow.querySelector('.po-category');
+    const subCategorySelect = activeRow.querySelector('.po-subcategory');
+    const activeCategoryId = categorySelect ? String(categorySelect.value || '') : '';
+    const activeSubCategoryId = subCategorySelect ? String(subCategorySelect.value || '') : '';
+
     // Include unbranded products so legacy catalog rows remain selectable until backfilled.
-    let filtered = poProductsList.filter(p => !p.brand_id || String(p.brand_id) === activeBrandId);
+    let filtered = poProductsList.filter(p => {
+        if (p.brand_id && String(p.brand_id) !== activeBrandId) return false;
+        if (activeCategoryId && p.category_id && String(p.category_id) !== activeCategoryId) return false;
+        if (activeSubCategoryId && p.sub_category_id && String(p.sub_category_id) !== activeSubCategoryId) return false;
+        return true;
+    });
     if (query && query.trim() !== '') {
         const q = query.toLowerCase().trim();
         filtered = filtered.filter(p => {
@@ -640,9 +787,11 @@ function clearPoProductSelection(btn) {
     const datalist = row.querySelector('datalist');
     const batchInput = row.querySelector('.po-batch-input');
 
+    const igstInput = row.querySelector('.po-igst');
     if (taxInput) taxInput.value = '0';
     if (cgstInput) cgstInput.value = '0';
     if (sgstInput) sgstInput.value = '0';
+    if (igstInput) igstInput.value = '0';
     if (costInput) costInput.value = '0';
     if (batchInput) batchInput.value = '';
     if (datalist) datalist.innerHTML = '';
@@ -718,9 +867,17 @@ async function handlePoProductChange(select) {
     const mrpInput = row.querySelector('.po-mrp');
     const uomSelect = row.querySelector('.po-uom');
 
+    const igstInput = row.querySelector('.po-igst');
     if (taxInput) taxInput.value = taxRate;
-    if (cgstInput) cgstInput.value = (taxRate / 2).toFixed(2);
-    if (sgstInput) sgstInput.value = (taxRate / 2).toFixed(2);
+    if (poIsInterState) {
+        if (cgstInput) cgstInput.value = '0';
+        if (sgstInput) sgstInput.value = '0';
+        if (igstInput) igstInput.value = taxRate.toFixed(2);
+    } else {
+        if (cgstInput) cgstInput.value = (taxRate / 2).toFixed(2);
+        if (sgstInput) sgstInput.value = (taxRate / 2).toFixed(2);
+        if (igstInput) igstInput.value = '0';
+    }
     if (mrpInput && (!mrpInput.value || mrpInput.value === '0')) {
         mrpInput.value = mrp;
     }
@@ -764,17 +921,36 @@ function syncPoTax(row, changed) {
     const tax = row.querySelector('.po-tax');
     const cgst = row.querySelector('.po-cgst');
     const sgst = row.querySelector('.po-sgst');
+    const igst = row.querySelector('.po-igst');
 
-    if (!tax || !cgst || !sgst) {
+    if (!tax) {
         return;
     }
 
     const taxValue = parseFloat(tax.value) || 0;
 
+    if (poIsInterState) {
+        if (cgst) cgst.value = '0';
+        if (sgst) sgst.value = '0';
+        if (changed === 'igst' && igst) {
+            tax.value = (parseFloat(igst.value) || 0).toFixed(2);
+        } else if (igst) {
+            igst.value = taxValue.toFixed(2);
+        }
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
+        recalculatePoTotals();
+        return;
+    }
+
+    if (!cgst || !sgst) {
+        return;
+    }
+
     if (changed === 'tax') {
         const half = (taxValue / 2).toFixed(2);
         cgst.value = half;
         sgst.value = half;
+        if (igst) igst.value = '0';
         syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
         return;
@@ -975,6 +1151,7 @@ function addPoRow() {
     table.appendChild(newRow);
     poi++;
     updateRemoveButtons();
+    applyPoGstMode(false);
     recalculatePoTotals();
 
     const brandSelect = newRow.querySelector('.po-brand');
@@ -1047,6 +1224,9 @@ document.addEventListener('input', function (event) {
     } else if (input.classList.contains('po-sgst')) {
         const row = input.closest('tr');
         if (row) syncPoTax(row, 'sgst');
+    } else if (input.classList.contains('po-igst')) {
+        const row = input.closest('tr');
+        if (row) syncPoTax(row, 'igst');
     }
 
     if (
@@ -1341,6 +1521,7 @@ async function handleSupplierChange(supplierId) {
             const billingId = data.default_billing_id;
             const addr = supplierAddresses.find((a) => String(a.id) === String(billingId)) || supplierAddresses[0] || null;
             renderBillingDetails(data.customer || null, addr);
+            applyPoGstMode(true);
             if (statusText) statusText.innerText = 'Vendor billing loaded automatically';
         }
     } catch (e) {
@@ -1353,6 +1534,7 @@ function handleDeliveryChange() {
     const select = document.getElementById('company_delivery_address_id');
     const addr = companyDeliveryAddresses.find((a) => String(a.id) === String(select?.value));
     renderDeliveryDetails(addr || null);
+    applyPoGstMode(true);
 }
 
 function handleWarehouseChange(selectEl) {
@@ -1427,6 +1609,10 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!event.target) return;
             if (event.target.classList.contains('po-brand')) {
                 handlePoBrandChange(event.target);
+            } else if (event.target.classList.contains('po-category')) {
+                handlePoCategoryChange(event.target);
+            } else if (event.target.classList.contains('po-subcategory')) {
+                handlePoSubCategoryChange(event.target);
             } else if (event.target.classList.contains('po-product')) {
                 handlePoProductChange(event.target);
             }

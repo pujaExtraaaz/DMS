@@ -1,6 +1,8 @@
 @php
     $idx = $idx ?? 0;
     $selectedBrandId = $selectedBrandId ?? null;
+    $selectedCategoryId = $selectedCategoryId ?? null;
+    $selectedSubCategoryId = $selectedSubCategoryId ?? null;
     $selectedProductId = $selectedProductId ?? null;
     $selectedProductName = $selectedProductName ?? '';
     $batchNo = $batchNo ?? '';
@@ -22,15 +24,36 @@
     );
     $cgstPercent = $cgstPercent ?? 0;
     $sgstPercent = $sgstPercent ?? 0;
+    $igstPercent = $igstPercent ?? 0;
     $showRemove = $showRemove ?? false;
     $isBrandSelected = !empty($selectedBrandId);
 @endphp
 <tr class="po-line-row">
     <td class="px-3 py-2">
-        <select name="items[{{ $idx }}][brand_id]" class="po-brand block w-44 rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white" required>
+        <select name="items[{{ $idx }}][brand_id]" class="po-brand block w-40 rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white" required>
             <option value="">Select brand</option>
             @foreach($brands as $b)
                 <option value="{{ $b->id }}" @selected((string) $selectedBrandId === (string) $b->id)>{{ $b->name }}</option>
+            @endforeach
+        </select>
+    </td>
+    <td class="px-3 py-2">
+        <select name="items[{{ $idx }}][category_id]" class="po-category block w-36 rounded-lg border-gray-300 text-sm bg-white {{ $isBrandSelected ? '' : 'bg-slate-100 text-slate-400' }}" {{ $isBrandSelected ? '' : 'disabled' }}>
+            <option value="">All categories</option>
+            @foreach(($categories ?? []) as $c)
+                @if(!$selectedBrandId || (string) $c->brand_id === (string) $selectedBrandId)
+                    <option value="{{ $c->id }}" data-brand="{{ $c->brand_id }}" @selected((string) $selectedCategoryId === (string) $c->id)>{{ $c->name }}</option>
+                @endif
+            @endforeach
+        </select>
+    </td>
+    <td class="px-3 py-2">
+        <select name="items[{{ $idx }}][sub_category_id]" class="po-subcategory block w-36 rounded-lg border-gray-300 text-sm bg-white {{ $selectedCategoryId ? '' : 'bg-slate-100 text-slate-400' }}" {{ $selectedCategoryId ? '' : 'disabled' }}>
+            <option value="">All sub categories</option>
+            @foreach(($subCategories ?? []) as $sc)
+                @if(!$selectedCategoryId || (string) $sc->category_id === (string) $selectedCategoryId)
+                    <option value="{{ $sc->id }}" data-category="{{ $sc->category_id }}" @selected((string) $selectedSubCategoryId === (string) $sc->id)>{{ $sc->name }}</option>
+                @endif
             @endforeach
         </select>
     </td>
@@ -39,7 +62,15 @@
             <select name="items[{{ $idx }}][product_id]" class="po-product hidden">
                 <option value="">Select product</option>
                 @foreach($products as $p)
-                    <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-mrp="{{ $p->calculation_mrp ?? $p->mrp ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected((string) $selectedProductId === (string) $p->id)>{{ $p->name }}</option>
+                    <option value="{{ $p->id }}"
+                            data-brand="{{ $p->brand_id }}"
+                            data-category="{{ $p->category_id }}"
+                            data-sub-category="{{ $p->sub_category_id }}"
+                            data-tax="{{ $p->tax_rate ?? 0 }}"
+                            data-cost="{{ $p->purchase_price ?? 0 }}"
+                            data-mrp="{{ $p->calculation_mrp ?? $p->mrp ?? 0 }}"
+                            data-uom="{{ $p->base_uom_id }}"
+                            @selected((string) $selectedProductId === (string) $p->id)>{{ $p->name }}</option>
                 @endforeach
             </select>
             <div class="relative">
@@ -101,11 +132,14 @@
     <td class="px-3 py-2">
         <input type="number" step="0.01" min="0" max="100" name="items[{{ $idx }}][tax_percent]" class="po-tax block w-20 rounded-lg border-gray-300 text-sm" value="{{ $taxPercent }}">
     </td>
-    <td class="px-3 py-2">
+    <td class="px-3 py-2 po-cgst-cell">
         <input type="number" step="0.01" min="0" max="100" name="items[{{ $idx }}][cgst_percent]" class="po-cgst block w-20 rounded-lg border-gray-300 text-sm" value="{{ $cgstPercent }}">
     </td>
-    <td class="px-3 py-2">
+    <td class="px-3 py-2 po-sgst-cell">
         <input type="number" step="0.01" min="0" max="100" name="items[{{ $idx }}][sgst_percent]" class="po-sgst block w-20 rounded-lg border-gray-300 text-sm" value="{{ $sgstPercent }}">
+    </td>
+    <td class="px-3 py-2 po-igst-cell" style="display:none;">
+        <input type="number" step="0.01" min="0" max="100" name="items[{{ $idx }}][igst_percent]" class="po-igst block w-20 rounded-lg border-gray-300 text-sm" value="{{ $igstPercent }}">
     </td>
     <td class="px-3 py-2 text-right">
         <button type="button" onclick="removePoRow(this)" class="text-xs text-red-600 hover:text-red-800 po-remove-btn" @if(! $showRemove) style="display:none;" @endif>Remove</button>

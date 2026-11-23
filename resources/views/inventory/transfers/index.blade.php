@@ -2,7 +2,7 @@
 @section('title', 'Stock Transfers')
 
 @section('content')
-<div id="listing-container" data-dynamic-container x-data="stockTransferIndex()" class="space-y-4">
+<div id="listing-container" data-dynamic-container x-data="stockTransferIndex()" class="space-y-2">
     <x-ui.page-header title="Stock Transfers">
         <x-slot name="actions">
             <x-ui.button variant="primary" :href="route('inventory.transfers.create', ['tab' => $tab ?? 'location'])">

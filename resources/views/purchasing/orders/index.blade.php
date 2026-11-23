@@ -93,31 +93,36 @@
                 </div>
             </x-slot>
             <x-slot name="actions">
-                <div class="relative inline-block text-left" x-data="{ open: false }">
-                    <button
-                        type="button"
-                        @click="open = !open"
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none"
-                    >
-                        <svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                        <span>Export</span>
-                        <svg class="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </button>
-                    <div
-                        x-show="open"
-                        x-cloak
-                        @click.away="open = false"
-                        class="absolute right-0 z-20 mt-1 w-36 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
-                    >
-                        <a href="{{ request()->fullUrlWithQuery(['export' => 'xlsx']) }}" class="flex items-center px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100">
-                            Excel (.xlsx)
-                        </a>
-                        <a href="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}" class="flex items-center px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100">
-                            CSV
-                        </a>
-                        <a href="{{ request()->fullUrlWithQuery(['export' => 'pdf']) }}" class="flex items-center px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100">
-                            PDF
-                        </a>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-slate-500" x-show="selectedIds.length > 0" x-cloak>
+                        <span x-text="selectedIds.length"></span> selected
+                    </span>
+                    <div class="relative inline-block text-left" x-data="{ open: false }">
+                        <button
+                            type="button"
+                            @click="open = !open"
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none"
+                        >
+                            <svg class="h-3.5 w-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                            <span x-text="selectedIds.length ? 'Export Selected' : 'Export'"></span>
+                            <svg class="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                        <div
+                            x-show="open"
+                            x-cloak
+                            @click.away="open = false"
+                            class="absolute right-0 z-20 mt-1 w-44 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+                        >
+                            <button type="button" @click="exportSelected('xlsx'); open = false" class="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100">
+                                Excel (.xlsx)
+                            </button>
+                            <button type="button" @click="exportSelected('csv'); open = false" class="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100">
+                                CSV
+                            </button>
+                            <button type="button" @click="exportSelected('pdf'); open = false" class="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100">
+                                PDF
+                            </button>
+                        </div>
                     </div>
                 </div>
             </x-slot>
@@ -127,6 +132,13 @@
             <table class="min-w-full divide-y divide-slate-200 text-sm">
                 <thead class="bg-slate-50">
                     <tr>
+                        <th class="px-3 py-3 text-left">
+                            <input type="checkbox"
+                                   class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                   @click="toggleSelectAll($event.target.checked)"
+                                   :checked="pageIds.length > 0 && pageIds.every(id => selectedIds.includes(id))"
+                                   title="Select all on this page">
+                        </th>
                         <x-ui.sortable-th column="po_no" :current-sort="$sort ?? request('sort', 'po_date')" :current-direction="$direction ?? request('direction', 'desc')">
                             PO No
                         </x-ui.sortable-th>
@@ -164,7 +176,14 @@
                             $receivedQty = (float) ($order->filtered_received_qty ?? $order->items->sum('received_qty'));
                             $pendingQty = max(0, $orderedQty - $receivedQty);
                         @endphp
-                        <tr class="hover:bg-slate-50/75 transition-colors">
+                        <tr class="hover:bg-slate-50/75 transition-colors" data-po-id="{{ $order->id }}">
+                            <td class="px-3 py-3">
+                                <input type="checkbox"
+                                       class="po-row-check rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                       value="{{ $order->id }}"
+                                       :checked="selectedIds.includes({{ (int) $order->id }})"
+                                       @change="toggleRow({{ (int) $order->id }}, $event.target.checked)">
+                            </td>
                             <td class="px-4 py-3 font-medium text-slate-900 font-mono text-xs">{{ $order->po_no }}</td>
                             <td class="px-4 py-3 text-slate-600">{{ $order->po_date?->format('d M Y') }}</td>
                             <td class="px-4 py-3 text-slate-900 font-medium">{{ $order->supplier?->name }}</td>
@@ -243,7 +262,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="p-0">
+                            <td colspan="9" class="p-0">
                                 <x-ui.empty-state
                                     title="No purchase orders found"
                                     description="Try clearing search or filters to see more results."
@@ -359,7 +378,42 @@ function purchaseOrderIndex() {
         deletingOrderId: null,
         deletingPoNo: '',
         isDeleting: false,
+        selectedIds: [],
+        pageIds: @json(($orders ?? collect())->pluck('id')->map(fn ($id) => (int) $id)->values()),
         notification: { show: false, type: 'success', message: '' },
+
+        toggleRow(id, checked) {
+            id = Number(id);
+            if (checked) {
+                if (!this.selectedIds.includes(id)) this.selectedIds.push(id);
+            } else {
+                this.selectedIds = this.selectedIds.filter((x) => x !== id);
+            }
+        },
+
+        toggleSelectAll(checked) {
+            if (checked) {
+                this.pageIds.forEach((id) => {
+                    if (!this.selectedIds.includes(id)) this.selectedIds.push(id);
+                });
+            } else {
+                this.selectedIds = this.selectedIds.filter((id) => !this.pageIds.includes(id));
+            }
+        },
+
+        exportSelected(format) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('export', format);
+            url.searchParams.delete('ids');
+            url.searchParams.delete('ids[]');
+            // Clear any previous ids[] params
+            [...url.searchParams.keys()].filter((k) => k.startsWith('ids')).forEach((k) => url.searchParams.delete(k));
+
+            if (this.selectedIds.length > 0) {
+                this.selectedIds.forEach((id) => url.searchParams.append('ids[]', id));
+            }
+            window.location.href = url.toString();
+        },
 
         promptDelete(id, poNo) {
             this.deletingOrderId = id;

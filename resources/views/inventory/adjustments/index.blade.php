@@ -2,7 +2,7 @@
 @section('title', 'Stock Adjustments')
 
 @section('content')
-<div id="listing-container" data-dynamic-container x-data="stockAdjustmentIndex()" class="space-y-4">
+<div id="listing-container" data-dynamic-container x-data="stockAdjustmentIndex()" class="space-y-2">
     <x-ui.page-header title="Stock Adjustments">
         <x-slot name="actions">
             <x-ui.button variant="primary" :href="route('inventory.adjustments.create')">+ New Adjustment</x-ui.button>
