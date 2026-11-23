@@ -7,7 +7,9 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\ProductUom;
 use App\Domains\Master\Models\Uom;
 use App\Http\Controllers\Controller;
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,9 +19,9 @@ use Illuminate\View\View;
 
 class UomController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = Uom::query()
             ->when($request->filled('status'), function ($q) use ($request) {
@@ -31,6 +33,15 @@ class UomController extends Controller
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'code']);
+
+        if ($export = $this->exportIfRequested($request, $query, 'UOMs', 'Units of Measurement', ['UOM Name', 'Code', 'Status', 'Created Date'], fn ($item) => [
+            $item->name,
+            $item->code ?: '—',
+            $item->is_active ? 'Active' : 'Inactive',
+            $item->created_at?->format('d/m/Y') ?? '—',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,

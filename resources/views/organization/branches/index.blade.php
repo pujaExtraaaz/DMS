@@ -4,6 +4,7 @@
 <div id="listing-container" data-dynamic-container x-data="branchIndex()">
     <x-ui.page-header title="Branches">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('organization.branches.create')">+ Add Branch</x-ui.button>
         </x-slot>
     </x-ui.page-header>

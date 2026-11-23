@@ -5,6 +5,7 @@
 <div id="listing-container" data-dynamic-container class="space-y-4" x-data="currentStockPage()">
 <x-ui.page-header title="Current Stock">
     <x-slot name="actions">
+        <x-ui.export-menu />
         <x-ui.button variant="secondary" :href="route('inventory.stock-register.index')">Stock Register</x-ui.button>
         <x-ui.button variant="secondary" :href="route('reports.stock-ledger')">View Stock Ledger</x-ui.button>
     </x-slot>
@@ -97,6 +98,7 @@
                 <option value="in_transit" @selected(($filters['stock_status'] ?? '') == 'in_transit')>In-Transit Incoming</option>
                 <option value="both" @selected(($filters['stock_status'] ?? '') == 'both')>Available &amp; In-Transit</option>
                 <option value="low_stock" @selected(($filters['stock_status'] ?? '') == 'low_stock')>Low Stock</option>
+                <option value="dead_stock" @selected(($filters['stock_status'] ?? '') == 'dead_stock')>Dead Stock (Stock Ageing)</option>
             </select>
         </div>
 

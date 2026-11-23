@@ -4,6 +4,7 @@
 <div>
     <x-ui.page-header title="Purchase Material Comparison Sheets">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('purchasing.comparisons.create')">+ New Comparison</x-ui.button>
         </x-slot>
     </x-ui.page-header>

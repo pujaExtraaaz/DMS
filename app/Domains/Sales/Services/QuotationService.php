@@ -229,8 +229,20 @@ class QuotationService
         DB::transaction(function () use ($quotation, $actor) {
             $locked = Quotation::query()->whereKey($quotation->id)->lockForUpdate()->firstOrFail();
 
+            if ($locked->hasConvertedInvoice()) {
+                $invoice = $locked->getConvertedInvoice();
+                $invNo = $invoice ? $invoice->invoice_no : 'Tax Invoice';
+                throw new InvalidArgumentException("Cannot delete quotation '{$locked->quotation_no}' because it has already been converted to a Tax Invoice ({$invNo}). Converted quotations cannot be deleted to preserve financial audit trail.");
+            }
+
+            if ($locked->hasConvertedOrder() || $locked->status === 'converted') {
+                $order = $locked->getConvertedOrder();
+                $orderNo = $order ? $order->order_no : ('#'.($locked->converted_order_id ?: $locked->id));
+                throw new InvalidArgumentException("Cannot delete quotation '{$locked->quotation_no}' because it has already been converted to a Sales Order ({$orderNo}). Converted quotations cannot be deleted.");
+            }
+
             if (! $locked->isDeletable()) {
-                throw new InvalidArgumentException('Only draft quotations without a converted order can be deleted.');
+                throw new InvalidArgumentException("Cannot delete quotation '{$locked->quotation_no}' because it is in '{$locked->status}' status.");
             }
 
             $actorName = $this->auditLogService->actorName($actor->name);

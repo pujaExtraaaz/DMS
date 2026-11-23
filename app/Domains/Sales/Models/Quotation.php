@@ -5,6 +5,7 @@ namespace App\Domains\Sales\Models;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Order\Models\Order;
 use App\Domains\Organization\Models\Company;
+use App\Domains\Sales\Models\Invoice;
 use App\Models\User;
 use App\Support\Traits\HasUppercaseNames;
 use Illuminate\Database\Eloquent\Model;
@@ -84,6 +85,44 @@ class Quotation extends Model
         return $this->belongsTo(Order::class, 'converted_order_id');
     }
 
+    public function hasConvertedOrder(): bool
+    {
+        return (bool) ($this->converted_order_id || Order::where('quotation_id', $this->id)->exists());
+    }
+
+    public function getConvertedOrder(): ?Order
+    {
+        if ($this->relationLoaded('convertedOrder') && $this->convertedOrder) {
+            return $this->convertedOrder;
+        }
+
+        if ($this->converted_order_id) {
+            return $this->convertedOrder()->first();
+        }
+
+        return Order::where('quotation_id', $this->id)->first();
+    }
+
+    public function hasConvertedInvoice(): bool
+    {
+        $order = $this->getConvertedOrder();
+        if ($order && ($order->invoice()->exists() || Invoice::where('order_id', $order->id)->exists())) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function getConvertedInvoice(): ?Invoice
+    {
+        $order = $this->getConvertedOrder();
+        if ($order) {
+            return $order->invoice ?? Invoice::where('order_id', $order->id)->first();
+        }
+
+        return null;
+    }
+
     public function isEditable(): bool
     {
         return in_array($this->status, ['draft', 'sent'], true);
@@ -91,8 +130,11 @@ class Quotation extends Model
 
     public function isDeletable(): bool
     {
-        return in_array($this->status, ['draft', 'cancelled'], true)
-            && ! $this->converted_order_id;
+        if ($this->hasConvertedOrder() || $this->hasConvertedInvoice() || $this->status === 'converted') {
+            return false;
+        }
+
+        return in_array($this->status, ['draft', 'sent', 'rejected', 'cancelled'], true);
     }
 
     public function resolveCompany(): ?Company

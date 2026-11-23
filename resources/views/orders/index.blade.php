@@ -192,14 +192,21 @@
 
             <div class="mt-4 flex flex-wrap items-center gap-2">
                 <a
-                    href="{{ route('orders.export', request()->query()) }}"
+                    href="{{ route('orders.export', array_merge(request()->query(), ['format' => 'xlsx'])) }}"
+                    class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                    Excel (.xlsx)
+                </a>
+
+                <a
+                    href="{{ route('orders.export', array_merge(request()->query(), ['format' => 'csv'])) }}"
                     class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                     CSV
                 </a>
 
                 <a
-                    href="{{ route('orders.pdf', request()->query()) }}"
+                    href="{{ route('orders.export', array_merge(request()->query(), ['format' => 'pdf'])) }}"
                     class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                     PDF

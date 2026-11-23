@@ -144,9 +144,9 @@ class StockMovementService
             );
 
             $autoOut = null;
-            if ($effectiveQty > 0 && in_array($type, ['purchase', 'inward', 'purchase_invoice'], true) && $product->usesBehaviour('treat_purchases_as_consumed')) {
+            if ($effectiveQty > 0 && in_array($type, ['purchase', 'inward', 'purchase_invoice', 'receipt_note'], true) && $product->usesBehaviour('treat_purchases_as_consumed')) {
                 $autoOut = ['consumption', 'Automatically consumed on purchase'];
-            } elseif ($effectiveQty > 0 && in_array($type, ['return', 'rejection_in'], true) && $product->usesBehaviour('treat_rejections_inward_as_scrap')) {
+            } elseif ($effectiveQty > 0 && in_array($type, ['return', 'rejection_in', 'receipt_note_return'], true) && $product->usesBehaviour('treat_rejections_inward_as_scrap')) {
                 $autoOut = ['scrap', 'Rejection inward treated as scrap'];
             }
 
@@ -247,18 +247,43 @@ class StockMovementService
 
         $stockLevel->update(['quantity' => $newBalance]);
 
-        $movement = StockMovement::create([
-            'warehouse_id' => $warehouseId,
-            'product_id' => $product->id,
-            'uom_id' => $uom->id,
-            'type' => $type,
-            'quantity' => $quantity,
-            'balance_after' => $newBalance,
-            'reference_type' => $reference?->getMorphClass(),
-            'reference_id' => $reference?->getKey(),
-            'notes' => $notes,
-            'created_by' => $user?->id,
-        ]);
+        try {
+            $movement = StockMovement::create([
+                'warehouse_id' => $warehouseId,
+                'product_id' => $product->id,
+                'uom_id' => $uom->id,
+                'type' => $type,
+                'quantity' => $quantity,
+                'balance_after' => $newBalance,
+                'reference_type' => $reference?->getMorphClass(),
+                'reference_id' => $reference?->getKey(),
+                'notes' => $notes,
+                'created_by' => $user?->id,
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Graceful fallback for MySQL strict mode if migration hasn't been applied yet on older schemas
+            if (str_contains($e->getMessage(), 'Data truncated for column \'type\'') || str_contains($e->getMessage(), '1265')) {
+                $fallbackType = match ($type) {
+                    'receipt_note' => 'inward',
+                    'receipt_note_return' => 'return',
+                    default => 'adjustment',
+                };
+                $movement = StockMovement::create([
+                    'warehouse_id' => $warehouseId,
+                    'product_id' => $product->id,
+                    'uom_id' => $uom->id,
+                    'type' => $fallbackType,
+                    'quantity' => $quantity,
+                    'balance_after' => $newBalance,
+                    'reference_type' => $reference?->getMorphClass(),
+                    'reference_id' => $reference?->getKey(),
+                    'notes' => $notes,
+                    'created_by' => $user?->id,
+                ]);
+            } else {
+                throw $e;
+            }
+        }
 
         $layer = null;
         if ($quantity > 0) {

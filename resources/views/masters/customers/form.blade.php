@@ -96,6 +96,7 @@
                 'designation' => $row['designation'] ?? $resolved['designation'],
                 'other_designation' => $row['other_designation'] ?? $resolved['other_designation'],
                 'company_name' => $row['company_name'] ?? '',
+                'company_website' => $row['company_website'] ?? '',
                 'phone' => $row['phone'] ?? '',
                 'alternate_phone' => $row['alternate_phone'] ?? '',
                 'whatsapp' => $row['whatsapp_number'] ?? ($row['whatsapp'] ?? ''),
@@ -122,6 +123,7 @@
                 'designation' => $contact->phone_directory_contact_id ? ($contact->effective_designation ?: $resolved['designation']) : $resolved['designation'],
                 'other_designation' => $contact->phone_directory_contact_id ? '' : $resolved['other_designation'],
                 'company_name' => $contact->effective_company_name,
+                'company_website' => $contact->effective_company_website,
                 'phone' => $contact->effective_phone,
                 'alternate_phone' => $contact->effective_alternate_phone,
                 'whatsapp' => $contact->effective_whatsapp_number,
@@ -150,6 +152,8 @@
                 'gem_registered' => (string) ($row['gem_registered'] ?? '0'),
                 'gem_authorized' => (string) ($row['gem_authorized'] ?? '0'),
                 'authorization_number' => $row['authorization_number'] ?? '',
+                'category' => $row['category'] ?? '',
+                'date_of_issue' => $row['date_of_issue'] ?? '',
                 'documents' => $saved ? $saved->documents->map(fn ($doc) => [
                     'id' => $doc->id,
                     'name' => $doc->original_name,
@@ -167,6 +171,8 @@
             'gem_registered' => $row->gem_registered ? '1' : '0',
             'gem_authorized' => $row->gem_authorized ? '1' : '0',
             'authorization_number' => $row->authorization_number ?? '',
+            'category' => $row->category ?? '',
+            'date_of_issue' => $row->date_of_issue ? $row->date_of_issue->format('Y-m-d') : '',
             'documents' => $row->documents->map(fn ($doc) => [
                 'id' => $doc->id,
                 'name' => $doc->original_name,
@@ -705,6 +711,17 @@
                                                :required="row.gem_registered === '1' && row.gem_authorized === '1'"
                                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                                         <p x-show="row.gem_authorized !== '1'" class="mt-1 text-[11px] text-slate-500">Not required when this party is not authorized on GEM.</p>
+                                    </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Category</label>
+                                        <input type="text" :name="`gem_authorizations[${idx}][category]`" x-model="row.category" maxlength="255"
+                                               placeholder="Enter category"
+                                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Date of Issue</label>
+                                        <input type="date" :name="`gem_authorizations[${idx}][date_of_issue]`" x-model="row.date_of_issue"
+                                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
                                     </div>
                                     <div class="md:col-span-2" x-show="row.gem_registered === '1'" x-cloak>
                                         <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GEM Star Rating Photo/Document</label>
@@ -1515,6 +1532,7 @@
                         <input type="hidden" :name="`contacts[${idx}][designation]`" :value="contact.designation || ''">
                         <input type="hidden" :name="`contacts[${idx}][other_designation]`" :value="contact.other_designation || ''">
                         <input type="hidden" :name="`contacts[${idx}][company_name]`" :value="contact.company_name || ''">
+                        <input type="hidden" :name="`contacts[${idx}][company_website]`" :value="contact.company_website || ''">
                         <input type="hidden" :name="`contacts[${idx}][phone]`" :value="contact.phone || ''">
                         <input type="hidden" :name="`contacts[${idx}][alternate_phone]`" :value="contact.alternate_phone || ''">
                         <input type="hidden" :name="`contacts[${idx}][whatsapp_number]`" :value="contact.whatsapp_number || contact.whatsapp || ''">
@@ -1571,6 +1589,12 @@
                                             <svg class="w-3 h-3 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
                                             <span x-text="contact.company_name"></span>
                                         </span>
+                                    </template>
+                                    <template x-if="contact.company_website">
+                                        <a :href="contact.company_website" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 hover:text-indigo-600 hover:bg-slate-200 transition" title="Visit Company Website">
+                                            <svg class="w-2.5 h-2.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                            <span>Website</span>
+                                        </a>
                                     </template>
                                     <template x-if="contact.phone_directory_contact_id">
                                         <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
@@ -3117,6 +3141,7 @@ function partyFormController() {
                 designation: item.designation || '',
                 other_designation: '',
                 company_name: item.company_name || '',
+                company_website: item.company_website || '',
                 phone: item.phone || '',
                 alternate_phone: item.alternate_phone || '',
                 whatsapp: item.whatsapp || item.whatsapp_number || '',
@@ -3235,6 +3260,7 @@ function partyFormController() {
                         designation: c.designation || '',
                         other_designation: '',
                         company_name: c.company_name || '',
+                        company_website: c.company_website || '',
                         phone: c.phone || '',
                         alternate_phone: c.alternate_phone || '',
                         whatsapp: c.whatsapp || '',
@@ -3433,9 +3459,11 @@ function partyFormController() {
                 key: 'gem-new-' + Date.now() + '-' + Math.random().toString(16).slice(2),
                 id: '',
                 brand_id: '',
-                gem_registered: '0',
+                gem_registered: '1',
                 gem_authorized: '0',
                 authorization_number: '',
+                category: '',
+                date_of_issue: '',
                 documents: [],
             });
         },

@@ -393,6 +393,9 @@
         @endif
     </div>
     <div class="toolbar-right">
+        <a href="{{ route('quotations.export', ['quotation' => $item, 'format' => 'pdf']) }}" title="Download PDF">Export PDF</a>
+        <a href="{{ route('quotations.export', ['quotation' => $item, 'format' => 'xlsx']) }}" title="Download Excel">Export Excel</a>
+        <a href="{{ route('quotations.export', ['quotation' => $item, 'format' => 'csv']) }}" title="Download CSV">Export CSV</a>
         <button type="button" class="btn-primary" onclick="window.print()">Print</button>
     </div>
 </div>

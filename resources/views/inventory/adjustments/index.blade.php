@@ -5,6 +5,7 @@
 <div id="listing-container" data-dynamic-container x-data="stockAdjustmentIndex()" class="space-y-4">
     <x-ui.page-header title="Stock Adjustments">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="primary" :href="route('inventory.adjustments.create')">+ New Adjustment</x-ui.button>
         </x-slot>
     </x-ui.page-header>

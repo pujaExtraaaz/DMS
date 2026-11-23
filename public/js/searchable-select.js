@@ -26,7 +26,7 @@
             justify-content: space-between;
             width: 100%;
             min-height: 38px;
-            height: 38px;
+            height: auto;
             padding: 0.5rem 0.75rem;
             font-size: 0.875rem;
             line-height: 1.25rem;
@@ -62,11 +62,19 @@
             box-shadow: none;
         }
         .dms-searchable-trigger-text {
+            flex: 1 1 0%;
+            margin-right: 0.5rem;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            line-height: 1.35;
+        }
+        .dms-searchable-container:not(.dms-searchable-filter) .dms-searchable-trigger-text {
+            white-space: normal;
+        }
+        .dms-searchable-filter .dms-searchable-trigger-text {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            flex: 1 1 0%;
-            margin-right: 0.5rem;
         }
         .dms-searchable-trigger-text.is-placeholder {
             color: #94a3b8;
@@ -232,15 +240,18 @@
         }
         .dms-searchable-option {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
-            padding: 0.4375rem 0.625rem;
+            gap: 0.5rem;
+            padding: 0.5rem 0.625rem;
             font-size: 0.8125rem;
-            line-height: 1.125rem;
+            line-height: 1.35;
             color: #334155;
             border-radius: 0.375rem;
             cursor: pointer;
             transition: background-color 0.1s, color 0.1s;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
         .dms-searchable-option:hover,
         .dms-searchable-option.is-highlighted {
@@ -259,9 +270,10 @@
         }
         .dms-searchable-option-text {
             flex: 1 1 0%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            white-space: normal;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            line-height: 1.35;
         }
         .dms-searchable-option-code {
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -521,6 +533,8 @@
 
             if (selectedOpt && selectedOpt.value !== '') {
                 labelSpan.textContent = selectedOpt.text;
+                labelSpan.title = selectedOpt.text;
+                trigger.title = selectedOpt.text;
                 labelSpan.classList.remove('is-placeholder');
 
                 // Check if can be cleared
@@ -531,6 +545,8 @@
                 const placeholder = select.getAttribute('placeholder') ||
                                     (selectedOpt ? selectedOpt.text : 'Select an option');
                 labelSpan.textContent = placeholder || 'Select an option';
+                labelSpan.title = '';
+                trigger.title = '';
                 labelSpan.classList.add('is-placeholder');
                 clearBtn.style.display = 'none';
             }
@@ -596,17 +612,20 @@
             const rect = trigger.getBoundingClientRect();
             const viewportHeight = window.innerHeight;
             const viewportWidth = window.innerWidth;
-            const minMenuWidth = Math.max(rect.width, 220);
+            const isFilter = container.classList.contains('dms-searchable-filter');
 
-            // Calculate horizontal positioning & ensure it fits within the viewport
-            let left = rect.left;
-            let finalMenuWidth = minMenuWidth;
+            // Determine if options have longer text to comfortably expand width
+            const hasLongOption = optionsData.some(o => o.text && o.text.length > 30);
+            const baseMinWidth = isFilter ? 220 : (hasLongOption ? 460 : 340);
+            let finalMenuWidth = Math.max(rect.width, baseMinWidth);
 
+            // Fit within viewport with padding
             if (finalMenuWidth > viewportWidth - 16) {
                 finalMenuWidth = viewportWidth - 16;
             }
             menuEl.style.width = `${finalMenuWidth}px`;
 
+            let left = rect.left;
             if (left + finalMenuWidth > viewportWidth - 8) {
                 left = viewportWidth - finalMenuWidth - 8;
             }
@@ -614,7 +633,7 @@
 
             menuEl.style.left = `${left}px`;
 
-            // Calculate vertical positioning
+            // Calculate vertical positioning & max-height
             const spaceBelow = viewportHeight - rect.bottom;
             const spaceAbove = rect.top;
 
@@ -622,10 +641,14 @@
                 // Open upwards
                 menuEl.style.top = 'auto';
                 menuEl.style.bottom = `${viewportHeight - rect.top + 4}px`;
+                const maxHeight = Math.max(160, Math.min(320, spaceAbove - 16));
+                optionsListEl.style.maxHeight = `${maxHeight}px`;
             } else {
                 // Open downwards
                 menuEl.style.top = `${rect.bottom + 4}px`;
                 menuEl.style.bottom = 'auto';
+                const maxHeight = Math.max(160, Math.min(320, spaceBelow - 16));
+                optionsListEl.style.maxHeight = `${maxHeight}px`;
             }
         }
 
@@ -646,6 +669,7 @@
                 optEl.className = 'dms-searchable-option';
                 optEl.dataset.index = idx;
                 optEl.dataset.value = opt.value;
+                optEl.title = opt.text || '';
 
                 if (String(opt.value) === currentVal) {
                     optEl.classList.add('is-selected');
@@ -657,6 +681,7 @@
                 const textSpan = document.createElement('span');
                 textSpan.className = 'dms-searchable-option-text';
                 textSpan.textContent = opt.text || '—';
+                textSpan.title = opt.text || '';
                 optEl.appendChild(textSpan);
 
                 if (opt.code) {

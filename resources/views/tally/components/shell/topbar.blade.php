@@ -1,4 +1,5 @@
 @php
+    $workspace ??= app(\Tally\Context\WorkspaceContext::class);
     $company = $workspace->company();
     $branch = $workspace->branch();
     $year = $workspace->financialYear();

@@ -37,10 +37,14 @@ class BrandController extends Controller
 
         $this->applySearch($query, $request->input('search'), ['name', 'detail']);
 
-        if ($export = $this->exportIfRequested($request, $query, 'Brands', 'Brands', ['Name', 'Details', 'Status'], fn ($item) => [
+        $query->withCount(['categories', 'products']);
+        if ($export = $this->exportIfRequested($request, $query, 'Brands', 'Brands', ['Brand Name', 'Details', 'Categories Count', 'Products Count', 'Status', 'Created Date'], fn ($item) => [
             $item->name,
-            $item->detail ?: '',
+            $item->detail ?: '—',
+            (string) ($item->categories_count ?? 0),
+            (string) ($item->products_count ?? 0),
             $item->is_active ? 'Active' : 'Inactive',
+            $item->created_at?->format('d/m/Y') ?? '—',
         ])) {
             return $export;
         }

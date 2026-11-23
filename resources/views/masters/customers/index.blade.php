@@ -82,6 +82,7 @@
                     <option value="">Status: All</option>
                     <option value="active" @selected(request('status') === 'active')>Active</option>
                     <option value="inactive" @selected(request('status') === 'inactive')>Inactive</option>
+                    <option value="frozen" @selected(request('status') === 'frozen' || request('credit_status') === 'frozen')>Frozen</option>
                 </select>
             </x-slot>
         </x-ui.table-toolbar>

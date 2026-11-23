@@ -5,6 +5,7 @@
     'changeType' => 'neutral',
     'icon' => null,
     'accent' => 'indigo',
+    'href' => null,
 ])
 
 @php
@@ -31,10 +32,13 @@
     } elseif (isset($icon) && $icon instanceof \Illuminate\View\ComponentSlot) {
         $iconHtml = $icon->toHtml();
     }
+
+    $tag = $href ? 'a' : 'div';
+    $baseClasses = 'relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition duration-200' . ($href ? ' cursor-pointer block no-underline text-inherit hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500' : '');
 @endphp
 
-<div {{ $attributes->merge([
-    'class' => 'relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200'
+<{{ $tag }} @if($href) href="{{ $href }}" @endif {{ $attributes->merge([
+    'class' => $baseClasses
 ]) }}>
 
     {{-- Header --}}
@@ -74,4 +78,4 @@
         <div class="mt-3 min-h-[24px]"></div>
     @endif
 
-</div>
+</{{ $tag }}>
