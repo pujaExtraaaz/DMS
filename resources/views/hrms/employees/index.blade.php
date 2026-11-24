@@ -3,6 +3,7 @@
 @section('content')
 <x-ui.page-header title="Employees">
 <x-slot name="actions">
+<x-ui.export-menu />
 <x-ui.button variant="primary" :href="route('hrms.employees.create')">Add Employee</x-ui.button>
 </x-slot>
 </x-ui.page-header>

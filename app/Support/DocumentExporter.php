@@ -2,10 +2,12 @@
 
 namespace App\Support;
 
+use App\Domains\Order\Models\Order;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Sales\Models\Invoice;
+use App\Domains\Sales\Models\Quotation;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Collection;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -287,6 +289,180 @@ class DocumentExporter
         ]);
     }
 
+    /**
+     * Export data as styled multi-sheet Excel (.xlsx) spreadsheet.
+     *
+     * @param string $filename
+     * @param array<int, array{
+     *     title: string,
+     *     headers: array<int, string>,
+     *     rows: iterable,
+     *     meta?: array,
+     *     totals?: array
+     * }> $sheets
+     * @return StreamedResponse
+     */
+    public static function exportMultiSheetExcel(string|array $arg1, string|array $arg2 = []): StreamedResponse
+    {
+        if (is_array($arg1) && (is_string($arg2) || empty($arg2))) {
+            $filename = is_string($arg2) && $arg2 !== '' ? $arg2 : 'export-' . now()->format('Y-m-d');
+            $rawSheets = $arg1;
+        } elseif (is_string($arg1) && is_array($arg2)) {
+            $filename = $arg1;
+            $rawSheets = $arg2;
+        } else {
+            $filename = is_string($arg1) ? $arg1 : 'export-' . now()->format('Y-m-d');
+            $rawSheets = is_array($arg2) ? $arg2 : (array) $arg1;
+        }
+
+        if (! str_ends_with(strtolower($filename), '.xlsx')) {
+            $filename .= '.xlsx';
+        }
+
+        $sheets = [];
+        foreach ($rawSheets as $key => $sheetData) {
+            if (isset($sheetData['title'])) {
+                $sheets[] = $sheetData;
+            } else {
+                $title = is_string($key) ? $key : ($sheetData['name'] ?? 'Sheet');
+                $headers = array_values($sheetData['columns'] ?? $sheetData['headers'] ?? []);
+                $rows = [];
+                foreach ($sheetData['rows'] ?? [] as $row) {
+                    $rows[] = array_values((array) $row);
+                }
+                $sheets[] = [
+                    'title' => $title,
+                    'headers' => $headers,
+                    'rows' => $rows,
+                    'meta' => $sheetData['meta'] ?? ['_title' => $title],
+                    'totals' => $sheetData['totals'] ?? [],
+                ];
+            }
+        }
+
+        $spreadsheet = new Spreadsheet();
+        $isFirst = true;
+
+        foreach ($sheets as $sheetData) {
+            $sheetTitle = substr($sheetData['title'] ?? 'Sheet', 0, 31);
+            $sheetTitle = preg_replace('/[\\\\\\/*?:\[\]]/', '', $sheetTitle) ?: 'Sheet';
+
+            if ($isFirst) {
+                $sheet = $spreadsheet->getActiveSheet();
+                $sheet->setTitle($sheetTitle);
+                $isFirst = false;
+            } else {
+                $sheet = $spreadsheet->createSheet();
+                $sheet->setTitle($sheetTitle);
+            }
+
+            $currentRow = 1;
+            $meta = $sheetData['meta'] ?? [];
+            $headers = $sheetData['headers'] ?? [];
+            $rows = $sheetData['rows'] ?? [];
+            $totals = $sheetData['totals'] ?? [];
+
+            // Metadata block (if provided)
+            if (!empty($meta)) {
+                if (isset($meta['_title'])) {
+                    $sheet->setCellValue('A' . $currentRow, $meta['_title']);
+                    $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true)->setSize(14);
+                    unset($meta['_title']);
+                    $currentRow += 2;
+                }
+
+                foreach ($meta as $k => $v) {
+                    if (is_int($k)) {
+                        $sheet->setCellValue('A' . $currentRow, $v);
+                    } else {
+                        $sheet->setCellValue('A' . $currentRow, $k . ':');
+                        $sheet->setCellValue('B' . $currentRow, $v);
+                        $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true);
+                    }
+                    $currentRow++;
+                }
+                $currentRow++;
+            }
+
+            if (!empty($headers)) {
+                $headerStartRow = $currentRow;
+                $colIndex = 1;
+                foreach ($headers as $headerText) {
+                    $sheet->setCellValueByColumnAndRow($colIndex, $currentRow, $headerText);
+                    $colIndex++;
+                }
+                $maxColIndex = count($headers);
+
+                $headerRange = 'A' . $headerStartRow . ':' . self::columnIndexToLetter($maxColIndex) . $headerStartRow;
+                $sheet->getStyle($headerRange)->applyFromArray([
+                    'font' => [
+                        'bold' => true,
+                        'color' => ['rgb' => 'FFFFFF'],
+                        'size' => 11,
+                    ],
+                    'fill' => [
+                        'fillType' => Fill::FILL_SOLID,
+                        'startColor' => ['rgb' => '1E293B'],
+                    ],
+                    'alignment' => [
+                        'vertical' => Alignment::VERTICAL_CENTER,
+                    ],
+                ]);
+                $sheet->getRowDimension($headerStartRow)->setRowHeight(24);
+
+                $currentRow++;
+                $dataStartRow = $currentRow;
+
+                foreach ($rows as $row) {
+                    $colIndex = 1;
+                    foreach ((array) $row as $val) {
+                        $sheet->setCellValueByColumnAndRow($colIndex, $currentRow, $val);
+                        $colIndex++;
+                    }
+                    $currentRow++;
+                }
+                $dataEndRow = $currentRow - 1;
+
+                if ($dataEndRow >= $dataStartRow) {
+                    $tableRange = 'A' . $headerStartRow . ':' . self::columnIndexToLetter($maxColIndex) . $dataEndRow;
+                    $sheet->getStyle($tableRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN)->getColor()->setRGB('CBD5E1');
+                }
+
+                if (!empty($totals)) {
+                    $currentRow++;
+                    foreach ($totals as $k => $v) {
+                        if (is_int($k)) {
+                            $sheet->setCellValue('A' . $currentRow, $v);
+                            $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true);
+                        } else {
+                            $sheet->setCellValue('A' . $currentRow, $k . ':');
+                            $sheet->setCellValue('B' . $currentRow, $v);
+                            $sheet->getStyle('A' . $currentRow)->getFont()->setBold(true);
+                            $sheet->getStyle('B' . $currentRow)->getFont()->setBold(true);
+                        }
+                        $currentRow++;
+                    }
+                }
+
+                for ($col = 1; $col <= $maxColIndex; $col++) {
+                    $letter = self::columnIndexToLetter($col);
+                    $sheet->getColumnDimension($letter)->setAutoSize(true);
+                }
+            }
+        }
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        $writer = new Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Cache-Control' => 'no-store, no-cache',
+        ]);
+    }
+
     private static function columnIndexToLetter(int $index): string
     {
         $letter = '';
@@ -531,6 +707,152 @@ class DocumentExporter
     }
 
     /**
+     * Export Single Sales Quotation
+     */
+    public static function exportQuotation(Quotation $quotation, string $format): Response|StreamedResponse
+    {
+        $quotation->load(['customer', 'company', 'salesperson', 'items.product.brand', 'items.uom']);
+        $company = $quotation->resolveCompany();
+        $filename = 'Quotation-' . $quotation->quotation_no . '.' . ($format === 'excel' ? 'xlsx' : $format);
+
+        if ($format === 'pdf') {
+            return self::exportPdf('sales.quotations.preview', [
+                'item' => $quotation,
+                'company' => $company,
+                'isPdf' => true,
+            ], $filename);
+        }
+
+        $headers = ['#', 'Product Description', 'Brand', 'HSN/SAC', 'Quantity', 'UOM', 'Rate (₹)', 'Discount (₹)', 'Tax Rate (%)', 'Tax (₹)', 'Line Total (₹)'];
+        $rows = [];
+        $i = 1;
+
+        foreach ($quotation->items as $item) {
+            $rows[] = [
+                $i++,
+                $item->product?->name ?? ($item->description ?? '—'),
+                $item->product?->brand?->name ?? '—',
+                $item->hsn_code ?? ($item->product?->hsn_code ?? '—'),
+                number_format((float) $item->quantity, 2, '.', ''),
+                $item->uom?->code ?? ($item->product?->baseUom?->code ?? '—'),
+                number_format((float) $item->unit_price, 2, '.', ''),
+                number_format((float) $item->discount_amount, 2, '.', ''),
+                number_format((float) $item->tax_rate, 2, '.', '') . '%',
+                number_format((float) ($item->tax_amount ?? 0), 2, '.', ''),
+                number_format((float) $item->line_total, 2, '.', ''),
+            ];
+        }
+
+        $meta = [
+            '_title' => 'QUOTATION - ' . $quotation->quotation_no,
+            'Company' => $company?->name ?? 'Avit Digital',
+            'Company GSTIN' => $company?->gstin ?? '—',
+            'Customer' => $quotation->customer?->name ?? '—',
+            'Customer Code' => $quotation->customer?->code ?? '—',
+            'Customer GSTIN' => $quotation->customer?->gstin ?? '—',
+            'Customer Phone' => $quotation->customer?->phone ?? '—',
+            'Customer Email' => $quotation->customer?->email ?? '—',
+            'Quotation No' => $quotation->quotation_no,
+            'Quotation Date' => $quotation->quotation_date?->format('d/m/Y') ?? '—',
+            'Valid Until' => $quotation->valid_until?->format('d/m/Y') ?? '—',
+            'Status' => ucfirst($quotation->status),
+            'Salesperson' => $quotation->salesperson?->name ?? '—',
+            'Subject / Title' => $quotation->title ?? '—',
+            'Notes' => $quotation->notes ?? '—',
+            'Terms & Conditions' => $quotation->terms_conditions ?? '—',
+        ];
+
+        $totals = [
+            'Subtotal (Taxable)' => '₹ ' . number_format((float) $quotation->subtotal, 2),
+            'Discount' => '₹ ' . number_format((float) $quotation->discount_amount, 2),
+            'Tax Amount' => '₹ ' . number_format((float) $quotation->tax_amount, 2),
+            'Grand Total' => '₹ ' . number_format((float) $quotation->grand_total, 2),
+            'Amount in Words' => self::numberToIndianWords($quotation->grand_total),
+        ];
+
+        if ($format === 'csv') {
+            return self::exportCsv($filename, $headers, $rows, $meta, $totals);
+        }
+
+        return self::exportExcel($filename, 'Quotation', $headers, $rows, $meta, $totals);
+    }
+
+    /**
+     * Export Single Sales Order
+     */
+    public static function exportSalesOrder(Order $order, string $format): Response|StreamedResponse
+    {
+        $order->load(['customer', 'warehouse', 'salesperson', 'quotation', 'items.product.brand', 'items.uom']);
+        $company = Company::query()->find(auth()->user()?->company_id) ?? Company::query()->first();
+        $filename = 'Order-' . $order->order_no . '.' . ($format === 'excel' ? 'xlsx' : $format);
+
+        if ($format === 'pdf') {
+            return self::exportPdf('orders.pdf_single', [
+                'order' => $order,
+                'company' => $company,
+                'isPdf' => true,
+            ], $filename);
+        }
+
+        $headers = ['#', 'Product Name', 'Brand', 'SKU / Part No', 'Ordered Qty', 'Delivered Qty', 'UOM', 'Unit Price (₹)', 'Tax (₹)', 'Line Total (₹)'];
+        $rows = [];
+        $i = 1;
+
+        foreach ($order->items as $item) {
+            $rows[] = [
+                $i++,
+                $item->product?->name ?? '—',
+                $item->product?->brand?->name ?? '—',
+                $item->product?->sku ?? '—',
+                number_format((float) $item->quantity, 2, '.', ''),
+                number_format((float) $item->delivered_qty, 2, '.', ''),
+                $item->uom?->code ?? ($item->product?->baseUom?->code ?? '—'),
+                number_format((float) $item->unit_price, 2, '.', ''),
+                number_format((float) ($item->tax_amount ?? 0), 2, '.', ''),
+                number_format((float) $item->line_total, 2, '.', ''),
+            ];
+        }
+
+        $meta = [
+            '_title' => 'SALES ORDER - ' . $order->order_no,
+            'Company' => $company?->name ?? config('app.name'),
+            'Company GSTIN' => $company?->gstin ?? '—',
+            'Customer' => $order->customer?->name ?? '—',
+            'Customer Code' => $order->customer?->code ?? '—',
+            'Customer GSTIN' => $order->customer?->gstin ?? '—',
+            'Customer Phone' => $order->customer?->phone ?? '—',
+            'Order No' => $order->order_no,
+            'Order Date' => $order->order_date?->format('d/m/Y') ?? '—',
+            'Due Date' => $order->due_date?->format('d/m/Y') ?? '—',
+            'Status' => ucfirst($order->status),
+            'Salesperson' => $order->salesperson?->name ?? ($order->salesperson_name ?? '—'),
+            'Warehouse' => $order->warehouse?->name ?? '—',
+            'Billing Address' => $order->billing_address ?: ($order->customer?->address ?: '—'),
+            'Shipping Address' => $order->shipping_address ?: ($order->billing_address ?: ($order->customer?->address ?: '—')),
+            'Payment Terms' => $order->payment_terms ?? '—',
+            'Terms of Delivery' => $order->terms_of_delivery ?? '—',
+            'Reference No' => $order->reference_no ?? '—',
+            'Notes' => $order->notes ?? '—',
+        ];
+
+        $totals = [
+            'Subtotal (Taxable)' => '₹ ' . number_format((float) $order->subtotal, 2),
+            'Discount' => '₹ ' . number_format((float) $order->discount_amount, 2),
+            'Tax Amount' => '₹ ' . number_format((float) $order->tax_amount, 2),
+            'Grand Total' => '₹ ' . number_format((float) $order->grand_total, 2),
+            'Advance Amount' => '₹ ' . number_format((float) $order->advance_amount, 2),
+            'Balance Due' => '₹ ' . number_format((float) ($order->balance_amount ?? ($order->grand_total - $order->advance_amount)), 2),
+            'Amount in Words' => self::numberToIndianWords($order->grand_total),
+        ];
+
+        if ($format === 'csv') {
+            return self::exportCsv($filename, $headers, $rows, $meta, $totals);
+        }
+
+        return self::exportExcel($filename, 'Sales Order', $headers, $rows, $meta, $totals);
+    }
+
+    /**
      * Export Single Sales Tax Invoice
      */
     public static function exportSalesInvoice(Invoice $invoice, string $format, string $copyType = 'original', int $copies = 1): Response|StreamedResponse
@@ -694,32 +1016,225 @@ class DocumentExporter
     /**
      * Export Purchase Orders Listing
      */
-    public static function exportPurchaseOrdersListing(Collection|iterable $orders, string $format): Response|StreamedResponse
+    public static function exportPurchaseOrdersListing(Collection|iterable $orders, string $format, bool $detailed = false): Response|StreamedResponse
     {
+        if ($orders instanceof \Illuminate\Database\Eloquent\Collection) {
+            $orders->loadMissing(['supplier', 'warehouse', 'branch', 'items.product', 'items.uom']);
+        }
+
         $filename = 'Purchase-Orders-' . now()->format('Ymd-His') . '.' . ($format === 'excel' ? 'xlsx' : $format);
-        $headers = ['PO No', 'Date', 'Expected Date', 'Supplier', 'Warehouse', 'Status', 'Subtotal (₹)', 'Tax Amount (₹)', 'Grand Total (₹)'];
+<<<<<<< HEAD
         $rows = [];
         $totalSum = 0;
 
+        if ($detailed) {
+            $headers = [
+                'PO No', 'PO Date', 'Expected Date', 'Due Date', 'Credit Days', 'Status',
+                'Supplier', 'Supplier GSTIN', 'Billing Address',
+                'Delivery Address', 'Delivery State', 'Warehouse',
+                'Brand', 'Category', 'Sub Category', 'Product', 'HSN/SAC', 'Batch', 'UOM',
+                'Qty', 'MRP', 'Purchase Price Incl. GST', 'Purchase Disc. %', 'Unit Cost',
+                'Tax %', 'CGST %', 'SGST %', 'IGST %', 'Line Total (₹)',
+                'Freight Applicable', 'Freight Mode', 'Freight Amount', 'Freight Tax', 'Freight Total',
+                'PO Subtotal (₹)', 'PO Tax (₹)', 'PO Grand Total (₹)', 'Notes', 'Created By',
+            ];
+
+            foreach ($orders as $o) {
+                $totalSum += (float) $o->grand_total;
+                $deliveryState = $o->companyDeliveryAddress?->state ?? '';
+                $items = $o->items;
+
+                if ($items->isEmpty()) {
+                    $rows[] = [
+                        $o->po_no,
+                        $o->po_date?->format('d/m/Y') ?? '',
+                        $o->expected_date?->format('d/m/Y') ?? '',
+                        $o->due_date?->format('d/m/Y') ?? '',
+                        $o->credit_days ?? '',
+                        ucfirst(str_replace('_', ' ', $o->status)),
+                        $o->supplier?->name ?? '',
+                        $o->supplier?->gstin ?? '',
+                        preg_replace('/\s+/', ' ', trim((string) ($o->billing_address ?: ''))),
+                        preg_replace('/\s+/', ' ', trim((string) ($o->shipping_address ?: ''))),
+                        $deliveryState,
+                        $o->warehouse?->name ?? '',
+                        '', '', '', '', '', '', '',
+                        '', '', '', '', '',
+                        '', '', '', '', '',
+                        $o->is_freight_applicable ? 'Yes' : 'No',
+                        $o->freight_mode ?? '',
+                        number_format((float) $o->freight_amount, 2, '.', ''),
+                        number_format((float) $o->freight_tax_amount, 2, '.', ''),
+                        number_format((float) $o->freight_total, 2, '.', ''),
+                        number_format((float) $o->subtotal, 2, '.', ''),
+                        number_format((float) $o->tax_amount, 2, '.', ''),
+                        number_format((float) $o->grand_total, 2, '.', ''),
+                        $o->notes ?? '',
+                        $o->creator?->name ?? '',
+                    ];
+                    continue;
+                }
+
+                foreach ($items as $item) {
+                    $taxP = (float) $item->tax_percent;
+                    $cgstP = (float) ($item->cgst_percent ?? 0);
+                    $sgstP = (float) ($item->sgst_percent ?? 0);
+                    $igstP = ($cgstP == 0.0 && $sgstP == 0.0 && $taxP > 0) ? $taxP : 0.0;
+
+                    $rows[] = [
+                        $o->po_no,
+                        $o->po_date?->format('d/m/Y') ?? '',
+                        $o->expected_date?->format('d/m/Y') ?? '',
+                        $o->due_date?->format('d/m/Y') ?? '',
+                        $o->credit_days ?? '',
+                        ucfirst(str_replace('_', ' ', $o->status)),
+                        $o->supplier?->name ?? '',
+                        $o->supplier?->gstin ?? '',
+                        preg_replace('/\s+/', ' ', trim((string) ($o->billing_address ?: ''))),
+                        preg_replace('/\s+/', ' ', trim((string) ($o->shipping_address ?: ''))),
+                        $deliveryState,
+                        $o->warehouse?->name ?? '',
+                        $item->product?->brand?->name ?? '',
+                        $item->product?->category?->name ?? '',
+                        $item->product?->subCategory?->name ?? '',
+                        $item->product?->name ?? '',
+                        $item->product?->hsn_code ?? '',
+                        $item->batch_no ?? $item->batch_name ?? '',
+                        $item->uom?->code ?? '',
+                        number_format((float) $item->quantity, 4, '.', ''),
+                        number_format((float) ($item->mrp ?? 0), 2, '.', ''),
+                        number_format((float) ($item->purchase_price_inclusive ?? 0), 2, '.', ''),
+                        number_format((float) ($item->purchase_discount_percent ?? 0), 2, '.', ''),
+                        number_format((float) $item->unit_cost, 4, '.', ''),
+                        number_format($taxP, 2, '.', ''),
+                        number_format($cgstP, 2, '.', ''),
+                        number_format($sgstP, 2, '.', ''),
+                        number_format($igstP, 2, '.', ''),
+                        number_format((float) $item->line_total, 2, '.', ''),
+                        $o->is_freight_applicable ? 'Yes' : 'No',
+                        $o->freight_mode ?? '',
+                        number_format((float) $o->freight_amount, 2, '.', ''),
+                        number_format((float) $o->freight_tax_amount, 2, '.', ''),
+                        number_format((float) $o->freight_total, 2, '.', ''),
+                        number_format((float) $o->subtotal, 2, '.', ''),
+                        number_format((float) $o->tax_amount, 2, '.', ''),
+                        number_format((float) $o->grand_total, 2, '.', ''),
+                        $o->notes ?? '',
+                        $o->creator?->name ?? '',
+                    ];
+                }
+            }
+        } else {
+            $headers = ['PO No', 'Date', 'Expected Date', 'Supplier', 'Warehouse', 'Status', 'Subtotal (₹)', 'Tax Amount (₹)', 'Grand Total (₹)'];
+
+            foreach ($orders as $o) {
+                $totalSum += (float) $o->grand_total;
+                $rows[] = [
+                    $o->po_no,
+                    $o->po_date?->format('d/m/Y') ?? '',
+                    $o->expected_date?->format('d/m/Y') ?? '',
+                    $o->supplier?->name ?? '',
+                    $o->warehouse?->name ?? '',
+                    ucfirst(str_replace('_', ' ', $o->status)),
+                    number_format((float) $o->subtotal, 2, '.', ''),
+                    number_format((float) $o->tax_amount, 2, '.', ''),
+                    number_format((float) $o->grand_total, 2, '.', ''),
+                ];
+            }
+=======
+        $totalSum = 0;
+
+        $orderHeaders = [
+            'PO No', 'Date', 'Expected Date', 'Due Date', 'Credit Days',
+            'Supplier Code', 'Supplier Name', 'Supplier GSTIN', 'Supplier PAN', 'Supplier Phone',
+            'Warehouse', 'Status', 'Is Freight Applicable', 'Freight Mode', 'Freight Amount (₹)',
+            'Freight Tax (₹)', 'Freight Total (₹)', 'Subtotal (₹)', 'Tax Amount (₹)', 'Grand Total (₹)',
+            'Billing Address', 'Shipping Address', 'Notes', 'Created At'
+        ];
+
+        $orderRows = [];
+        $itemRows = [];
+
         foreach ($orders as $o) {
             $totalSum += (float) $o->grand_total;
-            $rows[] = [
+            $orderRows[] = [
                 $o->po_no,
-                $o->po_date?->format('d/m/Y') ?? '',
-                $o->expected_date?->format('d/m/Y') ?? '',
+                $o->po_date?->format('Y-m-d') ?? '',
+                $o->expected_date?->format('Y-m-d') ?? '',
+                $o->due_date?->format('Y-m-d') ?? '',
+                $o->credit_days ?? '',
+                $o->supplier?->code ?? '',
                 $o->supplier?->name ?? '',
+                $o->supplier?->tax_number ?? '',
+                $o->supplier?->pan_number ?? '',
+                $o->supplier?->phone ?? '',
                 $o->warehouse?->name ?? '',
-                ucfirst(str_replace('_', ' ', $o->status)),
+                ucfirst(str_replace('_', ' ', (string) $o->status)),
+                $o->is_freight_applicable ? 'Yes' : 'No',
+                $o->freight_mode ?? '',
+                number_format((float) $o->freight_amount, 2, '.', ''),
+                number_format((float) $o->freight_tax_amount, 2, '.', ''),
+                number_format((float) $o->freight_total, 2, '.', ''),
                 number_format((float) $o->subtotal, 2, '.', ''),
                 number_format((float) $o->tax_amount, 2, '.', ''),
                 number_format((float) $o->grand_total, 2, '.', ''),
+                $o->billing_address ?? '',
+                $o->shipping_address ?? '',
+                $o->notes ?? '',
+                $o->created_at?->format('Y-m-d H:i:s') ?? '',
             ];
+
+            if ($o->relationLoaded('items') || isset($o->items)) {
+                $sr = 1;
+                foreach ($o->items as $item) {
+                    $itemRows[] = [
+                        $o->po_no,
+                        $o->po_date?->format('Y-m-d') ?? '',
+                        $o->supplier?->name ?? '',
+                        $sr++,
+                        $item->product?->sku ?? $item->product?->code ?? '',
+                        $item->product?->name ?? '',
+                        (float) $item->quantity,
+                        (float) $item->received_qty,
+                        $item->uom?->code ?? $item->uom?->name ?? '',
+                        number_format((float) $item->unit_cost, 2, '.', ''),
+                        number_format((float) $item->purchase_price_inclusive, 2, '.', ''),
+                        number_format((float) $item->mrp, 2, '.', ''),
+                        number_format((float) $item->purchase_discount_percent, 2, '.', ''),
+                        number_format((float) $item->tax_percent, 2, '.', ''),
+                        number_format((float) $item->line_total, 2, '.', ''),
+                        $item->batch_no ?? '',
+                        $item->serial_no ?? '',
+                        (float) $item->weight,
+                    ];
+                }
+            }
+        }
+
+        if ($format === 'excel' || $format === 'xlsx') {
+            $itemHeaders = [
+                'PO No', 'PO Date', 'Supplier', 'Item #', 'Product Code', 'Product Name',
+                'Quantity', 'Received Qty', 'UOM', 'Unit Cost (₹)', 'Inclusive Price (₹)',
+                'MRP (₹)', 'Discount %', 'Tax %', 'Line Total (₹)', 'Batch No', 'Serial No', 'Weight'
+            ];
+
+            return self::exportMultiSheetExcel([
+                'Purchase Orders' => [
+                    'columns' => array_combine($orderHeaders, $orderHeaders),
+                    'rows' => array_map(fn ($r) => array_combine($orderHeaders, $r), $orderRows),
+                ],
+                'PO Items' => [
+                    'columns' => array_combine($itemHeaders, $itemHeaders),
+                    'rows' => array_map(fn ($r) => array_combine($itemHeaders, $r), $itemRows),
+                ],
+            ], 'purchase-orders-master-' . now()->format('Y-m-d'));
+>>>>>>> f424b6fb21192c3db4ae14ef5b6c372508fdccc9
         }
 
         $meta = [
-            '_title' => 'Purchase Orders Report',
+            '_title' => $detailed ? 'Purchase Orders Detailed Export' : 'Purchase Orders Report',
             'Exported At' => now()->format('d M Y H:i:s'),
-            'Total Records' => count($rows),
+            'Total Records' => count($orderRows),
         ];
 
         $totals = [
@@ -727,17 +1242,24 @@ class DocumentExporter
         ];
 
         if ($format === 'csv') {
-            return self::exportCsv($filename, $headers, $rows, $meta, $totals);
+            return self::exportCsv($filename, $orderHeaders, $orderRows, $meta, $totals);
         }
 
+<<<<<<< HEAD
         if ($format === 'pdf') {
-            return ReportExporter::pdf($filename, 'Purchase Orders Report', $headers, $rows, [
+            return ReportExporter::pdf($filename, $detailed ? 'Purchase Orders Detailed Export' : 'Purchase Orders Report', $headers, $rows, [
                 'Generated' => now()->format('d M Y H:i'),
                 'Total Amount' => '₹ ' . number_format($totalSum, 2),
             ]);
         }
 
         return self::exportExcel($filename, 'Purchase Orders', $headers, $rows, $meta, $totals);
+=======
+        return ReportExporter::pdf($filename, 'Purchase Orders Report', $orderHeaders, $orderRows, [
+            'Generated' => now()->format('d M Y H:i'),
+            'Total Amount' => '₹ ' . number_format($totalSum, 2),
+        ]);
+>>>>>>> f424b6fb21192c3db4ae14ef5b6c372508fdccc9
     }
 
     /**
@@ -745,31 +1267,116 @@ class DocumentExporter
      */
     public static function exportPurchaseInvoicesListing(Collection|iterable $invoices, string $format): Response|StreamedResponse
     {
+        if ($invoices instanceof \Illuminate\Database\Eloquent\Collection) {
+            $invoices->loadMissing(['supplier', 'warehouse', 'branch', 'items.product', 'items.uom']);
+        }
+
         $filename = 'Purchase-Invoices-' . now()->format('Ymd-His') . '.' . ($format === 'excel' ? 'xlsx' : $format);
-        $headers = ['Invoice No', 'Supplier Inv No', 'Date', 'Due Date', 'Supplier', 'Warehouse', 'Status', 'Taxable (₹)', 'Tax (₹)', 'Grand Total (₹)'];
-        $rows = [];
         $totalSum = 0;
 
+        $invoiceHeaders = [
+            'Invoice No', 'Supplier Inv No', 'Invoice Date', 'Receive Date', 'Dispatch Date', 'Due Date',
+            'Supplier Code', 'Supplier Name', 'Supplier GSTIN', 'Warehouse', 'Status',
+            'Price Type', 'Tax Type', 'PO No', 'Receipt Note No', 'LR No', 'LR Date', 'Vehicle No', 'Carrier',
+            'Subtotal (₹)', 'Taxable (₹)', 'CGST (₹)', 'SGST (₹)', 'IGST (₹)', 'Tax Amount (₹)',
+            'Freight (₹)', 'Other Charges (₹)', 'Round Off (₹)', 'Total Amount (₹)', 'Payment Terms', 'Notes', 'Created At'
+        ];
+
+        $invoiceRows = [];
+        $itemRows = [];
+
         foreach ($invoices as $inv) {
-            $totalSum += (float) $inv->grand_total;
-            $rows[] = [
-                $inv->invoice_no,
-                $inv->supplier_invoice_no ?? '',
-                $inv->invoice_date?->format('d/m/Y') ?? '',
-                $inv->due_date?->format('d/m/Y') ?? '',
+            $totalSum += (float) ($inv->total_amount ?: $inv->grand_total);
+            $invoiceRows[] = [
+                $inv->invoice_no ?: $inv->invoice_number,
+                $inv->supplier_invoice_no ?: $inv->supplier_invoice_number ?? '',
+                $inv->invoice_date?->format('Y-m-d') ?? '',
+                $inv->purchase_receive_date?->format('Y-m-d') ?? '',
+                $inv->material_dispatch_date?->format('Y-m-d') ?? '',
+                $inv->due_date?->format('Y-m-d') ?? '',
+                $inv->supplier?->code ?? '',
                 $inv->supplier?->name ?? '',
+                $inv->supplier?->tax_number ?? '',
                 $inv->warehouse?->name ?? '',
-                ucfirst($inv->status),
+                ucfirst((string) $inv->status),
+                $inv->price_type ?? '',
+                $inv->tax_type ?? '',
+                $inv->order_nos ?? '',
+                $inv->receipt_note_nos ?? '',
+                $inv->lr_number ?? '',
+                $inv->lr_date?->format('Y-m-d') ?? '',
+                $inv->vehicle_number ?? '',
+                $inv->carrier_name ?? '',
                 number_format((float) $inv->subtotal, 2, '.', ''),
+                number_format((float) $inv->taxable_amount, 2, '.', ''),
+                number_format((float) $inv->cgst_amount, 2, '.', ''),
+                number_format((float) $inv->sgst_amount, 2, '.', ''),
+                number_format((float) $inv->igst_amount, 2, '.', ''),
                 number_format((float) $inv->tax_amount, 2, '.', ''),
-                number_format((float) $inv->grand_total, 2, '.', ''),
+                number_format((float) ($inv->freight_charge ?: $inv->freight_total), 2, '.', ''),
+                number_format((float) $inv->other_charges, 2, '.', ''),
+                number_format((float) $inv->round_off, 2, '.', ''),
+                number_format((float) ($inv->total_amount ?: $inv->grand_total), 2, '.', ''),
+                $inv->payment_terms ?? '',
+                $inv->notes ?? '',
+                $inv->created_at?->format('Y-m-d H:i:s') ?? '',
             ];
+
+            if ($inv->relationLoaded('items') || isset($inv->items)) {
+                $sr = 1;
+                foreach ($inv->items as $item) {
+                    $itemRows[] = [
+                        $inv->invoice_no ?: $inv->invoice_number,
+                        $inv->supplier_invoice_no ?: $inv->supplier_invoice_number ?? '',
+                        $inv->invoice_date?->format('Y-m-d') ?? '',
+                        $inv->supplier?->name ?? '',
+                        $sr++,
+                        $item->product?->sku ?? $item->product?->code ?? '',
+                        $item->product?->name ?? '',
+                        (float) $item->quantity,
+                        (float) $item->received_qty,
+                        $item->uom?->code ?? $item->uom?->name ?? '',
+                        number_format((float) $item->unit_cost, 2, '.', ''),
+                        number_format((float) $item->taxable_amount, 2, '.', ''),
+                        number_format((float) $item->tax_percent, 2, '.', ''),
+                        number_format((float) $item->cgst_percent, 2, '.', ''),
+                        number_format((float) $item->sgst_percent, 2, '.', ''),
+                        number_format((float) $item->igst_percent, 2, '.', ''),
+                        number_format((float) $item->cgst_amount, 2, '.', ''),
+                        number_format((float) $item->sgst_amount, 2, '.', ''),
+                        number_format((float) $item->igst_amount, 2, '.', ''),
+                        number_format((float) $item->line_total, 2, '.', ''),
+                        $item->batch_no ?? '',
+                        $item->expiry_date?->format('Y-m-d') ?? '',
+                    ];
+                }
+            }
+        }
+
+        if ($format === 'excel' || $format === 'xlsx') {
+            $itemHeaders = [
+                'Invoice No', 'Supplier Inv No', 'Invoice Date', 'Supplier', 'Item #', 'Product Code', 'Product Name',
+                'Quantity', 'Received Qty', 'UOM', 'Unit Cost (₹)', 'Taxable Amount (₹)',
+                'Tax %', 'CGST %', 'SGST %', 'IGST %', 'CGST (₹)', 'SGST (₹)', 'IGST (₹)',
+                'Line Total (₹)', 'Batch No', 'Expiry Date'
+            ];
+
+            return self::exportMultiSheetExcel([
+                'Purchase Invoices' => [
+                    'columns' => array_combine($invoiceHeaders, $invoiceHeaders),
+                    'rows' => array_map(fn ($r) => array_combine($invoiceHeaders, $r), $invoiceRows),
+                ],
+                'Invoice Items' => [
+                    'columns' => array_combine($itemHeaders, $itemHeaders),
+                    'rows' => array_map(fn ($r) => array_combine($itemHeaders, $r), $itemRows),
+                ],
+            ], 'purchase-invoices-master-' . now()->format('Y-m-d'));
         }
 
         $meta = [
             '_title' => 'Purchase Invoices Report',
             'Exported At' => now()->format('d M Y H:i:s'),
-            'Total Records' => count($rows),
+            'Total Records' => count($invoiceRows),
         ];
 
         $totals = [
@@ -777,17 +1384,13 @@ class DocumentExporter
         ];
 
         if ($format === 'csv') {
-            return self::exportCsv($filename, $headers, $rows, $meta, $totals);
+            return self::exportCsv($filename, $invoiceHeaders, $invoiceRows, $meta, $totals);
         }
 
-        if ($format === 'pdf') {
-            return ReportExporter::pdf($filename, 'Purchase Invoices Report', $headers, $rows, [
-                'Generated' => now()->format('d M Y H:i'),
-                'Total Amount' => '₹ ' . number_format($totalSum, 2),
-            ]);
-        }
-
-        return self::exportExcel($filename, 'Purchase Invoices', $headers, $rows, $meta, $totals);
+        return ReportExporter::pdf($filename, 'Purchase Invoices Report', $invoiceHeaders, $invoiceRows, [
+            'Generated' => now()->format('d M Y H:i'),
+            'Total Amount' => '₹ ' . number_format($totalSum, 2),
+        ]);
     }
 
     /**
@@ -795,33 +1398,118 @@ class DocumentExporter
      */
     public static function exportSalesInvoicesListing(Collection|iterable $invoices, string $format): Response|StreamedResponse
     {
+        if ($invoices instanceof \Illuminate\Database\Eloquent\Collection) {
+            $invoices->loadMissing(['customer', 'salesperson', 'order', 'items.product', 'items.uom']);
+        }
+
         $filename = 'Sales-Invoices-' . now()->format('Ymd-His') . '.' . ($format === 'excel' ? 'xlsx' : $format);
-        $headers = ['Invoice No', 'Date', 'Due Date', 'Customer', 'Salesperson', 'Status', 'Taxable (₹)', 'Discount (₹)', 'Tax (₹)', 'Grand Total (₹)', 'Paid (₹)', 'Balance (₹)'];
-        $rows = [];
         $totalSum = 0;
+
+        $invoiceHeaders = [
+            'Invoice No', 'Date', 'Due Date', 'Customer Code', 'Customer Name', 'Customer GSTIN', 'Customer PAN',
+            'Customer Phone', 'Billing Address', 'Shipping Address', 'Salesperson', 'Status',
+            'Price Type', 'Tax Type', 'Order No', 'Delivery Note No', 'Dispatch Doc No', 'Vehicle No', 'Carrier',
+            'Subtotal (₹)', 'Discount Amount (₹)', 'Taxable Amount (₹)', 'CGST (₹)', 'SGST (₹)', 'IGST (₹)',
+            'Tax Amount (₹)', 'Round Off (₹)', 'Grand Total (₹)', 'Paid Amount (₹)', 'Balance Due (₹)',
+            'Notes', 'Terms & Conditions', 'Created At'
+        ];
+
+        $invoiceRows = [];
+        $itemRows = [];
 
         foreach ($invoices as $inv) {
             $totalSum += (float) $inv->grand_total;
-            $rows[] = [
+            $invoiceRows[] = [
                 $inv->invoice_no,
-                $inv->invoice_date?->format('d/m/Y') ?? '',
-                $inv->due_date?->format('d/m/Y') ?? '',
+                $inv->invoice_date?->format('Y-m-d') ?? '',
+                $inv->due_date?->format('Y-m-d') ?? '',
+                $inv->customer?->code ?? '',
                 $inv->customer?->name ?? '',
+                $inv->customer?->tax_number ?? '',
+                $inv->customer?->pan_number ?? '',
+                $inv->customer?->phone ?? '',
+                $inv->billing_address ?? $inv->customer?->address ?? '',
+                $inv->shipping_address ?? '',
                 $inv->salesperson?->name ?? '—',
-                ucfirst($inv->status),
+                ucfirst((string) $inv->status),
+                $inv->price_type ?? '',
+                $inv->tax_type ?? '',
+                $inv->order?->order_no ?? '',
+                $inv->delivery_note_no ?? '',
+                $inv->dispatch_doc_no ?? '',
+                $inv->vehicle_no ?? '',
+                $inv->carrier_name ?? $inv->dispatched_through ?? '',
                 number_format((float) $inv->subtotal, 2, '.', ''),
                 number_format((float) $inv->discount_amount, 2, '.', ''),
+                number_format((float) $inv->taxable_amount, 2, '.', ''),
+                number_format((float) $inv->cgst_amount, 2, '.', ''),
+                number_format((float) $inv->sgst_amount, 2, '.', ''),
+                number_format((float) $inv->igst_amount, 2, '.', ''),
                 number_format((float) $inv->tax_amount, 2, '.', ''),
+                number_format((float) $inv->round_off, 2, '.', ''),
                 number_format((float) $inv->grand_total, 2, '.', ''),
                 number_format((float) $inv->paid_amount, 2, '.', ''),
                 number_format((float) ($inv->grand_total - $inv->paid_amount), 2, '.', ''),
+                $inv->notes ?? '',
+                $inv->terms_and_conditions ?? '',
+                $inv->created_at?->format('Y-m-d H:i:s') ?? '',
             ];
+
+            if ($inv->relationLoaded('items') || isset($inv->items)) {
+                $sr = 1;
+                foreach ($inv->items as $item) {
+                    $itemRows[] = [
+                        $inv->invoice_no,
+                        $inv->invoice_date?->format('Y-m-d') ?? '',
+                        $inv->customer?->name ?? '',
+                        $sr++,
+                        $item->product?->sku ?? $item->product?->code ?? '',
+                        $item->product?->name ?? '',
+                        $item->hsn_code ?? '',
+                        (float) $item->quantity,
+                        $item->uom?->code ?? $item->uom?->name ?? '',
+                        number_format((float) $item->unit_price, 2, '.', ''),
+                        number_format((float) $item->discount_amount, 2, '.', ''),
+                        number_format((float) $item->taxable_amount, 2, '.', ''),
+                        number_format((float) $item->tax_rate, 2, '.', ''),
+                        number_format((float) $item->cgst_rate, 2, '.', ''),
+                        number_format((float) $item->sgst_rate, 2, '.', ''),
+                        number_format((float) $item->igst_rate, 2, '.', ''),
+                        number_format((float) $item->cgst_amount, 2, '.', ''),
+                        number_format((float) $item->sgst_amount, 2, '.', ''),
+                        number_format((float) $item->igst_amount, 2, '.', ''),
+                        number_format((float) $item->line_total, 2, '.', ''),
+                        $item->batch_no ?? '',
+                        is_array($item->serial_numbers) ? implode(', ', $item->serial_numbers) : ($item->serial_numbers ?? ''),
+                    ];
+                }
+            }
+        }
+
+        if ($format === 'excel' || $format === 'xlsx') {
+            $itemHeaders = [
+                'Invoice No', 'Invoice Date', 'Customer', 'Item #', 'Product Code', 'Product Name', 'HSN Code',
+                'Quantity', 'UOM', 'Unit Price (₹)', 'Discount (₹)', 'Taxable Amount (₹)',
+                'Tax Rate %', 'CGST %', 'SGST %', 'IGST %', 'CGST (₹)', 'SGST (₹)', 'IGST (₹)',
+                'Line Total (₹)', 'Batch No', 'Serial Numbers'
+            ];
+
+            return self::exportMultiSheetExcel([
+                'Sales Invoices' => [
+                    'columns' => array_combine($invoiceHeaders, $invoiceHeaders),
+                    'rows' => array_map(fn ($r) => array_combine($invoiceHeaders, $r), $invoiceRows),
+                ],
+                'Invoice Items' => [
+                    'columns' => array_combine($itemHeaders, $itemHeaders),
+                    'rows' => array_map(fn ($r) => array_combine($itemHeaders, $r), $itemRows),
+                ],
+            ], 'sales-invoices-master-' . now()->format('Y-m-d'));
         }
 
         $meta = [
             '_title' => 'Sales Invoices Report',
             'Exported At' => now()->format('d M Y H:i:s'),
-            'Total Records' => count($rows),
+            'Total Records' => count($invoiceRows),
         ];
 
         $totals = [
@@ -829,17 +1517,13 @@ class DocumentExporter
         ];
 
         if ($format === 'csv') {
-            return self::exportCsv($filename, $headers, $rows, $meta, $totals);
+            return self::exportCsv($filename, $invoiceHeaders, $invoiceRows, $meta, $totals);
         }
 
-        if ($format === 'pdf') {
-            return ReportExporter::pdf($filename, 'Sales Invoices Report', $headers, $rows, [
-                'Generated' => now()->format('d M Y H:i'),
-                'Total Amount' => '₹ ' . number_format($totalSum, 2),
-            ]);
-        }
-
-        return self::exportExcel($filename, 'Sales Invoices', $headers, $rows, $meta, $totals);
+        return ReportExporter::pdf($filename, 'Sales Invoices Report', $invoiceHeaders, $invoiceRows, [
+            'Generated' => now()->format('d M Y H:i'),
+            'Total Amount' => '₹ ' . number_format($totalSum, 2),
+        ]);
     }
 
     public static function exportTabular(string $basename, string $title, array $headers, array $rows, string $format): Response|StreamedResponse

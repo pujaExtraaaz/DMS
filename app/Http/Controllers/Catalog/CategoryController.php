@@ -43,10 +43,14 @@ class CategoryController extends Controller
             ['name']
         );
 
-        if ($export = $this->exportIfRequested($request, $query, 'Categories', 'Categories', ['Name', 'Brand', 'Status'], fn ($item) => [
+        $query->with('brand')->withCount(['subCategories', 'products']);
+        if ($export = $this->exportIfRequested($request, $query, 'Categories', 'Categories', ['Category Name', 'Brand', 'Subcategories Count', 'Products Count', 'Status', 'Created Date'], fn ($item) => [
             $item->name,
-            $item->brand?->name ?? '',
+            $item->brand?->name ?? '—',
+            (string) ($item->sub_categories_count ?? 0),
+            (string) ($item->products_count ?? 0),
             $item->is_active ? 'Active' : 'Inactive',
+            $item->created_at?->format('d/m/Y') ?? '—',
         ])) {
             return $export;
         }

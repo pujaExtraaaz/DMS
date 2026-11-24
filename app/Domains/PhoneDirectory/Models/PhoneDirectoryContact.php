@@ -30,6 +30,7 @@ class PhoneDirectoryContact extends Model
         'company_id',
         'customer_type_id',
         'company_name',
+        'company_website',
         'category_id',
         'mobile_number',
         'alternate_mobile',

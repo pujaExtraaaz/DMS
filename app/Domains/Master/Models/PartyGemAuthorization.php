@@ -15,6 +15,8 @@ class PartyGemAuthorization extends Model
         'gem_registered',
         'gem_authorized',
         'authorization_number',
+        'category',
+        'date_of_issue',
     ];
 
     protected function casts(): array
@@ -22,6 +24,7 @@ class PartyGemAuthorization extends Model
         return [
             'gem_registered' => 'boolean',
             'gem_authorized' => 'boolean',
+            'date_of_issue' => 'date',
         ];
     }
 

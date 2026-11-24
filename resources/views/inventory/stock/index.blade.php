@@ -2,20 +2,21 @@
 @section('title', 'Current Stock')
 
 @section('content')
-<div id="listing-container" data-dynamic-container class="space-y-4" x-data="currentStockPage()">
+<div id="listing-container" data-dynamic-container class="space-y-2" x-data="currentStockPage()">
 <x-ui.page-header title="Current Stock">
     <x-slot name="actions">
+        <x-ui.export-menu />
         <x-ui.button variant="secondary" :href="route('inventory.stock-register.index')">Stock Register</x-ui.button>
         <x-ui.button variant="secondary" :href="route('reports.stock-ledger')">View Stock Ledger</x-ui.button>
     </x-slot>
 </x-ui.page-header>
 
-<x-ui.card>
-    <form method="GET" action="{{ route('inventory.stock.index') }}" class="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-3"
+<x-ui.card class="!p-3">
+    <form method="GET" action="{{ route('inventory.stock.index') }}"
+          class="flex flex-nowrap items-center gap-2 overflow-x-auto"
           x-data="searchableProductSelect(@js($products), '{{ $filters['product_id'] ?? '' }}')">
-        
-        <div class="relative md:col-span-2">
-            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Product</label>
+
+        <div class="relative min-w-[220px] flex-1">
             <input type="hidden" name="product_id" :value="selectedId" data-dynamic-filter>
             <div class="relative">
                 <input type="text"
@@ -25,19 +26,18 @@
                        @focus="openDropdown()"
                        @input="openDropdown()"
                        @click.outside="closeDropdown()"
-                       placeholder="Search Product Name Or Part Number..."
-                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
+                       placeholder="Product / Part No..."
+                       class="block w-full rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
                 <button type="button" x-show="selectedId" @click="clearSelection()"
                         class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold">&times;</button>
             </div>
-            
             <div x-show="isOpen && filteredProducts.length > 0"
                  x-transition
                  class="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 divide-y divide-slate-100"
                  style="display: none;">
                 <template x-for="prod in filteredProducts" :key="prod.id">
                     <div @click="selectProduct(prod)"
-                         class="p-2.5 hover:bg-indigo-50 cursor-pointer text-xs flex items-center justify-between">
+                         class="p-2 hover:bg-indigo-50 cursor-pointer text-xs flex items-center justify-between">
                         <span class="font-medium text-slate-800" x-text="prod.name"></span>
                         <span class="font-mono text-[11px] text-slate-500" x-text="prod.sku"></span>
                     </div>
@@ -45,89 +45,61 @@
             </div>
         </div>
 
-        <div>
-            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Warehouse</label>
-            <select name="warehouse_id" data-dynamic-filter class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                <option value="">All Warehouses</option>
-                @foreach($warehouses as $w)
-                    <option value="{{ $w->id }}" @selected(($filters['warehouse_id'] ?? '') == $w->id)>{{ $w->name }}</option>
-                @endforeach
-            </select>
-        </div>
+        <select name="warehouse_id" data-dynamic-filter title="Warehouse"
+                class="rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 shrink-0">
+            <option value="">Warehouse: All</option>
+            @foreach($warehouses as $w)
+                <option value="{{ $w->id }}" @selected(($filters['warehouse_id'] ?? '') == $w->id)>{{ $w->name }}</option>
+            @endforeach
+        </select>
 
-        <div>
-            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Category</label>
-            <select name="category_id" data-dynamic-filter class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                <option value="">All Categories</option>
-                @foreach($categories as $c)
-                    <option value="{{ $c->id }}" @selected(($filters['category_id'] ?? '') == $c->id)>{{ $c->name }}</option>
-                @endforeach
-            </select>
-        </div>
+        <select name="category_id" data-dynamic-filter title="Category"
+                class="rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 shrink-0">
+            <option value="">Category: All</option>
+            @foreach($categories as $c)
+                <option value="{{ $c->id }}" @selected(($filters['category_id'] ?? '') == $c->id)>{{ $c->name }}</option>
+            @endforeach
+        </select>
 
-        <div>
-            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Brand</label>
-            <select name="brand_id" data-dynamic-filter class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                <option value="">All Brands</option>
-                @foreach($brands as $b)
-                    <option value="{{ $b->id }}" @selected(($filters['brand_id'] ?? '') == $b->id)>{{ $b->name }}</option>
-                @endforeach
-            </select>
-        </div>
+        <select name="brand_id" data-dynamic-filter title="Brand"
+                class="rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 shrink-0">
+            <option value="">Brand: All</option>
+            @foreach($brands as $b)
+                <option value="{{ $b->id }}" @selected(($filters['brand_id'] ?? '') == $b->id)>{{ $b->name }}</option>
+            @endforeach
+        </select>
 
-        <div>
-            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Color / Variant</label>
-            <input type="text"
-                   name="color_variant"
-                   value="{{ $filters['color_variant'] ?? request('color_variant') }}"
-                   list="stock-colors"
-                   data-dynamic-filter
-                   placeholder="Filter Variant..."
-                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-            <datalist id="stock-colors">
-                @foreach($colors as $c)<option value="{{ $c }}"></option>@endforeach
-            </datalist>
-        </div>
+        <input type="text" name="color_variant" title="Color / Variant"
+               value="{{ $filters['color_variant'] ?? request('color_variant') }}"
+               list="stock-colors" data-dynamic-filter placeholder="Variant..."
+               class="w-28 rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 shrink-0">
+        <datalist id="stock-colors">
+            @foreach($colors as $c)<option value="{{ $c }}"></option>@endforeach
+        </datalist>
 
-        <div>
-            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Stock Status</label>
-            <select name="stock_status" data-dynamic-filter class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                <option value="">All Stock</option>
-                <option value="available" @selected(($filters['stock_status'] ?? '') == 'available')>Available (In Stock)</option>
-                <option value="in_transit" @selected(($filters['stock_status'] ?? '') == 'in_transit')>In-Transit Incoming</option>
-                <option value="both" @selected(($filters['stock_status'] ?? '') == 'both')>Available &amp; In-Transit</option>
-                <option value="low_stock" @selected(($filters['stock_status'] ?? '') == 'low_stock')>Low Stock</option>
-            </select>
-        </div>
+        <select name="stock_status" data-dynamic-filter title="Stock Status"
+                class="rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 shrink-0">
+            <option value="">Stock: All</option>
+            <option value="available" @selected(($filters['stock_status'] ?? '') == 'available')>Available</option>
+            <option value="in_transit" @selected(($filters['stock_status'] ?? '') == 'in_transit')>In-Transit</option>
+            <option value="both" @selected(($filters['stock_status'] ?? '') == 'both')>Both</option>
+            <option value="low_stock" @selected(($filters['stock_status'] ?? '') == 'low_stock')>Low Stock</option>
+        </select>
 
-        <div>
-            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Expected Delivery</label>
-            <input type="date"
-                   name="expected_delivery_date"
-                   value="{{ $filters['expected_delivery_date'] ?? '' }}"
-                   data-dynamic-filter
-                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-        </div>
+        <input type="date" name="expected_delivery_date" title="Expected Delivery"
+               value="{{ $filters['expected_delivery_date'] ?? '' }}" data-dynamic-filter
+               class="rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 shrink-0">
 
-        <div class="flex items-end gap-2">
-            <x-ui.button type="submit" variant="primary" class="w-full">Filter</x-ui.button>
-            <a href="{{ route('inventory.stock.index') }}" data-reset-filters class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-xs hover:bg-gray-50">Reset</a>
-        </div>
+        <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 cursor-pointer whitespace-nowrap shrink-0">
+            <input type="checkbox" name="low_stock" value="1" data-dynamic-filter
+                   @checked(!empty($filters['low_stock']) || request()->boolean('low_stock'))
+                   class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+            Low only
+        </label>
 
-        <div class="md:col-span-4 lg:col-span-6 flex flex-wrap items-center justify-between pt-2 border-t border-slate-100 gap-3">
-            <div class="flex items-center gap-4 text-xs">
-                <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
-                    <input type="checkbox" name="low_stock" value="1" data-dynamic-filter @checked(!empty($filters['low_stock']) || request()->boolean('low_stock'))
-                           class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
-                    Show low stock items only
-                </label>
-            </div>
-
-            <div class="flex items-center gap-4 text-xs text-slate-500">
-                <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Available = Physical On-Hand</span>
-                <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> In-Transit = Incoming from Suppliers</span>
-            </div>
-        </div>
+        <x-ui.button type="submit" variant="primary" class="shrink-0 !py-1.5">Filter</x-ui.button>
+        <a href="{{ route('inventory.stock.index') }}" data-reset-filters
+           class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 shrink-0">Reset</a>
     </form>
 </x-ui.card>
 
@@ -136,36 +108,39 @@
         <table class="w-full text-left text-xs border-collapse">
             <thead class="bg-slate-50 text-slate-600 tracking-wider border-b">
                 <tr>
-                    <x-ui.sortable-th column="product" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                        Product
-                    </x-ui.sortable-th>
-                    <x-ui.sortable-th column="sku" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                        Part Number / Serial No.
-                    </x-ui.sortable-th>
-                    <x-ui.sortable-th column="brand" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                        Brand
-                    </x-ui.sortable-th>
-                    <x-ui.sortable-th column="category" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                        Category
-                    </x-ui.sortable-th>
-                    <th class="p-3">Color / Variant</th>
-                    <x-ui.sortable-th column="warehouse" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                        Warehouse
-                    </x-ui.sortable-th>
-                    <th class="p-3">Unit</th>
-                    <x-ui.sortable-th column="quantity" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" align="right">
-                        <span title="Available Stock — Physically received and ready for dispatch">Available Stock</span>
-                    </x-ui.sortable-th>
-                    <x-ui.sortable-th column="in_transit" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" align="right">
-                        <span title="In-Transit Stock — Purchased from suppliers, not yet received">In-Transit Stock</span>
-                    </x-ui.sortable-th>
-                    <x-ui.sortable-th column="total_expected" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" align="right">
-                        <span title="Total Expected Stock — Available + In-Transit">Total Expected Stock</span>
-                    </x-ui.sortable-th>
-                    <x-ui.sortable-th column="expected_delivery_date" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                        Expected Delivery
-                    </x-ui.sortable-th>
-                    <th class="p-3 text-center">Status</th>
+                    <x-ui.sortable-th column="product" label="Product" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
+                    <x-ui.sortable-th column="sku" label="Part Number / Serial No." :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
+                    <x-ui.sortable-th column="brand" label="Brand" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
+                    <x-ui.sortable-th column="category" label="Category" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
+                    <th class="px-3 py-2 text-xs font-semibold">Color / Variant</th>
+                    <x-ui.sortable-th column="warehouse" label="Warehouse" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
+                    <th class="px-3 py-2 text-xs font-semibold">Unit</th>
+                    <x-ui.sortable-th
+                        column="quantity"
+                        label="Available Stock"
+                        tooltip="Available Stock — Physically received and ready for dispatch"
+                        :current-sort="$sort ?? request('sort', 'product')"
+                        :current-direction="$direction ?? request('direction', 'asc')"
+                        align="right"
+                    />
+                    <x-ui.sortable-th
+                        column="in_transit"
+                        label="In-Transit Stock"
+                        tooltip="In-Transit Stock — Purchased from suppliers, not yet received"
+                        :current-sort="$sort ?? request('sort', 'product')"
+                        :current-direction="$direction ?? request('direction', 'asc')"
+                        align="right"
+                    />
+                    <x-ui.sortable-th
+                        column="total_expected"
+                        label="Total Expected Stock"
+                        tooltip="Total Expected Stock — Available + In-Transit"
+                        :current-sort="$sort ?? request('sort', 'product')"
+                        :current-direction="$direction ?? request('direction', 'asc')"
+                        align="right"
+                    />
+                    <x-ui.sortable-th column="expected_delivery_date" label="Expected Delivery" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
+                    <th class="px-3 py-2 text-xs font-semibold text-center">Status</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 bg-white">
@@ -182,30 +157,30 @@
                         $invoiceCount = (int) ($stk->incoming_invoices_count ?? 0);
                     @endphp
                     <tr class="hover:bg-slate-50/50 transition-colors">
-                        <td class="p-3 font-semibold text-slate-800">
+                        <td class="px-3 py-2 font-semibold text-slate-800">
                             <a href="{{ route('masters.products.show', $stk->product_id) }}" class="hover:text-indigo-600 hover:underline">
                                 {{ $stk->product?->name ?? '—' }}
                             </a>
                         </td>
-                        <td class="p-3 font-mono text-slate-600">
+                        <td class="px-3 py-2 font-mono text-slate-600">
                             <div>{{ $stk->product?->sku ?? '—' }}</div>
                             @if($stk->product?->serial_no)
                                 <div class="text-[11px] text-slate-400">SN: {{ $stk->product->serial_no }}</div>
                             @endif
                         </td>
-                        <td class="p-3 text-slate-600">{{ $stk->product?->brand?->name ?? '—' }}</td>
-                        <td class="p-3 text-slate-600">{{ $stk->product?->category?->name ?? '—' }}</td>
-                        <td class="p-3 text-slate-600">{{ $stk->product?->color_variant ?? '—' }}</td>
-                        <td class="p-3 text-slate-600">{{ $stk->warehouse?->name ?? '—' }}</td>
-                        <td class="p-3 text-slate-600">{{ $stk->uom?->code ?? $stk->uom?->name ?? '—' }}</td>
-                        <td class="p-3 text-right font-mono font-bold text-slate-800">
+                        <td class="px-3 py-2 text-slate-600">{{ $stk->product?->brand?->name ?? '—' }}</td>
+                        <td class="px-3 py-2 text-slate-600">{{ $stk->product?->category?->name ?? '—' }}</td>
+                        <td class="px-3 py-2 text-slate-600">{{ $stk->product?->color_variant ?? '—' }}</td>
+                        <td class="px-3 py-2 text-slate-600">{{ $stk->warehouse?->name ?? '—' }}</td>
+                        <td class="px-3 py-2 text-slate-600">{{ $stk->uom?->code ?? $stk->uom?->name ?? '—' }}</td>
+                        <td class="px-3 py-2 text-right font-mono font-bold text-slate-800">
                             @if($qty > 0)
                                 <span class="text-emerald-700 font-bold">{{ number_format($qty, 2) }}</span>
                             @else
                                 <span class="text-slate-400">0.00</span>
                             @endif
                         </td>
-                        <td class="p-3 text-right font-mono">
+                        <td class="px-3 py-2 text-right font-mono">
                             @if($inTransit > 0)
                                 <button type="button"
                                         @click="openInTransitModal({{ $stk->product_id }}, {{ $stk->warehouse_id }}, '{{ addslashes($stk->product?->name ?? '') }}', '{{ addslashes($stk->warehouse?->name ?? '') }}')"
@@ -218,10 +193,10 @@
                                 <span class="text-slate-300">0.00</span>
                             @endif
                         </td>
-                        <td class="p-3 text-right font-mono font-bold text-indigo-900">
+                        <td class="px-3 py-2 text-right font-mono font-bold text-indigo-900">
                             {{ number_format($totalExpected, 2) }}
                         </td>
-                        <td class="p-3 whitespace-nowrap">
+                        <td class="px-3 py-2 whitespace-nowrap">
                             @if($inTransit > 0 && $deliveryDate)
                                 <div class="flex items-center gap-1">
                                     <span class="font-medium text-slate-800 {{ $isOverdue ? 'text-rose-600 font-semibold' : '' }}">
@@ -237,7 +212,7 @@
                                 <span class="text-slate-300">—</span>
                             @endif
                         </td>
-                        <td class="p-3 text-center">
+                        <td class="px-3 py-2 text-center">
                             @if($isLow && $qty > 0)
                                 <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">Low Stock</span>
                             @elseif($qty > 0)
@@ -271,29 +246,29 @@
         <table class="w-full text-left text-xs border-collapse">
             <thead class="bg-slate-50 text-slate-600 tracking-wider border-b">
                 <tr>
-                    <th class="p-3">Date / Time</th>
-                    <th class="p-3">Product</th>
-                    <th class="p-3">Warehouse</th>
-                    <th class="p-3">Type</th>
-                    <th class="p-3 text-right">Quantity</th>
-                    <th class="p-3 text-right">Balance</th>
+                    <th class="px-3 py-2">Date / Time</th>
+                    <th class="px-3 py-2">Product</th>
+                    <th class="px-3 py-2">Warehouse</th>
+                    <th class="px-3 py-2">Type</th>
+                    <th class="px-3 py-2 text-right">Quantity</th>
+                    <th class="px-3 py-2 text-right">Balance</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
                 @foreach($movements as $m)
                     <tr class="hover:bg-slate-50/50">
-                        <td class="p-3 font-mono text-slate-500">{{ $m->created_at?->format('d M Y, H:i') ?? '—' }}</td>
-                        <td class="p-3 font-semibold text-slate-800">{{ $m->product?->name ?? '—' }}</td>
-                        <td class="p-3 text-slate-600">{{ $m->warehouse?->name ?? '—' }}</td>
-                        <td class="p-3">
+                        <td class="px-3 py-2 font-mono text-slate-500">{{ $m->created_at?->format('d M Y, H:i') ?? '—' }}</td>
+                        <td class="px-3 py-2 font-semibold text-slate-800">{{ $m->product?->name ?? '—' }}</td>
+                        <td class="px-3 py-2 text-slate-600">{{ $m->warehouse?->name ?? '—' }}</td>
+                        <td class="px-3 py-2">
                             <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-slate-100 text-slate-700 border border-slate-200">
                                 {{ str_replace('_', ' ', $m->type) }}
                             </span>
                         </td>
-                        <td class="p-3 text-right font-mono font-semibold {{ $m->quantity > 0 ? 'text-emerald-600' : 'text-slate-800' }}">
+                        <td class="px-3 py-2 text-right font-mono font-semibold {{ $m->quantity > 0 ? 'text-emerald-600' : 'text-slate-800' }}">
                             {{ $m->quantity > 0 ? '+'.number_format($m->quantity, 2) : number_format($m->quantity, 2) }}
                         </td>
-                        <td class="p-3 text-right font-mono font-bold text-slate-900">{{ number_format($m->balance_after, 2) }}</td>
+                        <td class="px-3 py-2 text-right font-mono font-bold text-slate-900">{{ number_format($m->balance_after, 2) }}</td>
                     </tr>
                 @endforeach
             </tbody>

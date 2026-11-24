@@ -113,11 +113,31 @@
 
         {{-- Auxiliary badges --}}
         <div class="mt-3 flex flex-wrap gap-2.5 text-sm">
-            <span class="rounded-full bg-rose-50 text-rose-700 px-3 py-1 text-xs font-medium border border-rose-200/60">Frozen parties: <strong x-text="stats.frozen_parties">{{ $stats['frozen_parties'] ?? 0 }}</strong></span>
-            <span class="rounded-full bg-amber-50 text-amber-700 px-3 py-1 text-xs font-medium border border-amber-200/60">Bounce risk: <strong x-text="stats.bounce_risk">{{ $stats['bounce_risk'] ?? 0 }}</strong></span>
-            <span class="rounded-full bg-slate-100 text-slate-700 px-3 py-1 text-xs font-medium border border-slate-200/60">Dead stock: <strong x-text="stats.dead_stock">{{ $stats['dead_stock'] ?? 0 }}</strong></span>
-            <span class="rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-medium border border-emerald-200/60">Margin stub: <strong x-text="formatCurrency(stats.margin_stub)">₹{{ number_format($stats['margin_stub'] ?? 0, 0) }}</strong></span>
-            <span class="rounded-full bg-indigo-50 text-indigo-700 px-3 py-1 text-xs font-medium border border-indigo-200/60">Target achievement: <strong x-text="(stats.targets_achievement || 0) + '%'">{{ $stats['targets_achievement'] ?? 0 }}%</strong></span>
+            <a href="{{ route('masters.customers.index', ['credit_status' => 'frozen']) }}"
+               title="View Frozen Parties"
+               class="inline-flex items-center rounded-full bg-rose-50 text-rose-700 px-3 py-1 text-xs font-medium border border-rose-200/60 hover:bg-rose-100 hover:border-rose-300 hover:shadow-xs transition-all cursor-pointer">
+                Frozen parties: <strong class="ml-1" x-text="stats.frozen_parties">{{ $stats['frozen_parties'] ?? 0 }}</strong>
+            </a>
+            <a href="{{ route('cheques.index', ['status' => 'bounced']) }}"
+               title="View Cheque Bounce Risk"
+               class="inline-flex items-center rounded-full bg-amber-50 text-amber-700 px-3 py-1 text-xs font-medium border border-amber-200/60 hover:bg-amber-100 hover:border-amber-300 hover:shadow-xs transition-all cursor-pointer">
+                Bounce risk: <strong class="ml-1" x-text="stats.bounce_risk">{{ $stats['bounce_risk'] ?? 0 }}</strong>
+            </a>
+            <a href="{{ route('inventory.stock.index', ['stock_status' => 'dead_stock']) }}"
+               title="View Dead Stock / Stock Ageing"
+               class="inline-flex items-center rounded-full bg-slate-100 text-slate-700 px-3 py-1 text-xs font-medium border border-slate-200/60 hover:bg-slate-200 hover:border-slate-300 hover:shadow-xs transition-all cursor-pointer">
+                Dead stock: <strong class="ml-1" x-text="stats.dead_stock">{{ $stats['dead_stock'] ?? 0 }}</strong>
+            </a>
+            <a href="{{ route('reports.margin') }}"
+               title="View Margin Report"
+               class="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-medium border border-emerald-200/60 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-xs transition-all cursor-pointer">
+                Margin stub: <strong class="ml-1" x-text="formatCurrency(stats.margin_stub)">₹{{ number_format($stats['margin_stub'] ?? 0, 0) }}</strong>
+            </a>
+            <a href="{{ route('sales-targets.dashboard') }}"
+               title="View Sales Target Dashboard"
+               class="inline-flex items-center rounded-full bg-indigo-50 text-indigo-700 px-3 py-1 text-xs font-medium border border-indigo-200/60 hover:bg-indigo-100 hover:border-indigo-300 hover:shadow-xs transition-all cursor-pointer">
+                Target achievement: <strong class="ml-1" x-text="(stats.targets_achievement || 0) + '%'">{{ $stats['targets_achievement'] ?? 0 }}%</strong>
+            </a>
         </div>
     </x-ui.card>
 
@@ -125,7 +145,9 @@
     <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4 items-stretch">
 
         {{-- 1. Sales Amount / Total Sales --}}
-        <div class="relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <a href="{{ route('invoices.index') }}"
+           title="View Sales Invoices"
+           class="group relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all duration-200 cursor-pointer block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
             <div class="flex items-start justify-between gap-4">
                 <p class="min-w-0 pr-2 text-sm font-semibold tracking-wider text-slate-500" x-text="cardLabels.sales">
                     {{ $cardLabels['sales'] ?? "Sales Amount" }}
@@ -146,10 +168,12 @@
                     {{ $stats['sales_invoice_count'] ?? 0 }} sales invoices
                 </span>
             </div>
-        </div>
+        </a>
 
         {{-- 2. Purchase Amount --}}
-        <div class="relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <a href="{{ route('purchasing.invoices.index') }}"
+           title="View Purchase Invoices"
+           class="group relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-amber-200 transition-all duration-200 cursor-pointer block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
             <div class="flex items-start justify-between gap-4">
                 <p class="min-w-0 pr-2 text-sm font-semibold tracking-wider text-slate-500" x-text="cardLabels.purchases">
                     {{ $cardLabels['purchases'] ?? "Purchase Amount" }}
@@ -170,10 +194,12 @@
                     {{ $stats['purchase_invoice_count'] ?? 0 }} purchase invoices
                 </span>
             </div>
-        </div>
+        </a>
 
         {{-- 3. Month / Period Revenue --}}
-        <div class="relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <a href="{{ route('reports.sales') }}"
+           title="View Sales & Revenue Report"
+           class="group relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-violet-200 transition-all duration-200 cursor-pointer block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-violet-500">
             <div class="flex items-start justify-between gap-4">
                 <p class="min-w-0 pr-2 text-sm font-semibold tracking-wider text-slate-500" x-text="cardLabels.revenue">
                     {{ $cardLabels['revenue'] ?? "Period Revenue" }}
@@ -195,10 +221,12 @@
                     {{ $salesGrowthLabel }}
                 </span>
             </div>
-        </div>
+        </a>
 
         {{-- 4. Pending Orders --}}
-        <div class="relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <a href="{{ route('orders.index', ['status' => 'pending']) }}"
+           title="View Pending Orders"
+           class="group relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-amber-200 transition-all duration-200 cursor-pointer block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500">
             <div class="flex items-start justify-between gap-4">
                 <p class="min-w-0 pr-2 text-sm font-semibold tracking-wider text-slate-500">
                     Pending Orders
@@ -219,10 +247,12 @@
                     {{ ($stats['approved_orders'] ?? 0).' awaiting conversion' }}
                 </span>
             </div>
-        </div>
+        </a>
 
         {{-- 5. Collections --}}
-        <div class="relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <a href="{{ route('payments.index') }}"
+           title="View Payment Receipts & Collections"
+           class="group relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-emerald-200 transition-all duration-200 cursor-pointer block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500">
             <div class="flex items-start justify-between gap-4">
                 <p class="min-w-0 pr-2 text-sm font-semibold tracking-wider text-slate-500" x-text="cardLabels.collections">
                     {{ $cardLabels['collections'] ?? "Collections" }}
@@ -243,10 +273,12 @@
                     {{ $stats['collections_count'] ?? 0 }} payments received
                 </span>
             </div>
-        </div>
+        </a>
 
         {{-- 6. Receivables --}}
-        <div class="relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <a href="{{ route('reports.outstanding') }}"
+           title="View Customer Outstanding"
+           class="group relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-rose-200 transition-all duration-200 cursor-pointer block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500">
             <div class="flex items-start justify-between gap-4">
                 <p class="min-w-0 pr-2 text-sm font-semibold tracking-wider text-slate-500">
                     Receivables
@@ -266,10 +298,12 @@
                     Across customer accounts
                 </span>
             </div>
-        </div>
+        </a>
 
         {{-- 7. Payables --}}
-        <div class="relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <a href="{{ route('reports.supplier-ageing') }}"
+           title="View Supplier Outstanding"
+           class="group relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-sky-200 transition-all duration-200 cursor-pointer block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500">
             <div class="flex items-start justify-between gap-4">
                 <p class="min-w-0 pr-2 text-sm font-semibold tracking-wider text-slate-500">
                     Payables
@@ -289,10 +323,12 @@
                     Across supplier accounts
                 </span>
             </div>
-        </div>
+        </a>
 
         {{-- 8. Low Stock Part Numbers --}}
-        <div class="relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+        <a href="{{ route('inventory.stock.index', ['stock_status' => 'low_stock']) }}"
+           title="View Low Stock Items"
+           class="group relative flex w-full min-w-0 min-h-[150px] flex-col rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-200 cursor-pointer block no-underline text-inherit focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500">
             <div class="flex items-start justify-between gap-4">
                 <p class="min-w-0 pr-2 text-sm font-semibold tracking-wider text-slate-500">
                     Low Stock Part Numbers
@@ -313,7 +349,9 @@
                     {{ ($stats['pending_deliveries'] ?? 0).' pending deliveries' }}
                 </span>
             </div>
-        </div>
+        </a>
+
+    </div>
 
     </div>
 

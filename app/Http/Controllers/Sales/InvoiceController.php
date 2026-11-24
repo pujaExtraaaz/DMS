@@ -98,7 +98,9 @@ class InvoiceController extends Controller
             ->where(function ($q) {
                 $q->whereHas('roles', fn ($r) => $r->whereIn('name', ['salesperson', 'sales_person', 'sales-executive', 'sales-manager']))
                   ->orWhereHas('employee', fn ($e) => $e->where('is_salesperson', true))
-                  ->orWhereIn('name', ['Kapil Dhir', 'Abdul Majid']);
+                  ->orWhereHas('salesTargets')
+                  ->orWhereHas('salesInvoices')
+                  ->orWhereIn('name', ['Kapil Dhir', 'Abdul Majid', 'Sakshi']);
             })
             ->orderBy('name')
             ->get();

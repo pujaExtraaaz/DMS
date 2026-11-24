@@ -86,6 +86,16 @@ class User extends Authenticatable
         return $this->hasOne(\App\Domains\Hrms\Models\Employee::class);
     }
 
+    public function salesTargets(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Target\Models\SalesTarget::class, 'salesperson_id');
+    }
+
+    public function salesInvoices(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Sales\Models\Invoice::class, 'salesperson_id');
+    }
+
     public function preferences(): HasMany
     {
         return $this->hasMany(UserPreference::class);

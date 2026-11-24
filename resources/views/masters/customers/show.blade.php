@@ -166,6 +166,14 @@
                                             <dt class="text-slate-500">GEM Authorization Number</dt>
                                             <dd class="font-medium text-slate-800">{{ $authorization->authorization_number ?: '—' }}</dd>
                                         </div>
+                                        <div>
+                                            <dt class="text-slate-500">Category</dt>
+                                            <dd class="font-medium text-slate-800">{{ $authorization->category ?: '—' }}</dd>
+                                        </div>
+                                        <div>
+                                            <dt class="text-slate-500">Date of Issue</dt>
+                                            <dd class="font-medium text-slate-800">{{ $authorization->date_of_issue ? $authorization->date_of_issue->format('d-m-Y') : '—' }}</dd>
+                                        </div>
                                         <div class="sm:col-span-2">
                                             <dt class="text-slate-500">GEM Star Rating Photo/Document</dt>
                                             <dd class="mt-1 space-y-1">
@@ -242,8 +250,16 @@
                                             {{ $contact->effective_company_name }}
                                         </span>
                                     @endif
+                                    @if($contact->effective_company_website)
+                                        <a href="{{ $contact->effective_company_website }}" target="_blank" rel="noopener noreferrer" 
+                                           class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 hover:text-indigo-600 hover:bg-slate-200 transition" 
+                                           title="Company Website">
+                                            <svg class="w-2.5 h-2.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                            Website
+                                        </a>
+                                    @endif
                                     @if($contact->phone_directory_contact_id)
-                                        <a href="{{ route('phone-directory.show', $contact->phone_directory_contact_id) }}" 
+                                        <a href="{{ route('phone-directory.contacts.show', $contact->phone_directory_contact_id) }}" 
                                            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
                                            title="View in Phone Directory">
                                             <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>

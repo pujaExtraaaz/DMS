@@ -1921,18 +1921,6 @@ class ProductController extends Controller
      */
     public function getDefaultExportColumnKeys(): array
     {
-        return [
-            'name',
-            'sku',
-            'model',
-            'brand',
-            'category',
-            'sub_category',
-            'product_type',
-            'base_uom',
-            'tax_rate',
-            'is_active',
-            'is_hidden',
-        ];
+        return array_keys($this->getExportColumnDefinitions());
     }
 }

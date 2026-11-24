@@ -134,6 +134,7 @@ class NameCase
         'response',
         'email',
         'website',
+        'company_website',
         'location_link',
         'eway_bill_required',
         'einvoice_status',

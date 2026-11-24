@@ -826,7 +826,15 @@
                             <div>
                                 <h3 class="text-lg font-bold" x-text="quickContact.contact_name"></h3>
                                 <p class="text-xs text-violet-200" x-text="quickContact.designation || 'Contact'"></p>
-                                <p class="text-xs font-semibold text-white/90" x-text="quickContact.company_name || ''"></p>
+                                <div class="flex flex-wrap items-center gap-2 mt-0.5" x-show="quickContact.company_name">
+                                    <span class="text-xs font-semibold text-white/90" x-text="quickContact.company_name"></span>
+                                    <template x-if="quickContact.company_website">
+                                        <a :href="quickContact.company_website" target="_blank" rel="noopener noreferrer" class="text-[11px] text-violet-200 hover:text-white underline inline-flex items-center gap-0.5" title="Visit Company Website">
+                                            <span>Website</span>
+                                            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                        </a>
+                                    </template>
+                                </div>
                             </div>
                         </div>
 
@@ -910,6 +918,17 @@
                         <p class="text-slate-800 font-medium" x-text="quickContact.address || '—'"></p>
                         <p class="text-slate-600" x-text="quickContact.formatted_location + (quickContact.pincode ? ' - ' + quickContact.pincode : '')"></p>
                     </div>
+
+                    {{-- Company Website --}}
+                    <template x-if="quickContact.company_website">
+                        <div class="rounded-xl border border-slate-100 bg-slate-50/70 p-3 space-y-1">
+                            <span class="text-[10px] uppercase font-bold text-slate-400 block">Company Website</span>
+                            <a :href="quickContact.company_website" target="_blank" rel="noopener noreferrer" class="text-violet-600 hover:text-violet-800 hover:underline flex items-center gap-1 font-medium truncate" title="Open website in new tab">
+                                <span class="truncate" x-text="quickContact.company_website"></span>
+                                <svg class="h-3.5 w-3.5 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                            </a>
+                        </div>
+                    </template>
 
                     {{-- Notes --}}
                     <template x-if="quickContact.notes">

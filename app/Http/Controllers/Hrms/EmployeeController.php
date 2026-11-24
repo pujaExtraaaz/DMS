@@ -13,6 +13,8 @@ use App\Models\User;
 use App\Support\AuditLogService;
 use App\Support\CodeGenerator;
 use App\Support\DocumentNumberService;
+use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -20,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EmployeeController extends Controller
@@ -32,7 +35,7 @@ class EmployeeController extends Controller
         protected IfscLookupService $ifscLookupService,
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $query = Employee::query()
             ->with(['department', 'designation', 'branch', 'manager'])
@@ -70,6 +73,10 @@ class EmployeeController extends Controller
             defaultSort: 'name',
             defaultDirection: 'asc'
         );
+
+        if ($export = $this->exportEmployees($request, $query)) {
+            return $export;
+        }
 
         $items = $query->paginate(15)->withQueryString();
 
@@ -463,5 +470,65 @@ class EmployeeController extends Controller
         $hasPermission = $user && ($user->hasRole('super-admin') || $user->can('hrms.view') || $user->can('hrms.manage'));
 
         abort_unless($isOwner || $hasPermission, 403, 'Unauthorized access to employee file.');
+    }
+
+    protected function exportEmployees(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)
+            ->with(['department', 'designation', 'branch', 'manager'])
+            ->get();
+
+        $headers = [
+            'Emp Code', 'Name', 'Department', 'Designation', 'Branch', 'Manager',
+            'Official Email', 'Personal Email', 'Phone', 'Joining Date', 'Date of Birth',
+            'Father Name', 'Blood Group', 'Aadhaar No', 'PAN No', 'Salesperson',
+            'Status', 'Present Address', 'Permanent Address', 'Bank Name', 'Account No',
+            'Account Type', 'IFSC Code', 'Emergency Contact', 'Created At'
+        ];
+
+        $rows = $records->map(function (Employee $emp) {
+            return [
+                'Emp Code' => $emp->employee_code,
+                'Name' => $emp->name,
+                'Department' => $emp->department?->name ?? '',
+                'Designation' => $emp->designation?->name ?? '',
+                'Branch' => $emp->branch?->name ?? '',
+                'Manager' => $emp->manager?->name ?? '',
+                'Official Email' => $emp->email ?? '',
+                'Personal Email' => $emp->personal_email ?? '',
+                'Phone' => $emp->phone ?: $emp->contact_number ?? '',
+                'Joining Date' => optional($emp->joining_date)->format('Y-m-d'),
+                'Date of Birth' => optional($emp->date_of_birth)->format('Y-m-d'),
+                'Father Name' => $emp->father_name ?? '',
+                'Blood Group' => $emp->blood_group ?? '',
+                'Aadhaar No' => $emp->aadhaar_number ?? '',
+                'PAN No' => $emp->pan_number ?? '',
+                'Salesperson' => $emp->is_salesperson ? 'Yes' : 'No',
+                'Status' => ucfirst((string) $emp->status),
+                'Present Address' => $emp->present_address ?: $emp->address ?? '',
+                'Permanent Address' => $emp->permanent_address ?? '',
+                'Bank Name' => $emp->bank_name ?? '',
+                'Account No' => $emp->bank_account_number ?? '',
+                'Account Type' => $emp->bank_account_type ?? '',
+                'IFSC Code' => $emp->bank_ifsc ?? '',
+                'Emergency Contact' => $emp->emergency_contact_number ?? '',
+                'Created At' => optional($emp->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->all();
+
+        if ($format === 'xlsx') {
+            return DocumentExporter::exportTabular('employees-master-' . now()->format('Y-m-d'), 'Employees Master', $headers, array_map(fn ($r) => array_values($r), $rows), 'xlsx');
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($rows, $headers, 'employees-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($rows, array_combine($headers, $headers), 'Employees Master Report', 'employees-' . now()->format('Y-m-d') . '.pdf');
     }
 }

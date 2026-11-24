@@ -14,8 +14,11 @@ use App\Domains\Order\Models\OrderItem;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\FinancialYear;
 use App\Domains\Organization\Models\Warehouse;
+use App\Domains\Payment\Models\Cheque;
 use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\Payment;
+use App\Domains\Payment\Models\PaymentAllocation;
+use App\Domains\Payment\Services\OutstandingLedgerService;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseInvoiceItem;
 use App\Domains\Purchasing\Models\PurchaseInward;
@@ -76,7 +79,8 @@ class DmsVoucherImporter
             str_contains($normalized, 'receipt note') || str_contains($normalized, 'goods receipt') || str_contains($normalized, 'material in') => $this->goodsReceipt($node),
             str_contains($normalized, 'credit note') || str_contains($normalized, 'sale return') || str_contains($normalized, 'sales return') => $this->creditNote($node),
             str_contains($normalized, 'quotation') || str_contains($normalized, 'proforma') => $this->quotation($node),
-            str_contains($normalized, 'gst tax invoice') || str_contains($normalized, 'tax invoice') || $normalized === 'sales' || str_contains($normalized, 'sales') => $this->salesInvoice($node),
+            str_contains($normalized, 'delivery chall') || ($normalized === 'delivery' || str_contains($normalized, 'delivery challan')) => $this->deliveryChallan($node),
+            str_contains($normalized, 'gst tax invoice') || str_contains($normalized, 'tax invoice') || $normalized === 'sales' || str_contains($normalized, 'sales') => $this->salesInvoice($node, $typeName),
             $normalized === 'purchase' || str_contains($normalized, 'purchase') => $this->purchaseInvoice($node),
             $normalized === 'receipt' || str_contains($normalized, 'receipt') => $this->receipt($node),
             $normalized === 'payment' || str_contains($normalized, 'payment') => $this->paymentVoucher($node),
@@ -85,7 +89,6 @@ class DmsVoucherImporter
                 || str_contains($normalized, 'journal')
                 || str_contains($normalized, 'contra')
                 || str_contains($normalized, 'debit note') => $this->deferredToBooks($node, $typeName),
-            str_contains($normalized, 'delivery') => $this->unsupported($node, $typeName, 'No DMS commercial document mapping for delivery challan; review manually.'),
             default => $this->unsupported($node, $typeName, 'Unsupported DMS voucher type.'),
         };
     }
@@ -106,15 +109,22 @@ class DmsVoucherImporter
         // Do not inflate conflict counters during bulk Tally XML import.
     }
 
-    private function salesInvoice(\DOMElement $node): void
+    private function salesInvoice(\DOMElement $node, string $typeName = 'Sales'): void
     {
         $number = $this->voucherNumber($node);
         $date = $this->date($this->text($node, 'DATE'));
-        $party = $this->ensureParty($this->text($node, 'PARTYLEDGERNAME') ?: $this->text($node, 'PARTYNAME'), 'customer');
+        $partyName = $this->text($node, 'PARTYLEDGERNAME') ?: $this->text($node, 'PARTYNAME');
+        $party = $this->ensureParty($partyName !== '' ? $partyName : 'Cash', 'customer');
         if (! $number || ! $date || ! $party) {
             $this->counts['skipped']++;
 
             return;
+        }
+
+        // Plain "Sales" vouchers often reuse short numbers (2, 4, 51…) — keep them distinct from GST tax invoices.
+        $normalizedType = mb_strtolower(trim($typeName));
+        if ($normalizedType === 'sales' && ! str_contains(mb_strtolower($number), 'avit')) {
+            $number = 'SL-'.$number.'-'.str_replace('-', '', $date);
         }
 
         $this->ensureFinancialYear($date);
@@ -235,7 +245,7 @@ class DmsVoucherImporter
         $number = $this->voucherNumber($node);
         $date = $this->date($this->text($node, 'DATE'));
         $partyName = $this->text($node, 'PARTYLEDGERNAME') ?: $this->text($node, 'PARTYNAME');
-        $party = $this->ensureParty($partyName, $kind === 'receipt' ? 'customer' : 'supplier');
+        $party = $this->ensureParty($partyName !== '' ? $partyName : 'Cash', $kind === 'receipt' ? 'customer' : 'supplier');
         $amount = abs($this->partyAmount($node));
         if (! $number || ! $date || ! $party || $amount < 0.01) {
             $this->counts['skipped']++;
@@ -243,16 +253,25 @@ class DmsVoucherImporter
             return;
         }
 
-        $this->ensureFinancialYear($date);
+        // Keep Receipt vs Payment series distinct when Tally reuses short numbers.
+        $paymentNo = $kind === 'payment' ? 'PAY-'.$number : 'RCT-'.$number;
 
-        $payment = Payment::query()->where('payment_no', $number)->first();
+        $this->ensureFinancialYear($date);
+        $bank = $this->firstBankAllocation($node);
+        $method = $this->paymentMethodFromBank($bank);
+
+        $payment = Payment::query()
+            ->where('payment_no', $paymentNo)
+            ->orWhere('payment_no', $number)
+            ->first();
 
         $attrs = [
-            'payment_no' => $number,
+            'payment_no' => $paymentNo,
+            'reference_no' => $number,
             'customer_id' => $party->id,
             'amount' => $amount,
             'status' => 'completed',
-            'method' => 'bank',
+            'method' => $method,
             'paid_at' => $date,
             'notes' => $this->text($node, 'NARRATION') ?: null,
         ];
@@ -265,20 +284,30 @@ class DmsVoucherImporter
                 $payment = Payment::query()->create($attrs);
                 $this->counts['created']++;
             } catch (UniqueConstraintViolationException) {
-                $payment = Payment::query()->where('payment_no', $number)->firstOrFail();
+                $payment = Payment::query()->where('payment_no', $paymentNo)->firstOrFail();
                 $payment->fill($attrs)->save();
                 $this->counts['updated']++;
             }
         }
 
-        $this->map('voucher', Payment::class, (int) $payment->id, $node, $number);
+        if ($kind === 'receipt') {
+            $this->allocatePaymentBills($payment, $node);
+            try {
+                app(OutstandingLedgerService::class)->recordPayment($payment);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        $this->syncChequeFromBankAllocation($payment, $party, $node, $bank, $kind, $date, $amount);
+        $this->map('voucher', Payment::class, (int) $payment->id, $node, $paymentNo);
     }
 
     private function creditNote(\DOMElement $node): void
     {
         $number = $this->voucherNumber($node);
         $date = $this->date($this->text($node, 'DATE'));
-        $party = $this->ensureParty($this->text($node, 'PARTYLEDGERNAME') ?: $this->text($node, 'PARTYNAME'), 'customer');
+        $party = $this->ensureParty($this->text($node, 'PARTYLEDGERNAME') ?: $this->text($node, 'PARTYNAME') ?: 'Cash', 'customer');
         $amount = abs($this->partyAmount($node));
         if (! $number || ! $date || ! $party) {
             $this->counts['skipped']++;
@@ -315,7 +344,184 @@ class DmsVoucherImporter
             }
         }
 
+        try {
+            app(OutstandingLedgerService::class)->recordCreditNote($doc);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
         $this->map('voucher', CreditNote::class, (int) $doc->id, $node, $number);
+    }
+
+    /**
+     * @return array{instrument:?string,instrument_date:?string,bank_name:?string,txn_type:?string,payment_mode:?string,amount:float}|null
+     */
+    private function firstBankAllocation(\DOMElement $node): ?array
+    {
+        foreach ($node->getElementsByTagName('BANKALLOCATIONS.LIST') as $alloc) {
+            if (! $alloc instanceof \DOMElement) {
+                continue;
+            }
+            $instrument = trim($this->text($alloc, 'INSTRUMENTNUMBER') ?: $this->text($alloc, 'CHEQUENUMBER') ?: $this->text($alloc, 'CHEQUENO'));
+            $bankName = trim($this->text($alloc, 'BANKNAME'));
+            $txnType = trim($this->text($alloc, 'TRANSACTIONTYPE'));
+            $mode = trim($this->text($alloc, 'PAYMENTMODE') ?: $this->text($alloc, 'PAYMENTMODE'));
+            $instDate = $this->date($this->text($alloc, 'INSTRUMENTDATE') ?: $this->text($alloc, 'CHEQUEDATE'));
+            $amount = abs($this->leadingNumber($this->text($alloc, 'AMOUNT')));
+            if ($instrument === '' && $bankName === '' && $txnType === '' && $amount < 0.01) {
+                continue;
+            }
+
+            return [
+                'instrument' => $instrument !== '' ? $instrument : null,
+                'instrument_date' => $instDate,
+                'bank_name' => $bankName !== '' ? $bankName : null,
+                'txn_type' => $txnType !== '' ? $txnType : null,
+                'payment_mode' => $mode !== '' ? $mode : null,
+                'amount' => $amount,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{instrument:?string,instrument_date:?string,bank_name:?string,txn_type:?string,payment_mode:?string,amount:float}|null  $bank
+     */
+    private function paymentMethodFromBank(?array $bank): string
+    {
+        if (! $bank) {
+            return 'bank';
+        }
+        $blob = mb_strtolower(trim(($bank['txn_type'] ?? '').' '.($bank['payment_mode'] ?? '')));
+        if (str_contains($blob, 'cash')) {
+            return 'cash';
+        }
+        if (str_contains($blob, 'cheque') || str_contains($blob, 'check')) {
+            return 'cheque';
+        }
+        if (str_contains($blob, 'upi') || str_contains($blob, 'imps') || str_contains($blob, 'neft') || str_contains($blob, 'rtgs')) {
+            return 'upi';
+        }
+        // Numeric/short instrument with no electronic mode usually means cheque leaf.
+        $instrument = trim((string) ($bank['instrument'] ?? ''));
+        if ($instrument !== '' && preg_match('/^\d{4,10}$/', $instrument) === 1) {
+            return 'cheque';
+        }
+
+        return 'bank';
+    }
+
+    private function allocatePaymentBills(Payment $payment, \DOMElement $node): void
+    {
+        if (! Schema::hasTable('payment_allocations')) {
+            return;
+        }
+
+        PaymentAllocation::query()->where('payment_id', $payment->id)->delete();
+
+        foreach ($node->getElementsByTagName('BILLALLOCATIONS.LIST') as $bill) {
+            if (! $bill instanceof \DOMElement) {
+                continue;
+            }
+            $billName = trim($this->text($bill, 'NAME') ?: $this->text($bill, 'BILLNAME'));
+            $billAmount = abs($this->leadingNumber($this->text($bill, 'AMOUNT')));
+            if ($billName === '' || $billAmount < 0.01) {
+                continue;
+            }
+            $invoice = Invoice::query()
+                ->where('company_id', $this->organization->id)
+                ->where(function ($q) use ($billName) {
+                    $q->where('invoice_no', $billName)
+                        ->orWhere('invoice_no', 'like', $billName.'%')
+                        ->orWhere('reference_no', $billName);
+                })
+                ->first();
+            if (! $invoice) {
+                continue;
+            }
+
+            PaymentAllocation::query()->create([
+                'payment_id' => $payment->id,
+                'invoice_id' => $invoice->id,
+                'amount' => $billAmount,
+            ]);
+
+            if (Schema::hasColumn('invoices', 'paid_amount')) {
+                $newPaid = min((float) $invoice->grand_total, (float) $invoice->paid_amount + $billAmount);
+                $invoice->forceFill(['paid_amount' => $newPaid])->save();
+            }
+            if (! $payment->invoice_id) {
+                $payment->forceFill(['invoice_id' => $invoice->id])->save();
+            }
+        }
+    }
+
+    /**
+     * @param  array{instrument:?string,instrument_date:?string,bank_name:?string,txn_type:?string,payment_mode:?string,amount:float}|null  $bank
+     */
+    private function syncChequeFromBankAllocation(
+        Payment $payment,
+        Customer $party,
+        \DOMElement $node,
+        ?array $bank,
+        string $kind,
+        string $date,
+        float $amount,
+    ): void {
+        if (! $bank || blank($bank['instrument'] ?? null) || ! Schema::hasTable('cheques')) {
+            return;
+        }
+
+        // Only persist cheque register rows for cheque instruments (not UTR/NEFT refs).
+        $method = $this->paymentMethodFromBank($bank);
+        if ($method !== 'cheque') {
+            return;
+        }
+
+        $chequeNo = trim((string) $bank['instrument']);
+        $isIssued = $kind !== 'receipt';
+        $chequeType = $isIssued ? Cheque::TYPE_ISSUED : Cheque::TYPE_RECEIVED;
+        $direction = $isIssued ? 'issued_to_vendor' : 'received_from_client';
+        $status = $isIssued ? Cheque::STATUS_ISSUED : Cheque::STATUS_RECEIVED;
+        $chequeDate = $bank['instrument_date'] ?: $date;
+        $companyBank = trim((string) ($this->organization->bank_account_no ?? ''));
+
+        $existing = Cheque::query()
+            ->where('company_id', $this->organization->id)
+            ->where('cheque_no', $chequeNo)
+            ->where('customer_id', $party->id)
+            ->first();
+
+        $attrs = [
+            'company_id' => $this->organization->id,
+            'bank_account_no' => $companyBank !== '' ? $companyBank : null,
+            'cheque_no' => $chequeNo,
+            'customer_id' => $party->id,
+            'purpose' => 'pdc',
+            'direction' => $direction,
+            'cheque_type' => $chequeType,
+            'amount' => ($bank['amount'] ?? 0) > 0 ? $bank['amount'] : $amount,
+            'bank_name' => $bank['bank_name'],
+            'cheque_date' => $chequeDate,
+            'status' => $status,
+            'payment_id' => $payment->id,
+            'reference_voucher' => $payment->payment_no,
+            'voucher_type' => $kind === 'receipt' ? 'receipt' : 'payment',
+            'notes' => $this->text($node, 'NARRATION') ?: null,
+            'recorded_by' => $this->defaultSalespersonId(),
+        ];
+
+        try {
+            if ($existing) {
+                $existing->fill($attrs)->save();
+            } else {
+                Cheque::query()->create($attrs);
+                $this->counts['created']++;
+            }
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
     }
 
     private function salesOrder(\DOMElement $node): void
@@ -442,14 +648,33 @@ class DmsVoucherImporter
             return;
         }
 
+        // Tally often reuses the same PROFORMA number (e.g. PI-382) across parties/dates.
+        $uniqueNo = $number;
+        $clash = Quotation::query()
+            ->where('quotation_no', $number)
+            ->whereDate('quotation_date', '!=', $date)
+            ->exists();
+        if ($clash || Quotation::query()->where('quotation_no', $number)->where('customer_id', '!=', $party->id)->exists()) {
+            $uniqueNo = $number.'/'.$date;
+        }
+
         $lines = $this->inventoryLines($node);
         $totals = $this->sumLines($lines);
 
-        $doc = Quotation::query()->where('quotation_no', $number)->first();
+        $doc = Quotation::query()
+            ->where('quotation_no', $uniqueNo)
+            ->orWhere(function ($q) use ($number, $date, $party) {
+                $q->where('quotation_no', $number)
+                    ->whereDate('quotation_date', $date)
+                    ->where('customer_id', $party->id);
+            })
+            ->first();
 
         $attrs = [
-            'quotation_no' => $number,
+            'company_id' => $this->organization->id,
+            'quotation_no' => $uniqueNo,
             'customer_id' => $party->id,
+            'salesperson_id' => $this->defaultSalespersonId(),
             'quotation_date' => $date,
             'status' => 'sent',
             'subtotal' => $totals['subtotal'],
@@ -467,7 +692,7 @@ class DmsVoucherImporter
                 $doc = Quotation::query()->create($attrs);
                 $this->counts['created']++;
             } catch (UniqueConstraintViolationException) {
-                $doc = Quotation::query()->where('quotation_no', $number)->firstOrFail();
+                $doc = Quotation::query()->where('quotation_no', $uniqueNo)->firstOrFail();
                 $doc->fill($attrs)->save();
                 $doc->items()->delete();
                 $this->counts['updated']++;
@@ -485,7 +710,72 @@ class DmsVoucherImporter
             ]);
         }
 
-        $this->map('voucher', Quotation::class, $doc->id, $node, $number);
+        $this->map('voucher', Quotation::class, $doc->id, $node, $uniqueNo);
+    }
+
+    /**
+     * Delivery challan has no native trip/load twin in Tally logistics.
+     * Import as a sales invoice tagged DC so stock/party movement is not lost.
+     */
+    private function deliveryChallan(\DOMElement $node): void
+    {
+        $rawNumber = $this->voucherNumber($node);
+        $date = $this->date($this->text($node, 'DATE'));
+        $partyName = $this->text($node, 'PARTYLEDGERNAME') ?: $this->text($node, 'PARTYNAME');
+        $party = $this->ensureParty($partyName !== '' ? $partyName : 'Cash', 'customer');
+        if (! $rawNumber || ! $date || ! $party) {
+            $this->counts['skipped']++;
+
+            return;
+        }
+
+        $safe = preg_replace('/[^A-Za-z0-9]+/', '-', trim($rawNumber)) ?: 'DC';
+        $number = 'DC-'.trim($safe, '-').'-'.str_replace('-', '', $date);
+
+        $this->ensureFinancialYear($date);
+        $lines = $this->inventoryLines($node);
+        $totals = $this->sumLines($lines);
+
+        $invoice = Invoice::query()
+            ->where('company_id', $this->organization->id)
+            ->where('invoice_no', $number)
+            ->first();
+
+        $attrs = [
+            'company_id' => $this->organization->id,
+            'invoice_no' => $number,
+            'customer_id' => $party->id,
+            'invoice_date' => $date,
+            'status' => 'issued',
+            'subtotal' => $totals['subtotal'],
+            'tax_amount' => $totals['tax'],
+            'grand_total' => $totals['grand'],
+            'notes' => trim(($this->text($node, 'NARRATION') ?: '').' [Delivery Challan '.$rawNumber.']'),
+            'delivery_note_no' => $rawNumber,
+            'reference_no' => $this->text($node, 'REFERENCE') ?: $rawNumber,
+        ];
+
+        if ($invoice) {
+            $invoice->fill($attrs)->save();
+            $invoice->items()->delete();
+            $this->counts['updated']++;
+        } else {
+            try {
+                $invoice = Invoice::query()->create($attrs);
+                $this->counts['created']++;
+            } catch (UniqueConstraintViolationException) {
+                $invoice = Invoice::query()
+                    ->where('company_id', $this->organization->id)
+                    ->where('invoice_no', $number)
+                    ->firstOrFail();
+                $invoice->fill($attrs)->save();
+                $invoice->items()->delete();
+                $this->counts['updated']++;
+            }
+        }
+
+        $this->writeInvoiceItems($invoice->id, $lines);
+        $this->map('voucher', Invoice::class, $invoice->id, $node, $number);
     }
 
     private function goodsReceipt(\DOMElement $node): void
@@ -614,44 +904,69 @@ class DmsVoucherImporter
     private function inventoryLines(\DOMElement $node): array
     {
         $lines = [];
-        foreach ($node->getElementsByTagName('ALLINVENTORYENTRIES.LIST') as $entry) {
-            if (! $entry instanceof \DOMElement || $entry->parentNode !== $node) {
-                continue;
+        $voucherDest = $this->text($node, 'DESTINATIONGODOWN') ?: $this->text($node, 'DESTINATIONGODOWNNAME');
+
+        // Invoice/PO: ALLINVENTORYENTRIES. Consumption SJ: INVENTORYENTRIESIN/OUT (and sometimes INVENTORYENTRIES).
+        $tagged = [
+            'ALLINVENTORYENTRIES.LIST' => null,
+            'INVENTORYENTRIES.LIST' => null,
+            'INVENTORYENTRIESIN.LIST' => true,  // stock in
+            'INVENTORYENTRIESOUT.LIST' => false, // stock out
+        ];
+
+        foreach ($tagged as $tag => $forceDeemedIn) {
+            foreach ($node->getElementsByTagName($tag) as $entry) {
+                if (! $entry instanceof \DOMElement || $entry->parentNode !== $node) {
+                    continue;
+                }
+                $itemName = $this->text($entry, 'STOCKITEMNAME');
+                if ($itemName === '') {
+                    continue;
+                }
+                $product = $this->ensureProduct($itemName, $this->text($entry, 'BASEUNITS') ?: 'Nos');
+                $batch = $entry->getElementsByTagName('BATCHALLOCATIONS.LIST')->item(0);
+                $godownName = $this->text($entry, 'GODOWNNAME');
+                if ($godownName === '' && $batch instanceof \DOMElement) {
+                    $godownName = $this->text($batch, 'GODOWNNAME');
+                }
+                $destName = $this->text($entry, 'DESTINATIONGODOWNNAME');
+                if ($destName === '' && $batch instanceof \DOMElement) {
+                    $destName = $this->text($batch, 'DESTINATIONGODOWNNAME')
+                        ?: $this->text($batch, 'DESTINATIONGODOWN')
+                        ?: $this->text($batch, 'TARGETGODOWNNAME');
+                }
+                if ($destName === '' && $voucherDest !== '') {
+                    $destName = $voucherDest;
+                }
+                $qtyText = $this->text($entry, 'BILLEDQTY') ?: $this->text($entry, 'ACTUALQTY');
+                if ($qtyText === '' && $batch instanceof \DOMElement) {
+                    $qtyText = $this->text($batch, 'BILLEDQTY') ?: $this->text($batch, 'ACTUALQTY');
+                }
+                $qty = abs($this->leadingNumber($qtyText));
+                $deemedIn = $forceDeemedIn;
+                if ($deemedIn === null) {
+                    $flag = $this->text($entry, 'ISDEEMEDPOSITIVE');
+                    $deemedIn = $flag === '' || strcasecmp($flag, 'Yes') === 0;
+                }
+                if (! $deemedIn) {
+                    $qty = -abs($qty);
+                }
+                $amount = abs((float) str_replace(',', '', $this->text($entry, 'AMOUNT') ?: '0'));
+                $rate = $this->leadingNumber($this->text($entry, 'RATE'));
+                if ($rate <= 0 && abs($qty) > 0) {
+                    $rate = round($amount / abs($qty), 2);
+                }
+                $lines[] = [
+                    'product_id' => $product->id,
+                    'uom_id' => $product->base_uom_id,
+                    'qty' => $qty,
+                    'rate' => $rate,
+                    'amount' => $amount > 0 ? $amount : round(abs($qty) * $rate, 2),
+                    'tax' => 0.0,
+                    'godown' => $godownName !== '' ? $this->ensureWarehouse($godownName) : null,
+                    'destination' => $destName !== '' ? $this->ensureWarehouse($destName) : null,
+                ];
             }
-            $itemName = $this->text($entry, 'STOCKITEMNAME');
-            if ($itemName === '') {
-                continue;
-            }
-            $product = $this->ensureProduct($itemName, $this->text($entry, 'BASEUNITS') ?: 'Nos');
-            $batch = $entry->getElementsByTagName('BATCHALLOCATIONS.LIST')->item(0);
-            $godownName = $this->text($entry, 'GODOWNNAME');
-            if ($godownName === '' && $batch instanceof \DOMElement) {
-                $godownName = $this->text($batch, 'GODOWNNAME');
-            }
-            $destName = $this->text($entry, 'DESTINATIONGODOWNNAME');
-            if ($destName === '' && $batch instanceof \DOMElement) {
-                $destName = $this->text($batch, 'DESTINATIONGODOWNNAME');
-            }
-            $qtyText = $this->text($entry, 'BILLEDQTY') ?: $this->text($entry, 'ACTUALQTY');
-            if ($qtyText === '' && $batch instanceof \DOMElement) {
-                $qtyText = $this->text($batch, 'BILLEDQTY') ?: $this->text($batch, 'ACTUALQTY');
-            }
-            $qty = $this->leadingNumber($qtyText);
-            $amount = abs((float) str_replace(',', '', $this->text($entry, 'AMOUNT') ?: '0'));
-            $rate = $this->leadingNumber($this->text($entry, 'RATE'));
-            if ($rate <= 0 && $qty > 0) {
-                $rate = round($amount / $qty, 2);
-            }
-            $lines[] = [
-                'product_id' => $product->id,
-                'uom_id' => $product->base_uom_id,
-                'qty' => $qty,
-                'rate' => $rate,
-                'amount' => $amount > 0 ? $amount : round($qty * $rate, 2),
-                'tax' => 0.0,
-                'godown' => $godownName !== '' ? $this->ensureWarehouse($godownName) : null,
-                'destination' => $destName !== '' ? $this->ensureWarehouse($destName) : null,
-            ];
         }
 
         return $lines;

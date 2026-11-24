@@ -11,13 +11,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
 
 class AreaController extends Controller
 {
-    use SortableAndSearchable;
+    use ExportsListing, SortableAndSearchable;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response
     {
         $query = Area::query()
             ->when($request->filled('status'), function ($q) use ($request) {
@@ -29,6 +31,15 @@ class AreaController extends Controller
             });
 
         $this->applySearch($query, $request->input('search'), ['name', 'code']);
+
+        if ($export = $this->exportIfRequested($request, $query, 'Areas', 'Areas', ['Area Name', 'Code', 'Status', 'Created Date'], fn ($item) => [
+            $item->name,
+            $item->code ?: '—',
+            $item->is_active ? 'Active' : 'Inactive',
+            $item->created_at?->format('d/m/Y') ?? '—',
+        ])) {
+            return $export;
+        }
 
         $sortData = $this->applySorting(
             $query,

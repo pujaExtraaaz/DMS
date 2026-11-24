@@ -2,22 +2,21 @@
 @section('title', 'Stock Register')
 
 @section('content')
-<div id="listing-container" data-dynamic-container class="space-y-4" x-data="stockRegisterPage()">
+<div id="listing-container" data-dynamic-container class="space-y-2" x-data="stockRegisterPage()">
     <x-ui.page-header title="Stock Register">
         <x-slot name="actions">
+            <x-ui.export-menu />
             <x-ui.button variant="secondary" :href="route('inventory.stock.index')">View Current Stock</x-ui.button>
             <x-ui.button variant="secondary" :href="route('reports.stock-ledger')">View Stock Ledger</x-ui.button>
         </x-slot>
     </x-ui.page-header>
 
-    {{-- Filter Toolbar --}}
-    <x-ui.card>
-        <form method="GET" action="{{ route('inventory.stock-register.index') }}" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3"
+    <x-ui.card class="!p-3">
+        <form method="GET" action="{{ route('inventory.stock-register.index') }}"
+              class="flex flex-nowrap items-center gap-2 overflow-x-auto"
               x-data="searchableProductSelect(@js($products), '{{ $filters['product_id'] ?? '' }}')">
-            
-            {{-- Product Search / Select --}}
-            <div class="relative sm:col-span-2">
-                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Product</label>
+
+            <div class="relative min-w-[220px] flex-1">
                 <input type="hidden" name="product_id" :value="selectedId" data-dynamic-filter>
                 <div class="relative">
                     <input type="text"
@@ -27,19 +26,18 @@
                            @focus="openDropdown()"
                            @input="openDropdown()"
                            @click.outside="closeDropdown()"
-                           placeholder="Search Product Name or Part Number / SKU..."
-                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
+                           placeholder="Product / Part No / SKU..."
+                           class="block w-full rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-8">
                     <button type="button" x-show="selectedId" @click="clearSelection()"
                             class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold">&times;</button>
                 </div>
-                
                 <div x-show="isOpen && filteredProducts.length > 0"
                      x-transition
                      class="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white rounded-lg shadow-xl border border-slate-200 divide-y divide-slate-100"
                      style="display: none;">
                     <template x-for="prod in filteredProducts" :key="prod.id">
                         <div @click="selectProduct(prod)"
-                             class="p-2.5 hover:bg-indigo-50 cursor-pointer text-xs flex items-center justify-between">
+                             class="p-2 hover:bg-indigo-50 cursor-pointer text-xs flex items-center justify-between">
                             <span class="font-medium text-slate-800" x-text="prod.name"></span>
                             <span class="font-mono text-[11px] text-slate-500" x-text="prod.sku"></span>
                         </div>
@@ -47,81 +45,37 @@
                 </div>
             </div>
 
-            {{-- Warehouse Filter --}}
-            <div>
-                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Warehouse</label>
-                <select name="warehouse_id" data-dynamic-filter class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">All Warehouses</option>
-                    @foreach($warehouses as $w)
-                        <option value="{{ $w->id }}" @selected(($filters['warehouse_id'] ?? '') == $w->id)>{{ $w->name }}</option>
-                    @endforeach
-                </select>
-            </div>
+            <select name="warehouse_id" data-dynamic-filter title="Warehouse"
+                    class="rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 shrink-0">
+                <option value="">Warehouse: All</option>
+                @foreach($warehouses as $w)
+                    <option value="{{ $w->id }}" @selected(($filters['warehouse_id'] ?? '') == $w->id)>{{ $w->name }}</option>
+                @endforeach
+            </select>
 
-            {{-- Stock Status Filter --}}
-            <div>
-                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Stock Status</label>
-                <select name="stock_status" data-dynamic-filter class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    <option value="">All Stock</option>
-                    <option value="available" @selected(($filters['stock_status'] ?? '') == 'available')>Physical Stock Available</option>
-                    <option value="in_transit" @selected(($filters['stock_status'] ?? '') == 'in_transit')>In-Transit Incoming Only</option>
-                    <option value="both" @selected(($filters['stock_status'] ?? '') == 'both')>Both Physical &amp; In-Transit</option>
-                    <option value="low_stock" @selected(($filters['stock_status'] ?? '') == 'low_stock')>Low Stock Alert</option>
-                </select>
-            </div>
+            <select name="stock_status" data-dynamic-filter title="Stock Status"
+                    class="rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 shrink-0">
+                <option value="">Stock: All</option>
+                <option value="available" @selected(($filters['stock_status'] ?? '') == 'available')>Physical Available</option>
+                <option value="in_transit" @selected(($filters['stock_status'] ?? '') == 'in_transit')>In-Transit Only</option>
+                <option value="both" @selected(($filters['stock_status'] ?? '') == 'both')>Both</option>
+                <option value="low_stock" @selected(($filters['stock_status'] ?? '') == 'low_stock')>Low Stock</option>
+            </select>
 
-            {{-- Expected Delivery Date --}}
-            <div>
-                <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Expected Delivery</label>
-                <input type="date"
-                       name="expected_delivery_date"
-                       value="{{ $filters['expected_delivery_date'] ?? '' }}"
-                       data-dynamic-filter
-                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-            </div>
+            <input type="date" name="expected_delivery_date" title="Expected Delivery"
+                   value="{{ $filters['expected_delivery_date'] ?? '' }}" data-dynamic-filter
+                   class="rounded-lg border-gray-300 py-1.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 shrink-0">
 
-            {{-- Filter & Reset Buttons --}}
-            <div class="flex items-end gap-2">
-                <x-ui.button type="submit" variant="primary" class="w-full">Filter</x-ui.button>
-                <a href="{{ route('inventory.stock-register.index') }}" data-reset-filters
-                   class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-xs hover:bg-gray-50">
-                    Reset
-                </a>
-            </div>
+            <x-ui.button type="submit" variant="primary" class="shrink-0 !py-1.5">Filter</x-ui.button>
+            <a href="{{ route('inventory.stock-register.index') }}" data-reset-filters
+               class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 shrink-0">Reset</a>
         </form>
     </x-ui.card>
 
-    {{-- Stock Summary Legend & Info Callout --}}
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div class="bg-white rounded-xl border border-slate-200 p-3.5 flex items-center gap-3 shadow-2xs">
-            <div class="p-2.5 rounded-lg bg-emerald-50 text-emerald-600">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-            </div>
-            <div>
-                <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Physical Available Stock</span>
-                <p class="text-xs text-slate-600 mt-0.5">Physically received in warehouse. Ready for sales dispatch.</p>
-            </div>
-        </div>
-
-        <div class="bg-white rounded-xl border border-indigo-200 bg-indigo-50/20 p-3.5 flex items-center gap-3 shadow-2xs">
-            <div class="p-2.5 rounded-lg bg-indigo-50 text-indigo-600">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"/></svg>
-            </div>
-            <div>
-                <span class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700">In-Transit Stock</span>
-                <p class="text-xs text-slate-600 mt-0.5">Purchased from suppliers. Incoming with expected delivery dates.</p>
-            </div>
-        </div>
-
-        <div class="bg-white rounded-xl border border-slate-200 p-3.5 flex items-center gap-3 shadow-2xs">
-            <div class="p-2.5 rounded-lg bg-sky-50 text-sky-600">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-            </div>
-            <div>
-                <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Total Expected Stock</span>
-                <p class="text-xs text-slate-600 mt-0.5">Physical Stock + In-Transit. Total committed inventory.</p>
-            </div>
-        </div>
+    <div class="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 px-0.5">
+        <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Physical = On-hand</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-indigo-500"></span> In-Transit = Incoming PO/PI</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-sky-500"></span> Total = Physical + In-Transit</span>
     </div>
 
     {{-- Stock Register Table --}}
@@ -130,27 +84,34 @@
             <table class="w-full text-left text-xs border-collapse">
                 <thead class="bg-slate-50 text-slate-600 tracking-wider border-b">
                     <tr>
-                        <x-ui.sortable-th column="product" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                            Product Name
-                        </x-ui.sortable-th>
-                        <x-ui.sortable-th column="sku" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                            Part Number / SKU
-                        </x-ui.sortable-th>
-                        <x-ui.sortable-th column="warehouse" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                            Warehouse
-                        </x-ui.sortable-th>
-                        <x-ui.sortable-th column="physical_stock" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" align="right">
-                            <span title="Physical Available Stock — Available immediately for dispatch">Physical Available Stock</span>
-                        </x-ui.sortable-th>
-                        <x-ui.sortable-th column="in_transit" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" align="right">
-                            <span title="In-Transit Stock — Purchased from suppliers, not yet received">In-Transit Stock</span>
-                        </x-ui.sortable-th>
-                        <x-ui.sortable-th column="total_expected" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" align="right">
-                            <span title="Total Expected Stock — Physical Available + In-Transit">Total Expected Stock</span>
-                        </x-ui.sortable-th>
-                        <x-ui.sortable-th column="expected_delivery_date" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')">
-                            Expected Delivery Date
-                        </x-ui.sortable-th>
+                        <x-ui.sortable-th column="product" label="Product Name" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
+                        <x-ui.sortable-th column="sku" label="Part Number / SKU" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
+                        <x-ui.sortable-th column="warehouse" label="Warehouse" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
+                        <x-ui.sortable-th
+                            column="physical_stock"
+                            label="Physical Available Stock"
+                            tooltip="Physical Available Stock — Available immediately for dispatch"
+                            :current-sort="$sort ?? request('sort', 'product')"
+                            :current-direction="$direction ?? request('direction', 'asc')"
+                            align="right"
+                        />
+                        <x-ui.sortable-th
+                            column="in_transit"
+                            label="In-Transit Stock"
+                            tooltip="In-Transit Stock — Purchased from suppliers, not yet received"
+                            :current-sort="$sort ?? request('sort', 'product')"
+                            :current-direction="$direction ?? request('direction', 'asc')"
+                            align="right"
+                        />
+                        <x-ui.sortable-th
+                            column="total_expected"
+                            label="Total Expected Stock"
+                            tooltip="Total Expected Stock — Physical Available + In-Transit"
+                            :current-sort="$sort ?? request('sort', 'product')"
+                            :current-direction="$direction ?? request('direction', 'asc')"
+                            align="right"
+                        />
+                        <x-ui.sortable-th column="expected_delivery_date" label="Expected Delivery Date" :current-sort="$sort ?? request('sort', 'product')" :current-direction="$direction ?? request('direction', 'asc')" />
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 bg-white">

@@ -71,6 +71,10 @@ class PriceMasterController extends Controller
             'created_at' => 'price_masters.created_at',
         ];
 
+        if ($request->filled('export')) {
+            $query->with(['brand', 'customerType', 'product', 'uom']);
+        }
+
         if ($export = $this->exportIfRequested(
             $request,
             $query,

@@ -2,7 +2,8 @@
 @section('title', $invoice->invoice_no)
 @section('content')
 @php
-    $company = $company ?? $invoice->selling_company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first();
+    $company = ($company ?? null)
+        ?: ($invoice->selling_company ?? $invoice->company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first());
 @endphp
 <div x-data="{
     cancelEInvoiceModal: false,

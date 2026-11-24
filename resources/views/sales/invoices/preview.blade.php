@@ -396,6 +396,8 @@
 <body>
 
 @php
+    $company = ($company ?? null)
+        ?: ($invoice->selling_company ?? $invoice->company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first());
     $companyName = $company?->name ?? config('app.name');
     $customer = $invoice->customer;
     $amountWords = \App\Support\DocumentExporter::numberToIndianWords($invoice->grand_total);
