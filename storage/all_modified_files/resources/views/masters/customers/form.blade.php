@@ -1,0 +1,4649 @@
+@extends('layouts.dms')
+@section('title', isset($lead) ? 'Convert Lead to Customer' : ($item->exists ? 'Edit Party' : 'Create Party'))
+
+@php
+    $defaultBankAccount = [
+        'id' => null,
+        'account_holder_name' => '',
+        'bank_name' => '',
+        'branch_name' => '',
+        'account_number' => '',
+        'account_type' => 'current',
+        'ifsc_code' => '',
+        'is_primary' => true,
+        '_ifsc_status' => '',
+        '_ifsc_message' => '',
+        '_ifsc_loading' => false,
+    ];
+    $initialBankAccounts = old('bank_accounts', $initialBankAccounts ?? (($item->exists && $item->relationLoaded('bankAccounts') && $item->bankAccounts->isNotEmpty()) 
+        ? $item->bankAccounts->map(fn ($b) => [
+            'id' => $b->id,
+            'account_holder_name' => $b->account_holder_name ?? '',
+            'bank_name' => $b->bank_name ?? '',
+            'branch_name' => $b->branch_name ?? '',
+            'account_number' => $b->account_number ?? '',
+            'account_type' => $b->account_type ?? 'current',
+            'ifsc_code' => $b->ifsc_code ?? '',
+            'is_primary' => (bool) ($b->is_primary),
+            '_ifsc_status' => '',
+            '_ifsc_message' => '',
+            '_ifsc_loading' => false,
+        ])->toArray() 
+        : [$defaultBankAccount]));
+
+    $defaultAddress = [
+        'id' => null,
+        'label' => 'Head Office / Billing',
+        'contact_person' => '',
+        'contact_phone' => '',
+        'address_line_1' => '',
+        'address_line_2' => '',
+        'city' => '',
+        'state' => '',
+        'pincode' => '',
+        'type' => 'both',
+        'is_default_billing' => true,
+        'is_default_delivery' => true,
+    ];
+    $initialAddresses = old('addresses', $initialAddresses ?? (
+        ($item->exists && $item->relationLoaded('addresses') && $item->addresses->isNotEmpty()) 
+            ? $item->addresses->map(function ($a) {
+                return [
+                    'id' => $a->id,
+                    'label' => $a->label ?? 'Office',
+                    'contact_person' => $a->contact_person ?? '',
+                    'contact_phone' => $a->contact_phone ?? '',
+                    'address_line_1' => $a->address_line_1 ?? $a->address ?? '',
+                    'address_line_2' => $a->address_line_2 ?? '',
+                    'city' => $a->city ?? '',
+                    'state' => $a->state ?? '',
+                    'pincode' => $a->pincode ?? '',
+                    'type' => $a->type ?? 'both',
+                    'is_default_billing' => (bool) ($a->is_default_billing || $a->is_default),
+                    'is_default_delivery' => (bool) ($a->is_default_delivery),
+                ];
+            })->toArray()
+            : [$defaultAddress]
+    ));
+
+    $initialBusinessGroupId = old('business_group_id', $item->business_group_id ?? request('selected_group_id', request('business_group_id')));
+
+    $designationOptions = $contactDesignations ?? \App\Support\ContactDesignations::all();
+    $designationsData = ($designationsList ?? collect(\App\Support\ContactDesignations::items()))->map(fn ($d) => [
+        'id' => (int) $d->id,
+        'name' => (string) $d->name,
+        'code' => $d->code,
+        'is_active' => (bool) $d->is_active,
+    ])->values()->all();
+
+    $oldContacts = old('contacts');
+    if (is_array($oldContacts)) {
+        $initialContacts = collect($oldContacts)->map(function ($row) {
+            $rawRole = (string) ($row['role'] ?? $row['designation'] ?? '');
+            $customRole = (string) ($row['custom_role'] ?? $row['other_designation'] ?? $row['other_role'] ?? '');
+            $desigId = ! empty($row['designation_id']) ? (int) $row['designation_id'] : null;
+            $resolved = \App\Support\ContactDesignations::resolve($rawRole, $desigId);
+            if ($rawRole === 'Other' && filled($customRole)) {
+                $resolved['other_designation'] = trim($customRole);
+            }
+
+            return [
+                'id' => ! empty($row['id']) ? (int) $row['id'] : null,
+                'phone_directory_contact_id' => ! empty($row['phone_directory_contact_id']) ? (int) $row['phone_directory_contact_id'] : null,
+                'name' => $row['name'] ?? '',
+                'role' => $rawRole === 'Other' && filled($customRole) ? trim($customRole) : ($row['role'] ?? $rawRole),
+                'designation_id' => $desigId ?: $resolved['designation_id'],
+                'designation' => $row['designation'] ?? $resolved['designation'],
+                'other_designation' => $row['other_designation'] ?? $resolved['other_designation'],
+                'company_name' => $row['company_name'] ?? '',
+                'company_website' => $row['company_website'] ?? '',
+                'phone' => $row['phone'] ?? '',
+                'alternate_phone' => $row['alternate_phone'] ?? '',
+                'whatsapp' => $row['whatsapp_number'] ?? ($row['whatsapp'] ?? ''),
+                'whatsapp_number' => $row['whatsapp_number'] ?? ($row['whatsapp'] ?? ''),
+                'email' => $row['email'] ?? '',
+                'is_primary' => (bool) ($row['is_primary'] ?? false),
+                'avatar_bg_class' => $row['avatar_bg_class'] ?? 'bg-slate-100 text-slate-700',
+                'initials' => $row['initials'] ?? mb_substr($row['name'] ?? 'C', 0, 2),
+                'view_url' => !empty($row['phone_directory_contact_id']) ? route('phone-directory.contacts.show', (int)$row['phone_directory_contact_id']) : null,
+            ];
+        })->values()->all();
+    } elseif (isset($initialContacts) && is_array($initialContacts)) {
+        // Initialized from controller (draft or newly created phone directory contact)
+    } elseif ($item->exists && $item->relationLoaded('contacts')) {
+        $initialContacts = $item->contacts->map(function ($contact) {
+            $resolved = \App\Support\ContactDesignations::resolve($contact->role ?? '', $contact->designation_id);
+
+            return [
+                'id' => $contact->id,
+                'phone_directory_contact_id' => $contact->phone_directory_contact_id,
+                'name' => $contact->effective_name,
+                'role' => $contact->role ?? '',
+                'designation_id' => $contact->designation_id ?: $resolved['designation_id'],
+                'designation' => $contact->phone_directory_contact_id ? ($contact->effective_designation ?: $resolved['designation']) : $resolved['designation'],
+                'other_designation' => $contact->phone_directory_contact_id ? '' : $resolved['other_designation'],
+                'company_name' => $contact->effective_company_name,
+                'company_website' => $contact->effective_company_website,
+                'phone' => $contact->effective_phone,
+                'alternate_phone' => $contact->effective_alternate_phone,
+                'whatsapp' => $contact->effective_whatsapp_number,
+                'whatsapp_number' => $contact->effective_whatsapp_number,
+                'email' => $contact->effective_email,
+                'is_primary' => (bool) $contact->is_primary,
+                'avatar_bg_class' => $contact->phoneDirectoryContact?->avatar_bg_class ?? 'bg-slate-100 text-slate-700',
+                'initials' => $contact->phoneDirectoryContact?->initials ?? mb_substr($contact->name ?? 'C', 0, 2),
+                'view_url' => $contact->phoneDirectoryContact ? route('phone-directory.contacts.show', $contact->phoneDirectoryContact) : null,
+            ];
+        })->values()->all();
+    } else {
+        $initialContacts = [];
+    }
+
+    $savedGemAuthorizations = ($item->exists ? $item->gemAuthorizations()->with('documents')->orderBy('id')->get() : collect());
+    $oldGemAuthorizations = old('gem_authorizations');
+    if (is_array($oldGemAuthorizations)) {
+        $initialGemAuthorizations = collect($oldGemAuthorizations)->values()->map(function ($row, $index) use ($savedGemAuthorizations) {
+            $saved = filled($row['id'] ?? null) ? $savedGemAuthorizations->firstWhere('id', (int) $row['id']) : null;
+
+            return [
+                'key' => 'gem-'.($row['id'] ?? 'new-'.$index),
+                'id' => $row['id'] ?? '',
+                'brand_id' => (string) ($row['brand_id'] ?? ''),
+                'gem_registered' => (string) ($row['gem_registered'] ?? '0'),
+                'gem_authorized' => (string) ($row['gem_authorized'] ?? '0'),
+                'authorization_number' => $row['authorization_number'] ?? '',
+                'category' => $row['category'] ?? '',
+                'date_of_issue' => $row['date_of_issue'] ?? '',
+                'documents' => $saved ? $saved->documents->map(fn ($doc) => [
+                    'id' => $doc->id,
+                    'name' => $doc->original_name,
+                    'view_url' => route('masters.customers.gem-documents.show', [$item, $doc]),
+                    'download_url' => route('masters.customers.gem-documents.show', [$item, $doc]).'?download=1',
+                    'is_image' => $doc->isImage(),
+                ])->values()->all() : [],
+            ];
+        })->all();
+    } else {
+        $initialGemAuthorizations = $savedGemAuthorizations->map(fn ($row) => [
+            'key' => 'gem-'.$row->id,
+            'id' => $row->id,
+            'brand_id' => (string) $row->brand_id,
+            'gem_registered' => $row->gem_registered ? '1' : '0',
+            'gem_authorized' => $row->gem_authorized ? '1' : '0',
+            'authorization_number' => $row->authorization_number ?? '',
+            'category' => $row->category ?? '',
+            'date_of_issue' => $row->date_of_issue ? $row->date_of_issue->format('Y-m-d') : '',
+            'documents' => $row->documents->map(fn ($doc) => [
+                'id' => $doc->id,
+                'name' => $doc->original_name,
+                'view_url' => route('masters.customers.gem-documents.show', [$item, $doc]),
+                'download_url' => route('masters.customers.gem-documents.show', [$item, $doc]).'?download=1',
+                'is_image' => $doc->isImage(),
+            ])->values()->all(),
+        ])->all();
+    }
+
+    $effectiveReturnUrl = old('return_url', $returnUrl ?? request('return_url', request('amp;return_url')));
+    $effectiveReturnTo = $returnTo ?? request('return_to', old('return_to', request('amp;return_to')));
+@endphp
+
+@section('content')
+<x-ui.page-header :title="isset($lead) ? 'Convert Lead to Customer' : ($item->exists ? 'Edit Party' : 'Create Party')">
+    <x-slot name="actions">
+        @if(isset($lead))
+            <x-ui.button variant="secondary" :href="route('crm.leads.index')">Back to Leads</x-ui.button>
+        @elseif(filled($effectiveReturnUrl))
+            <x-ui.button variant="secondary" :href="$effectiveReturnUrl">Cancel &amp; Go Back</x-ui.button>
+        @elseif($effectiveReturnTo === 'orders.create')
+            <x-ui.button variant="secondary" :href="route('orders.create')">Back to Book Order</x-ui.button>
+        @elseif($effectiveReturnTo === 'invoices.create' || $effectiveReturnTo === 'sales.invoices.create')
+            <x-ui.button variant="secondary" :href="route('invoices.create')">Back to Tax Invoice</x-ui.button>
+        @else
+            <x-ui.button variant="secondary" :href="route('masters.customers.index')">Back</x-ui.button>
+        @endif
+    </x-slot>
+</x-ui.page-header>
+<x-ui.card>
+    @if(isset($lead))
+        <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-xs">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-semibold text-emerald-950">
+                            Converting Lead: {{ $lead->name }}{{ $lead->company_name && $lead->company_name !== $lead->name ? ' (' . $lead->company_name . ')' : '' }}
+                        </h3>
+                        <p class="text-xs text-emerald-700">
+                            Lead contact, address, and assignment details have been pre-filled. Complete party details below and save to convert this lead into a Customer.
+                        </p>
+                    </div>
+                </div>
+                <a href="{{ route('crm.leads.index') }}" class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-xs hover:bg-emerald-50 transition">
+                    &larr; Back to Leads
+                </a>
+            </div>
+        </div>
+    @endif
+
+    @php
+        $returnUrl = $effectiveReturnUrl;
+        $isReturnToPo = is_string($returnUrl) && str_contains($returnUrl, '/purchasing/orders/create');
+        $isReturnToInvoice = is_string($returnUrl) && (str_contains($returnUrl, '/invoices') || $effectiveReturnTo === 'invoices.create' || $effectiveReturnTo === 'sales.invoices.create');
+    @endphp
+    @if(! $item->exists && filled($returnUrl))
+        <div class="mb-4 bg-indigo-50/90 border border-indigo-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-indigo-900 shadow-2xs max-w-5xl">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                </div>
+                <div>
+                    <span class="font-bold">
+                        {{ $isReturnToPo ? 'Adding Supplier for Purchase Order' : ($isReturnToInvoice ? 'Adding Customer for Tax Invoice' : 'Return After Save') }}
+                    </span>
+                    <p class="text-indigo-700 text-[11px]">
+                        {{ $isReturnToPo
+                            ? 'Save this party, then you will be returned to New Purchase Order with the supplier selected.'
+                            : ($isReturnToInvoice
+                                ? 'Save this party, then you will be returned to the Tax Invoice with the customer selected.'
+                                : 'After saving, you will be redirected back to the page you came from.') }}
+                    </p>
+                </div>
+            </div>
+            <a href="{{ $returnUrl }}"
+               class="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-white text-indigo-700 border border-indigo-200 font-semibold rounded-xl hover:bg-indigo-100 hover:text-indigo-900 transition shadow-2xs shrink-0">
+                &larr; Cancel &amp; Go Back
+            </a>
+        </div>
+    @endif
+
+    @if(!empty($hasDraft))
+        <div class="mb-4 bg-amber-50/90 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs max-w-5xl">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold shrink-0">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </div>
+                <div>
+                    <span class="font-bold text-amber-950">In-Progress Party Draft Restored</span>
+                    <p class="text-amber-800 text-[11px] mt-0.5">
+                        Your entered party form details have been restored. You can continue editing or discard the draft.
+                    </p>
+                </div>
+            </div>
+            <form method="POST" action="{{ route('masters.customers.draft.clear') }}" class="inline shrink-0">
+                @csrf
+                <button type="submit" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-amber-900 border border-amber-300 font-semibold rounded-xl hover:bg-amber-100 transition shadow-2xs text-xs">
+                    Discard Draft
+                </button>
+            </form>
+        </div>
+    @endif
+
+    <form method="POST"
+          action="{{ $item->exists ? route('masters.customers.update', $item) : route('masters.customers.store') }}"
+          id="party-master-form"
+          enctype="multipart/form-data"
+          class="space-y-6 max-w-5xl"
+          x-data="partyFormController()"
+          @add-city="openCityModal($event.detail.index, $event.detail.name)">
+        @csrf
+        @if($item->exists) @method('PUT') @endif
+        @if(! $item->exists && filled($returnUrl))
+            <input type="hidden" name="return_url" value="{{ $returnUrl }}">
+        @endif
+        @if(isset($lead))
+            <input type="hidden" name="lead_id" value="{{ $lead->id }}">
+        @elseif(old('lead_id'))
+            <input type="hidden" name="lead_id" value="{{ old('lead_id') }}">
+        @endif
+        @if($effectiveReturnTo === 'orders.create' || $effectiveReturnTo === 'invoices.create' || $effectiveReturnTo === 'sales.invoices.create')
+            <input type="hidden" name="return_to" value="{{ $effectiveReturnTo }}">
+        @endif
+
+        <div>
+            <h3 class="text-sm font-semibold text-slate-700 mb-3">Identity</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GSTIN</label>
+                    <div class="flex items-center gap-2">
+                        <input type="text" name="gstin" x-model="form.gstin" maxlength="15"
+                               placeholder="E.G. 27AAAAA0000A1Z5" @input.debounce.400ms="autoFetchGst()"
+                               class="flex-1 min-w-0 uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                        <button type="button" @click="fetchGstDetails()" :disabled="searchingGst"
+                                :aria-busy="searchingGst ? 'true' : 'false'"
+                                class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition disabled:opacity-50 shrink-0 whitespace-nowrap min-w-[105px] cursor-pointer"
+                                title="Fetch party details from official GSTIN records">
+                            <svg x-show="!searchingGst" class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <span x-show="!searchingGst">Fetch GST</span>
+                            <span x-show="searchingGst" class="flex items-center gap-1.5" x-cloak>
+                                <svg class="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                <span>Fetching...</span>
+                            </span>
+                        </button>
+                    </div>
+
+                    <div x-show="gstFeedback.message"
+                         x-transition
+                         :class="{
+                             'bg-emerald-50 text-emerald-800 border-emerald-200': gstFeedback.type === 'success',
+                             'bg-amber-50 text-amber-800 border-amber-200': gstFeedback.type === 'warning',
+                             'bg-rose-50 text-rose-800 border-rose-200': gstFeedback.type === 'error'
+                         }"
+                         class="mt-2 p-2.5 rounded-lg border text-xs flex items-start gap-2">
+                        <span class="font-bold shrink-0 mt-0.5" x-text="gstFeedback.type === 'success' ? '✓' : (gstFeedback.type === 'warning' ? 'ℹ' : '⚠')"></span>
+                        <div class="space-y-0.5">
+                            <p x-text="gstFeedback.message" class="font-medium"></p>
+                            <p x-show="gstFeedback.note" x-text="gstFeedback.note" class="text-[11px] opacity-90"></p>
+                        </div>
+                    </div>
+
+                    <div x-show="gstLookupInfo && Object.keys(gstLookupInfo).length"
+                         x-cloak
+                         class="mt-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50 text-[11px] text-slate-700 space-y-1">
+                        <p class="font-semibold text-slate-800 uppercase tracking-wider text-[10px]">GST registration details (for review)</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-0.5">
+                            <p x-show="gstLookupInfo.legal_name"><span class="text-slate-500">Legal name:</span> <span x-text="gstLookupInfo.legal_name"></span></p>
+                            <p x-show="gstLookupInfo.trade_name"><span class="text-slate-500">Trade name:</span> <span x-text="gstLookupInfo.trade_name"></span></p>
+                            <p x-show="gstLookupInfo.status"><span class="text-slate-500">Status:</span> <span x-text="gstLookupInfo.status"></span></p>
+                            <p x-show="gstLookupInfo.taxpayer_type"><span class="text-slate-500">Taxpayer type:</span> <span x-text="gstLookupInfo.taxpayer_type"></span></p>
+                            <p x-show="gstLookupInfo.constitution_of_business"><span class="text-slate-500">Constitution:</span> <span x-text="gstLookupInfo.constitution_of_business"></span></p>
+                            <p x-show="gstLookupInfo.registration_date"><span class="text-slate-500">Registration date:</span> <span x-text="gstLookupInfo.registration_date"></span></p>
+                            <p x-show="gstLookupInfo.cancellation_date"><span class="text-slate-500">Cancellation date:</span> <span x-text="gstLookupInfo.cancellation_date"></span></p>
+                            <p x-show="gstLookupInfo.state_jurisdiction"><span class="text-slate-500">State jurisdiction:</span> <span x-text="gstLookupInfo.state_jurisdiction"></span></p>
+                            <p x-show="gstLookupInfo.center_jurisdiction"><span class="text-slate-500">Center jurisdiction:</span> <span x-text="gstLookupInfo.center_jurisdiction"></span></p>
+                            <p x-show="gstLookupInfo.nature_of_business" class="sm:col-span-2"><span class="text-slate-500">Nature of business:</span> <span x-text="gstLookupInfo.nature_of_business"></span></p>
+                        </div>
+                        <p class="text-slate-500">Trade name and GST registration type are saved with the party. The other GST registration details are shown for review.</p>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="gst_registration_type" class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GST Registration Type</label>
+                    <select name="gst_registration_type"
+                            id="gst_registration_type"
+                            x-model="form.gst_registration_type"
+                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Select GST Registration Type</option>
+                        @foreach(\App\Domains\Master\Models\Customer::GST_REGISTRATION_TYPES as $type)
+                            <option value="{{ $type }}" @selected(old('gst_registration_type', $item->gst_registration_type) === $type)>{{ $type }}</option>
+                        @endforeach
+                    </select>
+                    <p class="mt-1 text-[11px] text-slate-500">Optional. Auto-filled from GST records when fetched, or select manually.</p>
+                    @error('gst_registration_type')
+                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Party Name *</label>
+                    <input type="text" name="name" x-model="form.name" required
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-semibold text-slate-700 tracking-wider">Trade Name</label>
+                        <button type="button" x-show="form.trade_name" @click="form.name = form.trade_name" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Use as party name</button>
+                    </div>
+                    <input type="text" name="trade_name" x-model="form.trade_name"
+                           placeholder="Filled automatically from the GSTIN"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                @php
+                    $selectedPartyType = old('party_type', $item->getAttributes()['party_type'] ?? request('party_type', 'sundry_debtors'));
+                    $selectedPartyType = match ($selectedPartyType) {
+                        'sundry_creditors', 'supplier' => 'sundry_creditors',
+                        'both' => 'both',
+                        default => 'sundry_debtors',
+                    };
+                @endphp
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Party Type *</label>
+                    <select name="party_type" x-model="form.party_type" required class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        @foreach([\App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_DEBTORS => 'Sundry Debtors', \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS => 'Sundry Creditors', \App\Domains\Master\Models\Customer::PARTY_TYPE_BOTH => 'Both'] as $val => $label)
+                            <option value="{{ $val }}" @selected($selectedPartyType === $val)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                {{-- Business Group (Linked from Sister Concern) --}}
+                <div class="relative">
+                    <div class="flex items-center justify-between mb-1">
+                        <label for="business_group_id_display" class="block text-xs font-semibold text-slate-700 tracking-wider">
+                            Business Group
+                        </label>
+                        <a href="{{ route('organization.business-groups.index', ['return_url' => url()->current()]) }}"
+                           class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 hover:underline focus:outline-none"
+                           title="Create new business group in Sister Concern">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            Add
+                        </a>
+                    </div>
+
+                    {{-- Hidden input for Form submission --}}
+                    <input type="hidden" name="business_group_id" :value="selectedBusinessGroupId || ''">
+
+                    {{-- Dropdown Container --}}
+                    <div class="relative w-full"
+                         x-ref="businessGroupContainer"
+                         @click.outside="closeBusinessGroupDropdown()">
+                        
+                        <!-- Trigger Input / Button -->
+                        <button type="button"
+                                id="business_group_id_display"
+                                x-ref="bgTriggerButton"
+                                @click="toggleBusinessGroupDropdown()"
+                                :class="businessGroupDropdownOpen ? 'ring-2 ring-indigo-500 border-indigo-500' : 'border-gray-300 hover:border-gray-400'"
+                                class="relative w-full rounded-lg border bg-white py-2 pl-3 pr-2 text-left text-sm shadow-xs focus:outline-none transition flex items-center justify-between">
+                            <div class="flex items-center gap-2 truncate flex-1 mr-2">
+                                <template x-if="selectedBusinessGroup">
+                                    <div class="flex items-center gap-1.5 truncate">
+                                        <span class="text-sm" x-text="selectedBusinessGroup.logo_emoji || '🏢'"></span>
+                                        <span class="font-medium text-slate-800 truncate" x-text="selectedBusinessGroup.name"></span>
+                                        <span class="text-[11px] text-slate-500 font-mono bg-slate-100 px-1 py-0.5 rounded border border-slate-200" x-text="selectedBusinessGroup.code"></span>
+                                    </div>
+                                </template>
+                                <template x-if="!selectedBusinessGroup">
+                                    <span class="text-slate-400">Select Business Group (optional)</span>
+                                </template>
+                            </div>
+                            <div class="flex items-center gap-1 shrink-0">
+                                <template x-if="selectedBusinessGroupId">
+                                    <span @click.stop="clearBusinessGroup()" title="Clear selection"
+                                          class="p-0.5 text-slate-400 hover:text-rose-500 rounded cursor-pointer transition">
+                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                    </span>
+                                </template>
+                                <svg class="h-4 w-4 text-slate-400 transition-transform duration-150"
+                                     :class="businessGroupDropdownOpen ? 'rotate-180 text-indigo-600' : ''"
+                                     viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                </svg>
+                            </div>
+                        </button>
+
+                        <!-- Dropdown Menu Popover -->
+                        <div x-show="businessGroupDropdownOpen"
+                             x-cloak
+                             x-transition:enter="transition ease-out duration-100"
+                             x-transition:enter-start="opacity-0 translate-y-1"
+                             x-transition:enter-end="opacity-100 translate-y-0"
+                             x-transition:leave="transition ease-in duration-75"
+                             x-transition:leave-start="opacity-100 translate-y-0"
+                             x-transition:leave-end="opacity-0 translate-y-1"
+                             class="absolute left-0 right-0 z-50 rounded-lg bg-white shadow-lg ring-1 ring-black/5 border border-slate-200 overflow-hidden flex flex-col focus:outline-none"
+                             :class="dropdownPlacement === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'"
+                             style="max-height: 280px; display: none;">
+                            
+                            <!-- Search Field -->
+                            <div class="p-2 border-b border-slate-100 bg-slate-50/80 sticky top-0 z-10">
+                                <div class="relative">
+                                    <input type="text"
+                                           x-ref="businessGroupSearchInput"
+                                           x-model="businessGroupSearch"
+                                           @keydown="onBusinessGroupKeyDown($event)"
+                                           placeholder="Search Business Group by name or code..."
+                                           class="block w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                </div>
+                            </div>
+
+                            <!-- Options List -->
+                            <div class="overflow-y-auto py-1 divide-y divide-slate-50 max-h-48 text-xs">
+                                <div @click="clearBusinessGroup()"
+                                     class="p-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-slate-500 italic text-[11px] transition">
+                                    <span>-- None / No Business Group --</span>
+                                    <span x-show="!selectedBusinessGroupId" class="text-indigo-600 font-bold">✓</span>
+                                </div>
+
+                                <template x-for="(g, idx) in filteredBusinessGroups" :key="g.id">
+                                    <div @click="selectBusinessGroup(g)"
+                                         @mouseenter="highlightedGroupIndex = idx"
+                                         class="p-2.5 cursor-pointer flex items-center justify-between transition-colors"
+                                         :class="{
+                                             'bg-indigo-50 text-indigo-900 font-semibold': String(selectedBusinessGroupId) === String(g.id),
+                                             'bg-slate-100/70': highlightedGroupIndex === idx && String(selectedBusinessGroupId) !== String(g.id),
+                                             'text-slate-800 hover:bg-slate-50': String(selectedBusinessGroupId) !== String(g.id)
+                                         }">
+                                        <div class="flex items-center gap-2 truncate">
+                                            <span class="text-sm font-emoji" x-text="g.logo_emoji || '🏢'"></span>
+                                            <span class="truncate" x-text="g.name"></span>
+                                            <span class="font-mono text-[10px] text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded" x-text="g.code"></span>
+                                        </div>
+                                        <span x-show="String(selectedBusinessGroupId) === String(g.id)" class="text-indigo-600 font-bold ml-2">✓</span>
+                                    </div>
+                                </template>
+
+                                <div x-show="!loadingBusinessGroups && filteredBusinessGroups.length === 0" class="p-4 text-center text-slate-400 space-y-2">
+                                    <p class="text-[11px]">No business groups match "<span class="font-medium text-slate-600" x-text="businessGroupSearch"></span>"</p>
+                                    <a href="{{ route('organization.business-groups.index', ['return_url' => url()->current()]) }}"
+                                       class="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 hover:text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
+                                        + Add New Business Group
+                                    </a>
+                                </div>
+
+                                <div x-show="loadingBusinessGroups" class="p-3 text-center text-slate-400 flex items-center justify-center gap-2">
+                                    <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+                                    <span>Loading business groups...</span>
+                                </div>
+
+                                <div x-show="businessGroupError" class="p-2.5 bg-rose-50 text-rose-700 text-[11px] flex items-center justify-between">
+                                    <span x-text="businessGroupError"></span>
+                                    <button type="button" @click="refreshBusinessGroups(true)" class="underline font-semibold ml-2">Retry</button>
+                                </div>
+                            </div>
+
+                            <!-- Footer with quick link -->
+                            <div class="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                                <span x-text="`${filteredBusinessGroups.length} group${filteredBusinessGroups.length === 1 ? '' : 's'} available`"></span>
+                                <a href="{{ route('organization.business-groups.index', ['return_url' => url()->current()]) }}"
+                                   class="text-indigo-600 hover:text-indigo-900 font-semibold hover:underline inline-flex items-center gap-0.5">
+                                    Manage Groups &rarr;
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    @error('business_group_id')
+                        <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1 gap-2">
+                        <label for="customer_type_id" class="block text-xs font-semibold text-slate-700 tracking-wider">Classification</label>
+                        <div class="flex items-center gap-2">
+                            <button type="button"
+                                    @click="openClassificationModal('add')"
+                                    class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline focus:outline-none">
+                                Add
+                            </button>
+                            <button type="button"
+                                    @click="openClassificationModal('edit')"
+                                    :disabled="!selectedCustomerTypeId"
+                                    class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline focus:outline-none disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">
+                                Edit
+                            </button>
+                            <button type="button"
+                                    @click="openClassificationModal('delete')"
+                                    :disabled="!selectedCustomerTypeId"
+                                    class="text-xs text-rose-600 hover:text-rose-800 font-semibold hover:underline focus:outline-none disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                    <select name="customer_type_id"
+                            id="customer_type_id"
+                            x-ref="classificationSelect"
+                            x-model="selectedCustomerTypeId"
+                            @change="onClassificationChange($event)"
+                            class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Select Classification</option>
+                        @foreach($customerTypes as $t)
+                            <option value="{{ $t->id }}" @selected(old('customer_type_id', $item->customer_type_id)==$t->id)>{{ $t->name }}</option>
+                        @endforeach
+                        <template x-for="t in customClassifications" :key="t.id">
+                            <option :value="t.id" x-text="t.name"></option>
+                        </template>
+                    </select>
+                    <p class="mt-1 text-[11px] text-slate-500">Optional. Add, edit, or delete a classification without leaving this form.</p>
+                    <p x-show="classificationError && !classificationModalOpen" x-cloak class="mt-1 text-xs text-rose-600" x-text="classificationError"></p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">PAN</label>
+                    <input type="text" name="pan" x-model="form.pan" maxlength="10"
+                           class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Phone</label>
+                    <input type="text" name="phone" x-model="form.phone"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Email</label>
+                    <input type="email" name="email" x-model="form.email"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Date of Opening</label>
+                    <input type="date" name="opened_on" x-model="form.opened_on"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <p class="mt-1 text-[11px] text-slate-500">The date this party account was opened.</p>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Reference By</label>
+                    <input type="text" name="reference_by" x-model="form.reference_by" maxlength="255"
+                           placeholder="Person who introduced this party"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Udyam Number</label>
+                    <input type="text" name="udyam_number" x-model="form.udyam_number" maxlength="50"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div class="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <h4 class="text-sm font-semibold text-slate-800">GEM Authorization Details</h4>
+                            <p class="text-xs text-slate-500">Add a separate record for each OEM, such as Sony or Epson.</p>
+                        </div>
+                        <button type="button" @click="addGemAuthorization()"
+                                class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">
+                            <span class="text-sm leading-none">+</span>
+                            <span x-text="gemAuthorizations.length ? 'Add More' : 'Add OEM'"></span>
+                        </button>
+                    </div>
+
+                    @php
+                        $gemErrors = collect($errors->getMessages())->filter(fn ($messages, $key) => str_starts_with((string) $key, 'gem_authorizations'))->flatten();
+                    @endphp
+                    @if($gemErrors->isNotEmpty())
+                        <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 space-y-1">
+                            @foreach($gemErrors as $message)
+                                <p>{{ $message }}</p>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    <p x-show="gemAuthorizations.length === 0" class="text-xs text-slate-500">No OEM authorization records yet.</p>
+
+                    <div class="space-y-3">
+                        <template x-for="(row, idx) in gemAuthorizations" :key="row.key">
+                            <div class="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                                <div class="flex items-center justify-between gap-2">
+                                    <p class="text-xs font-bold uppercase tracking-wider text-slate-600" x-text="`OEM #${idx + 1}`"></p>
+                                    <button type="button" @click="removeGemAuthorization(idx)" class="text-xs font-semibold text-rose-600 hover:text-rose-800">Remove</button>
+                                </div>
+                                <input type="hidden" :name="`gem_authorizations[${idx}][id]`" :value="row.id">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <div class="flex items-center justify-between mb-1 gap-2">
+                                            <label class="block text-xs font-semibold text-slate-700 tracking-wider">Brand/OEM Name *</label>
+                                            <button type="button" @click="openBrandModal(idx)"
+                                                    class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline">
+                                                + Create Brand/OEM
+                                            </button>
+                                        </div>
+                                        <select :name="`gem_authorizations[${idx}][brand_id]`" x-model="row.brand_id" required
+                                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                            <option value="">Select Brand/OEM</option>
+                                            <template x-for="brand in brands" :key="brand.id">
+                                                <option :value="String(brand.id)" x-text="brand.name"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Is this OEM’s product registered on GEM?</label>
+                                        <select :name="`gem_authorizations[${idx}][gem_registered]`" x-model="row.gem_registered"
+                                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                            <option value="0">No</option>
+                                            <option value="1">Yes</option>
+                                        </select>
+                                    </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Have we authorized this party on GEM?</label>
+                                        <select :name="`gem_authorizations[${idx}][gem_authorized]`" x-model="row.gem_authorized"
+                                                class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                            <option value="0">No</option>
+                                            <option value="1">Yes</option>
+                                        </select>
+                                    </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">
+                                            GEM Authorization Number
+                                            <span x-show="row.gem_authorized === '1'">*</span>
+                                        </label>
+                                        <input type="text" :name="`gem_authorizations[${idx}][authorization_number]`" x-model="row.authorization_number" maxlength="100"
+                                               :required="row.gem_registered === '1' && row.gem_authorized === '1'"
+                                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <p x-show="row.gem_authorized !== '1'" class="mt-1 text-[11px] text-slate-500">Not required when this party is not authorized on GEM.</p>
+                                    </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Category</label>
+                                        <input type="text" :name="`gem_authorizations[${idx}][category]`" x-model="row.category" maxlength="255"
+                                               placeholder="Enter category"
+                                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    </div>
+                                    <div x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Date of Issue</label>
+                                        <input type="date" :name="`gem_authorizations[${idx}][date_of_issue]`" x-model="row.date_of_issue"
+                                               class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    </div>
+                                    <div class="md:col-span-2" x-show="row.gem_registered === '1'" x-cloak>
+                                        <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">GEM Star Rating Photo/Document</label>
+                                        <div class="rounded-xl border border-dashed border-indigo-300 bg-indigo-50/40 p-3 space-y-2">
+                                            <template x-if="row.documents.length">
+                                                <div class="space-y-2">
+                                                    <template x-for="doc in row.documents" :key="doc.id">
+                                                        <div class="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                                            <span class="text-xs font-medium text-slate-800" x-text="doc.name"></span>
+                                                            <a :href="doc.view_url" target="_blank" rel="noopener" class="text-xs font-semibold text-indigo-700 hover:underline">View</a>
+                                                            <a :href="doc.download_url" class="text-xs font-semibold text-indigo-700 hover:underline">Download</a>
+                                                            <label class="inline-flex items-center gap-1.5 text-xs text-rose-600">
+                                                                <input type="checkbox" :name="`gem_authorizations[${idx}][remove_document_ids][]`" :value="doc.id" class="rounded border-gray-300 text-rose-600">
+                                                                Remove
+                                                            </label>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                            <input type="file" :name="`gem_authorizations[${idx}][documents][]`" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,image/*,application/pdf"
+                                                   class="block w-full text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-white">
+                                            <p class="text-[11px] text-slate-500">Upload a photo or PDF as proof. You can add more than one file. This is not required when authorization is No.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Website</label>
+                    <input type="text" name="website" x-model="form.website" maxlength="255" placeholder="https://"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Location Link</label>
+                    <input type="text" name="location_link" x-model="form.location_link" maxlength="500" placeholder="https://"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <input type="hidden" name="address" :value="form.address">
+                <input type="hidden" name="state" :value="form.state">
+                <input type="hidden" name="pincode" :value="form.pincode">
+            </div>
+        </div>
+
+        <!-- Addresses (Multiple Delivery & Billing Locations) -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-700">Addresses &amp; Locations</h3>
+                    <p class="text-xs text-slate-500">Multiple addresses allowed per party. Set default billing and delivery addresses.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button"
+                            x-show="gstPendingExtraAddresses.length > 0"
+                            x-cloak
+                            @click="applyPendingGstExtraAddresses()"
+                            class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition shadow-sm">
+                        <span x-text="`+ Include ${gstPendingExtraAddresses.length} from GST`"></span>
+                    </button>
+                    <button type="button" @click="addAddress()"
+                            class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        + Add Address
+                    </button>
+                </div>
+            </div>
+            <p x-show="gstPendingExtraAddresses.length > 0" x-cloak class="text-xs text-emerald-700">
+                GST also reported additional place(s) of business. Principal address was applied — include the extras only if you need them.
+            </p>
+
+            <div class="space-y-4">
+                <template x-for="(addr, idx) in addresses" :key="idx">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-4 transition shadow-xs">
+                        <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-600" x-text="`Address #${idx + 1}`"></span>
+                                <span x-show="addr.label" class="text-xs font-medium text-slate-500" x-text="`(${addr.label})`"></span>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <label class="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-slate-700">
+                                    <input type="radio" name="default_billing_radio" :checked="addr.is_default_billing" @change="setDefaultBilling(idx)"
+                                           class="text-indigo-600 focus:ring-indigo-500">
+                                    <span>Default Billing</span>
+                                </label>
+                                <label class="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-slate-700">
+                                    <input type="radio" name="default_delivery_radio" :checked="addr.is_default_delivery" @change="setDefaultDelivery(idx)"
+                                           class="text-emerald-600 focus:ring-emerald-500">
+                                    <span>Default Delivery</span>
+                                </label>
+                                <button type="button" x-show="addresses.length > 1" @click="removeAddress(idx)"
+                                        class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Hidden fields to submit to backend -->
+                        <input type="hidden" :name="`addresses[${idx}][id]`" :value="addr.id || ''">
+                        <input type="hidden" :name="`addresses[${idx}][is_default_billing]`" :value="addr.is_default_billing ? 1 : 0">
+                        <input type="hidden" :name="`addresses[${idx}][is_default_delivery]`" :value="addr.is_default_delivery ? 1 : 0">
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Label</label>
+                                <input type="text" :name="`addresses[${idx}][label]`" x-model="addr.label" placeholder="E.G. Head Office, Warehouse"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Type</label>
+                                <select :name="`addresses[${idx}][type]`" x-model="addr.type"
+                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    <option value="both">Both (Billing &amp; Delivery)</option>
+                                    <option value="billing">Billing Only</option>
+                                    <option value="delivery">Delivery Only</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Contact Person (optional)</label>
+                                <input type="text" :name="`addresses[${idx}][contact_person]`" x-model="addr.contact_person" placeholder="Name"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Contact Phone (optional)</label>
+                                <input type="text" :name="`addresses[${idx}][contact_phone]`" x-model="addr.contact_phone" placeholder="Phone"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 1 (optional)</label>
+                                <input type="text" :name="`addresses[${idx}][address_line_1]`" x-model="addr.address_line_1" @input="syncPrimaryAddress()"
+                                       placeholder="Flat / Door / Block No., Premises, Street"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Address Line 2 (optional)</label>
+                                <input type="text" :name="`addresses[${idx}][address_line_2]`" x-model="addr.address_line_2" @input="syncPrimaryAddress()"
+                                       placeholder="Area, Landmark, Locality"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">State (optional)</label>
+                                <div class="relative" x-data="stateDropdown(addr, statesList, () => syncPrimaryAddress())" @click.outside="close()">
+                                    <!-- Hidden input for standard form submission -->
+                                    <input type="hidden" :name="`addresses[${idx}][state]`" :value="addr.state">
+
+                                    <!-- Trigger Button -->
+                                    <button type="button"
+                                            x-ref="triggerButton"
+                                            @click="toggle()"
+                                            @keydown="onKeyDown($event)"
+                                            :class="open ? 'ring-2 ring-indigo-500 border-indigo-500' : 'border-gray-300 hover:border-gray-400'"
+                                            class="relative w-full rounded-lg border bg-white py-2 pl-3 pr-2 text-left text-sm shadow-xs focus:outline-none transition flex items-center justify-between">
+                                        <span class="block truncate" :class="addr.state ? 'text-slate-800 font-medium' : 'text-slate-400'"
+                                              x-text="selectedLabel || 'Select State / UT'"></span>
+                                        <div class="flex items-center gap-1 shrink-0 ml-2">
+                                            <template x-if="addr.state">
+                                                <span @click.stop="clearState()" title="Clear State"
+                                                      class="p-0.5 text-slate-400 hover:text-rose-500 rounded cursor-pointer transition">
+                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                    </svg>
+                                                </span>
+                                            </template>
+                                            <svg class="h-4 w-4 text-slate-400 transition-transform duration-150" :class="open ? 'rotate-180 text-indigo-600' : ''" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                            </svg>
+                                        </div>
+                                    </button>
+
+                                    <!-- Dropdown Menu -->
+                                    <div x-show="open"
+                                         x-cloak
+                                         x-transition:enter="transition ease-out duration-100"
+                                         x-transition:enter-start="opacity-0 translate-y-1"
+                                         x-transition:enter-end="opacity-100 translate-y-0"
+                                         x-transition:leave="transition ease-in duration-75"
+                                         x-transition:leave-start="opacity-100 translate-y-0"
+                                         x-transition:leave-end="opacity-0 translate-y-1"
+                                         class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 rounded-lg bg-white shadow-lg ring-1 ring-black/5 border border-slate-200 overflow-hidden flex flex-col focus:outline-none"
+                                         style="display: none;">
+                                        <div class="p-2 border-b border-slate-100 bg-slate-50/70 sticky top-0 z-10">
+                                            <div class="relative">
+                                                <input type="text"
+                                                       x-ref="searchInput"
+                                                       x-model="search"
+                                                       @input="highlightedIndex = 0"
+                                                       @keydown="onKeyDown($event)"
+                                                       placeholder="Search State..."
+                                                       class="block w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                            </div>
+                                        </div>
+                                        <ul x-ref="optionsList" class="max-h-48 overflow-y-auto py-1 text-sm divide-y divide-slate-50">
+                                            <template x-for="(st, sIdx) in filteredStates" :key="st.code">
+                                                <li :data-index="sIdx"
+                                                    @click="selectState(st)"
+                                                    @mouseenter="highlightedIndex = sIdx"
+                                                    :class="{
+                                                        'bg-indigo-50 text-indigo-900 font-semibold': addr.state === st.name,
+                                                        'bg-slate-100 text-slate-900': highlightedIndex === sIdx && addr.state !== st.name,
+                                                        'text-slate-700': addr.state !== st.name && highlightedIndex !== sIdx
+                                                    }"
+                                                    class="cursor-pointer select-none px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-100 transition-colors">
+                                                    <div class="flex items-center gap-2">
+                                                        <span x-text="st.name"></span>
+                                                        <span class="text-[10px] text-slate-400 font-mono" x-text="`(${st.code})`"></span>
+                                                    </div>
+                                                    <span x-show="addr.state === st.name" class="text-indigo-600 font-bold">✓</span>
+                                                </li>
+                                            </template>
+                                            <template x-if="filteredStates.length === 0">
+                                                <li class="p-3 text-xs text-slate-400 text-center italic">
+                                                    No states found
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">City (optional)</label>
+                                <div class="relative" x-data="cityDropdown(addr, stateCities, idx)" @click.outside="close()">
+                                    <!-- Hidden input for standard form submission -->
+                                    <input type="hidden" :name="`addresses[${idx}][city]`" :value="addr.city">
+
+                                    <!-- Trigger Button -->
+                                    <button type="button"
+                                            x-ref="triggerButton"
+                                            @click="toggle()"
+                                            @keydown="onKeyDown($event)"
+                                            :disabled="isDisabled"
+                                            :class="{
+                                                'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none': isDisabled,
+                                                'ring-2 ring-indigo-500 border-indigo-500 bg-white': !isDisabled && open,
+                                                'border-gray-300 hover:border-gray-400 bg-white': !isDisabled && !open
+                                            }"
+                                            class="relative w-full rounded-lg border py-2 pl-3 pr-2 text-left text-sm shadow-xs focus:outline-none transition flex items-center justify-between">
+                                        <span class="block truncate"
+                                              :class="(!isDisabled && addr.city) ? 'text-slate-800 font-medium' : 'text-slate-400'"
+                                              x-text="isDisabled ? 'Select State First' : (addr.city || 'Select City')"></span>
+                                        <div class="flex items-center gap-1 shrink-0 ml-2">
+                                            <template x-if="!isDisabled && addr.city">
+                                                <span @click.stop="clearCity()" title="Clear City"
+                                                      class="p-0.5 text-slate-400 hover:text-rose-500 rounded cursor-pointer transition">
+                                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                                    </svg>
+                                                </span>
+                                            </template>
+                                            <svg class="h-4 w-4 text-slate-400 transition-transform duration-150" :class="(!isDisabled && open) ? 'rotate-180 text-indigo-600' : ''" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                            </svg>
+                                        </div>
+                                    </button>
+
+                                    <!-- Dropdown Menu -->
+                                    <div x-show="!isDisabled && open"
+                                         x-cloak
+                                         x-transition:enter="transition ease-out duration-100"
+                                         x-transition:enter-start="opacity-0 translate-y-1"
+                                         x-transition:enter-end="opacity-100 translate-y-0"
+                                         x-transition:leave="transition ease-in duration-75"
+                                         x-transition:leave-start="opacity-100 translate-y-0"
+                                         x-transition:leave-end="opacity-0 translate-y-1"
+                                         class="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 rounded-lg bg-white shadow-lg ring-1 ring-black/5 border border-slate-200 overflow-hidden flex flex-col focus:outline-none"
+                                         style="display: none;">
+                                        <div class="p-2 border-b border-slate-100 bg-slate-50/70 sticky top-0 z-10">
+                                            <div class="relative">
+                                                <input type="text"
+                                                       x-ref="searchInput"
+                                                       x-model="search"
+                                                       @input="highlightedIndex = 0"
+                                                       @keydown="onKeyDown($event)"
+                                                       placeholder="Search City..."
+                                                       class="block w-full rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs text-slate-700 placeholder-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                            </div>
+                                        </div>
+                                        <ul x-ref="optionsList" class="max-h-64 overflow-y-auto py-1 text-sm divide-y divide-slate-50">
+                                            <template x-for="(city, cIdx) in filteredCities" :key="city">
+                                                <li :data-index="cIdx"
+                                                    @click="selectCity(city)"
+                                                    @mouseenter="highlightedIndex = cIdx"
+                                                    :class="{
+                                                        'bg-indigo-50 text-indigo-900 font-semibold': addr.city === city,
+                                                        'bg-slate-100 text-slate-900': highlightedIndex === cIdx && addr.city !== city,
+                                                        'text-slate-700': addr.city !== city && highlightedIndex !== cIdx
+                                                    }"
+                                                    class="cursor-pointer select-none px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-100 transition-colors">
+                                                    <span x-text="city"></span>
+                                                    <span x-show="addr.city === city" class="text-indigo-600 font-bold">✓</span>
+                                                </li>
+                                            </template>
+                                            <template x-if="filteredCities.length === 0">
+                                                <li class="p-3 text-xs text-slate-500 text-center">
+                                                    <span x-show="!search.trim()">No cities found</span>
+                                                    <button type="button" x-show="search.trim()" @click="addSearchedCity()"
+                                                            class="font-semibold text-indigo-700 hover:underline">
+                                                        Add "<span x-text="search.trim()"></span>"
+                                                    </button>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                    <template x-if="addr.city && addr.state && !isCityValidForState(addr.city, addr.state)">
+                                        <p class="text-[11px] text-rose-600 mt-1 font-medium">⚠️ Note: Selected city does not belong to <span x-text="addr.state"></span></p>
+                                    </template>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">PIN Code (optional)</label>
+                                <input type="text" :name="`addresses[${idx}][pincode]`" x-model="addr.pincode" maxlength="12" @input="syncPrimaryAddress()"
+                                       placeholder="6-Digit Pin Code"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-sm font-semibold text-slate-700 mb-3">Sales &amp; Logistics Assignment</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <x-ui.select name="salesperson_id" label="Assigned Salesperson">
+                    <option value="">Unassigned</option>
+                    @foreach($salespersons as $s)
+                        <option value="{{ $s->id }}" @selected(old('salesperson_id', $item->salesperson_id)==$s->id)>{{ $s->name }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                <x-ui.select name="sales_manager_id" label="Assigned Sales Manager">
+                    <option value="">Unassigned</option>
+                    @foreach($salesManagers as $m)
+                        <option value="{{ $m->id }}" @selected(old('sales_manager_id', $item->sales_manager_id)==$m->id)>{{ $m->name }}</option>
+                    @endforeach
+                </x-ui.select>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1 gap-2">
+                        <label for="area_id" class="block text-sm font-medium text-gray-700">Area</label>
+                        <div class="flex items-center gap-2">
+                            <button type="button" @click="openLookupModal('area', 'add')" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline">Add</button>
+                            <button type="button" @click="openLookupModal('area', 'edit')" :disabled="!selectedAreaId" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">Edit</button>
+                            <button type="button" @click="openLookupModal('area', 'delete')" :disabled="!selectedAreaId" class="text-xs text-rose-600 hover:text-rose-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">Delete</button>
+                        </div>
+                    </div>
+                    <select name="area_id" id="area_id" x-ref="areaSelect" x-model="selectedAreaId"
+                            class="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Unassigned</option>
+                        @foreach($areas as $a)
+                            <option value="{{ $a->id }}" @selected(old('area_id', $item->area_id)==$a->id)>{{ $a->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1 gap-2">
+                        <label for="route_id" class="block text-sm font-medium text-gray-700">Delivery Route</label>
+                        <div class="flex items-center gap-2">
+                            <button type="button" @click="openLookupModal('route', 'add')" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline">Add</button>
+                            <button type="button" @click="openLookupModal('route', 'edit')" :disabled="!selectedRouteId" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">Edit</button>
+                            <button type="button" @click="openLookupModal('route', 'delete')" :disabled="!selectedRouteId" class="text-xs text-rose-600 hover:text-rose-800 font-semibold hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed">Delete</button>
+                        </div>
+                    </div>
+                    <select name="route_id" id="route_id" x-ref="routeSelect" x-model="selectedRouteId"
+                            class="block w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">Unassigned</option>
+                        @foreach($routes as $r)
+                            <option value="{{ $r->id }}" @selected(old('route_id', $item->route_id)==$r->id)>{{ $r->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <h3 class="text-sm font-semibold text-slate-700 mb-3">Credit Terms &amp; Policies</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <x-ui.input name="credit_limit" label="Credit Limit (₹)" type="number" step="0.01" :value="old('credit_limit', $item->credit_limit ?? 0)" />
+                <x-ui.input name="credit_days" label="Credit Period (Days)" type="number" :value="old('credit_days', $item->credit_days ?? 0)" />
+                @php
+                    $creditStatuses = ['open' => 'Open', 'hold' => 'On Hold', 'blocked' => 'Blocked'];
+                    $currentCreditStatus = old('credit_status', $item->credit_status ?? 'open');
+                    foreach (['restricted' => 'Restricted', 'frozen' => 'Frozen', 'active' => 'Active'] as $legacyValue => $legacyLabel) {
+                        if ($currentCreditStatus === $legacyValue) {
+                            $creditStatuses[$legacyValue] = $legacyLabel;
+                        }
+                    }
+                    $creditBases = [
+                        'cumulative' => 'Cumulative / Balance',
+                        'invoice_date' => 'Invoice Date',
+                        'inward_date' => 'Inward Date',
+                        'receipt_date' => 'Receipt Date',
+                    ];
+                    $currentCreditBasis = old('credit_period_basis', $item->credit_period_basis ?? 'cumulative');
+                    foreach (['monthly' => 'Monthly', 'quarterly' => 'Quarterly', 'yearly' => 'Yearly'] as $legacyValue => $legacyLabel) {
+                        if ($currentCreditBasis === $legacyValue) {
+                            $creditBases[$legacyValue] = $legacyLabel;
+                        }
+                    }
+                @endphp
+                <x-ui.select name="credit_status" label="Credit Status">
+                    @foreach($creditStatuses as $val => $label)
+                        <option value="{{ $val }}" @selected($currentCreditStatus===$val)>{{ $label }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.select name="credit_period_basis" label="Credit Period Basis">
+                    @foreach($creditBases as $val => $label)
+                        <option value="{{ $val }}" @selected($currentCreditBasis===$val)>{{ $label }}</option>
+                    @endforeach
+                </x-ui.select>
+                <x-ui.input name="interest_rate" label="Overdue Interest Rate (% per annum)" type="number" step="0.01" :value="old('interest_rate', $item->interest_rate ?? 18)" />
+            </div>
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] leading-relaxed text-slate-600">
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p class="font-semibold text-slate-700">Credit Status</p>
+                    <p class="mt-1"><span class="font-medium">Open</span> allows new orders and invoices. The credit limit still applies.</p>
+                    <p class="mt-1"><span class="font-medium">On Hold</span> stops new billing until you set the status back to Open.</p>
+                    <p class="mt-1"><span class="font-medium">Blocked</span> stops new billing. A cheque-bounce freeze is stored as Frozen and stops billing the same way.</p>
+                </div>
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p class="font-semibold text-slate-700">Credit Period Basis</p>
+                    <p class="mt-1">Credit days are counted from the date chosen here.</p>
+                    <p class="mt-1"><span class="font-medium">Invoice Date</span> — due date is the invoice date plus the credit days.</p>
+                    <p class="mt-1"><span class="font-medium">Inward Date</span> — due date is the goods inward date plus the credit days.</p>
+                    <p class="mt-1"><span class="font-medium">Receipt Date</span> — due date is the receipt date plus the credit days. The invoice date is used until a receipt date is recorded.</p>
+                    <p class="mt-1"><span class="font-medium">Cumulative / Balance</span> — the same credit days apply to the outstanding balance, and each bill’s due date starts from the invoice date.</p>
+                </div>
+            </div>
+
+            <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 text-xs text-slate-600">
+                <div class="flex items-center gap-2 font-semibold text-slate-700 mb-1">
+                    <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Commercial Setup &amp; Price Schedules
+                </div>
+                <p>Specific pricing schedules and custom rates are managed centrally in <a href="{{ route('masters.price-masters.index') }}" target="_blank" class="text-indigo-600 underline font-medium hover:text-indigo-800">Master &rarr; Price Master</a> based on party classification.</p>
+            </div>
+        </div>
+
+        <!-- Target Management & Status Tracking -->
+        @php
+            $activeTarget = $item->exists ? ($item->activeSalesTarget() ?? $item->latestSalesTarget()) : null;
+            $initialTargetAmount = old('target_amount', $activeTarget?->target_amount ?? ($item->target_amount ?? ''));
+            $initialStartDate = old('target_start_date', $activeTarget?->starts_on?->format('Y-m-d') ?? ($item->target_start_date?->format('Y-m-d') ?? now()->startOfMonth()->format('Y-m-d')));
+            $initialEndDate = old('target_end_date', $activeTarget?->ends_on?->format('Y-m-d') ?? ($item->target_end_date?->format('Y-m-d') ?? now()->endOfMonth()->format('Y-m-d')));
+            $initialAchieved = (float) ($activeTarget?->achievement?->achieved_amount ?? 0);
+            $initialStatus = $activeTarget ? $activeTarget->progress_status : 'Not Started';
+            $initialRemainingDays = $activeTarget ? $activeTarget->remaining_days : null;
+        @endphp
+
+        <div x-data="partyTargetTracker({
+            targetAmount: @js($initialTargetAmount ? (string) $initialTargetAmount : ''),
+            achievedAmount: @js($initialAchieved),
+            startDate: @js($initialStartDate),
+            endDate: @js($initialEndDate),
+            status: @js($initialStatus),
+            remainingDays: @js($initialRemainingDays),
+        })" class="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-100">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        Target Management &amp; Status Tracking
+                    </h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Assign sales targets to this party and track real-time achievement from posted sales invoices.</p>
+                </div>
+                <template x-if="numericTarget > 0">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
+                          :class="{
+                              'bg-emerald-100 text-emerald-800': displayStatus === 'Achieved',
+                              'bg-blue-100 text-blue-800': displayStatus === 'In Progress',
+                              'bg-rose-100 text-rose-800': displayStatus === 'Period Expired',
+                              'bg-slate-100 text-slate-700': displayStatus === 'Not Started'
+                          }">
+                        <span class="w-1.5 h-1.5 rounded-full"
+                              :class="{
+                                  'bg-emerald-500': displayStatus === 'Achieved',
+                                  'bg-blue-500': displayStatus === 'In Progress',
+                                  'bg-rose-500': displayStatus === 'Period Expired',
+                                  'bg-slate-400': displayStatus === 'Not Started'
+                              }"></span>
+                        <span x-text="displayStatus"></span>
+                    </span>
+                </template>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- 1. Target Amount -->
+                <div>
+                    <label for="target_amount" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Target Amount (₹)
+                    </label>
+                    <div class="relative rounded-lg shadow-2xs">
+                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <span class="text-slate-500 sm:text-sm">₹</span>
+                        </div>
+                        <input type="number"
+                               name="target_amount"
+                               id="target_amount"
+                               step="0.01"
+                               min="0"
+                               x-model="targetAmount"
+                               placeholder="e.g. 100000"
+                               class="block w-full rounded-lg border-gray-300 pl-7 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                    </div>
+                    <p class="text-[11px] text-slate-500 mt-1">
+                        <span x-show="numericTarget > 0">Formatted: <span class="font-semibold text-slate-700" x-text="'₹ ' + formatInr(numericTarget)"></span></span>
+                        <span x-show="numericTarget <= 0">Enter target amount in Indian Rupees.</span>
+                    </p>
+                    @error('target_amount') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+
+                <!-- 2. Target Period Start Date -->
+                <div>
+                    <label for="target_start_date" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Target Period – Start Date
+                    </label>
+                    <input type="date"
+                           name="target_start_date"
+                           id="target_start_date"
+                           x-model="startDate"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                    <p class="text-[11px] text-slate-500 mt-1">Date from which assigned target becomes active.</p>
+                    @error('target_start_date') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+
+                <!-- 3. Target Period End Date -->
+                <div>
+                    <label for="target_end_date" class="block text-xs font-semibold text-slate-700 mb-1">
+                        Target Period – End Date
+                    </label>
+                    <input type="date"
+                           name="target_end_date"
+                           id="target_end_date"
+                           x-model="endDate"
+                           class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white">
+                    <p class="text-[11px] text-slate-500 mt-1">Last date on which target is expected to be achieved.</p>
+                    @error('target_end_date') <p class="text-xs text-red-600 mt-1">{{ $message }}</p> @enderror
+                </div>
+            </div>
+
+            <!-- Read-only Computed Section: Achieved Target & Shortfall -->
+            <div x-show="numericTarget > 0" class="pt-3 border-t border-slate-100 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- 4. Achieved Target (Actual Sales) - Read Only -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-slate-700">Achieved Target (Actual Sales)</label>
+                            <span class="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">System Calculated</span>
+                        </div>
+                        <div class="relative rounded-lg shadow-2xs">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                <span class="text-slate-500 sm:text-sm">₹</span>
+                            </div>
+                            <input type="text"
+                                   readonly
+                                   :value="formatInr(achievedAmount)"
+                                   class="block w-full rounded-lg border-gray-200 pl-7 text-sm bg-slate-50 font-semibold text-slate-900 cursor-not-allowed">
+                        </div>
+                        <p class="text-[11px] text-slate-500 mt-1">Automatically computed from eligible posted invoices in this period.</p>
+                    </div>
+
+                    <!-- 5. Shortfall - Read Only -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-semibold text-slate-700">Shortfall</label>
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                                  :class="shortfall === 0 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-700 bg-amber-50 border-amber-200'"
+                                  x-text="shortfall === 0 ? 'Target Achieved' : 'Pending Amount'"></span>
+                        </div>
+                        <div class="relative rounded-lg shadow-2xs">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                <span class="text-slate-500 sm:text-sm">₹</span>
+                            </div>
+                            <input type="text"
+                                   readonly
+                                   :value="formatInr(shortfall)"
+                                   class="block w-full rounded-lg border-gray-200 pl-7 text-sm bg-slate-50 font-semibold text-slate-900 cursor-not-allowed">
+                        </div>
+                        <p class="text-[11px] mt-1" :class="excess > 0 ? 'text-emerald-600 font-medium' : 'text-slate-500'">
+                            <span x-show="excess > 0">Target exceeded by ₹ <span x-text="formatInr(excess)"></span> (<span x-text="percent"></span>%)!</span>
+                            <span x-show="excess <= 0">Formula: Target Amount (₹ <span x-text="formatInr(numericTarget)"></span>) &minus; Achieved (₹ <span x-text="formatInr(achievedAmount)"></span>).</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Progress Bar & Details -->
+                <div class="rounded-lg bg-slate-50 p-3.5 border border-slate-200 space-y-2">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="font-medium text-slate-700">Achievement Progress</span>
+                        <span class="font-bold text-slate-900" x-text="percent + '% (' + formatInr(achievedAmount) + ' / ' + formatInr(numericTarget) + ')'"></span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                        <div class="h-2.5 rounded-full transition-all duration-500"
+                             :class="{
+                                 'bg-emerald-500': percent >= 100,
+                                 'bg-indigo-600': percent > 0 && percent < 100,
+                                 'bg-slate-300': percent <= 0
+                             }"
+                             :style="'width: ' + Math.min(100, percent) + '%'"></div>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                        <span>Period: <strong class="text-slate-700" x-text="startDate"></strong> to <strong class="text-slate-700" x-text="endDate"></strong></span>
+                        <span x-show="remainingDaysLabel" x-text="remainingDaysLabel" class="font-medium text-indigo-700"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-800 flex items-center gap-2.5">
+                        <span>Contact Persons</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700" x-text="contacts.length"></span>
+                        
+                        {{-- Toggle / Switch to enable or disable contact selection --}}
+                        <button type="button"
+                                @click="hasContactsSection = !hasContactsSection"
+                                :class="hasContactsSection ? 'bg-indigo-600' : 'bg-slate-300'"
+                                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ml-1"
+                                role="switch"
+                                :aria-checked="hasContactsSection"
+                                :title="hasContactsSection ? 'Click to minimize/disable contacts' : 'Click to enable contacts'">
+                            <span class="sr-only">Enable Contact Persons section</span>
+                            <span :class="hasContactsSection ? 'translate-x-4' : 'translate-x-0'"
+                                  class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out"></span>
+                        </button>
+                    </h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Select existing contacts from Phone Directory or create new ones. One can be marked primary.</p>
+                </div>
+                <div class="flex items-center gap-2" x-show="hasContactsSection">
+                    <button type="button"
+                            @click="saveDraftAndCreateContact()"
+                            :disabled="isSavingDraft"
+                            title="Save party draft, then open Phone Directory to add a new contact"
+                            class="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs shrink-0 disabled:opacity-50">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                        <span x-bind:hidden="isSavingDraft">+ Custom Entry</span>
+                        <span x-bind:hidden="!isSavingDraft" hidden>Saving Draft…</span>
+                    </button>
+                </div>
+            </div>
+
+            {{-- When disabled/collapsed note --}}
+            <div x-show="!hasContactsSection" x-cloak class="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-500 bg-slate-50/50 flex items-center justify-between">
+                <span>Contact persons section is currently minimized. Any saved contacts (<span x-text="contacts.length"></span>) remain attached to this party.</span>
+                <button type="button" @click="hasContactsSection = true" class="text-indigo-600 font-semibold hover:underline">Enable Section</button>
+            </div>
+
+            {{-- Search & Select from Phone Directory Combobox --}}
+            <div x-show="hasContactsSection" class="relative" @click.outside="contactDropdownOpen = false">
+                <label class="block text-xs font-medium text-slate-700 mb-1">Select Contact from Phone Directory</label>
+                <div class="relative flex items-center">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                    <input type="text"
+                           x-model="contactSearchQuery"
+                           @focus="openContactDirectoryDropdown()"
+                           @click="openContactDirectoryDropdown()"
+                           @input="onContactSearchInput()"
+                           @keydown.escape="contactDropdownOpen = false"
+                           placeholder="Search by contact name, company, mobile, email, designation..."
+                           autocomplete="off"
+                           class="block w-full pl-9 pr-10 py-2 rounded-xl border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400">
+                    <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center gap-1">
+                        <svg x-show="contactSearchLoading" class="w-4 h-4 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24" x-cloak>
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <button type="button"
+                                x-show="contactSearchQuery"
+                                @click="contactSearchQuery = ''; contactSearchResults = []; contactDropdownOpen = false"
+                                class="p-1 text-slate-400 hover:text-rose-500 transition"
+                                title="Clear"
+                                x-cloak>
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Dropdown options --}}
+                <div x-show="contactDropdownOpen"
+                     x-transition:enter="transition ease-out duration-100"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-75"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="absolute z-[100] left-0 right-0 mt-1 max-h-72 overflow-y-auto bg-white rounded-2xl shadow-xl border border-slate-200 divide-y divide-slate-100 text-xs"
+                     style="display: none;"
+                     x-cloak>
+                    <template x-for="item in displayContactsDropdownList" :key="item.id">
+                        <div @click="!isContactAlreadySelected(item.id) && selectContact(item)"
+                             :class="{
+                                 'opacity-60 bg-slate-50 cursor-not-allowed': isContactAlreadySelected(item.id),
+                                 'hover:bg-indigo-50/70 cursor-pointer': !isContactAlreadySelected(item.id)
+                             }"
+                             class="p-3 transition-colors flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0"
+                                     :class="item.avatar_bg_class || 'bg-slate-100 text-slate-700'"
+                                     x-text="item.initials || (item.name ? item.name.substring(0, 2).toUpperCase() : 'CO')">
+                                </div>
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="font-semibold text-slate-900 truncate" x-text="item.name"></span>
+                                        <template x-if="item.designation">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700" x-text="item.designation"></span>
+                                        </template>
+                                        <template x-if="item.company_name">
+                                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                                <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                                                <span class="truncate max-w-[220px]" x-text="item.company_name" :title="item.company_name"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="item.department">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600" x-text="item.department"></span>
+                                        </template>
+                                    </div>
+                                    <div class="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5 flex-wrap">
+                                        <template x-if="item.phone">
+                                            <span class="flex items-center gap-1 font-mono">
+                                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                                                <span x-text="item.phone"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="item.whatsapp_number || item.whatsapp">
+                                            <span class="flex items-center gap-1 font-mono text-emerald-700">
+                                                <span>WA:</span>
+                                                <span x-text="item.whatsapp_number || item.whatsapp"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="item.email">
+                                            <span class="flex items-center gap-1 truncate max-w-[180px]">
+                                                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                                <span class="truncate" x-text="item.email"></span>
+                                            </span>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="shrink-0">
+                                <template x-if="isContactAlreadySelected(item.id)">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        ✓ Added
+                                    </span>
+                                </template>
+                                <template x-if="!isContactAlreadySelected(item.id)">
+                                    <button type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-semibold hover:bg-indigo-600 hover:text-white transition text-xs">
+                                        + Select
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="displayContactsDropdownList.length === 0 && !contactSearchLoading" class="p-4 text-center text-slate-400 italic">
+                        <template x-if="contactSearchQuery.trim()">
+                            <span>No contacts found matching "<span x-text="contactSearchQuery"></span>".</span>
+                        </template>
+                        <template x-if="!contactSearchQuery.trim()">
+                            <span>No phone directory contacts available.</span>
+                        </template>
+                    </div>
+                    <div class="p-2 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs">
+                        <button type="button" 
+                                @click="contactDropdownOpen = false; saveDraftAndCreateContact()"
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            <span>+ Create New Contact in Phone Directory</span>
+                        </button>
+                        <div class="flex items-center gap-2">
+                            <a href="{{ route('phone-directory.index') }}" target="_blank" class="px-2 py-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 hover:underline">
+                                Open Directory ↗
+                            </a>
+                            <button type="button"
+                                    @click="contactDropdownOpen = false"
+                                    class="px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition shadow-2xs">
+                                Done
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {{-- Empty contacts notice --}}
+            <div x-show="contacts.length === 0" class="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500 bg-slate-50/50">
+                <svg class="w-8 h-8 text-slate-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                <div class="font-medium text-slate-700 mb-0.5">No contact persons selected yet</div>
+                <p class="text-slate-500">Click the search box to browse Phone Directory contacts, or use "+ Custom Entry" to add a new contact and return here.</p>
+            </div>
+
+            {{-- Selected contacts cards list --}}
+            <div class="space-y-3" x-show="contacts.length > 0">
+                <template x-for="(contact, idx) in contacts" :key="idx">
+                    <div class="rounded-2xl border p-4 transition-all"
+                         :class="{
+                             'border-indigo-300 bg-indigo-50/30 ring-1 ring-indigo-200': contact.is_primary,
+                             'border-slate-200 bg-white hover:border-slate-300': !contact.is_primary
+                         }">
+                        {{-- Hidden inputs to submit to backend --}}
+                        <input type="hidden" :name="`contacts[${idx}][id]`" :value="contact.id || ''">
+                        <input type="hidden" :name="`contacts[${idx}][phone_directory_contact_id]`" :value="contact.phone_directory_contact_id || ''">
+                        <input type="hidden" :name="`contacts[${idx}][name]`" :value="contact.name || ''">
+                        <input type="hidden" :name="`contacts[${idx}][designation_id]`" :value="contact.designation_id || ''">
+                        <input type="hidden" :name="`contacts[${idx}][role]`" :value="contact.role || contact.designation || ''">
+                        <input type="hidden" :name="`contacts[${idx}][designation]`" :value="contact.designation || ''">
+                        <input type="hidden" :name="`contacts[${idx}][other_designation]`" :value="contact.other_designation || ''">
+                        <input type="hidden" :name="`contacts[${idx}][company_name]`" :value="contact.company_name || ''">
+                        <input type="hidden" :name="`contacts[${idx}][company_website]`" :value="contact.company_website || ''">
+                        <input type="hidden" :name="`contacts[${idx}][phone]`" :value="contact.phone || ''">
+                        <input type="hidden" :name="`contacts[${idx}][alternate_phone]`" :value="contact.alternate_phone || ''">
+                        <input type="hidden" :name="`contacts[${idx}][whatsapp_number]`" :value="contact.whatsapp_number || contact.whatsapp || ''">
+                        <input type="hidden" :name="`contacts[${idx}][whatsapp]`" :value="contact.whatsapp_number || contact.whatsapp || ''">
+                        <input type="hidden" :name="`contacts[${idx}][email]`" :value="contact.email || ''">
+                        <input type="hidden" :name="`contacts[${idx}][level]`" value="party">
+                        <input type="hidden" :name="`contacts[${idx}][is_primary]`" :value="contact.is_primary ? 1 : 0">
+
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
+                                <input type="radio" 
+                                       name="contact_primary_radio" 
+                                       :checked="contact.is_primary" 
+                                       @change="setPrimaryContact(idx)" 
+                                       class="text-indigo-600 focus:ring-indigo-500">
+                                <span>Primary Contact</span>
+                                <span x-show="contact.is_primary" class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white" x-cloak>
+                                    Primary
+                                </span>
+                            </label>
+                            <div class="flex items-center gap-3">
+                                <template x-if="contact.phone_directory_contact_id">
+                                    <a :href="contact.view_url || `{{ url('phone-directory/contacts') }}/${contact.phone_directory_contact_id}`"
+                                       target="_blank"
+                                       class="text-[11px] font-medium text-indigo-600 hover:text-indigo-800 hover:underline inline-flex items-center gap-1">
+                                        <span>View Contact Details</span>
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                    </a>
+                                </template>
+                                <button type="button" 
+                                        @click="removeContact(idx)" 
+                                        class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition inline-flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                    <span>Remove</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {{-- Card body: Directory Contact or Custom Contact --}}
+                        <div class="pt-3 flex items-start gap-3.5">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs"
+                                 :class="contact.avatar_bg_class || 'bg-slate-100 text-slate-700'"
+                                 x-text="contact.initials || (contact.name ? contact.name.substring(0, 2).toUpperCase() : 'CO')">
+                            </div>
+                            <div class="min-w-0 flex-1 space-y-1.5">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-sm font-bold text-slate-900" x-text="contact.name || 'Unnamed Contact'"></span>
+                                    <template x-if="contact.designation || contact.role">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-800"
+                                              x-text="contact.designation || contact.role"></span>
+                                    </template>
+                                    <template x-if="contact.company_name">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200">
+                                            <svg class="w-3 h-3 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                                            <span x-text="contact.company_name"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="contact.company_website">
+                                        <a :href="contact.company_website" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 hover:text-indigo-600 hover:bg-slate-200 transition" title="Visit Company Website">
+                                            <svg class="w-2.5 h-2.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                            <span>Website</span>
+                                        </a>
+                                    </template>
+                                    <template x-if="contact.phone_directory_contact_id">
+                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                            <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                                            Phone Directory
+                                        </span>
+                                    </template>
+                                    <template x-if="!contact.phone_directory_contact_id">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                            Custom Contact
+                                        </span>
+                                    </template>
+                                </div>
+                                <div class="flex items-center gap-4 flex-wrap text-xs text-slate-600">
+                                    <template x-if="contact.phone">
+                                        <span class="flex items-center gap-1.5 font-mono">
+                                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                                            <span x-text="contact.phone"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="contact.alternate_phone">
+                                        <span class="flex items-center gap-1.5 font-mono text-slate-500">
+                                            <span>Alt:</span>
+                                            <span x-text="contact.alternate_phone"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="contact.whatsapp_number || contact.whatsapp">
+                                        <span class="inline-flex items-center gap-1.5 font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                            <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                                            <span x-text="contact.whatsapp_number || contact.whatsapp"></span>
+                                        </span>
+                                    </template>
+                                    <template x-if="contact.email">
+                                        <span class="flex items-center gap-1.5">
+                                            <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                            <span x-text="contact.email"></span>
+                                        </span>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div class="space-y-4">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-700">Bank Accounts</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">Enter IFSC to auto-fill bank and branch. Account number and type are entered manually.</p>
+                </div>
+                <button type="button" @click="addBankAccount()"
+                        class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shrink-0">
+                    + Add Bank Account
+                </button>
+            </div>
+
+            <div class="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-sky-800">
+                Security / credit / PDC cheques are recorded under
+                <a href="{{ route('cheques.create') }}" target="_blank" class="font-semibold underline hover:text-sky-950">Receivables → Cheque Register → Record Cheque</a>.
+            </div>
+
+            <div class="space-y-3">
+                <template x-for="(acc, idx) in bankAccounts" :key="idx">
+                    <div class="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500" x-text="`Bank Account #${idx + 1}`"></span>
+                            <div class="flex items-center gap-4">
+                                <label class="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer text-slate-700">
+                                    <input type="radio" name="default_bank_account_radio" :checked="acc.is_primary" @change="setDefaultBankAccount(idx)"
+                                           class="text-indigo-600 focus:ring-indigo-500">
+                                    <span>Default Account</span>
+                                </label>
+                                <button type="button" x-show="bankAccounts.length > 1" @click="removeBankAccount(idx)"
+                                        class="text-xs font-semibold text-rose-600 hover:text-rose-800 transition">Remove</button>
+                            </div>
+                        </div>
+
+                        <!-- Hidden fields to submit to backend -->
+                        <input type="hidden" :name="`bank_accounts[${idx}][id]`" :value="acc.id || ''">
+                        <input type="hidden" :name="`bank_accounts[${idx}][is_primary]`" :value="acc.is_primary ? 1 : 0">
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">IFSC Code</label>
+                                <div class="relative">
+                                    <input type="text" :name="`bank_accounts[${idx}][ifsc_code]`" x-model="acc.ifsc_code" maxlength="11"
+                                           @input="acc.ifsc_code = (acc.ifsc_code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 11); onIfscInput(idx)"
+                                           @blur="lookupIfsc(idx)"
+                                           placeholder="e.g. HDFC0001234"
+                                           class="block w-full uppercase rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-10">
+                                    <span x-show="acc._ifsc_loading" class="absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs" x-cloak>
+                                        <svg class="animate-spin h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                                    </span>
+                                </div>
+                                <p x-show="acc._ifsc_message" x-cloak
+                                   class="mt-1 text-[11px]"
+                                   :class="acc._ifsc_status === 'ok' ? 'text-emerald-600 font-medium' : (acc._ifsc_status === 'error' ? 'text-rose-600 font-medium' : 'text-slate-500')"
+                                   x-text="acc._ifsc_message"></p>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Bank Name</label>
+                                <input type="text" :name="`bank_accounts[${idx}][bank_name]`" x-model="acc.bank_name"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Branch Name</label>
+                                <input type="text" :name="`bank_accounts[${idx}][branch_name]`" x-model="acc.branch_name"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Account Holder Name</label>
+                                <input type="text" :name="`bank_accounts[${idx}][account_holder_name]`" x-model="acc.account_holder_name"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Account Number</label>
+                                <input type="text" :name="`bank_accounts[${idx}][account_number]`" x-model="acc.account_number"
+                                       class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-700 mb-1">Account Type</label>
+                                <select :name="`bank_accounts[${idx}][account_type]`" x-model="acc.account_type"
+                                        class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                    <option value="current">Current Account</option>
+                                    <option value="savings">Savings Account</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <label class="flex items-center gap-2 text-sm pt-2">
+            <input type="checkbox" name="is_active" value="1" @checked(old('is_active', $item->is_active ?? true)) class="rounded border-gray-300 text-indigo-600"> Active
+        </label>
+
+        <div class="flex items-center gap-3 pt-2">
+            <x-ui.button type="submit" variant="primary">
+                {{ isset($lead) ? 'Save Customer & Complete Conversion' : 'Save Party' }}
+            </x-ui.button>
+            @php
+                $cancelUrl = isset($lead)
+                    ? route('crm.leads.index')
+                    : (filled($effectiveReturnUrl)
+                        ? $effectiveReturnUrl
+                        : ($effectiveReturnTo === 'orders.create'
+                            ? route('orders.create')
+                            : ($effectiveReturnTo === 'invoices.create' || $effectiveReturnTo === 'sales.invoices.create'
+                                ? route('invoices.create')
+                                : route('masters.customers.index'))));
+            @endphp
+            <x-ui.button variant="secondary" :href="$cancelUrl">
+                Cancel
+            </x-ui.button>
+        </div>
+
+        <!-- Create Brand / OEM Modal -->
+        <div x-show="brandModalOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @keydown.escape.window="closeBrandModal()">
+            <div class="flex items-center justify-center min-h-screen px-4">
+                <div class="fixed inset-0 bg-slate-900/50" @click="closeBrandModal()"></div>
+                <div class="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" @click.stop>
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800">Create Brand/OEM</h3>
+                        <button type="button" @click="closeBrandModal()" class="text-slate-400 hover:text-slate-600">Close</button>
+                    </div>
+                    <div x-show="brandError" x-cloak class="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" x-text="brandError"></div>
+                    <div class="mt-4 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Company</label>
+                            <select x-model="brandForm.company_id" class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                <option value="">Select Company</option>
+                                @foreach(($companies ?? []) as $company)
+                                    <option value="{{ $company->id }}">{{ $company->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Brand Name *</label>
+                            <input type="text" x-model="brandForm.name" maxlength="255" placeholder="e.g. Sony, Samsung..."
+                                   class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Detail</label>
+                            <textarea x-model="brandForm.detail" rows="4" maxlength="2000" placeholder="Enter Brand Details..."
+                                      class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
+                        </div>
+                        <label class="flex items-center gap-2 text-sm">
+                            <input type="checkbox" x-model="brandForm.is_active" class="rounded border-gray-300 text-indigo-600"> Active
+                        </label>
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" @click="closeBrandModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700">Cancel</button>
+                            <button type="button" @click="saveBrand()" :disabled="brandSaving" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                <span x-text="brandSaving ? 'Saving...' : 'Save'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add City Modal -->
+        <div x-show="cityModalOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @keydown.escape.window="closeCityModal()">
+            <div class="flex items-center justify-center min-h-screen px-4">
+                <div class="fixed inset-0 bg-slate-900/50" @click="closeCityModal()"></div>
+                <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" @click.stop>
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800">Add City</h3>
+                        <button type="button" @click="closeCityModal()" class="text-slate-400 hover:text-slate-600">Close</button>
+                    </div>
+                    <div x-show="cityError" x-cloak class="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" x-text="cityError"></div>
+                    <div class="mt-4 space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">State</label>
+                            <input type="text" :value="cityForm.state" readonly class="block w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">City Name *</label>
+                            <input type="text" x-model="cityForm.name" x-ref="cityInput" maxlength="255" @keydown.enter.prevent="saveCity()"
+                                   placeholder="e.g. Jagraon"
+                                   class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                            <p class="mt-1 text-[11px] text-slate-500">Saved cities stay in this state's list for every party.</p>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" @click="closeCityModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700">Cancel</button>
+                            <button type="button" @click="saveCity()" :disabled="citySaving" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                <span x-text="citySaving ? 'Saving...' : 'Save'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Area / Delivery Route Modal -->
+        <div x-show="lookupModalOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @keydown.escape.window="closeLookupModal()">
+            <div class="flex items-center justify-center min-h-screen px-4">
+                <div class="fixed inset-0 bg-slate-900/50" @click="closeLookupModal()"></div>
+                <div class="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" @click.stop>
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800" x-text="lookupTitle()"></h3>
+                        <button type="button" @click="closeLookupModal()" class="text-slate-400 hover:text-slate-600">Close</button>
+                    </div>
+                    <div x-show="lookupError" x-cloak class="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700" x-text="lookupError"></div>
+                    <div class="mt-4 space-y-4" x-show="lookupMode !== 'delete'">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-1" x-text="lookupKind === 'area' ? 'Area Name *' : 'Delivery Route Name *'"></label>
+                            <input type="text" x-model="lookupForm.name" x-ref="lookupInput" maxlength="255" @keydown.enter.prevent="saveLookup()"
+                                   class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                        </div>
+                        <div x-show="lookupKind === 'route'">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">Area</label>
+                            <select x-model="lookupForm.area_id" class="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                <option value="">Unassigned</option>
+                                <template x-for="area in areaOptions()" :key="area.id">
+                                    <option :value="String(area.id)" x-text="area.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" @click="closeLookupModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700">Cancel</button>
+                            <button type="button" @click="saveLookup()" :disabled="lookupSaving" class="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                <span x-text="lookupSaving ? 'Saving...' : (lookupMode === 'edit' ? 'Update' : 'Save')"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-4 space-y-4" x-show="lookupMode === 'delete'" x-cloak>
+                        <p class="text-sm text-slate-700" x-text="lookupKind === 'area'
+                            ? 'Delete this area? Parties using it will have no area, and delivery routes linked to it will be unassigned from the area.'
+                            : 'Delete this delivery route? Parties using it will have no delivery route.'"></p>
+                        <div class="flex justify-end gap-3 pt-2">
+                            <button type="button" @click="closeLookupModal()" class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700">Cancel</button>
+                            <button type="button" @click="deleteLookup()" :disabled="lookupSaving" class="rounded-lg bg-rose-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                <span x-text="lookupSaving ? 'Deleting...' : 'Delete'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Classification Modal -->
+        <div x-show="classificationModalOpen"
+             x-cloak
+             class="fixed inset-0 z-50 overflow-y-auto"
+             aria-labelledby="modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="closeClassificationModal()">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div x-show="classificationModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 transition-opacity bg-slate-900/50 backdrop-blur-sm"
+                     @click="closeClassificationModal()"></div>
+
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+                <div x-show="classificationModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     class="relative inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl sm:my-8"
+                     @click.stop>
+
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800" id="modal-title"
+                            x-text="classificationMode === 'edit' ? 'Edit Classification' : (classificationMode === 'delete' ? 'Delete Classification' : 'Add Classification')"></h3>
+                        <button type="button" @click="closeClassificationModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- Error Feedback -->
+                    <div x-show="classificationError" x-cloak class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span x-text="classificationError"></span>
+                    </div>
+
+                    <!-- Success Feedback -->
+                    <div x-show="classificationSuccess" x-cloak class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        <span x-text="classificationSuccess"></span>
+                    </div>
+
+                    <div class="mt-4 space-y-4" x-show="classificationMode !== 'delete'">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Classification Name *</label>
+                            <input type="text"
+                                   x-ref="classificationInput"
+                                   x-model="newClassificationName"
+                                   :disabled="classificationSaving"
+                                   @keydown.enter.prevent="saveClassification()"
+                                   placeholder="E.G. Retailer, Super Stockist, Corporate"
+                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed">
+                            <p class="text-[11px] text-slate-500 mt-1" x-text="classificationMode === 'edit' ? 'The selected classification name will be updated.' : 'This classification will be saved and selected automatically.'"></p>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeClassificationModal()"
+                                    :disabled="classificationSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    @click="saveClassification()"
+                                    :disabled="classificationSaving"
+                                    class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 shadow-sm transition">
+                                <svg x-show="classificationSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                <span x-text="classificationSaving ? 'Saving...' : (classificationMode === 'edit' ? 'Update' : 'Save')"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 space-y-4" x-show="classificationMode === 'delete'" x-cloak>
+                        <p class="text-sm text-slate-700">Delete <span class="font-semibold" x-text="selectedClassificationName()"></span>? Parties using it will have no classification.</p>
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeClassificationModal()"
+                                    :disabled="classificationSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    @click="deleteClassification()"
+                                    :disabled="classificationSaving"
+                                    class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-50">
+                                <span x-text="classificationSaving ? 'Deleting...' : 'Delete'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Designation Modal (Add / Edit / Delete) -->
+        <div x-show="designationModalOpen"
+             x-cloak
+             class="fixed inset-0 z-50 overflow-y-auto"
+             aria-labelledby="designation-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="closeDesignationModal()">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div x-show="designationModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 transition-opacity bg-slate-900/50 backdrop-blur-sm"
+                     @click="closeDesignationModal()"></div>
+
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+                <div x-show="designationModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     class="relative inline-block w-full max-w-md p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl sm:my-8"
+                     @click.stop>
+
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 class="text-base font-semibold text-slate-800" id="designation-modal-title"
+                            x-text="designationMode === 'edit' ? 'Edit Designation' : (designationMode === 'delete' ? 'Delete Designation' : '+ Create Designation')"></h3>
+                        <button type="button" @click="closeDesignationModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- Error Feedback -->
+                    <div x-show="designationError" x-cloak class="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-xs font-medium text-red-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span x-text="designationError"></span>
+                    </div>
+
+                    <!-- Success Feedback -->
+                    <div x-show="designationSuccess" x-cloak class="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-medium text-emerald-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        <span x-text="designationSuccess"></span>
+                    </div>
+
+                    <!-- Create / Edit Form -->
+                    <div class="mt-4 space-y-4" x-show="designationMode !== 'delete'">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 tracking-wider mb-1">Designation Name *</label>
+                            <input type="text"
+                                   x-ref="designationInput"
+                                   x-model="designationForm.name"
+                                   :disabled="designationSaving"
+                                   @keydown.enter.prevent="saveDesignation()"
+                                   placeholder="E.G. Accounts, ASM, Branch Manager, CEO"
+                                   class="block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed">
+                            <p class="text-[11px] text-slate-500 mt-1" x-text="designationMode === 'edit' ? 'Updating this designation will automatically update all contacts using it.' : 'This designation will be added to the master records and selected automatically.'"></p>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeDesignationModal()"
+                                    :disabled="designationSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    @click="saveDesignation()"
+                                    :disabled="designationSaving"
+                                    class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 shadow-sm transition">
+                                <svg x-show="designationSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                <span x-text="designationSaving ? 'Saving...' : (designationMode === 'edit' ? 'Update' : 'Save')"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Delete Confirmation / In-Use Warning -->
+                    <div class="mt-4 space-y-4" x-show="designationMode === 'delete'" x-cloak>
+                        <template x-if="!designationInUse">
+                            <div>
+                                <p class="text-sm text-slate-700">Are you sure you want to delete designation <span class="font-semibold text-slate-900" x-text="designationForm.name"></span>?</p>
+                                <p class="text-xs text-slate-500 mt-1">If this designation is assigned to any contact or employee, it cannot be permanently deleted.</p>
+                            </div>
+                        </template>
+
+                        <template x-if="designationInUse">
+                            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1.5">
+                                <p class="font-semibold">Designation is Currently In Use</p>
+                                <p>This designation is currently assigned to contacts or employees and cannot be permanently deleted. You can deactivate it so it will no longer appear for new selections while preserving all historical records.</p>
+                            </div>
+                        </template>
+
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeDesignationModal()"
+                                    :disabled="designationSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
+                                Cancel
+                            </button>
+                            <template x-if="!designationInUse">
+                                <button type="button"
+                                        @click="deleteDesignation()"
+                                        :disabled="designationSaving"
+                                        class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-50 shadow-sm transition">
+                                    <svg x-show="designationSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    <span x-text="designationSaving ? 'Deleting...' : 'Delete Designation'"></span>
+                                </button>
+                            </template>
+                            <template x-if="designationInUse">
+                                <button type="button"
+                                        @click="deactivateDesignation()"
+                                        :disabled="designationSaving"
+                                        class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50 shadow-sm transition">
+                                    <svg x-show="designationSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                    <span x-text="designationSaving ? 'Deactivating...' : 'Deactivate Designation'"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Contact Entry Modal -->
+        <div x-show="customContactModalOpen"
+             x-cloak
+             class="fixed inset-0 z-50 overflow-y-auto"
+             aria-labelledby="custom-contact-modal-title"
+             role="dialog"
+             aria-modal="true"
+             @keydown.escape.window="closeCustomContactModal()">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div x-show="customContactModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 transition-opacity bg-slate-900/50 backdrop-blur-sm"
+                     @click="closeCustomContactModal()"></div>
+
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+                <div x-show="customContactModalOpen"
+                     x-transition:enter="ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave="ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                     x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                     class="relative inline-block w-full max-w-lg p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white rounded-2xl shadow-xl sm:my-8"
+                     @click.stop>
+
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div>
+                            <h3 class="text-base font-semibold text-slate-800" id="custom-contact-modal-title">
+                                Add Custom Contact Person
+                            </h3>
+                            <p class="text-xs text-slate-500 mt-0.5">Enter contact details and optionally save to Phone Directory.</p>
+                        </div>
+                        <button type="button" @click="closeCustomContactModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- Error Feedback -->
+                    <div x-show="customContactError" x-cloak class="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-medium text-red-700 flex items-start gap-2">
+                        <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span x-text="customContactError"></span>
+                    </div>
+
+                    <div class="mt-4 space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Contact Name <span class="text-rose-500">*</span>
+                                </label>
+                                <input type="text"
+                                       x-model="customContactForm.name"
+                                       placeholder="e.g. Rahul Sharma"
+                                       required
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Designation
+                                </label>
+                                <input type="text"
+                                       list="custom-contact-designations-list"
+                                       x-model="customContactForm.designation"
+                                       placeholder="e.g. Purchase Manager"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                                <datalist id="custom-contact-designations-list">
+                                    <template x-for="opt in designationOptions" :key="opt">
+                                        <option :value="opt"></option>
+                                    </template>
+                                </datalist>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                Company / Organization
+                            </label>
+                            <input type="text"
+                                   x-model="customContactForm.company_name"
+                                   placeholder="e.g. ABC Industries"
+                                   class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Primary Mobile <span class="text-rose-500">*</span>
+                                </label>
+                                <input type="text"
+                                       x-model="customContactForm.phone"
+                                       @input="if(customContactForm.same_as_mobile) customContactForm.whatsapp_number = customContactForm.phone"
+                                       placeholder="10-digit mobile"
+                                       required
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Alternate Mobile
+                                </label>
+                                <input type="text"
+                                       x-model="customContactForm.alternate_phone"
+                                       placeholder="Optional alternate mobile"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-xs font-semibold text-slate-700">WhatsApp Number</label>
+                                    <label class="inline-flex items-center gap-1 text-[11px] text-indigo-600 font-medium cursor-pointer">
+                                        <input type="checkbox"
+                                               x-model="customContactForm.same_as_mobile"
+                                               @change="toggleSameAsMobile()"
+                                               class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 text-xs">
+                                        <span>Same as mobile</span>
+                                    </label>
+                                </div>
+                                <input type="text"
+                                       x-model="customContactForm.whatsapp_number"
+                                       :disabled="customContactForm.same_as_mobile"
+                                       placeholder="WhatsApp number"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500 font-mono disabled:bg-slate-50 disabled:text-slate-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-700 mb-1">
+                                    Email Address
+                                </label>
+                                <input type="email"
+                                       x-model="customContactForm.email"
+                                       placeholder="contact@example.com"
+                                       class="block w-full rounded-xl border-gray-300 text-xs focus:border-indigo-500 focus:ring-indigo-500">
+                            </div>
+                        </div>
+
+                        <div class="space-y-2 pt-2 border-t border-slate-100">
+                            <label class="flex items-start gap-2.5 cursor-pointer p-2.5 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/70 transition">
+                                <input type="checkbox"
+                                       x-model="customContactForm.save_to_phone_directory"
+                                       class="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <div class="text-xs">
+                                    <span class="font-semibold text-slate-800">Save to Phone Directory</span>
+                                    <p class="text-[11px] text-slate-500 mt-0.5">
+                                        Saves this contact to Phone Directory (or links existing record if mobile already exists) for reuse across DMS.
+                                    </p>
+                                </div>
+                            </label>
+
+                            <label class="flex items-center gap-2 cursor-pointer pt-1 px-1">
+                                <input type="checkbox"
+                                       x-model="customContactForm.is_primary"
+                                       class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-xs font-medium text-slate-700">Mark as Primary Contact for this Party</span>
+                            </label>
+                        </div>
+
+                        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button type="button"
+                                    @click="closeCustomContactModal()"
+                                    :disabled="customContactSaving"
+                                    class="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition">
+                                Cancel
+                            </button>
+                            <button type="button"
+                                    @click="submitCustomContact()"
+                                    :disabled="customContactSaving"
+                                    class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-50 shadow-xs transition">
+                                <svg x-show="customContactSaving" class="w-3.5 h-3.5 animate-spin -ml-0.5" fill="none" viewBox="0 0 24 24" x-cloak><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                <span x-text="customContactSaving ? 'Saving...' : 'Add Contact'"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</x-ui.card>
+
+@push('scripts')
+<script>
+function partyTargetTracker(config) {
+    return {
+        targetAmount: config.targetAmount || '',
+        achievedAmount: parseFloat(config.achievedAmount) || 0,
+        startDate: config.startDate || '',
+        endDate: config.endDate || '',
+        status: config.status || 'Not Started',
+        remainingDays: config.remainingDays,
+
+        get numericTarget() {
+            const val = parseFloat(this.targetAmount);
+            return isNaN(val) ? 0 : val;
+        },
+        get shortfall() {
+            if (this.numericTarget <= 0) return 0;
+            return Math.max(0, this.numericTarget - this.achievedAmount);
+        },
+        get excess() {
+            if (this.numericTarget <= 0) return 0;
+            return Math.max(0, this.achievedAmount - this.numericTarget);
+        },
+        get percent() {
+            if (this.numericTarget <= 0) return 0;
+            return Math.round((this.achievedAmount / this.numericTarget) * 100 * 10) / 10;
+        },
+        get displayStatus() {
+            if (this.numericTarget <= 0) return 'Not Started';
+            if (this.achievedAmount >= this.numericTarget) {
+                return 'Achieved';
+            }
+            const today = new Date().toISOString().slice(0, 10);
+            if (this.endDate && today > this.endDate) {
+                return 'Period Expired';
+            }
+            if (this.startDate && today < this.startDate) {
+                return 'Not Started';
+            }
+            return 'In Progress';
+        },
+        get remainingDaysLabel() {
+            const status = this.displayStatus;
+            if (status === 'Achieved') {
+                return 'Target Achieved!';
+            }
+            if (status === 'Period Expired') {
+                return 'Period Expired';
+            }
+            if (!this.endDate) return '';
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const targetEnd = new Date(this.endDate);
+            targetEnd.setHours(0,0,0,0);
+            const diffTime = targetEnd - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays >= 0) {
+                return diffDays + (diffDays === 1 ? ' day remaining' : ' days remaining');
+            }
+            return 'Period Expired';
+        },
+        formatInr(val) {
+            return Number(val || 0).toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+        }
+    };
+}
+
+function partyFormController() {
+    return {
+        // Business Group state
+        businessGroups: {!! json_encode($businessGroups ?? []) !!},
+        selectedBusinessGroupId: {!! json_encode((string) ($initialBusinessGroupId ?? '')) !!},
+        selectedBusinessGroup: null,
+        businessGroupSearch: '',
+        businessGroupDropdownOpen: false,
+        loadingBusinessGroups: false,
+        businessGroupError: '',
+        highlightedGroupIndex: 0,
+        dropdownPlacement: 'bottom',
+
+        init() {
+            if (this.selectedBusinessGroupId) {
+                this.selectBusinessGroupById(this.selectedBusinessGroupId);
+            }
+            window.addEventListener('resize', () => {
+                if (this.businessGroupDropdownOpen) {
+                    this.updateDropdownPlacement();
+                }
+            });
+            window.addEventListener('scroll', () => {
+                if (this.businessGroupDropdownOpen) {
+                    this.updateDropdownPlacement();
+                }
+            }, true);
+        },
+
+        toggleBusinessGroupDropdown() {
+            this.businessGroupDropdownOpen = !this.businessGroupDropdownOpen;
+            if (this.businessGroupDropdownOpen) {
+                this.businessGroupSearch = '';
+                this.highlightedGroupIndex = 0;
+                this.updateDropdownPlacement();
+                this.$nextTick(() => {
+                    this.$refs.businessGroupSearchInput?.focus();
+                });
+                if (!this.businessGroups || this.businessGroups.length === 0) {
+                    this.refreshBusinessGroups();
+                }
+            }
+        },
+
+        closeBusinessGroupDropdown() {
+            this.businessGroupDropdownOpen = false;
+        },
+
+        updateDropdownPlacement() {
+            this.$nextTick(() => {
+                const container = this.$refs.businessGroupContainer;
+                if (!container) return;
+                const rect = container.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const spaceBelow = viewportHeight - rect.bottom;
+                const minSpaceNeeded = 260;
+
+                if (spaceBelow < minSpaceNeeded && rect.top > minSpaceNeeded) {
+                    this.dropdownPlacement = 'top';
+                } else {
+                    this.dropdownPlacement = 'bottom';
+                }
+            });
+        },
+
+        get filteredBusinessGroups() {
+            if (!Array.isArray(this.businessGroups)) {
+                return [];
+            }
+            const q = (this.businessGroupSearch || '').trim().toLowerCase();
+            if (!q) {
+                return this.businessGroups;
+            }
+            return this.businessGroups.filter(g => {
+                const name = (g.name || '').toLowerCase();
+                const code = (g.code || '').toLowerCase();
+                return name.includes(q) || code.includes(q);
+            });
+        },
+
+        selectBusinessGroup(group) {
+            if (!group) {
+                this.clearBusinessGroup();
+                return;
+            }
+            this.selectedBusinessGroup = group;
+            this.selectedBusinessGroupId = String(group.id);
+            this.businessGroupSearch = '';
+            this.businessGroupError = '';
+            this.closeBusinessGroupDropdown();
+        },
+
+        selectBusinessGroupById(id) {
+            if (!id) {
+                this.clearBusinessGroup();
+                return;
+            }
+            const found = (this.businessGroups || []).find(g => String(g.id) === String(id));
+            if (found) {
+                this.selectedBusinessGroup = found;
+                this.selectedBusinessGroupId = String(found.id);
+            } else {
+                this.fetchBusinessGroupById(id);
+            }
+        },
+
+        clearBusinessGroup() {
+            this.selectedBusinessGroup = null;
+            this.selectedBusinessGroupId = '';
+            this.businessGroupSearch = '';
+            this.closeBusinessGroupDropdown();
+        },
+
+        async refreshBusinessGroups(showIndicator = true) {
+            if (showIndicator) {
+                this.loadingBusinessGroups = true;
+            }
+            this.businessGroupError = '';
+
+            try {
+                let url = "{{ route('masters.customers.business-groups') }}";
+                if (this.selectedBusinessGroupId) {
+                    url += `?include_id=${encodeURIComponent(this.selectedBusinessGroupId)}`;
+                }
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const result = await response.json();
+                if (response.ok && result.success && Array.isArray(result.data)) {
+                    this.businessGroups = result.data;
+                    if (this.selectedBusinessGroupId) {
+                        const found = this.businessGroups.find(g => String(g.id) === String(this.selectedBusinessGroupId));
+                        if (found) {
+                            this.selectedBusinessGroup = found;
+                        }
+                    }
+                } else {
+                    this.businessGroupError = result.message || 'Failed to load business groups.';
+                }
+            } catch (e) {
+                this.businessGroupError = 'Network error fetching business groups.';
+            } finally {
+                this.loadingBusinessGroups = false;
+            }
+        },
+
+        async fetchBusinessGroupById(id) {
+            try {
+                const url = `{{ route('masters.customers.business-groups') }}?include_id=${encodeURIComponent(id)}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const result = await response.json();
+                if (response.ok && result.success && Array.isArray(result.data)) {
+                    this.businessGroups = result.data;
+                    const found = this.businessGroups.find(g => String(g.id) === String(id));
+                    if (found) {
+                        this.selectedBusinessGroup = found;
+                        this.selectedBusinessGroupId = String(found.id);
+                    }
+                }
+            } catch (e) {
+                // Silently ignore background fetch failure
+            }
+        },
+
+        onBusinessGroupKeyDown(event) {
+            const list = this.filteredBusinessGroups;
+            if (!this.businessGroupDropdownOpen) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
+                    event.preventDefault();
+                    this.toggleBusinessGroupDropdown();
+                }
+                return;
+            }
+
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedGroupIndex = (this.highlightedGroupIndex + 1) % list.length;
+                    this.scrollActiveGroupIntoView();
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedGroupIndex = (this.highlightedGroupIndex - 1 + list.length) % list.length;
+                    this.scrollActiveGroupIntoView();
+                }
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (list.length > 0 && list[this.highlightedGroupIndex]) {
+                    this.selectBusinessGroup(list[this.highlightedGroupIndex]);
+                }
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.closeBusinessGroupDropdown();
+            }
+        },
+
+        scrollActiveGroupIntoView() {
+            this.$nextTick(() => {
+                const el = this.$refs.businessGroupContainer?.querySelector(`[data-index="${this.highlightedGroupIndex}"]`);
+                if (el) {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        },
+
+        searchingGst: false,
+        gstFeedback: {
+            type: '',
+            message: '',
+            note: ''
+        },
+        gstLookupInfo: null,
+        gstLookupAppliedKey: '',
+        gstPendingExtraAddresses: [],
+        selectedCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
+        previousCustomerTypeId: {!! json_encode((string) old('customer_type_id', $item->customer_type_id ?? '')) !!},
+        customClassifications: [],
+        knownClassificationNames: {!! json_encode($customerTypes->pluck('name')->map(fn($n) => mb_strtolower(trim($n)))->values()) !!},
+        classificationModalOpen: false,
+        classificationMode: 'add',
+        newClassificationName: '',
+        classificationSaving: false,
+        classificationError: '',
+        classificationSuccess: '',
+        cityModalOpen: false,
+        cityModalIndex: null,
+        citySaving: false,
+        cityError: '',
+        cityForm: { state: '', name: '' },
+        selectedAreaId: {!! json_encode((string) old('area_id', $item->area_id ?? '')) !!},
+        selectedRouteId: {!! json_encode((string) old('route_id', $item->route_id ?? '')) !!},
+        customAreas: [],
+        customRoutes: [],
+        knownAreas: {!! json_encode(($areas ?? collect())->map(fn ($area) => ['id' => (string) $area->id, 'name' => $area->name])->values()) !!},
+        knownRoutes: {!! json_encode(($routes ?? collect())->map(fn ($route) => ['id' => (string) $route->id, 'name' => $route->name, 'area_id' => $route->area_id ? (string) $route->area_id : ''])->values()) !!},
+        lookupModalOpen: false,
+        lookupKind: 'area',
+        lookupMode: 'add',
+        lookupSaving: false,
+        lookupError: '',
+        lookupForm: { name: '', area_id: '' },
+
+        selectedClassificationName() {
+            const selectEl = this.$refs.classificationSelect;
+            if (!selectEl || !this.selectedCustomerTypeId) {
+                return '';
+            }
+            const option = selectEl.querySelector(`option[value="${this.selectedCustomerTypeId}"]`);
+            return (option?.textContent || '').trim();
+        },
+        openClassificationModal(mode = 'add') {
+            if ((mode === 'edit' || mode === 'delete') && !this.selectedCustomerTypeId) {
+                return;
+            }
+            this.classificationMode = mode;
+            this.classificationModalOpen = true;
+            this.newClassificationName = mode === 'edit' ? this.selectedClassificationName() : '';
+            this.classificationError = '';
+            this.classificationSuccess = '';
+            if (mode !== 'delete') {
+                this.$nextTick(() => {
+                    this.$refs.classificationInput?.focus();
+                });
+            }
+        },
+        closeClassificationModal() {
+            this.classificationModalOpen = false;
+            this.classificationError = '';
+            this.classificationSuccess = '';
+            if (this.selectedCustomerTypeId === '__add_manually__') {
+                this.selectedCustomerTypeId = this.previousCustomerTypeId;
+            }
+        },
+        onClassificationChange(event) {
+            if (this.selectedCustomerTypeId === '__add_manually__') {
+                this.openClassificationModal();
+            } else {
+                this.previousCustomerTypeId = this.selectedCustomerTypeId;
+            }
+        },
+        async saveClassification() {
+            const rawName = this.newClassificationName || '';
+            const name = rawName.trim();
+
+            if (!name) {
+                this.classificationError = 'Classification Name is required.';
+                return;
+            }
+
+            // Client-side case-insensitive duplicate check
+            const lowerName = name.toLowerCase();
+            const currentName = this.classificationMode === 'edit' ? this.selectedClassificationName().toLowerCase() : '';
+            if (lowerName !== currentName && this.knownClassificationNames.includes(lowerName)) {
+                this.classificationError = 'A classification with this name already exists.';
+                return;
+            }
+
+            this.classificationSaving = true;
+            this.classificationError = '';
+            this.classificationSuccess = '';
+
+            const isEdit = this.classificationMode === 'edit';
+            const url = isEdit
+                ? "{{ url('masters/customer-types') }}/" + this.selectedCustomerTypeId + "/quick-update"
+                : "{{ route('masters.customer-types.quick-store') }}";
+
+            try {
+                const response = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ name: name })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    this.classificationError = data.message || 'Failed to save classification.';
+                    this.classificationSaving = false;
+                    return;
+                }
+
+                const newItem = data.item;
+                const newIdStr = String(newItem.id);
+
+                if (isEdit) {
+                    const selectEl = this.$refs.classificationSelect;
+                    const option = selectEl?.querySelector(`option[value="${newIdStr}"]`);
+                    if (option) {
+                        option.textContent = newItem.name;
+                    }
+                    const custom = this.customClassifications.find(c => String(c.id) === newIdStr);
+                    if (custom) {
+                        custom.name = newItem.name;
+                    }
+                    if (currentName) {
+                        this.knownClassificationNames = this.knownClassificationNames.filter(n => n !== currentName);
+                    }
+                    this.knownClassificationNames.push(newItem.name.trim().toLowerCase());
+                    this.classificationSuccess = data.message || 'Classification updated successfully!';
+                } else {
+                    const alreadyCustom = this.customClassifications.some(c => String(c.id) === newIdStr);
+                    if (!alreadyCustom) {
+                        this.customClassifications.push({
+                            id: newItem.id,
+                            name: newItem.name
+                        });
+                    }
+                    this.knownClassificationNames.push(newItem.name.trim().toLowerCase());
+
+                    const selectEl = this.$refs.classificationSelect;
+                    if (selectEl && !selectEl.querySelector(`option[value="${newItem.id}"]`)) {
+                        const opt = new Option(newItem.name, newItem.id);
+                        selectEl.add(opt);
+                    }
+
+                    this.selectedCustomerTypeId = newIdStr;
+                    this.previousCustomerTypeId = newIdStr;
+                    this.classificationSuccess = data.message || 'Classification created successfully!';
+                }
+
+                setTimeout(() => {
+                    this.closeClassificationModal();
+                }, 700);
+            } catch (err) {
+                this.classificationError = 'An error occurred while saving the classification. Please try again.';
+            } finally {
+                this.classificationSaving = false;
+            }
+        },
+        async deleteClassification() {
+            if (!this.selectedCustomerTypeId) {
+                return;
+            }
+
+            this.classificationSaving = true;
+            this.classificationError = '';
+
+            try {
+                const response = await fetch("{{ url('masters/customer-types') }}/" + this.selectedCustomerTypeId + "/quick-destroy", {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.classificationError = data.message || 'Failed to delete classification.';
+                    return;
+                }
+
+                const removedName = this.selectedClassificationName().toLowerCase();
+                const selectEl = this.$refs.classificationSelect;
+                const option = selectEl?.querySelector(`option[value="${this.selectedCustomerTypeId}"]`);
+                if (option) {
+                    option.remove();
+                }
+                this.customClassifications = this.customClassifications.filter(c => String(c.id) !== String(this.selectedCustomerTypeId));
+                this.knownClassificationNames = this.knownClassificationNames.filter(n => n !== removedName);
+                this.selectedCustomerTypeId = '';
+                this.previousCustomerTypeId = '';
+                this.closeClassificationModal();
+            } catch (err) {
+                this.classificationError = 'An error occurred while deleting the classification. Please try again.';
+            } finally {
+                this.classificationSaving = false;
+            }
+        },
+
+        openCityModal(index, name = '') {
+            const address = this.addresses[index];
+            if (!address || !address.state) {
+                return;
+            }
+            this.cityModalIndex = index;
+            this.cityForm.state = address.state;
+            this.cityForm.name = name || '';
+            this.cityError = '';
+            this.cityModalOpen = true;
+            this.$nextTick(() => this.$refs.cityInput?.focus());
+        },
+
+        closeCityModal() {
+            this.cityModalOpen = false;
+            this.cityError = '';
+            this.cityModalIndex = null;
+        },
+
+        async saveCity() {
+            const name = (this.cityForm.name || '').trim();
+            if (!name) {
+                this.cityError = 'City name is required.';
+                return;
+            }
+            this.citySaving = true;
+            this.cityError = '';
+            try {
+                const response = await fetch("{{ route('masters.cities.quick-store') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ state: this.cityForm.state, name: name })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.cityError = data.message || 'Failed to add the city.';
+                    return;
+                }
+                const state = data.item.state;
+                const cityName = data.item.name;
+                const current = Array.isArray(this.stateCities[state]) ? [...this.stateCities[state]] : [];
+                if (!current.some(city => city.toLowerCase() === cityName.toLowerCase())) {
+                    current.push(cityName);
+                    current.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+                    this.stateCities[state] = current;
+                }
+                if (this.cityModalIndex !== null && this.addresses[this.cityModalIndex]) {
+                    this.addresses[this.cityModalIndex].city = cityName;
+                }
+                this.closeCityModal();
+            } catch (err) {
+                this.cityError = 'An error occurred while adding the city. Please try again.';
+            } finally {
+                this.citySaving = false;
+            }
+        },
+
+        lookupTitle() {
+            const label = this.lookupKind === 'area' ? 'Area' : 'Delivery Route';
+            if (this.lookupMode === 'edit') return 'Edit ' + label;
+            if (this.lookupMode === 'delete') return 'Delete ' + label;
+            return 'Add ' + label;
+        },
+
+        areaOptions() {
+            const seen = new Set();
+            return [...this.knownAreas, ...this.customAreas].filter((area) => {
+                const id = String(area.id);
+                if (!id || seen.has(id)) return false;
+                seen.add(id);
+                return true;
+            });
+        },
+
+        selectedLookupName(kind) {
+            const id = kind === 'area' ? this.selectedAreaId : this.selectedRouteId;
+            const select = kind === 'area' ? this.$refs.areaSelect : this.$refs.routeSelect;
+            const option = select?.querySelector(`option[value="${id}"]`);
+            return (option?.textContent || '').trim();
+        },
+
+        openLookupModal(kind, mode) {
+            const selectedId = kind === 'area' ? this.selectedAreaId : this.selectedRouteId;
+            if ((mode === 'edit' || mode === 'delete') && !selectedId) {
+                return;
+            }
+            this.lookupKind = kind;
+            this.lookupMode = mode;
+            this.lookupError = '';
+            this.lookupForm.name = mode === 'edit' ? this.selectedLookupName(kind) : '';
+            const route = this.knownRoutes.find(item => String(item.id) === String(this.selectedRouteId))
+                || this.customRoutes.find(item => String(item.id) === String(this.selectedRouteId));
+            this.lookupForm.area_id = kind === 'route' && mode === 'edit' ? (route?.area_id || '') : (this.selectedAreaId || '');
+            this.lookupModalOpen = true;
+            if (mode !== 'delete') {
+                this.$nextTick(() => this.$refs.lookupInput?.focus());
+            }
+        },
+
+        closeLookupModal() {
+            this.lookupModalOpen = false;
+            this.lookupError = '';
+        },
+
+        async saveLookup() {
+            const name = (this.lookupForm.name || '').trim();
+            const label = this.lookupKind === 'area' ? 'Area' : 'Delivery route';
+            if (!name) {
+                this.lookupError = label + ' name is required.';
+                return;
+            }
+            const isEdit = this.lookupMode === 'edit';
+            const selectedId = this.lookupKind === 'area' ? this.selectedAreaId : this.selectedRouteId;
+            const base = this.lookupKind === 'area' ? "{{ url('masters/areas') }}" : "{{ url('masters/routes') }}";
+            const url = isEdit ? base + '/' + selectedId + '/quick-update' : base + '/quick-store';
+            this.lookupSaving = true;
+            this.lookupError = '';
+            try {
+                const payload = { name: name };
+                if (this.lookupKind === 'route') {
+                    payload.area_id = this.lookupForm.area_id || null;
+                }
+                const response = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.lookupError = data.message || 'Failed to save.';
+                    return;
+                }
+                const item = {
+                    id: String(data.item.id),
+                    name: data.item.name,
+                    area_id: data.item.area_id ? String(data.item.area_id) : ''
+                };
+                if (this.lookupKind === 'area') {
+                    this.applyLookupItem('area', item, isEdit);
+                    this.selectedAreaId = item.id;
+                } else {
+                    this.applyLookupItem('route', item, isEdit);
+                    this.selectedRouteId = item.id;
+                }
+                this.closeLookupModal();
+            } catch (err) {
+                this.lookupError = 'An error occurred while saving. Please try again.';
+            } finally {
+                this.lookupSaving = false;
+            }
+        },
+
+        applyLookupItem(kind, item, isEdit) {
+            const customKey = kind === 'area' ? 'customAreas' : 'customRoutes';
+            const knownKey = kind === 'area' ? 'knownAreas' : 'knownRoutes';
+            const select = kind === 'area' ? this.$refs.areaSelect : this.$refs.routeSelect;
+            const itemId = String(item.id);
+
+            if (isEdit) {
+                // Remove duplicate option nodes with the same value, keep one updated label.
+                if (select) {
+                    const matches = [...select.querySelectorAll(`option[value="${itemId}"]`)];
+                    matches.forEach((option, index) => {
+                        if (index === 0) {
+                            option.textContent = item.name;
+                        } else {
+                            option.remove();
+                        }
+                    });
+                }
+                const custom = this[customKey].find(row => String(row.id) === itemId);
+                if (custom) Object.assign(custom, item);
+                const known = this[knownKey].find(row => String(row.id) === itemId);
+                if (known) Object.assign(known, item);
+                return;
+            }
+
+            if (!this[knownKey].some(row => String(row.id) === itemId) && !this[customKey].some(row => String(row.id) === itemId)) {
+                this[knownKey].push(item);
+            }
+
+            if (select) {
+                const matches = [...select.querySelectorAll(`option[value="${itemId}"]`)];
+                if (matches.length === 0) {
+                    select.add(new Option(item.name, itemId));
+                } else {
+                    matches[0].textContent = item.name;
+                    matches.slice(1).forEach((option) => option.remove());
+                }
+            }
+        },
+
+        removeLookupFromUi(kind, selectedId) {
+            const id = String(selectedId);
+            const select = kind === 'area' ? this.$refs.areaSelect : this.$refs.routeSelect;
+            select?.querySelectorAll(`option[value="${id}"]`).forEach((option) => option.remove());
+            if (kind === 'area') {
+                this.customAreas = this.customAreas.filter(row => String(row.id) !== id);
+                this.knownAreas = this.knownAreas.filter(row => String(row.id) !== id);
+                if (String(this.selectedAreaId) === id) {
+                    this.selectedAreaId = '';
+                }
+            } else {
+                this.customRoutes = this.customRoutes.filter(row => String(row.id) !== id);
+                this.knownRoutes = this.knownRoutes.filter(row => String(row.id) !== id);
+                if (String(this.selectedRouteId) === id) {
+                    this.selectedRouteId = '';
+                }
+            }
+        },
+
+        async deleteLookup() {
+            const selectedId = this.lookupKind === 'area' ? this.selectedAreaId : this.selectedRouteId;
+            if (!selectedId) return;
+            const base = this.lookupKind === 'area' ? "{{ url('masters/areas') }}" : "{{ url('masters/routes') }}";
+            this.lookupSaving = true;
+            this.lookupError = '';
+            try {
+                const response = await fetch(base + '/' + selectedId + '/quick-destroy', {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                });
+                const data = await response.json().catch(() => ({}));
+                // 404 / already-missing: clear stale dropdown option so Create Party stays usable.
+                if (response.status === 404 || data.success) {
+                    this.removeLookupFromUi(this.lookupKind, selectedId);
+                    this.closeLookupModal();
+                    return;
+                }
+                if (!response.ok) {
+                    this.lookupError = data.message || 'Failed to delete.';
+                    return;
+                }
+                this.removeLookupFromUi(this.lookupKind, selectedId);
+                this.closeLookupModal();
+            } catch (err) {
+                this.lookupError = 'An error occurred while deleting. Please try again.';
+            } finally {
+                this.lookupSaving = false;
+            }
+        },
+
+        form: {
+            name: {!! json_encode(old('name', $item->name ?? '')) !!},
+            trade_name: {!! json_encode(old('trade_name', $item->trade_name ?? '')) !!},
+            gstin: {!! json_encode(old('gstin', $item->gstin ?? '')) !!},
+            gst_registration_type: {!! json_encode(old('gst_registration_type', $item->gst_registration_type ?? '')) !!},
+            party_type: {!! json_encode($selectedPartyType) !!},
+            pan: {!! json_encode(old('pan', $item->pan ?? '')) !!},
+            phone: {!! json_encode(old('phone', $item->phone ?? '')) !!},
+            email: {!! json_encode(old('email', $item->email ?? '')) !!},
+            opened_on: {!! json_encode(old('opened_on', $item->opened_on?->format('Y-m-d') ?? ($item->exists ? '' : now()->toDateString()))) !!},
+            reference_by: {!! json_encode(old('reference_by', $item->reference_by ?? '')) !!},
+            udyam_number: {!! json_encode(old('udyam_number', $item->udyam_number ?? '')) !!},
+            website: {!! json_encode(old('website', $item->website ?? '')) !!},
+            location_link: {!! json_encode(old('location_link', $item->location_link ?? '')) !!},
+            address: {!! json_encode(old('address', $item->address ?? '')) !!},
+            state: {!! json_encode(old('state', $item->state ?? '')) !!},
+            pincode: {!! json_encode(old('pincode', $item->pincode ?? '')) !!},
+        },
+        lastAutoGstin: '',
+        hasContactsSection: true,
+        bankAccounts: {!! json_encode($initialBankAccounts) !!},
+        contacts: {!! json_encode($initialContacts) !!},
+        availablePhoneContacts: {!! json_encode($availablePhoneContacts ?? []) !!},
+        contactSearchQuery: '',
+        contactSearchResults: [],
+        contactDropdownOpen: false,
+        contactSearchLoading: false,
+        contactSearchTimer: null,
+        isSavingDraft: false,
+
+        get displayContactsDropdownList() {
+            if (this.contactSearchQuery.trim()) {
+                return this.contactSearchResults || [];
+            }
+            if ((this.contactSearchResults || []).length) {
+                return this.contactSearchResults;
+            }
+            return this.availablePhoneContacts || [];
+        },
+
+        openContactDirectoryDropdown() {
+            this.contactDropdownOpen = true;
+            // Always refresh directory list when opened so all contacts appear.
+            if (!this.contactSearchQuery.trim()) {
+                this.fetchPhoneDirectoryContacts('');
+            }
+        },
+
+        onContactSearchInput() {
+            this.contactDropdownOpen = true;
+            clearTimeout(this.contactSearchTimer);
+            const q = this.contactSearchQuery.trim();
+            this.contactSearchLoading = true;
+            this.contactSearchTimer = setTimeout(() => {
+                this.fetchPhoneDirectoryContacts(q);
+            }, 200);
+        },
+
+        async fetchPhoneDirectoryContacts(query) {
+            try {
+                const url = `{{ route('masters.customers.phone-directory-contacts') }}?q=${encodeURIComponent(query || '')}`;
+                const res = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+                const data = await res.json();
+                if (data && data.success && Array.isArray(data.contacts)) {
+                    this.contactSearchResults = data.contacts;
+                    if (!query) {
+                        this.availablePhoneContacts = data.contacts;
+                    }
+                } else {
+                    this.contactSearchResults = [];
+                }
+            } catch (err) {
+                console.error('Error fetching contacts:', err);
+                this.contactSearchResults = [];
+            } finally {
+                this.contactSearchLoading = false;
+            }
+        },
+
+        isContactAlreadySelected(phoneContactId) {
+            if (!phoneContactId) return false;
+            return (this.contacts || []).some(c => c.phone_directory_contact_id && Number(c.phone_directory_contact_id) === Number(phoneContactId));
+        },
+
+        selectContact(item) {
+            if (!item) return;
+            if (this.isContactAlreadySelected(item.id)) {
+                return;
+            }
+
+            this.contacts.push({
+                id: null,
+                phone_directory_contact_id: item.id,
+                name: item.name,
+                role: item.designation || 'Contact',
+                designation_id: item.designation_id || null,
+                designation: item.designation || '',
+                other_designation: '',
+                company_name: item.company_name || '',
+                company_website: item.company_website || '',
+                phone: item.phone || '',
+                alternate_phone: item.alternate_phone || '',
+                whatsapp: item.whatsapp || item.whatsapp_number || '',
+                whatsapp_number: item.whatsapp_number || item.whatsapp || '',
+                email: item.email || '',
+                department: item.department || '',
+                is_primary: this.contacts.length === 0,
+                avatar_bg_class: item.avatar_bg_class || 'bg-slate-100 text-slate-700',
+                initials: item.initials || (item.name ? item.name.substring(0, 2).toUpperCase() : 'CO'),
+                view_url: item.view_url || null,
+            });
+
+            // Keep dropdown open and keep query so user can select multiple contacts from the same company
+        },
+
+        customContactModalOpen: false,
+        customContactSaving: false,
+        customContactError: '',
+        customContactForm: {
+            name: '',
+            designation: '',
+            designation_id: null,
+            company_name: '',
+            phone: '',
+            alternate_phone: '',
+            whatsapp_number: '',
+            same_as_mobile: false,
+            email: '',
+            is_primary: false,
+            save_to_phone_directory: true,
+        },
+
+        openCustomContactModal() {
+            this.customContactError = '';
+            this.customContactSaving = false;
+            this.customContactForm = {
+                name: '',
+                designation: '',
+                designation_id: null,
+                company_name: this.form?.name || '',
+                phone: '',
+                alternate_phone: '',
+                whatsapp_number: '',
+                same_as_mobile: false,
+                email: '',
+                is_primary: this.contacts.length === 0,
+                save_to_phone_directory: true,
+            };
+            this.customContactModalOpen = true;
+        },
+
+        closeCustomContactModal() {
+            this.customContactModalOpen = false;
+            this.customContactError = '';
+        },
+
+        toggleSameAsMobile() {
+            if (this.customContactForm.same_as_mobile) {
+                this.customContactForm.whatsapp_number = this.customContactForm.phone;
+            }
+        },
+
+        async submitCustomContact() {
+            this.customContactError = '';
+            const form = this.customContactForm;
+            if (!form.name || !form.name.trim()) {
+                this.customContactError = 'Contact Name is required.';
+                return;
+            }
+            if (!form.phone || !form.phone.trim()) {
+                this.customContactError = 'Primary Mobile Number is required.';
+                return;
+            }
+
+            if (form.same_as_mobile) {
+                form.whatsapp_number = form.phone.trim();
+            }
+
+            if (form.save_to_phone_directory) {
+                this.customContactSaving = true;
+                try {
+                    const res = await fetch("{{ route('masters.customers.phone-directory-quick-store') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({
+                            contact_name: form.name.trim(),
+                            mobile_number: form.phone.trim(),
+                            alternate_mobile: form.alternate_phone ? form.alternate_phone.trim() : null,
+                            whatsapp_number: form.whatsapp_number ? form.whatsapp_number.trim() : null,
+                            email: form.email ? form.email.trim() : null,
+                            designation: form.designation ? form.designation.trim() : null,
+                            designation_id: form.designation_id || null,
+                            company_name: form.company_name ? form.company_name.trim() : null,
+                        })
+                    });
+
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                        const msg = data.errors ? Object.values(data.errors).flat().join(', ') : (data.message || 'Failed to save contact to Phone Directory.');
+                        this.customContactError = msg;
+                        this.customContactSaving = false;
+                        return;
+                    }
+
+                    const c = data.contact;
+                    const newContact = {
+                        id: null,
+                        phone_directory_contact_id: c.id,
+                        name: c.name,
+                        role: c.designation || 'Contact',
+                        designation_id: c.designation_id || null,
+                        designation: c.designation || '',
+                        other_designation: '',
+                        company_name: c.company_name || '',
+                        company_website: c.company_website || '',
+                        phone: c.phone || '',
+                        alternate_phone: c.alternate_phone || '',
+                        whatsapp: c.whatsapp || '',
+                        whatsapp_number: c.whatsapp_number || '',
+                        email: c.email || '',
+                        is_primary: form.is_primary || this.contacts.length === 0,
+                        avatar_bg_class: c.avatar_bg_class || 'bg-slate-100 text-slate-700',
+                        initials: c.initials || (c.name ? c.name.substring(0, 2).toUpperCase() : 'CO'),
+                        view_url: c.view_url || null,
+                    };
+
+                    if (newContact.is_primary) {
+                        this.contacts.forEach(x => x.is_primary = false);
+                    }
+                    this.contacts.push(newContact);
+                    this.closeCustomContactModal();
+                } catch (err) {
+                    console.error('Error quick storing contact:', err);
+                    this.customContactError = 'An unexpected network error occurred. Please try again.';
+                } finally {
+                    this.customContactSaving = false;
+                }
+            } else {
+                // Direct custom Party contact without saving to Phone Directory
+                const newContact = {
+                    id: null,
+                    phone_directory_contact_id: null,
+                    name: form.name.trim(),
+                    role: form.designation ? form.designation.trim() : 'Contact',
+                    designation_id: form.designation_id || null,
+                    designation: form.designation ? form.designation.trim() : '',
+                    other_designation: '',
+                    company_name: form.company_name ? form.company_name.trim() : '',
+                    phone: form.phone.trim(),
+                    alternate_phone: form.alternate_phone ? form.alternate_phone.trim() : '',
+                    whatsapp: form.whatsapp_number ? form.whatsapp_number.trim() : '',
+                    whatsapp_number: form.whatsapp_number ? form.whatsapp_number.trim() : '',
+                    email: form.email ? form.email.trim() : '',
+                    is_primary: form.is_primary || this.contacts.length === 0,
+                    avatar_bg_class: 'bg-slate-100 text-slate-700',
+                    initials: form.name.trim().substring(0, 2).toUpperCase(),
+                    view_url: null,
+                };
+
+                if (newContact.is_primary) {
+                    this.contacts.forEach(x => x.is_primary = false);
+                }
+                this.contacts.push(newContact);
+                this.closeCustomContactModal();
+            }
+        },
+
+        addCustomContact() {
+            this.saveDraftAndCreateContact();
+        },
+
+        addContact() {
+            this.saveDraftAndCreateContact();
+        },
+
+        removeContact(idx) {
+            const wasPrimary = this.contacts[idx]?.is_primary;
+            this.contacts.splice(idx, 1);
+            if (wasPrimary && this.contacts.length) {
+                this.contacts[0].is_primary = true;
+            }
+        },
+
+        setPrimaryContact(idx) {
+            this.contacts.forEach((contact, index) => {
+                contact.is_primary = index === idx;
+            });
+        },
+
+        async saveDraftAndCreateContact() {
+            this.isSavingDraft = true;
+            try {
+                const formEl = document.getElementById('party-master-form') || document.querySelector('form[action*="customers"]');
+                const formData = formEl ? new FormData(formEl) : new FormData();
+                const getVal = (name) => {
+                    const val = formData.get(name);
+                    if (val !== null && val !== undefined && val !== '') return val;
+                    if (this.form && this.form[name] !== undefined && this.form[name] !== null && this.form[name] !== '') return this.form[name];
+                    const el = formEl ? formEl.querySelector(`[name="${name}"]`) : null;
+                    return el ? el.value : '';
+                };
+
+                const draft = {
+                    id: {{ $item->exists ? (int)$item->id : 'null' }},
+                    is_edit: {{ $item->exists ? 'true' : 'false' }},
+                    name: getVal('name'),
+                    trade_name: getVal('trade_name'),
+                    code: getVal('code'),
+                    party_type: this.form?.party_type || getVal('party_type'),
+                    business_group_id: this.selectedBusinessGroupId || getVal('business_group_id'),
+                    customer_type_id: this.selectedCustomerTypeId || getVal('customer_type_id'),
+                    area_id: getVal('area_id'),
+                    route_id: getVal('route_id'),
+                    salesperson_id: getVal('salesperson_id'),
+                    sales_manager_id: getVal('sales_manager_id'),
+                    phone: getVal('phone'),
+                    email: getVal('email'),
+                    opened_on: getVal('opened_on'),
+                    reference_by: getVal('reference_by'),
+                    udyam_number: getVal('udyam_number'),
+                    website: getVal('website'),
+                    location_link: getVal('location_link'),
+                    gstin: getVal('gstin'),
+                    gst_registration_type: getVal('gst_registration_type'),
+                    pan: getVal('pan'),
+                    address: getVal('address'),
+                    state: getVal('state'),
+                    pincode: getVal('pincode'),
+                    credit_limit: getVal('credit_limit'),
+                    credit_days: getVal('credit_days'),
+                    credit_status: getVal('credit_status'),
+                    credit_period_basis: getVal('credit_period_basis'),
+                    interest_rate: getVal('interest_rate'),
+                    target_amount: getVal('target_amount'),
+                    target_start_date: getVal('target_start_date'),
+                    target_end_date: getVal('target_end_date'),
+                    is_active: formEl ? (formEl.querySelector('[name="is_active"]:checked') ? 1 : 0) : 1,
+                    contacts: JSON.parse(JSON.stringify(this.contacts || [])),
+                    addresses: JSON.parse(JSON.stringify(this.addresses || [])),
+                    bank_accounts: JSON.parse(JSON.stringify(this.bankAccounts || [])),
+                    gem_authorizations: JSON.parse(JSON.stringify(this.gemAuthorizations || [])),
+                };
+
+                const response = await fetch("{{ route('masters.customers.draft.save') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ draft })
+                });
+
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => ({}));
+                    throw new Error(payload.message || 'Draft could not be saved. Stay on this page and try again.');
+                }
+
+                const destUrl = @json(
+                    route('phone-directory.contacts.create')
+                    . '?return_to=party'
+                    . ($item->exists ? '&party_id=' . $item->id : '')
+                );
+                window.location.href = destUrl;
+            } catch (err) {
+                console.error('Failed to save draft:', err);
+                alert(err?.message || 'Could not save party draft before opening Phone Directory. Your entries were not redirected so you do not lose data.');
+            } finally {
+                this.isSavingDraft = false;
+            }
+        },
+        designationList: {!! json_encode($designationsData ?? []) !!},
+        designationOptions: {!! json_encode($designationOptions) !!},
+        designationModalOpen: false,
+        designationMode: 'add',
+        designationSaving: false,
+        designationError: '',
+        designationSuccess: '',
+        designationInUse: false,
+        targetContact: null,
+        designationForm: {
+            id: null,
+            name: '',
+            code: '',
+        },
+        addresses: {!! json_encode($initialAddresses) !!},
+        gemAuthorizations: {!! json_encode($initialGemAuthorizations) !!},
+        brands: {!! json_encode(($brands ?? collect())->map(fn ($brand) => ['id' => (string) $brand->id, 'name' => $brand->name])->values()) !!},
+        brandModalOpen: false,
+        brandModalIndex: null,
+        brandSaving: false,
+        brandError: '',
+        brandForm: {
+            company_id: {!! json_encode((string) ($defaultCompanyId ?? '')) !!},
+            name: '',
+            detail: '',
+            is_active: true,
+        },
+        _ifscTimers: {},
+        _ifscLastFetched: {},
+        stateCities: {!! json_encode($stateCities ?? \App\Support\IndianCities::all()) !!},
+        statesList: {!! json_encode($stateOptions ?? \App\Support\IndianStates::options()) !!},
+
+        getCities(stateName) {
+            if (!stateName) return [];
+            return this.stateCities[stateName] || [];
+        },
+
+        addGemAuthorization() {
+            this.gemAuthorizations.push({
+                key: 'gem-new-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+                id: '',
+                brand_id: '',
+                gem_registered: '1',
+                gem_authorized: '0',
+                authorization_number: '',
+                category: '',
+                date_of_issue: '',
+                documents: [],
+            });
+        },
+
+        removeGemAuthorization(idx) {
+            this.gemAuthorizations.splice(idx, 1);
+        },
+
+        openBrandModal(idx) {
+            this.brandModalIndex = idx;
+            this.brandError = '';
+            this.brandForm.name = '';
+            this.brandForm.detail = '';
+            this.brandForm.is_active = true;
+            this.brandModalOpen = true;
+        },
+
+        closeBrandModal() {
+            this.brandModalOpen = false;
+            this.brandError = '';
+            this.brandModalIndex = null;
+        },
+
+        async saveBrand() {
+            const name = (this.brandForm.name || '').trim();
+            if (!name) {
+                this.brandError = 'Brand Name is required.';
+                return;
+            }
+
+            this.brandSaving = true;
+            this.brandError = '';
+
+            try {
+                const response = await fetch("{{ route('masters.brands.quick-store') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        company_id: this.brandForm.company_id || null,
+                        name: name,
+                        detail: this.brandForm.detail || '',
+                        is_active: this.brandForm.is_active ? 1 : 0,
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.brandError = data.message || 'Failed to create the brand.';
+                    return;
+                }
+
+                const item = data.item;
+                if (!this.brands.some(brand => String(brand.id) === String(item.id))) {
+                    this.brands.push({ id: String(item.id), name: item.name });
+                    this.brands.sort((a, b) => a.name.localeCompare(b.name));
+                }
+                if (this.brandModalIndex !== null && this.gemAuthorizations[this.brandModalIndex]) {
+                    this.gemAuthorizations[this.brandModalIndex].brand_id = String(item.id);
+                }
+                this.closeBrandModal();
+            } catch (err) {
+                this.brandError = 'An error occurred while creating the brand. Please try again.';
+            } finally {
+                this.brandSaving = false;
+            }
+        },
+
+        openDesignationModal(mode, contact, optName = null) {
+            this.designationMode = mode;
+            this.targetContact = contact || null;
+            this.designationError = '';
+            this.designationSuccess = '';
+            this.designationInUse = false;
+
+            if (mode === 'add') {
+                this.designationForm.id = null;
+                this.designationForm.name = '';
+                this.designationForm.code = '';
+            } else if (mode === 'edit' || mode === 'delete') {
+                const currentName = optName || contact?.designation || '';
+                const currentId = (!optName && contact) ? contact.designation_id : null;
+                const match = this.designationList.find(d => 
+                    (currentId && String(d.id) === String(currentId)) || 
+                    d.name.toLowerCase() === currentName.toLowerCase()
+                );
+                if (match) {
+                    this.designationForm.id = match.id;
+                    this.designationForm.name = match.name;
+                    this.designationForm.code = match.code || '';
+                } else {
+                    this.designationForm.id = null;
+                    this.designationForm.name = currentName;
+                    this.designationForm.code = '';
+                }
+            }
+
+            this.designationModalOpen = true;
+            this.$nextTick(() => {
+                if (this.designationMode !== 'delete') {
+                    this.$refs.designationInput?.focus();
+                }
+            });
+        },
+
+        closeDesignationModal() {
+            this.designationModalOpen = false;
+            this.designationError = '';
+            this.designationSuccess = '';
+            this.designationInUse = false;
+        },
+
+        async saveDesignation() {
+            const name = (this.designationForm.name || '').trim();
+            if (!name) {
+                this.designationError = 'Designation Name is required.';
+                return;
+            }
+
+            // Case-insensitive duplicate check
+            const lowerName = name.toLowerCase();
+            const currentId = this.designationForm.id;
+            const duplicate = this.designationList.find(d => d.name.toLowerCase() === lowerName && (!currentId || String(d.id) !== String(currentId)));
+            if (duplicate) {
+                this.designationError = 'A designation with this name already exists.';
+                return;
+            }
+
+            this.designationSaving = true;
+            this.designationError = '';
+            this.designationSuccess = '';
+
+            const isEdit = this.designationMode === 'edit';
+            const url = isEdit
+                ? "{{ url('masters/designations') }}/" + this.designationForm.id + "/quick-update"
+                : "{{ route('masters.designations.quick-store') }}";
+
+            try {
+                const response = await fetch(url, {
+                    method: isEdit ? 'PUT' : 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        name: name,
+                        code: this.designationForm.code || null
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.designationError = data.message || 'Failed to save designation.';
+                    this.designationSaving = false;
+                    return;
+                }
+
+                const newItem = data.item;
+
+                if (isEdit) {
+                    const match = this.designationList.find(d => String(d.id) === String(newItem.id));
+                    const oldName = match ? match.name : '';
+                    if (match) {
+                        match.name = newItem.name;
+                    }
+                    this.designationOptions = this.designationOptions.map(opt => opt.toLowerCase() === oldName.toLowerCase() ? newItem.name : opt);
+                    this.contacts.forEach(c => {
+                        if (String(c.designation_id) === String(newItem.id) || (oldName && (c.designation || '').toLowerCase() === oldName.toLowerCase())) {
+                            c.designation = newItem.name;
+                            c.role = newItem.name;
+                        }
+                    });
+                    this.designationSuccess = data.message || 'Designation updated successfully!';
+                } else {
+                    const exists = this.designationList.some(d => String(d.id) === String(newItem.id));
+                    if (!exists) {
+                        this.designationList.push(newItem);
+                    }
+                    if (!this.designationOptions.some(opt => opt.toLowerCase() === newItem.name.toLowerCase())) {
+                        const otherIdx = this.designationOptions.findIndex(o => o.toLowerCase() === 'other');
+                        if (otherIdx !== -1) {
+                            this.designationOptions.splice(otherIdx, 0, newItem.name);
+                        } else {
+                            this.designationOptions.push(newItem.name);
+                        }
+                    }
+
+                    if (this.targetContact) {
+                        this.targetContact.designation_id = newItem.id;
+                        this.targetContact.designation = newItem.name;
+                        this.targetContact.role = newItem.name;
+                        this.targetContact.other_designation = '';
+                    }
+
+                    this.designationSuccess = data.message || 'Designation created successfully!';
+                }
+
+                setTimeout(() => {
+                    this.closeDesignationModal();
+                }, 500);
+            } catch (err) {
+                this.designationError = 'An error occurred while saving the designation. Please try again.';
+            } finally {
+                this.designationSaving = false;
+            }
+        },
+
+        async deleteDesignation() {
+            if (!this.designationForm.id) {
+                const match = this.designationList.find(d => d.name.toLowerCase() === (this.designationForm.name || '').toLowerCase());
+                if (match) {
+                    this.designationForm.id = match.id;
+                } else {
+                    this.designationError = 'Designation record not found in database.';
+                    return;
+                }
+            }
+
+            this.designationSaving = true;
+            this.designationError = '';
+
+            try {
+                const response = await fetch("{{ url('masters/designations') }}/" + this.designationForm.id + "/quick-destroy", {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    if (data.in_use) {
+                        this.designationInUse = true;
+                    }
+                    this.designationError = data.message || 'Failed to delete designation.';
+                    this.designationSaving = false;
+                    return;
+                }
+
+                const deletedName = (this.designationForm.name || '').toLowerCase();
+                const deletedId = String(this.designationForm.id);
+
+                this.designationList = this.designationList.filter(d => String(d.id) !== deletedId);
+                this.designationOptions = this.designationOptions.filter(o => o.toLowerCase() !== deletedName);
+
+                if (this.targetContact && (String(this.targetContact.designation_id) === deletedId || (this.targetContact.designation || '').toLowerCase() === deletedName)) {
+                    this.targetContact.designation_id = null;
+                    this.targetContact.designation = '';
+                    this.targetContact.role = '';
+                }
+
+                this.designationSuccess = data.message || 'Designation deleted successfully!';
+                setTimeout(() => {
+                    this.closeDesignationModal();
+                }, 500);
+            } catch (err) {
+                this.designationError = 'An error occurred while deleting the designation. Please try again.';
+            } finally {
+                this.designationSaving = false;
+            }
+        },
+
+        async deactivateDesignation() {
+            if (!this.designationForm.id) return;
+
+            this.designationSaving = true;
+            this.designationError = '';
+
+            try {
+                const response = await fetch("{{ url('masters/designations') }}/" + this.designationForm.id + "/toggle-active", {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ is_active: false })
+                });
+
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    this.designationError = data.message || 'Failed to deactivate designation.';
+                    this.designationSaving = false;
+                    return;
+                }
+
+                const match = this.designationList.find(d => String(d.id) === String(this.designationForm.id));
+                if (match) {
+                    match.is_active = false;
+                }
+
+                this.designationSuccess = data.message || 'Designation deactivated successfully!';
+                setTimeout(() => {
+                    this.closeDesignationModal();
+                }, 500);
+            } catch (err) {
+                this.designationError = 'An error occurred while deactivating the designation. Please try again.';
+            } finally {
+                this.designationSaving = false;
+            }
+        },
+
+        addAddress() {
+            const hasBilling = this.addresses.some(a => a.is_default_billing);
+            const hasDelivery = this.addresses.some(a => a.is_default_delivery);
+            this.addresses.push({
+                id: null,
+                label: 'Branch / Warehouse',
+                contact_person: '',
+                contact_phone: '',
+                address_line_1: '',
+                address_line_2: '',
+                city: '',
+                state: this.form.state || '',
+                pincode: '',
+                type: 'both',
+                is_default_billing: !hasBilling,
+                is_default_delivery: !hasDelivery
+            });
+        },
+
+        removeAddress(idx) {
+            if (this.addresses.length <= 1) return;
+            const wasBilling = this.addresses[idx].is_default_billing;
+            const wasDelivery = this.addresses[idx].is_default_delivery;
+            this.addresses.splice(idx, 1);
+            if (wasBilling && this.addresses.length > 0) {
+                this.setDefaultBilling(0);
+            }
+            if (wasDelivery && this.addresses.length > 0) {
+                this.setDefaultDelivery(0);
+            }
+            this.syncPrimaryAddress();
+        },
+
+        setDefaultBilling(index) {
+            this.addresses.forEach((addr, i) => {
+                addr.is_default_billing = (i === index);
+                if (i === index && addr.type === 'delivery') {
+                    addr.type = 'both';
+                }
+            });
+            this.syncPrimaryAddress();
+        },
+
+        setDefaultDelivery(index) {
+            this.addresses.forEach((addr, i) => {
+                addr.is_default_delivery = (i === index);
+                if (i === index && addr.type === 'billing') {
+                    addr.type = 'both';
+                }
+            });
+        },
+
+        syncPrimaryAddress() {
+            const primary = this.addresses.find(a => a.is_default_billing) || this.addresses[0];
+            if (primary) {
+                const line1 = primary.address_line_1 || '';
+                const line2 = primary.address_line_2 || '';
+                this.form.address = (line1 + (line2 ? ', ' + line2 : '')).trim();
+                if (primary.state) this.form.state = primary.state;
+                if (primary.pincode) this.form.pincode = primary.pincode;
+            }
+        },
+
+        isCityValidForState(city, state) {
+            if (!city || !state) return true;
+            const cleanCity = city.trim().toLowerCase();
+            const citiesInState = (this.stateCities[state] || []).map(c => c.toLowerCase());
+            if (citiesInState.includes(cleanCity)) return true;
+            for (const [st, cities] of Object.entries(this.stateCities)) {
+                if (st === state) continue;
+                if (cities.map(c => c.toLowerCase()).includes(cleanCity)) {
+                    return false;
+                }
+            }
+            return true;
+        },
+
+        addBankAccount() {
+            const hasPrimary = this.bankAccounts.some(b => b.is_primary);
+            this.bankAccounts.push({
+                id: null,
+                account_holder_name: this.form.name || '',
+                bank_name: '',
+                branch_name: '',
+                account_number: '',
+                account_type: 'current',
+                ifsc_code: '',
+                is_primary: !hasPrimary,
+                _ifsc_status: '',
+                _ifsc_message: '',
+                _ifsc_loading: false,
+            });
+        },
+
+        removeBankAccount(idx) {
+            if (this.bankAccounts.length <= 1) return;
+            const wasPrimary = this.bankAccounts[idx].is_primary;
+            this.bankAccounts.splice(idx, 1);
+            if (wasPrimary && this.bankAccounts.length > 0) {
+                this.setDefaultBankAccount(0);
+            }
+        },
+
+        setDefaultBankAccount(index) {
+            this.bankAccounts.forEach((acc, i) => {
+                acc.is_primary = (i === index);
+            });
+        },
+
+        onIfscInput(idx) {
+            const acc = this.bankAccounts[idx];
+            if (!acc) return;
+            acc._ifsc_status = '';
+            acc._ifsc_message = '';
+            if (this._ifscTimers[idx]) {
+                clearTimeout(this._ifscTimers[idx]);
+            }
+            const ifsc = (acc.ifsc_code || '').toUpperCase().trim();
+            if (ifsc.length === 11) {
+                this._ifscTimers[idx] = setTimeout(() => this.lookupIfsc(idx), 500);
+            }
+        },
+
+        async lookupIfsc(idx) {
+            const acc = this.bankAccounts[idx];
+            if (!acc) return;
+
+            const ifsc = (acc.ifsc_code || '').toUpperCase().trim();
+            if (ifsc.length === 0) {
+                acc._ifsc_status = '';
+                acc._ifsc_message = '';
+                return;
+            }
+
+            if (ifsc.length !== 11) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'Please enter a valid 11-character IFSC code.';
+                return;
+            }
+
+            // Prevent duplicate API requests for unchanged IFSC
+            if (this._ifscLastFetched[idx] === ifsc && acc.bank_name) {
+                return;
+            }
+
+            if (acc._ifsc_loading) {
+                return;
+            }
+
+            acc._ifsc_loading = true;
+            acc._ifsc_status = 'loading';
+            acc._ifsc_message = 'Fetching bank details...';
+
+            try {
+                const response = await fetch(`{{ route('masters.customers.ifsc-lookup') }}?ifsc=${encodeURIComponent(ifsc)}`, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    }
+                });
+                const data = await response.json();
+
+                if (data.success && data.bank) {
+                    acc.bank_name = data.bank.bank_name || acc.bank_name;
+                    acc.branch_name = data.bank.branch_name || acc.branch_name;
+                    if (!acc.account_holder_name || !String(acc.account_holder_name).trim()) {
+                        acc.account_holder_name = (this.form.name || '').trim();
+                    }
+                    this._ifscLastFetched[idx] = ifsc;
+                    acc._ifsc_status = 'ok';
+                    acc._ifsc_message = data.message || 'Bank and branch details fetched successfully.';
+                } else {
+                    acc._ifsc_status = 'error';
+                    if (data.status_code === 404 || response.status === 404) {
+                        acc._ifsc_message = data.message || 'IFSC code not found. Please verify the code.';
+                    } else if (data.status_code === 422) {
+                        acc._ifsc_message = data.message || 'Please enter a valid 11-character IFSC code.';
+                    } else {
+                        acc._ifsc_message = data.message || 'Unable to fetch bank details. Please enter details manually.';
+                    }
+                }
+            } catch (err) {
+                acc._ifsc_status = 'error';
+                acc._ifsc_message = 'Unable to fetch bank details. Please enter details manually.';
+            } finally {
+                acc._ifsc_loading = false;
+            }
+        },
+
+        mapGstRegistrationType(rawType) {
+            if (!rawType) return '';
+            const clean = String(rawType).trim();
+            if (!clean) return '';
+            const upper = clean.toUpperCase();
+
+            const options = [
+                'Regular',
+                'Composition',
+                'Casual Taxable Person',
+                'Non-Resident Taxable Person',
+                'Input Service Distributor (ISD)',
+                'SEZ Unit',
+                'SEZ Developer',
+                'TDS Deductor',
+                'TCS Collector',
+                'UIN Holder',
+                'Unregistered'
+            ];
+
+            const exactMatch = options.find(opt => opt.toUpperCase() === upper);
+            if (exactMatch) return exactMatch;
+
+            if (upper.includes('COMPOSITION')) return 'Composition';
+            if (upper.includes('CASUAL')) return 'Casual Taxable Person';
+            if (upper.includes('NON-RESIDENT') || upper.includes('NON RESIDENT')) return 'Non-Resident Taxable Person';
+            if (upper.includes('ISD') || upper.includes('INPUT SERVICE DISTRIBUTOR')) return 'Input Service Distributor (ISD)';
+            if (upper.includes('SEZ DEVELOPER')) return 'SEZ Developer';
+            if (upper.includes('SEZ')) return 'SEZ Unit';
+            if (upper.includes('TDS')) return 'TDS Deductor';
+            if (upper.includes('TCS')) return 'TCS Collector';
+            if (upper.includes('UIN') || upper.includes('EMBASSY') || upper.includes('UN BODY')) return 'UIN Holder';
+            if (upper.includes('UNREGISTERED')) return 'Unregistered';
+            if (upper.includes('REGULAR')) return 'Regular';
+
+            return clean;
+        },
+
+        applyExtractedGstinFields(extracted = null, gstin = '') {
+            const source = extracted || {};
+            const derivedPan = (source.pan || (gstin.length >= 12 ? gstin.substring(2, 12) : '') || '').trim();
+            const stateCode = (source.state_code || (gstin.length >= 2 ? gstin.substring(0, 2) : '') || '').toString();
+            const stateMatch = (this.statesList || []).find(s => String(s.code) === stateCode);
+            const derivedState = (source.state || (stateMatch ? stateMatch.name : '') || '').trim();
+
+            if (derivedPan && (!this.form.pan || !this.form.pan.trim())) {
+                this.form.pan = derivedPan;
+            }
+            if (derivedState && (!this.form.state || !this.form.state.trim())) {
+                this.form.state = derivedState;
+            }
+            if (this.addresses && this.addresses.length > 0) {
+                const primary = this.addresses.find(a => a.is_default_billing) || this.addresses[0];
+                if (primary && derivedState && (!primary.state || !primary.state.trim())) {
+                    primary.state = derivedState;
+                }
+            }
+        },
+
+        addressFingerprint(addr) {
+            const norm = (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            return [norm(addr.address_line_1), norm(addr.city), norm(addr.pincode)].join('|');
+        },
+
+        isAddressEmpty(addr) {
+            if (!addr) return true;
+            return !String(addr.address_line_1 || '').trim()
+                && !String(addr.address_line_2 || '').trim()
+                && !String(addr.city || '').trim()
+                && !String(addr.pincode || '').trim();
+        },
+
+        mapGstAddressRows(party, { includeAdditional = false } = {}) {
+            const take = (value) => {
+                const clean = String(value || '').trim();
+                return clean || null;
+            };
+
+            // Only accept real address objects — never iterate strings/scalars.
+            const raw = Array.isArray(party.addresses)
+                ? party.addresses.filter((row) => row && typeof row === 'object' && !Array.isArray(row))
+                : [];
+
+            const fallback = [{
+                label: party.address_label || 'Principal Place of Business',
+                address_line_1: party.address_line_1 || party.address || '',
+                address_line_2: party.address_line_2 || '',
+                city: party.city || '',
+                state: party.state || '',
+                pincode: party.pincode || '',
+            }];
+
+            const sourceRows = raw.length ? raw : fallback;
+            const seen = new Set();
+            const mapped = [];
+
+            sourceRows.forEach((src, index) => {
+                // Default: principal only. Additional places are opt-in.
+                if (!includeAdditional && mapped.length >= 1) return;
+                if (includeAdditional && mapped.length >= 10) return;
+
+                const row = {
+                    label: take(src.label)
+                        || (index === 0 ? 'Principal Place of Business' : `Additional Place of Business ${index}`),
+                    address_line_1: take(src.address_line_1) || '',
+                    address_line_2: take(src.address_line_2) || '',
+                    city: take(src.city) || '',
+                    state: take(src.state) || take(party.state) || '',
+                    pincode: take(src.pincode) || '',
+                };
+                if (!row.address_line_1 && !row.city && !row.pincode) return;
+                const key = this.addressFingerprint(row);
+                if (seen.has(key)) return;
+                seen.add(key);
+                mapped.push(row);
+            });
+
+            return mapped;
+        },
+
+        applyGstAddresses(party, { includeAdditional = false } = {}) {
+            const allMapped = this.mapGstAddressRows(party, { includeAdditional: true });
+            const principal = allMapped.slice(0, 1);
+            const extras = allMapped.slice(1);
+
+            // Always stash extras so user can opt in later if needed.
+            this.gstPendingExtraAddresses = includeAdditional ? [] : extras;
+
+            const mapped = includeAdditional ? allMapped : principal;
+            if (!mapped.length) return;
+
+            const previous = Array.isArray(this.addresses) ? this.addresses : [];
+            this.addresses = mapped.map((row, index) => {
+                const prior = previous.find((a) => this.addressFingerprint(a) === this.addressFingerprint(row))
+                    || (index === 0 ? (previous.find((a) => a.is_default_billing) || previous[0]) : null);
+
+                return {
+                    id: prior?.id ?? null,
+                    label: row.label,
+                    contact_person: prior?.contact_person || '',
+                    contact_phone: prior?.contact_phone || '',
+                    address_line_1: row.address_line_1,
+                    address_line_2: row.address_line_2,
+                    city: row.city,
+                    state: row.state,
+                    pincode: row.pincode,
+                    type: prior?.type || 'both',
+                    is_default_billing: index === 0,
+                    is_default_delivery: index === 0,
+                };
+            });
+
+            this.syncPrimaryAddress();
+        },
+
+        applyPendingGstExtraAddresses() {
+            const extras = Array.isArray(this.gstPendingExtraAddresses) ? this.gstPendingExtraAddresses : [];
+            if (!extras.length) return;
+
+            if (!Array.isArray(this.addresses)) this.addresses = [];
+            const existingKeys = new Set(this.addresses.map((a) => this.addressFingerprint(a)));
+
+            extras.forEach((row) => {
+                const key = this.addressFingerprint(row);
+                if (existingKeys.has(key)) return;
+                existingKeys.add(key);
+                this.addresses.push({
+                    id: null,
+                    label: row.label || 'Additional Place of Business',
+                    contact_person: '',
+                    contact_phone: '',
+                    address_line_1: row.address_line_1 || '',
+                    address_line_2: row.address_line_2 || '',
+                    city: row.city || '',
+                    state: row.state || '',
+                    pincode: row.pincode || '',
+                    type: 'both',
+                    is_default_billing: false,
+                    is_default_delivery: false,
+                });
+            });
+
+            this.gstPendingExtraAddresses = [];
+            this.syncPrimaryAddress();
+        },
+
+        autoFetchGst() {
+            const gstin = (this.form.gstin || '').trim().toUpperCase();
+            if (gstin.length !== 15 || gstin === this.lastAutoGstin || this.searchingGst) return;
+            const gstinPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[0-9A-Z]{1}[0-9A-Z]{1}$/;
+            if (!gstinPattern.test(gstin)) return;
+            this.fetchGstDetails();
+        },
+
+        async fetchGstDetails() {
+            const gstin = (this.form.gstin || '').trim().toUpperCase();
+            this.form.gstin = gstin;
+            this.gstLookupInfo = null;
+            this.gstPendingExtraAddresses = [];
+
+            if (gstin.length !== 15) {
+                this.gstFeedback = {
+                    type: 'error',
+                    message: 'Please enter a valid 15-character GSTIN (e.g. 27AACCN0053F1ZW).',
+                    note: ''
+                };
+                return;
+            }
+
+            const gstinPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[0-9A-Z]{1}[0-9A-Z]{1}$/;
+            if (!gstinPattern.test(gstin)) {
+                this.gstFeedback = {
+                    type: 'error',
+                    message: 'Invalid GSTIN format. Expected 2-digit state code, 10-character PAN, entity code, and checksum.',
+                    note: ''
+                };
+                this.applyExtractedGstinFields(null, gstin);
+                return;
+            }
+
+            this.lastAutoGstin = gstin;
+            this.searchingGst = true;
+            this.gstFeedback = { type: '', message: '', note: '' };
+            this.applyExtractedGstinFields(null, gstin);
+
+            try {
+                const response = await fetch(`{{ route('masters.customers.gst-lookup') }}?gstin=${encodeURIComponent(gstin)}`);
+                const data = await response.json();
+
+                if (data.extracted) {
+                    this.applyExtractedGstinFields(data.extracted, gstin);
+                }
+
+                if (data.success && data.party) {
+                    if (data.party.trade_name) this.form.trade_name = String(data.party.trade_name).trim();
+                    if (data.party.name) this.form.name = String(data.party.name).trim();
+                    this.lastAutoGstin = gstin;
+                    if (data.party.pan) this.form.pan = String(data.party.pan).trim();
+                    if (data.party.state) this.form.state = String(data.party.state).trim();
+                    if (data.party.pincode) this.form.pincode = String(data.party.pincode).trim();
+                    if (data.party.address || data.party.address_line_1) {
+                        this.form.address = String(data.party.address || data.party.address_line_1).trim();
+                    }
+                    const matchedRegType = this.mapGstRegistrationType(data.party.gst_registration_type || data.party.taxpayer_type);
+                    if (matchedRegType) {
+                        this.form.gst_registration_type = matchedRegType;
+                    }
+
+                    const appliedKey = [
+                        gstin,
+                        data.party.address_line_1 || '',
+                        data.party.pincode || '',
+                        Array.isArray(data.party.addresses) ? data.party.addresses.length : 0
+                    ].join('::');
+                    if (this.gstLookupAppliedKey !== appliedKey) {
+                        // Principal address only by default; extras available via "+ Include from GST".
+                        this.applyGstAddresses(data.party, { includeAdditional: false });
+                        this.gstLookupAppliedKey = appliedKey;
+                    }
+
+                    this.gstLookupInfo = {
+                        legal_name: data.party.legal_name || '',
+                        trade_name: data.party.trade_name || '',
+                        status: data.party.status || '',
+                        taxpayer_type: data.party.taxpayer_type || '',
+                        constitution_of_business: data.party.constitution_of_business || '',
+                        registration_date: data.party.registration_date || '',
+                        cancellation_date: data.party.cancellation_date || '',
+                        state_jurisdiction: data.party.state_jurisdiction || '',
+                        center_jurisdiction: data.party.center_jurisdiction || '',
+                        nature_of_business: Array.isArray(data.party.nature_of_business)
+                            ? data.party.nature_of_business.join(', ')
+                            : (data.party.nature_of_business || ''),
+                    };
+
+                    const statusText = data.party.status ? ` (Status: ${data.party.status})` : '';
+                    const isInactive = !!data.party.is_inactive
+                        || (data.party.status && !['active', 'provisional'].includes(String(data.party.status).toLowerCase()));
+                    const extraCount = this.gstPendingExtraAddresses.length;
+                    this.gstFeedback = {
+                        type: isInactive ? 'warning' : 'success',
+                        message: (data.message || 'GSTIN verified successfully from official records.') + statusText,
+                        note: isInactive
+                            ? `Warning: GST registration status is reported as ${data.party.status}. Please review carefully before saving.`
+                            : (extraCount > 0
+                                ? `Principal address applied. ${extraCount} additional GST place(s) available under Addresses if needed.`
+                                : 'Details updated from GST records. Phone, email, party type, credit, and bank details remain manual.')
+                    };
+                    if (data.duplicate_warning) {
+                        this.gstFeedback = {
+                            type: 'warning',
+                            message: data.duplicate_warning,
+                            note: 'Notice: Another party with this GSTIN is already registered. You can review details or update that party instead.'
+                        };
+                    }
+                } else {
+                    this.gstPendingExtraAddresses = [];
+                    this.gstLookupInfo = null;
+                    const note = data.is_configured === false
+                        ? 'Add GST_API_KEY and GST_API_SECRET to .env, then run php artisan config:clear. PAN and State were filled from the GSTIN where possible.'
+                        : 'PAN and State were filled from the GSTIN where possible (structural extraction, not provider-verified). You can enter remaining details manually.';
+                    this.gstFeedback = {
+                        type: 'error',
+                        message: data.message || 'GSTIN details not found or verification failed.',
+                        note: note
+                    };
+                }
+            } catch (err) {
+                this.gstLookupInfo = null;
+                this.applyExtractedGstinFields(null, gstin);
+                this.gstFeedback = {
+                    type: 'error',
+                    message: 'An error occurred while connecting to GST lookup service.',
+                    note: 'PAN and State were filled from the GSTIN where possible. Please verify network connection and try again.'
+                };
+            } finally {
+                this.searchingGst = false;
+            }
+        }
+    };
+}
+
+function stateDropdown(addr, statesList, onStateSelected) {
+    return {
+        open: false,
+        search: '',
+        highlightedIndex: 0,
+        get states() {
+            return Array.isArray(statesList) ? statesList : [];
+        },
+        get filteredStates() {
+            const list = this.states;
+            if (!this.search || !this.search.trim()) {
+                return list;
+            }
+            const q = this.search.toLowerCase().trim();
+            return list.filter(s =>
+                (s.name && s.name.toLowerCase().includes(q)) ||
+                (s.code && String(s.code).toLowerCase().includes(q))
+            );
+        },
+        get selectedLabel() {
+            if (!addr.state) return '';
+            const raw = String(addr.state).trim().toLowerCase();
+            const match = this.states.find(s =>
+                (s.name && s.name.toLowerCase() === raw) ||
+                (s.code && String(s.code).toLowerCase() === raw)
+            );
+            if (match) {
+                if (String(addr.state).trim() === String(match.code)) {
+                    addr.state = match.name;
+                }
+                return `${match.name} (${match.code})`;
+            }
+            return addr.state;
+        },
+        toggle() {
+            if (this.open) {
+                this.close();
+            } else {
+                this.open = true;
+                this.search = '';
+                this.highlightedIndex = 0;
+                this.$nextTick(() => {
+                    this.$refs.searchInput?.focus();
+                });
+            }
+        },
+        close() {
+            this.open = false;
+            this.search = '';
+        },
+        clearState() {
+            addr.state = '';
+            addr.city = '';
+            if (typeof onStateSelected === 'function') {
+                onStateSelected();
+            }
+            this.close();
+            this.$nextTick(() => {
+                this.$refs.triggerButton?.focus();
+            });
+        },
+        selectState(st) {
+            const isChanged = (addr.state !== st.name);
+            addr.state = st.name;
+            if (isChanged) {
+                addr.city = '';
+            }
+            if (typeof onStateSelected === 'function') {
+                onStateSelected();
+            }
+            this.close();
+            this.$nextTick(() => {
+                this.$refs.triggerButton?.focus();
+            });
+        },
+        onKeyDown(event) {
+            const list = this.filteredStates;
+            if (!this.open) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
+                    event.preventDefault();
+                    this.toggle();
+                }
+                return;
+            }
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex + 1) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex - 1 + list.length) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (list.length > 0 && list[this.highlightedIndex]) {
+                    this.selectState(list[this.highlightedIndex]);
+                }
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.close();
+                this.$nextTick(() => {
+                    this.$refs.triggerButton?.focus();
+                });
+            }
+        },
+        scrollActiveIntoView() {
+            this.$nextTick(() => {
+                const el = this.$refs.optionsList?.querySelector(`[data-index="${this.highlightedIndex}"]`);
+                if (el) {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+    };
+}
+
+function cityDropdown(addr, stateCities, addressIndex) {
+    return {
+        open: false,
+        search: '',
+        highlightedIndex: 0,
+        get isDisabled() {
+            return !addr.state;
+        },
+        get cities() {
+            if (!addr.state || !stateCities) return [];
+            return stateCities[addr.state] || [];
+        },
+        get filteredCities() {
+            const list = this.cities;
+            if (!this.search || !this.search.trim()) {
+                return list;
+            }
+            const q = this.search.toLowerCase().trim();
+            return list.filter(c => c.toLowerCase().includes(q));
+        },
+        toggle() {
+            if (this.isDisabled) return;
+            if (this.open) {
+                this.close();
+            } else {
+                this.open = true;
+                this.search = '';
+                this.highlightedIndex = 0;
+                this.$nextTick(() => {
+                    this.$refs.searchInput?.focus();
+                });
+            }
+        },
+        close() {
+            this.open = false;
+            this.search = '';
+        },
+        clearCity() {
+            addr.city = '';
+            this.close();
+            this.$nextTick(() => {
+                this.$refs.triggerButton?.focus();
+            });
+        },
+        selectCity(cityName) {
+            addr.city = cityName;
+            this.close();
+            this.$nextTick(() => {
+                this.$refs.triggerButton?.focus();
+            });
+        },
+        addSearchedCity() {
+            const name = (this.search || '').trim();
+            if (!name) return;
+            this.$dispatch('add-city', { index: addressIndex, name: name });
+            this.close();
+        },
+        onKeyDown(event) {
+            const list = this.filteredCities;
+            if (!this.open) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
+                    event.preventDefault();
+                    this.toggle();
+                }
+                return;
+            }
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex + 1) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex - 1 + list.length) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                if (list.length > 0 && list[this.highlightedIndex]) {
+                    this.selectCity(list[this.highlightedIndex]);
+                }
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                this.close();
+                this.$nextTick(() => {
+                    this.$refs.triggerButton?.focus();
+                });
+            }
+        },
+        scrollActiveIntoView() {
+            this.$nextTick(() => {
+                const el = this.$refs.optionsList?.querySelector(`[data-index="${this.highlightedIndex}"]`);
+                if (el) {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+    };
+}
+
+function dmsContactDesignation(contact, options) {
+    return {
+        options: Array.isArray(options) ? options : [],
+        isOpen: false,
+        search: '',
+        highlightedIndex: -1,
+        init() {
+            this.syncSearch();
+            this.$watch(() => contact.designation, () => {
+                this.syncSearch();
+            });
+        },
+        syncSearch() {
+            this.search = contact.designation || '';
+        },
+        get filteredOptions() {
+            const list = (this.designationOptions && Array.isArray(this.designationOptions)) ? this.designationOptions : (this.options || []);
+            const q = (this.search || '').trim().toLowerCase();
+            if (!q || (contact.designation && q === contact.designation.trim().toLowerCase())) {
+                return list;
+            }
+            return list.filter(opt => opt.toLowerCase().includes(q));
+        },
+        open() {
+            this.isOpen = true;
+            this.highlightedIndex = -1;
+        },
+        close() {
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+            this.syncSearch();
+        },
+        toggle() {
+            if (this.isOpen) {
+                this.close();
+            } else {
+                this.open();
+            }
+        },
+        select(opt) {
+            contact.designation = opt;
+            this.search = opt;
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+
+            const list = this.designationList || [];
+            const match = list.find(d => d.name.toLowerCase() === opt.toLowerCase());
+            if (match) {
+                contact.designation_id = match.id;
+            } else if (opt.toLowerCase() === 'other') {
+                const other = list.find(d => d.name.toLowerCase() === 'other');
+                contact.designation_id = other ? other.id : null;
+            } else {
+                contact.designation_id = null;
+            }
+
+            if (opt === 'Other') {
+                contact.role = (contact.other_designation || '').trim() || 'Other';
+                this.$nextTick(() => {
+                    this.$refs.customInput?.focus();
+                });
+            } else {
+                contact.other_designation = '';
+                contact.role = opt;
+            }
+        },
+        clear() {
+            contact.designation_id = null;
+            contact.designation = '';
+            contact.other_designation = '';
+            contact.role = '';
+            this.search = '';
+            this.isOpen = false;
+            this.highlightedIndex = -1;
+        },
+        effectiveRole() {
+            if (contact.designation === 'Other') {
+                const custom = (contact.other_designation || '').trim();
+                return custom !== '' ? custom : 'Other';
+            }
+            return (contact.designation || '').trim();
+        },
+        onSearchKeyDown(event) {
+            const list = this.filteredOptions;
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (!this.isOpen) {
+                    this.open();
+                    return;
+                }
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex + 1) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (!this.isOpen) {
+                    this.open();
+                    return;
+                }
+                if (list.length > 0) {
+                    this.highlightedIndex = (this.highlightedIndex - 1 + list.length) % list.length;
+                    this.scrollActiveIntoView();
+                }
+            } else if (event.key === 'Enter') {
+                if (this.isOpen) {
+                    event.preventDefault();
+                    if (list.length > 0) {
+                        const target = (this.highlightedIndex >= 0 && this.highlightedIndex < list.length)
+                            ? list[this.highlightedIndex]
+                            : list[0];
+                        this.select(target);
+                    }
+                }
+            } else if (event.key === 'Escape') {
+                if (this.isOpen) {
+                    event.preventDefault();
+                    this.close();
+                }
+            }
+        },
+        scrollActiveIntoView() {
+            this.$nextTick(() => {
+                const el = this.$refs.optionsMenu?.querySelector(`[data-index="${this.highlightedIndex}"]`);
+                if (el) {
+                    el.scrollIntoView({ block: 'nearest' });
+                }
+            });
+        }
+    };
+}
+</script>
+@endpush
+@endsection

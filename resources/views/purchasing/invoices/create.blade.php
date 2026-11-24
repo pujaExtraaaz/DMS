@@ -441,10 +441,6 @@
                     <span x-show="priceType === 'inclusive'" x-cloak class="text-indigo-700 font-medium">Unit cost already includes GST. Tax is taken out of that price and is not added again. Purchase Price Incl. GST matches the unit cost.</span>
                 </p>
             </div>
-            <button type="button" @click="addItem()"
-                    class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
-                + Add Item
-            </button>
         </div>
 
         <div x-show="itemsError" x-cloak class="mx-4 mt-3 p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center justify-between text-xs text-rose-700 shadow-2xs">
@@ -488,7 +484,7 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                    <template x-for="(row, i) in items" :key="i">
+                    <template x-for="(row, i) in items" :key="row._key || i">
                         <tr class="align-top hover:bg-slate-50/50 transition-colors">
                             <td class="p-3 min-w-[340px] lg:min-w-[380px]">
                                 <div class="flex items-center justify-between gap-2 mb-1">
@@ -665,6 +661,26 @@
                         </tr>
                     </template>
                 </tbody>
+                <tfoot>
+                    <tr class="border-t border-slate-200 bg-slate-50/60">
+                        <td colspan="13" class="p-3">
+                            <div class="sticky left-3 inline-flex items-center gap-3">
+                                <button type="button"
+                                        @click="addItem()"
+                                        id="add-item-btn"
+                                        class="inline-flex items-center gap-1.5 rounded-lg bg-indigo-50 px-3.5 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800 border border-indigo-200/60 shadow-2xs transition">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    + Add Item
+                                </button>
+                                <span class="text-xs text-slate-500 font-medium">
+                                    Total: <span class="font-semibold text-slate-700" x-text="items.length"></span> <span x-text="items.length === 1 ? 'item' : 'items'"></span>
+                                </span>
+                            </div>
+                        </td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
 
@@ -915,6 +931,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
             }
             const newProductId = @json(request('new_product_id'));
             const returnedFrom = @json(request('returned_from'));
+            const oldItems = @json(old('items', []));
             const draft = this.restoreCreateDraft(serverDraft);
             const targetRow = draft?.targetRow != null
                 ? parseInt(draft.targetRow, 10) || 0
@@ -932,7 +949,39 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
                 }
             }
 
-            if (!draft && initialOrder && initialOrder.items && initialOrder.items.length) {
+            if (Array.isArray(oldItems) && oldItems.length > 0) {
+                this.items = oldItems.map((it, idx) => {
+                    const p = this.products.find(prod => String(prod.id) === String(it.product_id));
+                    const unitCost = Number(it.unit_cost) || 0;
+                    const cgst = Number(it.cgst_percent) || 0;
+                    const sgst = Number(it.sgst_percent) || 0;
+                    const tax = cgst + sgst;
+                    const mrp = Number(it.batch_mrp) || (p ? (Number(p.mrp) || 0) : 0);
+                    const inclusive = Number(it.purchase_price_inclusive) || (this.priceType === 'inclusive' ? unitCost : Number((unitCost * (1 + tax / 100)).toFixed(2)));
+                    const isTracked = p ? (p.is_serial_tracked !== undefined ? Boolean(p.is_serial_tracked) : String(p.tracking_type || '').includes('serial')) : false;
+                    const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
+                    return {
+                        _key: 'item_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 7),
+                        product_id: it.product_id ? String(it.product_id) : '',
+                        uom_id: uomInfo.uom_id,
+                        unit: uomInfo.unit,
+                        allowed_uoms: uomInfo.allowed_uoms,
+                        allow_unit_change: uomInfo.allow_unit_change,
+                        tracking_type: p ? (p.tracking_type || 'none') : 'none',
+                        is_serial_tracked: isTracked,
+                        quantity: Number(it.quantity) || 1,
+                        unit_cost: unitCost,
+                        purchase_price_inclusive: inclusive,
+                        purchase_discount_percent: Number(it.purchase_discount_percent) || (mrp > 0 ? Number((((mrp - inclusive) / mrp) * 100).toFixed(2)) : 0),
+                        cgst_percent: cgst,
+                        sgst_percent: sgst,
+                        batch_number: it.batch_number || it.batch_no || '',
+                        batch_mrp: mrp,
+                        serial_numbers: isTracked && Array.isArray(it.serial_numbers) ? it.serial_numbers : (isTracked ? [''] : []),
+                        line_total: 0
+                    };
+                });
+            } else if (!draft && initialOrder && initialOrder.items && initialOrder.items.length) {
                 this.items = initialOrder.items.map(it => {
                     const p = this.products.find(prod => prod.id === it.product_id);
                     const unitCost = Number(it.unit_cost) || 0;
@@ -944,6 +993,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
                     const isTracked = p ? (p.is_serial_tracked !== undefined ? Boolean(p.is_serial_tracked) : String(p.tracking_type || '').includes('serial')) : false;
                     const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                     return {
+                        _key: 'item_' + (it.id || (Date.now() + '_' + Math.random().toString(36).substring(2, 7))),
                         product_id: it.product_id,
                         uom_id: uomInfo.uom_id,
                         unit: uomInfo.unit,
@@ -1052,8 +1102,9 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
             this.recalc();
         },
 
-        addItem() {
-            this.items.push({
+        createBlankItem() {
+            return {
+                _key: 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
                 product_id: '',
                 uom_id: '',
                 unit: '—',
@@ -1071,7 +1122,11 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
                 batch_mrp: 0,
                 serial_numbers: [],
                 line_total: 0
-            });
+            };
+        },
+
+        addItem() {
+            this.items.push(this.createBlankItem());
             this.itemsError = '';
             this.recalc();
         },
@@ -1522,7 +1577,10 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
             setField('freight_notes', draft.freightNotes);
 
             if (Array.isArray(draft.items) && draft.items.length) {
-                this.items = draft.items.map(it => ({ ...it }));
+                this.items = draft.items.map((it, idx) => ({
+                    ...it,
+                    _key: it._key || ('item_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 7))
+                }));
             }
             this.draftRestored = true;
             return draft;

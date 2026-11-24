@@ -679,20 +679,44 @@ class CustomerController extends Controller
         $isInitialsSearch = $q !== '' && $digits === '' && strlen($initialsQuery) >= 1 && strlen($initialsQuery) <= 4;
 
         $contacts = PhoneDirectoryContact::query()
-            ->with(['designationMaster', 'company'])
+            ->with(['designationMaster', 'company', 'department'])
             ->whereNull('archived_at')
             ->where('status', 'active')
             ->when($q !== '', function ($query) use ($q, $digits, $initialsQuery, $isInitialsSearch) {
                 $query->where(function ($sub) use ($q, $digits, $initialsQuery, $isInitialsSearch) {
                     $sub->where('contact_name', 'like', "%{$q}%")
+                        ->orWhere('company_name', 'like', "%{$q}%")
+                        ->orWhereHas('company', fn ($cq) => $cq->where('companies.name', 'like', "%{$q}%"))
+                        ->orWhereHas('parties', fn ($pq) => $pq->where('customers.name', 'like', "%{$q}%")->orWhere('customers.trade_name', 'like', "%{$q}%"))
                         ->orWhere('mobile_number', 'like', "%{$q}%")
                         ->orWhere('alternate_mobile', 'like', "%{$q}%")
                         ->orWhere('whatsapp_number', 'like', "%{$q}%")
+                        ->orWhere('office_phone', 'like', "%{$q}%")
                         ->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('alternate_email', 'like', "%{$q}%")
                         ->orWhere('designation', 'like', "%{$q}%")
-                        ->orWhereHas('designationMaster', fn ($dq) => $dq->where('name', 'like', "%{$q}%"))
-                        ->orWhere('company_name', 'like', "%{$q}%")
-                        ->orWhereHas('company', fn ($cq) => $cq->where('name', 'like', "%{$q}%"));
+                        ->orWhereHas('designationMaster', fn ($dq) => $dq->where('designations.name', 'like', "%{$q}%"))
+                        ->orWhereHas('department', fn ($depq) => $depq->where('phone_directory_departments.name', 'like', "%{$q}%"));
+
+                    // Multi-token search: e.g. "Lucknow Director" or "Amitabh Lucknow"
+                    $tokens = array_filter(explode(' ', $q));
+                    if (count($tokens) > 1) {
+                        $sub->orWhere(function ($tokenQuery) use ($tokens) {
+                            foreach ($tokens as $token) {
+                                $tokenQuery->where(function ($tq) use ($token) {
+                                    $tq->where('contact_name', 'like', "%{$token}%")
+                                        ->orWhere('company_name', 'like', "%{$token}%")
+                                        ->orWhereHas('company', fn ($cq) => $cq->where('companies.name', 'like', "%{$token}%"))
+                                        ->orWhereHas('parties', fn ($pq) => $pq->where('customers.name', 'like', "%{$token}%")->orWhere('customers.trade_name', 'like', "%{$token}%"))
+                                        ->orWhere('designation', 'like', "%{$token}%")
+                                        ->orWhereHas('designationMaster', fn ($dq) => $dq->where('designations.name', 'like', "%{$token}%"))
+                                        ->orWhereHas('department', fn ($depq) => $depq->where('phone_directory_departments.name', 'like', "%{$token}%"))
+                                        ->orWhere('email', 'like', "%{$token}%")
+                                        ->orWhere('mobile_number', 'like', "%{$token}%");
+                                });
+                            }
+                        });
+                    }
 
                     // Number search: match digits inside phone fields (ignores spaces/dashes).
                     if ($digits !== '') {
@@ -704,6 +728,9 @@ class CustomerController extends Controller
                             ['%'.$digits.'%']
                         )->orWhereRaw(
                             "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(whatsapp_number,''), ' ', ''), '-', ''), '+', ''), '/', '') LIKE ?",
+                            ['%'.$digits.'%']
+                        )->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(office_phone,''), ' ', ''), '-', ''), '+', ''), '/', '') LIKE ?",
                             ['%'.$digits.'%']
                         );
                     }
@@ -721,8 +748,10 @@ class CustomerController extends Controller
                     }
                 });
             })
+            ->select('phone_directory_contacts.*')
+            ->distinct()
             ->orderBy('contact_name', 'asc')
-            ->limit($q === '' ? 100 : 40)
+            ->limit($q === '' ? 100 : 100)
             ->get()
             ->map(function (PhoneDirectoryContact $contact) {
                 return [
@@ -731,6 +760,7 @@ class CustomerController extends Controller
                     'name' => $contact->contact_name,
                     'designation' => $contact->designation ?: ($contact->designationMaster?->name ?? ''),
                     'designation_id' => $contact->designation_id,
+                    'department' => $contact->department?->name ?? '',
                     'company_name' => $contact->effective_company_name ?: ($contact->company_name ?? ''),
                     'company_id' => $contact->company_id,
                     'company_website' => $contact->company_website,
@@ -2690,7 +2720,7 @@ class CustomerController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'code', 'is_active']),
             'availablePhoneContacts' => PhoneDirectoryContact::query()
-                ->with(['designationMaster', 'company'])
+                ->with(['designationMaster', 'company', 'department'])
                 ->whereNull('archived_at')
                 ->where('status', 'active')
                 ->orderBy('contact_name')
@@ -2702,6 +2732,7 @@ class CustomerController extends Controller
                         'name' => $c->contact_name,
                         'designation' => $c->designation ?: ($c->designationMaster?->name ?? ''),
                         'designation_id' => $c->designation_id,
+                        'department' => $c->department?->name ?? '',
                         'company_name' => $c->effective_company_name ?: ($c->company_name ?? ''),
                         'phone' => $c->mobile_number,
                         'alternate_phone' => $c->alternate_mobile,

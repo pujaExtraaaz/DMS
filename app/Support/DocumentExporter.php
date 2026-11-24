@@ -1016,105 +1016,136 @@ class DocumentExporter
     /**
      * Export Purchase Orders Listing
      */
-    public static function exportPurchaseOrdersListing(Collection|iterable $orders, string $format): Response|StreamedResponse
+    public static function exportPurchaseOrdersListing(Collection|iterable $orders, string $format, bool $detailed = false): Response|StreamedResponse
     {
         if ($orders instanceof \Illuminate\Database\Eloquent\Collection) {
             $orders->loadMissing(['supplier', 'warehouse', 'branch', 'items.product', 'items.uom']);
         }
 
         $filename = 'Purchase-Orders-' . now()->format('Ymd-His') . '.' . ($format === 'excel' ? 'xlsx' : $format);
+        $rows = [];
         $totalSum = 0;
 
-        $orderHeaders = [
-            'PO No', 'Date', 'Expected Date', 'Due Date', 'Credit Days',
-            'Supplier Code', 'Supplier Name', 'Supplier GSTIN', 'Supplier PAN', 'Supplier Phone',
-            'Warehouse', 'Status', 'Is Freight Applicable', 'Freight Mode', 'Freight Amount (₹)',
-            'Freight Tax (₹)', 'Freight Total (₹)', 'Subtotal (₹)', 'Tax Amount (₹)', 'Grand Total (₹)',
-            'Billing Address', 'Shipping Address', 'Notes', 'Created At'
-        ];
-
-        $orderRows = [];
-        $itemRows = [];
-
-        foreach ($orders as $o) {
-            $totalSum += (float) $o->grand_total;
-            $orderRows[] = [
-                $o->po_no,
-                $o->po_date?->format('Y-m-d') ?? '',
-                $o->expected_date?->format('Y-m-d') ?? '',
-                $o->due_date?->format('Y-m-d') ?? '',
-                $o->credit_days ?? '',
-                $o->supplier?->code ?? '',
-                $o->supplier?->name ?? '',
-                $o->supplier?->tax_number ?? '',
-                $o->supplier?->pan_number ?? '',
-                $o->supplier?->phone ?? '',
-                $o->warehouse?->name ?? '',
-                ucfirst(str_replace('_', ' ', (string) $o->status)),
-                $o->is_freight_applicable ? 'Yes' : 'No',
-                $o->freight_mode ?? '',
-                number_format((float) $o->freight_amount, 2, '.', ''),
-                number_format((float) $o->freight_tax_amount, 2, '.', ''),
-                number_format((float) $o->freight_total, 2, '.', ''),
-                number_format((float) $o->subtotal, 2, '.', ''),
-                number_format((float) $o->tax_amount, 2, '.', ''),
-                number_format((float) $o->grand_total, 2, '.', ''),
-                $o->billing_address ?? '',
-                $o->shipping_address ?? '',
-                $o->notes ?? '',
-                $o->created_at?->format('Y-m-d H:i:s') ?? '',
+        if ($detailed) {
+            $headers = [
+                'PO No', 'PO Date', 'Expected Date', 'Due Date', 'Credit Days', 'Status',
+                'Supplier', 'Supplier GSTIN', 'Billing Address',
+                'Delivery Address', 'Delivery State', 'Warehouse',
+                'Brand', 'Category', 'Sub Category', 'Product', 'HSN/SAC', 'Batch', 'UOM',
+                'Qty', 'MRP', 'Purchase Price Incl. GST', 'Purchase Disc. %', 'Unit Cost',
+                'Tax %', 'CGST %', 'SGST %', 'IGST %', 'Line Total (₹)',
+                'Freight Applicable', 'Freight Mode', 'Freight Amount', 'Freight Tax', 'Freight Total',
+                'PO Subtotal (₹)', 'PO Tax (₹)', 'PO Grand Total (₹)', 'Notes', 'Created By',
             ];
 
-            if ($o->relationLoaded('items') || isset($o->items)) {
-                $sr = 1;
-                foreach ($o->items as $item) {
-                    $itemRows[] = [
+            foreach ($orders as $o) {
+                $totalSum += (float) $o->grand_total;
+                $deliveryState = $o->companyDeliveryAddress?->state ?? '';
+                $items = $o->items;
+
+                if ($items->isEmpty()) {
+                    $rows[] = [
                         $o->po_no,
-                        $o->po_date?->format('Y-m-d') ?? '',
+                        $o->po_date?->format('d/m/Y') ?? '',
+                        $o->expected_date?->format('d/m/Y') ?? '',
+                        $o->due_date?->format('d/m/Y') ?? '',
+                        $o->credit_days ?? '',
+                        ucfirst(str_replace('_', ' ', $o->status)),
                         $o->supplier?->name ?? '',
-                        $sr++,
-                        $item->product?->sku ?? $item->product?->code ?? '',
+                        $o->supplier?->gstin ?? '',
+                        preg_replace('/\s+/', ' ', trim((string) ($o->billing_address ?: ''))),
+                        preg_replace('/\s+/', ' ', trim((string) ($o->shipping_address ?: ''))),
+                        $deliveryState,
+                        $o->warehouse?->name ?? '',
+                        '', '', '', '', '', '', '',
+                        '', '', '', '', '',
+                        '', '', '', '', '',
+                        $o->is_freight_applicable ? 'Yes' : 'No',
+                        $o->freight_mode ?? '',
+                        number_format((float) $o->freight_amount, 2, '.', ''),
+                        number_format((float) $o->freight_tax_amount, 2, '.', ''),
+                        number_format((float) $o->freight_total, 2, '.', ''),
+                        number_format((float) $o->subtotal, 2, '.', ''),
+                        number_format((float) $o->tax_amount, 2, '.', ''),
+                        number_format((float) $o->grand_total, 2, '.', ''),
+                        $o->notes ?? '',
+                        $o->creator?->name ?? '',
+                    ];
+                    continue;
+                }
+
+                foreach ($items as $item) {
+                    $taxP = (float) $item->tax_percent;
+                    $cgstP = (float) ($item->cgst_percent ?? 0);
+                    $sgstP = (float) ($item->sgst_percent ?? 0);
+                    $igstP = ($cgstP == 0.0 && $sgstP == 0.0 && $taxP > 0) ? $taxP : 0.0;
+
+                    $rows[] = [
+                        $o->po_no,
+                        $o->po_date?->format('d/m/Y') ?? '',
+                        $o->expected_date?->format('d/m/Y') ?? '',
+                        $o->due_date?->format('d/m/Y') ?? '',
+                        $o->credit_days ?? '',
+                        ucfirst(str_replace('_', ' ', $o->status)),
+                        $o->supplier?->name ?? '',
+                        $o->supplier?->gstin ?? '',
+                        preg_replace('/\s+/', ' ', trim((string) ($o->billing_address ?: ''))),
+                        preg_replace('/\s+/', ' ', trim((string) ($o->shipping_address ?: ''))),
+                        $deliveryState,
+                        $o->warehouse?->name ?? '',
+                        $item->product?->brand?->name ?? '',
+                        $item->product?->category?->name ?? '',
+                        $item->product?->subCategory?->name ?? '',
                         $item->product?->name ?? '',
-                        (float) $item->quantity,
-                        (float) $item->received_qty,
-                        $item->uom?->code ?? $item->uom?->name ?? '',
-                        number_format((float) $item->unit_cost, 2, '.', ''),
-                        number_format((float) $item->purchase_price_inclusive, 2, '.', ''),
-                        number_format((float) $item->mrp, 2, '.', ''),
-                        number_format((float) $item->purchase_discount_percent, 2, '.', ''),
-                        number_format((float) $item->tax_percent, 2, '.', ''),
+                        $item->product?->hsn_code ?? '',
+                        $item->batch_no ?? $item->batch_name ?? '',
+                        $item->uom?->code ?? '',
+                        number_format((float) $item->quantity, 4, '.', ''),
+                        number_format((float) ($item->mrp ?? 0), 2, '.', ''),
+                        number_format((float) ($item->purchase_price_inclusive ?? 0), 2, '.', ''),
+                        number_format((float) ($item->purchase_discount_percent ?? 0), 2, '.', ''),
+                        number_format((float) $item->unit_cost, 4, '.', ''),
+                        number_format($taxP, 2, '.', ''),
+                        number_format($cgstP, 2, '.', ''),
+                        number_format($sgstP, 2, '.', ''),
+                        number_format($igstP, 2, '.', ''),
                         number_format((float) $item->line_total, 2, '.', ''),
-                        $item->batch_no ?? '',
-                        $item->serial_no ?? '',
-                        (float) $item->weight,
+                        $o->is_freight_applicable ? 'Yes' : 'No',
+                        $o->freight_mode ?? '',
+                        number_format((float) $o->freight_amount, 2, '.', ''),
+                        number_format((float) $o->freight_tax_amount, 2, '.', ''),
+                        number_format((float) $o->freight_total, 2, '.', ''),
+                        number_format((float) $o->subtotal, 2, '.', ''),
+                        number_format((float) $o->tax_amount, 2, '.', ''),
+                        number_format((float) $o->grand_total, 2, '.', ''),
+                        $o->notes ?? '',
+                        $o->creator?->name ?? '',
                     ];
                 }
             }
-        }
+        } else {
+            $headers = ['PO No', 'Date', 'Expected Date', 'Supplier', 'Warehouse', 'Status', 'Subtotal (₹)', 'Tax Amount (₹)', 'Grand Total (₹)'];
 
-        if ($format === 'excel' || $format === 'xlsx') {
-            $itemHeaders = [
-                'PO No', 'PO Date', 'Supplier', 'Item #', 'Product Code', 'Product Name',
-                'Quantity', 'Received Qty', 'UOM', 'Unit Cost (₹)', 'Inclusive Price (₹)',
-                'MRP (₹)', 'Discount %', 'Tax %', 'Line Total (₹)', 'Batch No', 'Serial No', 'Weight'
-            ];
-
-            return self::exportMultiSheetExcel([
-                'Purchase Orders' => [
-                    'columns' => array_combine($orderHeaders, $orderHeaders),
-                    'rows' => array_map(fn ($r) => array_combine($orderHeaders, $r), $orderRows),
-                ],
-                'PO Items' => [
-                    'columns' => array_combine($itemHeaders, $itemHeaders),
-                    'rows' => array_map(fn ($r) => array_combine($itemHeaders, $r), $itemRows),
-                ],
-            ], 'purchase-orders-master-' . now()->format('Y-m-d'));
+            foreach ($orders as $o) {
+                $totalSum += (float) $o->grand_total;
+                $rows[] = [
+                    $o->po_no,
+                    $o->po_date?->format('d/m/Y') ?? '',
+                    $o->expected_date?->format('d/m/Y') ?? '',
+                    $o->supplier?->name ?? '',
+                    $o->warehouse?->name ?? '',
+                    ucfirst(str_replace('_', ' ', $o->status)),
+                    number_format((float) $o->subtotal, 2, '.', ''),
+                    number_format((float) $o->tax_amount, 2, '.', ''),
+                    number_format((float) $o->grand_total, 2, '.', ''),
+                ];
+            }
         }
 
         $meta = [
-            '_title' => 'Purchase Orders Report',
+            '_title' => $detailed ? 'Purchase Orders Detailed Export' : 'Purchase Orders Report',
             'Exported At' => now()->format('d M Y H:i:s'),
-            'Total Records' => count($orderRows),
+            'Total Records' => count($rows),
         ];
 
         $totals = [
@@ -1122,13 +1153,17 @@ class DocumentExporter
         ];
 
         if ($format === 'csv') {
-            return self::exportCsv($filename, $orderHeaders, $orderRows, $meta, $totals);
+            return self::exportCsv($filename, $headers, $rows, $meta, $totals);
         }
 
-        return ReportExporter::pdf($filename, 'Purchase Orders Report', $orderHeaders, $orderRows, [
-            'Generated' => now()->format('d M Y H:i'),
-            'Total Amount' => '₹ ' . number_format($totalSum, 2),
-        ]);
+        if ($format === 'pdf') {
+            return ReportExporter::pdf($filename, $detailed ? 'Purchase Orders Detailed Export' : 'Purchase Orders Report', $headers, $rows, [
+                'Generated' => now()->format('d M Y H:i'),
+                'Total Amount' => '₹ ' . number_format($totalSum, 2),
+            ]);
+        }
+
+        return self::exportExcel($filename, 'Purchase Orders', $headers, $rows, $meta, $totals);
     }
 
     /**
@@ -1275,7 +1310,7 @@ class DocumentExporter
         $totalSum = 0;
 
         $invoiceHeaders = [
-            'Invoice No', 'Date', 'Due Date', 'Customer Code', 'Customer Name', 'Customer GSTIN', 'Customer PAN',
+            'Invoice No', 'Date', 'Due Date', 'Credit Period (Days)', 'Remaining Days', 'Customer Code', 'Customer Name', 'Customer GSTIN', 'Customer PAN',
             'Customer Phone', 'Billing Address', 'Shipping Address', 'Salesperson', 'Status',
             'Price Type', 'Tax Type', 'Order No', 'Delivery Note No', 'Dispatch Doc No', 'Vehicle No', 'Carrier',
             'Subtotal (₹)', 'Discount Amount (₹)', 'Taxable Amount (₹)', 'CGST (₹)', 'SGST (₹)', 'IGST (₹)',
@@ -1288,10 +1323,13 @@ class DocumentExporter
 
         foreach ($invoices as $inv) {
             $totalSum += (float) $inv->grand_total;
+            $dueInfo = $inv->getRemainingDaysInfo();
             $invoiceRows[] = [
                 $inv->invoice_no,
                 $inv->invoice_date?->format('Y-m-d') ?? '',
                 $inv->due_date?->format('Y-m-d') ?? '',
+                $dueInfo['credit_period_label'],
+                $dueInfo['remaining_label'],
                 $inv->customer?->code ?? '',
                 $inv->customer?->name ?? '',
                 $inv->customer?->tax_number ?? '',
