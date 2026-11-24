@@ -283,4 +283,147 @@ class Invoice extends Model
     {
         return $this->isEInvoiceGenerated() || $this->isEWayBillGenerated();
     }
+
+    /**
+     * Resolve remaining credit days and countdown metadata.
+     *
+     * @param \Carbon\CarbonInterface|string|null $asOfDate
+     * @return array{
+     *     status: 'paid'|'cancelled'|'na'|'ok'|'warning'|'due_today'|'overdue',
+     *     badge_variant: 'success'|'warning'|'danger'|'neutral',
+     *     credit_days: int|null,
+     *     credit_period_label: string,
+     *     remaining_days: int|null,
+     *     remaining_label: string,
+     *     display_text: string,
+     * }
+     */
+    public function getRemainingDaysInfo($asOfDate = null): array
+    {
+        $statusStr = strtolower((string) $this->status);
+
+        // Cancelled invoice rule
+        if (in_array($statusStr, ['cancelled', 'canceled'], true)) {
+            $creditDays = $this->resolveCreditDays();
+            return [
+                'status' => 'cancelled',
+                'badge_variant' => 'neutral',
+                'credit_days' => $creditDays > 0 ? $creditDays : null,
+                'credit_period_label' => $creditDays > 0 ? ($creditDays === 1 ? '1 Day' : "{$creditDays} Days") : 'N/A',
+                'remaining_days' => null,
+                'remaining_label' => 'Cancelled',
+                'display_text' => 'Cancelled',
+            ];
+        }
+
+        // Fully paid invoice rule
+        $isPaid = $statusStr === 'paid' || ((float) $this->paid_amount >= (float) $this->grand_total && (float) $this->grand_total > 0);
+        if ($isPaid) {
+            $creditDays = $this->resolveCreditDays();
+            return [
+                'status' => 'paid',
+                'badge_variant' => 'success',
+                'credit_days' => $creditDays > 0 ? $creditDays : null,
+                'credit_period_label' => $creditDays > 0 ? ($creditDays === 1 ? '1 Day' : "{$creditDays} Days") : 'N/A',
+                'remaining_days' => null,
+                'remaining_label' => 'Paid',
+                'display_text' => 'Paid',
+            ];
+        }
+
+        // Credit period and due date
+        $creditDays = $this->resolveCreditDays();
+        $dueDate = $this->due_date ? \Illuminate\Support\Carbon::parse($this->due_date)->startOfDay() : null;
+
+        if (! $dueDate && $creditDays > 0 && $this->invoice_date) {
+            $dueDate = \Illuminate\Support\Carbon::parse($this->invoice_date)->startOfDay()->addDays($creditDays);
+        }
+
+        // Invoices without credit period / due date
+        if (! $dueDate || ($creditDays <= 0 && (! $this->due_date || ($this->invoice_date && $this->due_date->isSameDay($this->invoice_date))))) {
+            return [
+                'status' => 'na',
+                'badge_variant' => 'neutral',
+                'credit_days' => $creditDays > 0 ? $creditDays : null,
+                'credit_period_label' => $creditDays > 0 ? ($creditDays === 1 ? '1 Day' : "{$creditDays} Days") : 'N/A',
+                'remaining_days' => null,
+                'remaining_label' => 'N/A',
+                'display_text' => 'N/A',
+            ];
+        }
+
+        // Live daily countdown: Due Date - Current Date
+        $today = ($asOfDate ? \Illuminate\Support\Carbon::parse($asOfDate) : \Illuminate\Support\Carbon::today())->startOfDay();
+        $diff = (int) $today->diffInDays($dueDate, false);
+
+        $creditPeriodLabel = $creditDays > 0 ? ($creditDays === 1 ? '1 Day' : "{$creditDays} Days") : 'N/A';
+
+        if ($diff > 15) {
+            return [
+                'status' => 'ok',
+                'badge_variant' => 'success',
+                'credit_days' => $creditDays,
+                'credit_period_label' => $creditPeriodLabel,
+                'remaining_days' => $diff,
+                'remaining_label' => "{$diff} Days Left",
+                'display_text' => "{$diff} Days Left",
+            ];
+        }
+
+        if ($diff >= 1) {
+            return [
+                'status' => 'warning',
+                'badge_variant' => 'warning',
+                'credit_days' => $creditDays,
+                'credit_period_label' => $creditPeriodLabel,
+                'remaining_days' => $diff,
+                'remaining_label' => $diff === 1 ? '1 Day Left' : "{$diff} Days Left",
+                'display_text' => $diff === 1 ? '1 Day Left' : "{$diff} Days Left",
+            ];
+        }
+
+        if ($diff === 0) {
+            return [
+                'status' => 'due_today',
+                'badge_variant' => 'danger',
+                'credit_days' => $creditDays,
+                'credit_period_label' => $creditPeriodLabel,
+                'remaining_days' => 0,
+                'remaining_label' => 'Due Today',
+                'display_text' => 'Due Today',
+            ];
+        }
+
+        // Overdue ($diff < 0)
+        $overdueDays = abs($diff);
+        return [
+            'status' => 'overdue',
+            'badge_variant' => 'danger',
+            'credit_days' => $creditDays,
+            'credit_period_label' => $creditPeriodLabel,
+            'remaining_days' => $diff,
+            'remaining_label' => $overdueDays === 1 ? '1 Day Overdue' : "{$overdueDays} Days Overdue",
+            'display_text' => $overdueDays === 1 ? '1 Day Overdue' : "{$overdueDays} Days Overdue",
+        ];
+    }
+
+    public function resolveCreditDays(): int
+    {
+        if ($this->credit_days !== null && (int) $this->credit_days > 0) {
+            return (int) $this->credit_days;
+        }
+
+        if ($this->customer && $this->customer->credit_days !== null && (int) $this->customer->credit_days > 0) {
+            return (int) $this->customer->credit_days;
+        }
+
+        if ($this->due_date && $this->invoice_date) {
+            $days = (int) $this->invoice_date->diffInDays($this->due_date, false);
+            if ($days > 0) {
+                return $days;
+            }
+        }
+
+        return (int) ($this->credit_days ?? 0);
+    }
 }
