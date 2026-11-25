@@ -129,7 +129,7 @@ class Customer extends Model
         if (str_contains($upper, 'UIN') || str_contains($upper, 'EMBASSY') || str_contains($upper, 'UN BODY')) {
             return 'UIN Holder';
         }
-        if (str_contains($upper, 'UNREGISTERED')) {
+        if (str_contains($upper, 'UNREGISTERED') || str_contains($upper, 'CONSUMER')) {
             return 'Unregistered';
         }
         if (str_contains($upper, 'REGULAR')) {

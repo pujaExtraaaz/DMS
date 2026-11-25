@@ -9,8 +9,13 @@ use App\Domains\Organization\Models\Company;
 use App\Domains\Sales\Models\Quotation;
 use App\Domains\Sales\Services\QuotationService;
 use App\Http\Controllers\Controller;
+use App\Support\DocumentExporter;
 use App\Support\DocumentNumberService;
+use App\Support\ReportExporter;
 use App\Support\Traits\SortableAndSearchable;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -26,7 +31,7 @@ class QuotationController extends Controller
         protected DocumentNumberService $documentNumberService,
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $query = Quotation::query()
             ->with(['customer', 'salesperson'])
@@ -62,6 +67,10 @@ class QuotationController extends Controller
             defaultSort: 'quotation_date',
             defaultDirection: 'desc'
         );
+
+        if ($export = $this->exportQuotations($request, $query)) {
+            return $export;
+        }
 
         $items = $query->paginate(15)->withQueryString();
 
@@ -153,15 +162,56 @@ class QuotationController extends Controller
         return $this->flashSuccess('Quotation updated.', 'quotations.show', ['quotation' => $quotation]);
     }
 
-    public function destroy(Request $request, Quotation $quotation): RedirectResponse
+    public function destroy(Request $request, Quotation $quotation): RedirectResponse|JsonResponse
     {
-        try {
-            $this->quotationService->delete($quotation, $request->user());
-        } catch (InvalidArgumentException $e) {
-            return $this->flashError($e->getMessage(), 'quotations.show', ['quotation' => $quotation]);
+        $user = $request->user() ?? auth()->user();
+        if (! $user || (! $user->hasRole('super-admin') &&
+            ! $user->can('quotations.delete') &&
+            ! $user->can('quotations.manage') &&
+            ! $user->can('sales.delete') &&
+            ! $user->can('sales.manage'))) {
+            $message = 'Unauthorized: You do not have permission to delete quotations.';
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 403);
+            }
+            return back()->with('error', $message);
         }
 
-        return $this->flashSuccess('Quotation deleted.', 'quotations.index');
+        try {
+            $this->quotationService->delete($quotation, $user);
+
+            $message = 'Quotation deleted successfully.';
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                ]);
+            }
+
+            return $this->flashSuccess($message, 'quotations.index')->with('success', $message);
+        } catch (\InvalidArgumentException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                ], 422);
+            }
+            return back()->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            report($e);
+            $message = 'Failed to delete quotation: ' . $e->getMessage();
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 500);
+            }
+            return back()->with('error', $message);
+        }
     }
 
     public function send(Quotation $quotation): RedirectResponse
@@ -308,5 +358,147 @@ class QuotationController extends Controller
         }
 
         return $validated;
+    }
+
+    public function export(Quotation $quotation, string $format): Response|StreamedResponse
+    {
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            abort(404, 'Unsupported export format.');
+        }
+
+        return DocumentExporter::exportQuotation($quotation, $format);
+    }
+
+    protected function exportQuotations(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)
+            ->with(['customer', 'salesperson', 'convertedOrder', 'items.product', 'items.uom'])
+            ->get();
+
+        $quotationRows = $records->map(function (Quotation $q) {
+            return [
+                'Quotation No' => $q->quotation_no,
+                'Quotation Date' => optional($q->quotation_date)->format('Y-m-d'),
+                'Valid Until' => optional($q->valid_until)->format('Y-m-d'),
+                'Status' => ucfirst((string) $q->status),
+                'Title' => $q->title ?? '',
+                'Customer Code' => $q->customer?->code ?? '',
+                'Customer Name' => $q->customer?->name ?? '',
+                'Customer Phone' => $q->customer?->phone ?? '',
+                'Customer Email' => $q->customer?->email ?? '',
+                'Customer GSTIN' => $q->customer?->tax_number ?? '',
+                'Customer PAN' => $q->customer?->pan_number ?? '',
+                'Customer Address' => trim(($q->customer?->address ?? '') . ' ' . ($q->customer?->city ?? '') . ' ' . ($q->customer?->pincode ?? '')),
+                'Salesperson' => $q->salesperson?->name ?? '',
+                'Subtotal (₹)' => number_format((float) $q->subtotal, 2, '.', ''),
+                'Discount Amount (₹)' => number_format((float) $q->discount_amount, 2, '.', ''),
+                'Tax Amount (₹)' => number_format((float) $q->tax_amount, 2, '.', ''),
+                'Grand Total (₹)' => number_format((float) $q->grand_total, 2, '.', ''),
+                'Estimated Profit (₹)' => number_format((float) $q->estimated_profit, 2, '.', ''),
+                'Converted Order No' => $q->convertedOrder?->order_no ?? '',
+                'Notes' => $q->notes ?? '',
+                'Special Instructions' => $q->special_instructions ?? '',
+                'Terms & Conditions' => $q->terms_conditions ?? '',
+                'Created By' => $q->created_by_name ?? '',
+                'Created At' => optional($q->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->all();
+
+        $quotationCols = [
+            'Quotation No' => 'Quotation No',
+            'Quotation Date' => 'Quotation Date',
+            'Valid Until' => 'Valid Until',
+            'Status' => 'Status',
+            'Title' => 'Title',
+            'Customer Code' => 'Customer Code',
+            'Customer Name' => 'Customer Name',
+            'Customer Phone' => 'Customer Phone',
+            'Customer Email' => 'Customer Email',
+            'Customer GSTIN' => 'Customer GSTIN',
+            'Customer PAN' => 'Customer PAN',
+            'Customer Address' => 'Customer Address',
+            'Salesperson' => 'Salesperson',
+            'Subtotal (₹)' => 'Subtotal (₹)',
+            'Discount Amount (₹)' => 'Discount Amount (₹)',
+            'Tax Amount (₹)' => 'Tax Amount (₹)',
+            'Grand Total (₹)' => 'Grand Total (₹)',
+            'Estimated Profit (₹)' => 'Estimated Profit (₹)',
+            'Converted Order No' => 'Converted Order No',
+            'Notes' => 'Notes',
+            'Special Instructions' => 'Special Instructions',
+            'Terms & Conditions' => 'Terms & Conditions',
+            'Created By' => 'Created By',
+            'Created At' => 'Created At',
+        ];
+
+        if ($format === 'xlsx') {
+            $itemRows = [];
+            foreach ($records as $q) {
+                $sr = 1;
+                foreach ($q->items as $item) {
+                    $itemRows[] = [
+                        'Quotation No' => $q->quotation_no,
+                        'Quotation Date' => optional($q->quotation_date)->format('Y-m-d'),
+                        'Customer Name' => $q->customer?->name ?? '',
+                        'Item #' => $item->sort_order ?: $sr++,
+                        'Product Code' => $item->product?->code ?? '',
+                        'Product Name' => $item->product?->name ?? '',
+                        'Description' => $item->description ?? '',
+                        'HSN/SAC' => $item->hsn_code ?? '',
+                        'Quantity' => (float) $item->quantity,
+                        'UOM' => $item->uom?->code ?? $item->uom?->name ?? '',
+                        'Unit Price (₹)' => number_format((float) $item->unit_price, 2, '.', ''),
+                        'MRP (₹)' => number_format((float) $item->mrp, 2, '.', ''),
+                        'Discount (₹)' => number_format((float) $item->discount_amount, 2, '.', ''),
+                        'Tax Rate (%)' => number_format((float) $item->tax_rate, 2, '.', ''),
+                        'Line Total (₹)' => number_format((float) $item->line_total, 2, '.', ''),
+                        'Est Landed Cost (₹)' => number_format((float) $item->estimated_landed_cost, 2, '.', ''),
+                        'Est Profit (₹)' => number_format((float) $item->estimated_profit, 2, '.', ''),
+                    ];
+                }
+            }
+
+            $itemCols = [
+                'Quotation No' => 'Quotation No',
+                'Quotation Date' => 'Quotation Date',
+                'Customer Name' => 'Customer Name',
+                'Item #' => 'Item #',
+                'Product Code' => 'Product Code',
+                'Product Name' => 'Product Name',
+                'Description' => 'Description',
+                'HSN/SAC' => 'HSN/SAC',
+                'Quantity' => 'Quantity',
+                'UOM' => 'UOM',
+                'Unit Price (₹)' => 'Unit Price (₹)',
+                'MRP (₹)' => 'MRP (₹)',
+                'Discount (₹)' => 'Discount (₹)',
+                'Tax Rate (%)' => 'Tax Rate (%)',
+                'Line Total (₹)' => 'Line Total (₹)',
+                'Est Landed Cost (₹)' => 'Est Landed Cost (₹)',
+                'Est Profit (₹)' => 'Est Profit (₹)',
+            ];
+
+            return DocumentExporter::exportMultiSheetExcel([
+                'Quotations' => [
+                    'columns' => $quotationCols,
+                    'rows' => $quotationRows,
+                ],
+                'Quotation Items' => [
+                    'columns' => $itemCols,
+                    'rows' => $itemRows,
+                ],
+            ], 'quotations-master-' . now()->format('Y-m-d'));
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($quotationRows, array_values($quotationCols), 'quotations-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($quotationRows, $quotationCols, 'Quotations Master Register', 'quotations-' . now()->format('Y-m-d') . '.pdf');
     }
 }

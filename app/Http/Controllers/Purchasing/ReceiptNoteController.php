@@ -13,6 +13,7 @@ use App\Domains\Purchasing\Models\ReceiptNoteItem;
 use App\Domains\Purchasing\Services\ReceiptNoteService;
 use App\Http\Controllers\Controller;
 use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReceiptNoteController extends Controller
 {
@@ -30,7 +32,7 @@ class ReceiptNoteController extends Controller
         protected ReceiptNoteService $receiptNoteService,
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $user = $request->user();
         $query = ReceiptNote::query()
@@ -66,6 +68,10 @@ class ReceiptNoteController extends Controller
 
         if ($request->filled('date_to')) {
             $query->whereDate('receipt_date', '<=', $request->input('date_to'));
+        }
+
+        if ($export = $this->exportReceiptNotes($request, $query)) {
+            return $export;
         }
 
         // Metrics for summary cards
@@ -476,5 +482,91 @@ class ReceiptNoteController extends Controller
         }
 
         return DocumentExporter::exportTabular('RN-' . $receiptNote->receipt_note_no, "Receipt Note {$receiptNote->receipt_note_no}", $headers, $rows, $format);
+    }
+
+    protected function exportReceiptNotes(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)
+            ->with(['supplier', 'warehouse', 'purchaseOrder', 'creator', 'items.product', 'items.uom'])
+            ->latest('receipt_date')
+            ->latest('id')
+            ->get();
+
+        $headers = [
+            'Receipt Note No', 'Receipt Date', 'Supplier Code', 'Supplier Name', 'Supplier Phone',
+            'Warehouse', 'PO No', 'Supplier Challan No', 'Supplier Challan Date', 'Reference No',
+            'Status', 'Remarks', 'Created At'
+        ];
+
+        $noteRows = $records->map(function (ReceiptNote $rn) {
+            return [
+                'Receipt Note No' => $rn->receipt_note_no,
+                'Receipt Date' => optional($rn->receipt_date)->format('Y-m-d'),
+                'Supplier Code' => $rn->supplier?->code ?? '',
+                'Supplier Name' => $rn->supplier?->name ?? '',
+                'Supplier Phone' => $rn->supplier?->phone ?? '',
+                'Warehouse' => $rn->warehouse?->name ?? '',
+                'PO No' => $rn->purchaseOrder?->po_no ?? '',
+                'Supplier Challan No' => $rn->supplier_challan_no ?? '',
+                'Supplier Challan Date' => optional($rn->supplier_challan_date)->format('Y-m-d'),
+                'Reference No' => $rn->reference_no ?? '',
+                'Status' => ucfirst(str_replace('_', ' ', (string) $rn->status)),
+                'Remarks' => $rn->remarks ?? '',
+                'Created At' => optional($rn->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->all();
+
+        if ($format === 'xlsx') {
+            $itemHeaders = [
+                'Receipt Note No', 'Receipt Date', 'Supplier', 'Product Code', 'Product Name',
+                'Ordered Qty', 'Challan Qty', 'Received Qty', 'Invoiced Qty', 'Returned Qty',
+                'UOM', 'Unit Cost (₹)', 'Batch No', 'Expiry Date', 'Remarks'
+            ];
+
+            $itemRows = [];
+            foreach ($records as $rn) {
+                foreach ($rn->items as $item) {
+                    $itemRows[] = [
+                        'Receipt Note No' => $rn->receipt_note_no,
+                        'Receipt Date' => optional($rn->receipt_date)->format('Y-m-d'),
+                        'Supplier' => $rn->supplier?->name ?? '',
+                        'Product Code' => $item->product?->code ?? $item->product?->sku ?? '',
+                        'Product Name' => $item->product?->name ?? '',
+                        'Ordered Qty' => (float) $item->ordered_qty,
+                        'Challan Qty' => (float) $item->challan_qty,
+                        'Received Qty' => (float) $item->received_qty,
+                        'Invoiced Qty' => (float) $item->invoiced_qty,
+                        'Returned Qty' => (float) $item->returned_qty,
+                        'UOM' => $item->uom?->code ?? $item->uom?->name ?? '',
+                        'Unit Cost (₹)' => number_format((float) $item->unit_cost, 2, '.', ''),
+                        'Batch No' => $item->batch_no ?? '',
+                        'Expiry Date' => optional($item->expiry_date)->format('Y-m-d'),
+                        'Remarks' => $item->remarks ?? '',
+                    ];
+                }
+            }
+
+            return DocumentExporter::exportMultiSheetExcel([
+                'Receipt Notes' => [
+                    'columns' => array_combine($headers, $headers),
+                    'rows' => $noteRows,
+                ],
+                'Receipt Note Items' => [
+                    'columns' => array_combine($itemHeaders, $itemHeaders),
+                    'rows' => $itemRows,
+                ],
+            ], 'receipt-notes-master-' . now()->format('Y-m-d'));
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($noteRows, $headers, 'receipt-notes-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($noteRows, array_combine($headers, $headers), 'Receipt Notes Report', 'receipt-notes-' . now()->format('Y-m-d') . '.pdf');
     }
 }

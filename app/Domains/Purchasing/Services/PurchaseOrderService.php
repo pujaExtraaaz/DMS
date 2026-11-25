@@ -44,48 +44,25 @@ class PurchaseOrderService
             $supplier = Customer::query()->findOrFail($data['supplier_id']);
             $items = $this->normalizeItems($data['items'] ?? []);
 
-            $subtotal = 0;
-            $taxAmount = 0;
-
-            foreach ($items as &$item) {
-                $line = $item['quantity'] * $item['unit_cost'];
-                $taxPercent = (float) ($item['tax_percent'] ?? 0);
-
-                $cgstPercent = array_key_exists('cgst_percent', $item)
-                    ? (float) $item['cgst_percent']
-                    : ($taxPercent / 2);
-
-                $sgstPercent = array_key_exists('sgst_percent', $item)
-                    ? (float) $item['sgst_percent']
-                    : ($taxPercent / 2);
-
-                if (abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
-                    throw ValidationException::withMessages([
-                        'items' => 'CGST % and SGST % must add up to the total Tax % for every item.',
-                    ]);
-                }
-
-                $cgstAmount = $line * ($cgstPercent / 100);
-                $sgstAmount = $line * ($sgstPercent / 100);
-                $tax = $cgstAmount + $sgstAmount;
-
-                $item['cgst_percent'] = $cgstPercent;
-                $item['sgst_percent'] = $sgstPercent;
-                $item['cgst_amount'] = $cgstAmount;
-                $item['sgst_amount'] = $sgstAmount;
-
-                $subtotal += $line;
-                $taxAmount += $tax;
-            }
-
-            unset($item);
-
             $warehouse = !empty($data['warehouse_id'])
                 ? Warehouse::with(['branch', 'company'])->find($data['warehouse_id'])
                 : null;
 
             $companyId = $data['company_id'] ?? $warehouse?->company_id ?? $actor->company_id ?? Company::defaultCompanyId();
             $addresses = $this->resolvePurchaseOrderPartyAddresses($supplier, $data, $warehouse, $companyId);
+            $isInterState = $this->isPurchaseOrderInterState($supplier, $data, $addresses);
+
+            $subtotal = 0;
+            $taxAmount = 0;
+
+            foreach ($items as &$item) {
+                $taxed = $this->applyPurchaseOrderLineTax($item, $isInterState);
+                $item = array_merge($item, $taxed);
+                $subtotal += $taxed['taxable'];
+                $taxAmount += $taxed['tax'];
+            }
+
+            unset($item);
 
             $freight = $this->freightCharges($data, $subtotal);
             $grandTotal = round($subtotal + $taxAmount + $freight['freight_total'], 2);
@@ -220,42 +197,6 @@ class PurchaseOrderService
             $supplier = Customer::query()->findOrFail($data['supplier_id']);
             $items = $this->normalizeItems($data['items'] ?? []);
 
-            $subtotal = 0;
-            $taxAmount = 0;
-
-            foreach ($items as &$item) {
-                $line = $item['quantity'] * $item['unit_cost'];
-                $taxPercent = (float) ($item['tax_percent'] ?? 0);
-
-                $cgstPercent = array_key_exists('cgst_percent', $item)
-                    ? (float) $item['cgst_percent']
-                    : ($taxPercent / 2);
-
-                $sgstPercent = array_key_exists('sgst_percent', $item)
-                    ? (float) $item['sgst_percent']
-                    : ($taxPercent / 2);
-
-                if (abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
-                    throw ValidationException::withMessages([
-                        'items' => 'CGST % and SGST % must add up to the total Tax % for every item.',
-                    ]);
-                }
-
-                $cgstAmount = $line * ($cgstPercent / 100);
-                $sgstAmount = $line * ($sgstPercent / 100);
-                $tax = $cgstAmount + $sgstAmount;
-
-                $item['cgst_percent'] = $cgstPercent;
-                $item['sgst_percent'] = $sgstPercent;
-                $item['cgst_amount'] = $cgstAmount;
-                $item['sgst_amount'] = $sgstAmount;
-
-                $subtotal += $line;
-                $taxAmount += $tax;
-            }
-
-            unset($item);
-
             $warehouse = !empty($data['warehouse_id'])
                 ? Warehouse::with(['branch', 'company'])->find($data['warehouse_id'])
                 : ($order->warehouse()->with(['branch', 'company'])->first());
@@ -269,6 +210,19 @@ class PurchaseOrderService
                 $order->shipping_address,
                 $order->billing_address,
             );
+            $isInterState = $this->isPurchaseOrderInterState($supplier, $data, $addresses);
+
+            $subtotal = 0;
+            $taxAmount = 0;
+
+            foreach ($items as &$item) {
+                $taxed = $this->applyPurchaseOrderLineTax($item, $isInterState);
+                $item = array_merge($item, $taxed);
+                $subtotal += $taxed['taxable'];
+                $taxAmount += $taxed['tax'];
+            }
+
+            unset($item);
 
             $newStatus = $order->status;
             if (! empty($data['submit_for_approval'])) {
@@ -1836,6 +1790,88 @@ class PurchaseOrderService
      *
      * @return array{billing_address_id: int|null, billing_address: string|null, company_delivery_address_id: int|null, shipping_address: string|null}
      */
+    /**
+     * Inter-state when supplier (bill-from) state differs from consignee (ship-to) state.
+     */
+    protected function isPurchaseOrderInterState(Customer $supplier, array $data, array $addresses): bool
+    {
+        if (array_key_exists('is_inter_state', $data) && $data['is_inter_state'] !== null && $data['is_inter_state'] !== '') {
+            return filter_var($data['is_inter_state'], FILTER_VALIDATE_BOOLEAN);
+        }
+
+        $supplierState = strtoupper(trim((string) (
+            $supplier->defaultBillingAddress()?->state
+            ?? $supplier->state
+            ?? ''
+        )));
+
+        $deliveryState = '';
+        if (! empty($addresses['company_delivery_address_id'])) {
+            $deliveryState = (string) (CompanyDeliveryAddress::query()
+                ->whereKey($addresses['company_delivery_address_id'])
+                ->value('state') ?? '');
+        }
+
+        $supplierState = strtoupper(trim(preg_replace('/\s+/', ' ', $supplierState) ?? ''));
+        $deliveryState = strtoupper(trim(preg_replace('/\s+/', ' ', $deliveryState) ?? ''));
+
+        return $supplierState !== '' && $deliveryState !== '' && $supplierState !== $deliveryState;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array{taxable: float, tax: float, tax_percent: float, cgst_percent: float, sgst_percent: float, cgst_amount: float, sgst_amount: float}
+     */
+    protected function applyPurchaseOrderLineTax(array $item, bool $isInterState): array
+    {
+        $line = (float) $item['quantity'] * (float) $item['unit_cost'];
+        $taxPercent = (float) ($item['tax_percent'] ?? 0);
+        $igstPercent = (float) ($item['igst_percent'] ?? 0);
+
+        if ($isInterState || $igstPercent > 0) {
+            $igstPercent = $igstPercent > 0 ? $igstPercent : $taxPercent;
+            $taxPercent = $igstPercent;
+            $tax = round($line * ($taxPercent / 100), 2);
+
+            return [
+                'taxable' => $line,
+                'tax' => $tax,
+                'tax_percent' => $taxPercent,
+                'cgst_percent' => 0.0,
+                'sgst_percent' => 0.0,
+                'cgst_amount' => 0.0,
+                'sgst_amount' => 0.0,
+            ];
+        }
+
+        $cgstPercent = array_key_exists('cgst_percent', $item)
+            ? (float) $item['cgst_percent']
+            : ($taxPercent / 2);
+
+        $sgstPercent = array_key_exists('sgst_percent', $item)
+            ? (float) $item['sgst_percent']
+            : ($taxPercent / 2);
+
+        if (abs(($cgstPercent + $sgstPercent) - $taxPercent) > 0.0001) {
+            throw ValidationException::withMessages([
+                'items' => 'CGST % and SGST % must add up to the total Tax % for every item.',
+            ]);
+        }
+
+        $cgstAmount = round($line * ($cgstPercent / 100), 2);
+        $sgstAmount = round($line * ($sgstPercent / 100), 2);
+
+        return [
+            'taxable' => $line,
+            'tax' => $cgstAmount + $sgstAmount,
+            'tax_percent' => $taxPercent,
+            'cgst_percent' => $cgstPercent,
+            'sgst_percent' => $sgstPercent,
+            'cgst_amount' => $cgstAmount,
+            'sgst_amount' => $sgstAmount,
+        ];
+    }
+
     protected function resolvePurchaseOrderPartyAddresses(
         Customer $supplier,
         array $data,

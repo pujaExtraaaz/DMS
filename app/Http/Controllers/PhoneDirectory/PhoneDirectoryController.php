@@ -249,6 +249,7 @@ class PhoneDirectoryController extends Controller
                     'category_name' => $contact->category?->name ?? '—',
                     'company_id' => $contact->company_id,
                     'company_name' => $contact->effective_company_name ?: ($contact->company_name ?? '—'),
+                    'company_website' => $contact->company_website,
                     'classification_id' => $contact->customer_type_id,
                     'classification_name' => $contact->classification?->name ?? '—',
                     'designation_name' => $contact->designation ?: ($contact->designationMaster?->name ?? '—'),

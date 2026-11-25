@@ -62,7 +62,7 @@
 </head>
 <body>
     @php
-        $company = $company ?? \App\Domains\Organization\Models\Company::query()->first();
+        $company = ($company ?? null) ?: ($invoice->selling_company ?? $invoice->company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first());
         $companyName = $company?->name ?? config('app.name');
         $companyGstin = $company?->gstin ?? 'Not configured';
         $companyAddress = $company?->address ?? 'Address not configured';

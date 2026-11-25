@@ -169,12 +169,14 @@ class ProductTypeController extends Controller
 
         $this->applySearch($query, $request->input('search'), ['name', 'code', 'description']);
 
-        if ($export = $this->exportIfRequested($request, $query, 'Product-Types', 'Product Types', ['Name', 'Code', 'Description', 'Products', 'Status'], fn ($item) => [
+        $query->withCount('products');
+        if ($export = $this->exportIfRequested($request, $query, 'Product-Types', 'Product Types', ['Product Type Name', 'Code', 'Description', 'Products Count', 'Status', 'Created Date'], fn ($item) => [
             $item->name,
-            $item->code,
-            $item->description ?: '',
+            $item->code ?: '—',
+            $item->description ?: '—',
             (string) ($item->products_count ?? 0),
             $item->is_active ? 'Active' : 'Inactive',
+            $item->created_at?->format('d/m/Y') ?? '—',
         ])) {
             return $export;
         }

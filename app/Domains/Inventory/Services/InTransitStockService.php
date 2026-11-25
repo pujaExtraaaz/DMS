@@ -148,6 +148,8 @@ class InTransitStockService
         } elseif ($stockStatus === 'both') {
             $query->where('stock_levels.quantity', '>', 0)
                   ->whereRaw('COALESCE(transit_agg.in_transit_qty, 0) > 0');
+        } elseif ($stockStatus === 'dead_stock' || $request->boolean('dead_stock')) {
+            $query->where('stock_levels.quantity', '>', 0)->where('stock_levels.quantity', '<', 2);
         } elseif ($stockStatus === 'low_stock' || $request->boolean('low_stock')) {
             $query->where(function ($sub) {
                 $sub->where('stock_levels.quantity', '<', 10)

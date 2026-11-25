@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Purchasing;
 
 use App\Domains\Catalog\Models\Brand;
+use App\Domains\Catalog\Models\Category;
+use App\Domains\Catalog\Models\SubCategory;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
@@ -99,7 +101,34 @@ class PurchaseOrderController extends Controller
         if ($request->filled('export')) {
             $exportFormat = strtolower($request->string('export')->toString());
             if (in_array($exportFormat, ['csv', 'excel', 'xlsx', 'pdf'], true)) {
-                return DocumentExporter::exportPurchaseOrdersListing($query->get(), $exportFormat);
+                if ($request->filled('ids')) {
+                    $ids = collect((array) $request->input('ids'))
+                        ->map(fn ($id) => (int) $id)
+                        ->filter()
+                        ->unique()
+                        ->values()
+                        ->all();
+                    if ($ids !== []) {
+                        $query->whereIn('purchase_orders.id', $ids);
+                    }
+                }
+
+                $orders = $query
+                    ->with([
+                        'supplier',
+                        'warehouse',
+                        'company',
+                        'branch',
+                        'creator',
+                        'companyDeliveryAddress',
+                        'items.product.brand',
+                        'items.product.category',
+                        'items.product.subCategory',
+                        'items.uom',
+                    ])
+                    ->get();
+
+                return DocumentExporter::exportPurchaseOrdersListing($orders, $exportFormat, detailed: true);
             }
         }
 
@@ -153,6 +182,8 @@ class PurchaseOrderController extends Controller
             'freight_notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.brand_id' => 'nullable|exists:brands,id',
+            'items.*.category_id' => 'nullable|exists:categories,id',
+            'items.*.sub_category_id' => 'nullable|exists:sub_categories,id',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.uom_id' => 'required|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
@@ -164,10 +195,12 @@ class PurchaseOrderController extends Controller
             'items.*.tax_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
+            'items.*.igst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.weight' => 'nullable|numeric|min:0',
             'items.*.batch_no' => 'nullable|string|max:60',
             'items.*.batch_name' => 'nullable|string|max:60',
             'items.*.serial_no' => 'nullable|string|max:100',
+            'is_inter_state' => 'nullable|boolean',
         ]);
 
         $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
@@ -195,6 +228,7 @@ class PurchaseOrderController extends Controller
 
         $validated['submit_for_approval'] = $request->boolean('submit_for_approval');
         $validated['is_freight_applicable'] = $request->boolean('is_freight_applicable');
+        $validated['is_inter_state'] = $request->boolean('is_inter_state');
 
         $order = $this->purchaseOrderService->create($validated, $request->user());
 
@@ -288,6 +322,8 @@ class PurchaseOrderController extends Controller
             'freight_notes' => 'nullable|string|max:1000',
             'items' => 'required|array|min:1',
             'items.*.brand_id' => 'nullable|exists:brands,id',
+            'items.*.category_id' => 'nullable|exists:categories,id',
+            'items.*.sub_category_id' => 'nullable|exists:sub_categories,id',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.uom_id' => 'required|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
@@ -299,10 +335,12 @@ class PurchaseOrderController extends Controller
             'items.*.tax_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.cgst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.sgst_percent' => 'nullable|numeric|min:0|max:100',
+            'items.*.igst_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.weight' => 'nullable|numeric|min:0',
             'items.*.batch_no' => 'nullable|string|max:60',
             'items.*.batch_name' => 'nullable|string|max:60',
             'items.*.serial_no' => 'nullable|string|max:100',
+            'is_inter_state' => 'nullable|boolean',
         ]);
 
         $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
@@ -330,6 +368,7 @@ class PurchaseOrderController extends Controller
 
         $validated['submit_for_approval'] = $request->boolean('submit_for_approval');
         $validated['is_freight_applicable'] = $request->boolean('is_freight_applicable');
+        $validated['is_inter_state'] = $request->boolean('is_inter_state');
 
         try {
             $updatedOrder = $this->purchaseOrderService->update($order, $validated, $request->user());
@@ -583,6 +622,8 @@ class PurchaseOrderController extends Controller
                 ->get(),
             'warehouses' => Warehouse::where('is_active', true)->with(['branch', 'company'])->orderBy('name')->get(),
             'brands' => Brand::where('is_active', true)->orderBy('name')->get(),
+            'categories' => Category::where('is_active', true)->orderBy('name')->get(['id', 'brand_id', 'name']),
+            'subCategories' => SubCategory::where('is_active', true)->orderBy('name')->get(['id', 'category_id', 'name']),
             'products' => Product::where('is_active', true)->where('is_hidden', false)->orderBy('name')->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
             'poNumberSeries' => $poSeries,

@@ -3,6 +3,8 @@
 
 @section('content')
 @php
+    $company = ($company ?? null)
+        ?: ($invoice->selling_company ?? $invoice->company ?? \App\Domains\Organization\Models\Company::resolveCurrent() ?? \App\Domains\Organization\Models\Company::query()->first());
     $companyState = $company?->state ?? '';
     $initialAddresses = ($invoice->customer ? $invoice->customer->activeAddresses()->get() : collect())->map(fn($a) => [
         'id' => $a->id,

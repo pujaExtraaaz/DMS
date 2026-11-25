@@ -66,6 +66,9 @@ Route::prefix('masters')->name('masters.')->middleware('role_or_permission:super
         Route::get('customers/target-report', [CustomerController::class, 'targetReport'])->name('customers.target-report');
         Route::get('parties/target-report', [CustomerController::class, 'targetReport'])->name('parties.target-report');
         Route::get('customers/business-groups', [CustomerController::class, 'businessGroups'])->name('customers.business-groups');
+        Route::post('customers/business-groups/quick-store', [CustomerController::class, 'quickStoreBusinessGroup'])->name('customers.business-groups.quick-store');
+        Route::put('customers/business-groups/{businessGroup}/quick-update', [CustomerController::class, 'quickUpdateBusinessGroup'])->name('customers.business-groups.quick-update');
+        Route::delete('customers/business-groups/{businessGroup}/quick-destroy', [CustomerController::class, 'quickDestroyBusinessGroup'])->name('customers.business-groups.quick-destroy');
         Route::get('customers/{customer}/addresses', [CustomerController::class, 'addresses'])->name('customers.addresses');
         Route::post('customers/{customer}/addresses', [CustomerController::class, 'storeAddress'])->name('customers.addresses.store');
         Route::get('customers/{customer}/gem-documents/{document}', [CustomerController::class, 'gemDocument'])->name('customers.gem-documents.show');

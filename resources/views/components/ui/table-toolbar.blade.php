@@ -14,10 +14,10 @@
     $isActive = $hasActiveFilters || !empty($searchTerm) || count(array_filter($queryParams, fn($v) => $v !== null && $v !== '')) > 0;
 @endphp
 
-<div {{ $attributes->merge(['class' => 'dms-table-toolbar mb-4 space-y-3']) }}>
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        {{-- Left: Search & Filter controls --}}
-        <div class="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+<div {{ $attributes->merge(['class' => 'dms-table-toolbar mb-2']) }}>
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        {{-- Left: Search & Filter controls — single compact row --}}
+        <div class="flex flex-nowrap items-center gap-2 flex-1 min-w-0 overflow-x-auto">
             {{-- Responsive Dynamic Search Bar (with Optional Server-Side Autocomplete) --}}
             <div
                 class="relative flex-1 min-w-[200px] max-w-md"

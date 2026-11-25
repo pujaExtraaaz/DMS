@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Support\IndianCities;
 use App\Support\IndianStates;
 use App\Support\NameCase;
+use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
 use App\Support\WorldCountries;
 use Illuminate\Http\JsonResponse;
@@ -19,12 +20,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class WarehouseController extends Controller
 {
-    use SortableAndSearchable;
+    use SortableAndSearchable, ExportsListing;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $query = Warehouse::query()->with(['company', 'branch'])
             ->when($request->filled('company_id'), fn ($q) => $q->where('company_id', $request->company_id))
@@ -45,6 +48,31 @@ class WarehouseController extends Controller
             defaultSort: 'name',
             defaultDirection: 'asc'
         );
+
+        if ($export = $this->exportIfRequested(
+            $request,
+            $query,
+            'warehouses',
+            'Warehouses Master',
+            ['Warehouse Name', 'Code', 'Company', 'Branch', 'Type', 'Contact Person', 'Phone', 'Email', 'Address', 'City', 'State', 'Status', 'Created At'],
+            fn (Warehouse $w) => [
+                'name' => $w->name,
+                'code' => $w->code ?? '',
+                'company' => $w->company?->name ?? '',
+                'branch' => $w->branch?->name ?? '',
+                'type' => $w->warehouse_type ?? '',
+                'contact_person' => $w->contact_person ?? '',
+                'phone' => $w->phone ?? '',
+                'email' => $w->email ?? '',
+                'address' => $w->address ?? '',
+                'city' => $w->city ?? '',
+                'state' => $w->state ?? '',
+                'status' => $w->is_active ? 'Active' : 'Inactive',
+                'created_at' => optional($w->created_at)->format('Y-m-d H:i:s'),
+            ]
+        )) {
+            return $export;
+        }
 
         $items = $query->paginate(15)->withQueryString();
 

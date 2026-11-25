@@ -139,7 +139,9 @@
     <div class="overflow-x-auto border rounded-lg">
     <table class="min-w-full text-sm">
     <thead class="bg-gray-50"><tr>
-    <th class="px-3 py-2 text-left w-44">Brand</th>
+    <th class="px-3 py-2 text-left w-40">Brand</th>
+    <th class="px-3 py-2 text-left w-36">Category</th>
+    <th class="px-3 py-2 text-left w-36">Sub Category</th>
     <th class="px-3 py-2 text-left min-w-[250px]">Product</th>
     <th class="px-3 py-2 text-left">Batch Name</th>
     <th class="px-3 py-2 text-left">UOM</th>
@@ -149,8 +151,9 @@
     <th class="px-3 py-2 text-left whitespace-nowrap">Purchase Disc. %</th>
     <th class="px-3 py-2 text-left">Unit Cost</th>
     <th class="px-3 py-2 text-left">Tax %</th>
-    <th class="px-3 py-2 text-left">Cgst %</th>
-    <th class="px-3 py-2 text-left">Sgst %</th>
+    <th class="px-3 py-2 text-left po-cgst-header">Cgst %</th>
+    <th class="px-3 py-2 text-left po-sgst-header">Sgst %</th>
+    <th class="px-3 py-2 text-left po-igst-header" style="display:none;">Igst %</th>
     <th class="px-3 py-2"></th>
     </tr></thead>
     <tbody id="po-lines">
@@ -158,174 +161,92 @@
         $displayItems = old('items');
         if (empty($displayItems) || !is_array($displayItems)) {
             $displayItems = $order->items->map(function ($it) {
+                $taxP = (float) $it->tax_percent;
+                $cgstP = (float) $it->cgst_percent;
+                $sgstP = (float) $it->sgst_percent;
+                $igstP = ($cgstP == 0.0 && $sgstP == 0.0 && $taxP > 0) ? $taxP : 0.0;
+
                 return [
                     'brand_id' => $it->product?->brand_id,
+                    'category_id' => $it->product?->category_id,
+                    'sub_category_id' => $it->product?->sub_category_id,
                     'product_id' => $it->product_id,
                     'batch_no' => $it->batch_no,
                     'batch_name' => $it->batch_no,
                     'serial_no' => $it->serial_no,
                     'uom_id' => $it->uom_id,
-                    'quantity' => (float)$it->quantity,
-                    'unit_cost' => (float)$it->unit_cost,
+                    'quantity' => (float) $it->quantity,
+                    'unit_cost' => (float) $it->unit_cost,
                     'mrp' => (float) ($it->mrp ?? 0),
                     'purchase_price_inclusive' => $it->purchase_price_inclusive !== null ? (float) $it->purchase_price_inclusive : null,
                     'purchase_discount_percent' => $it->purchase_discount_percent !== null ? (float) $it->purchase_discount_percent : null,
-                    'tax_percent' => (float)$it->tax_percent,
-                    'cgst_percent' => (float)$it->cgst_percent,
-                    'sgst_percent' => (float)$it->sgst_percent,
+                    'tax_percent' => $taxP,
+                    'cgst_percent' => $cgstP,
+                    'sgst_percent' => $sgstP,
+                    'igst_percent' => $igstP,
                 ];
             })->values()->toArray();
         }
         if (empty($displayItems)) {
-            $displayItems = [
-                [
-                    'brand_id' => null,
-                    'product_id' => null,
-                    'batch_no' => '',
-                    'batch_name' => '',
-                    'serial_no' => '',
-                    'uom_id' => null,
-                    'quantity' => 1,
-                    'unit_cost' => 0,
-                    'mrp' => 0,
-                    'purchase_price_inclusive' => null,
-                    'purchase_discount_percent' => null,
-                    'tax_percent' => 0,
-                    'cgst_percent' => 0,
-                    'sgst_percent' => 0,
-                ]
-            ];
+            $displayItems = [[
+                'brand_id' => null,
+                'category_id' => null,
+                'sub_category_id' => null,
+                'product_id' => null,
+                'batch_no' => '',
+                'uom_id' => null,
+                'quantity' => 1,
+                'unit_cost' => 0,
+                'mrp' => 0,
+                'purchase_price_inclusive' => null,
+                'purchase_discount_percent' => null,
+                'tax_percent' => 0,
+                'cgst_percent' => 0,
+                'sgst_percent' => 0,
+                'igst_percent' => 0,
+            ]];
         }
     @endphp
     @foreach($displayItems as $idx => $rowItem)
         @php
             $selectedProduct = $products->firstWhere('id', $rowItem['product_id'] ?? null);
-            $selectedBrandId = $rowItem['brand_id'] ?? ($selectedProduct ? $selectedProduct->brand_id : null);
-            $selectedProductName = $selectedProduct ? $selectedProduct->name : '';
-            $isBrandSelected = !empty($selectedBrandId);
+            $selectedBrandId = $rowItem['brand_id'] ?? ($selectedProduct?->brand_id);
         @endphp
-        <tr>
-        <td class="px-3 py-2">
-            <select name="items[{{ $idx }}][brand_id]" class="po-brand block w-44 rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500" required onchange="handlePoBrandChange(this)">
-                <option value="">Select brand</option>
-                @foreach($brands as $b)
-                    <option value="{{ $b->id }}" @selected($selectedBrandId == $b->id)>{{ $b->name }}</option>
-                @endforeach
-            </select>
-        </td>
-        <td class="px-3 py-2">
-            <div class="relative po-product-picker-container w-64">
-                <select name="items[{{ $idx }}][product_id]" class="po-product hidden" onchange="handlePoProductChange(this)">
-                    <option value="">Select product</option>
-                    @foreach($products as $p)
-                        <option value="{{ $p->id }}" data-brand="{{ $p->brand_id }}" data-tax="{{ $p->tax_rate ?? 0 }}" data-cost="{{ $p->purchase_price ?? 0 }}" data-mrp="{{ $p->calculation_mrp ?? $p->mrp ?? 0 }}" data-uom="{{ $p->base_uom_id }}" @selected(($rowItem['product_id'] ?? null) == $p->id)>{{ $p->name }}</option>
-                    @endforeach
-                </select>
-                <div class="relative">
-                    <input type="text"
-                           class="po-product-search block w-full rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 pr-14 {{ $isBrandSelected ? 'bg-white' : 'bg-slate-100 text-slate-400 cursor-not-allowed' }}"
-                           placeholder="{{ $isBrandSelected ? 'Select product...' : 'Select brand first' }}"
-                           autocomplete="off"
-                           value="{{ $selectedProductName }}"
-                           {{ $isBrandSelected ? '' : 'disabled' }}
-                           onfocus="openPoProductDropdown(this)"
-                           onclick="openPoProductDropdown(this)"
-                           oninput="handlePoProductSearchInput(this)"
-                           onkeydown="handlePoProductSearchKeydown(event, this)">
-                    <div class="absolute inset-y-0 right-0 flex items-center pr-1.5 gap-0.5">
-                        <button type="button"
-                                class="po-clear-product p-1 text-gray-400 hover:text-gray-600 transition"
-                                title="Clear product"
-                                style="{{ !empty($selectedProductName) ? '' : 'display: none;' }}"
-                                onclick="clearPoProductSelection(this)">
-                            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                        <button type="button"
-                                class="po-dropdown-toggle p-1 text-gray-400 hover:text-gray-600 transition {{ $isBrandSelected ? '' : 'opacity-40 pointer-events-none' }}"
-                                tabindex="-1"
-                                {{ $isBrandSelected ? '' : 'disabled' }}
-                                onclick="togglePoProductDropdown(this)">
-                            <svg class="h-4 w-4 transform transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </td>
-        <td class="px-3 py-2">
-            <input type="text" name="items[{{ $idx }}][batch_no]" list="po-batch-list-{{ $idx }}" class="po-batch-input block w-28 rounded-lg border-gray-300 text-sm" placeholder="Optional" value="{{ $rowItem['batch_no'] ?? $rowItem['batch_name'] ?? '' }}">
-            <datalist id="po-batch-list-{{ $idx }}"></datalist>
-        </td>
-        <td class="px-3 py-2">
-            <select name="items[{{ $idx }}][uom_id]" class="po-uom block w-24 rounded-lg border-gray-300 text-sm" required>
-                @foreach($uoms as $u)<option value="{{ $u->id }}" @selected(($rowItem['uom_id'] ?? null) == $u->id)>{{ $u->code }}</option>@endforeach
-            </select>
-        </td>
-        <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][quantity]" class="block w-20 rounded-lg border-gray-300 text-sm" value="{{ $rowItem['quantity'] ?? 1 }}" required></td>
-        @php
-            $editUnitCost = (float) ($rowItem['unit_cost'] ?? 0);
-            $editTaxPercent = (float) ($rowItem['tax_percent'] ?? 0);
-            $editMrp = (float) ($rowItem['mrp'] ?? 0);
-            $editPriceInclusive = $rowItem['price_inclusive_tax'] ?? $rowItem['purchase_price_inclusive'] ?? ($editTaxPercent > 0 ? round($editUnitCost * (1 + $editTaxPercent / 100), 2) : round($editUnitCost, 2));
-            $editDiscount = $rowItem['purchase_discount_percent'] ?? ($editMrp > 0 ? round((($editMrp - (float) $editPriceInclusive) / $editMrp) * 100, 2) : '');
-        @endphp
-        <td class="px-3 py-2">
-            <input type="number" step="0.01" min="0" name="items[{{ $idx }}][mrp]" class="po-mrp block w-28 rounded-lg border-gray-300 text-sm" value="{{ $editMrp }}" title="MRP">
-        </td>
-        <td class="px-3 py-2">
-            <input type="number" step="0.01" min="0" name="items[{{ $idx }}][price_inclusive_tax]" class="po-price-inclusive block w-28 rounded-lg border-gray-300 text-sm" value="{{ $editPriceInclusive }}" title="Purchase Price Including GST">
-        </td>
-        <td class="px-3 py-2">
-            <input type="number" step="0.01" name="items[{{ $idx }}][purchase_discount_percent]" class="po-purchase-discount block w-24 rounded-lg border-gray-300 text-sm bg-slate-50" value="{{ $editDiscount }}" title="Purchase Discount %" readonly tabindex="-1">
-        </td>
-        <td class="px-3 py-2"><input type="number" step="0.0001" name="items[{{ $idx }}][unit_cost]" class="po-cost block w-28 rounded-lg border-gray-300 text-sm" value="{{ $rowItem['unit_cost'] ?? 0 }}" required></td>
-        <td class="px-3 py-2">
-            <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                name="items[{{ $idx }}][tax_percent]"
-                class="po-tax block w-20 rounded-lg border-gray-300 text-sm"
-                value="{{ $rowItem['tax_percent'] ?? 0 }}"
-            >
-        </td>
-        <td class="px-3 py-2">
-            <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                name="items[{{ $idx }}][cgst_percent]"
-                class="po-cgst block w-20 rounded-lg border-gray-300 text-sm"
-                value="{{ $rowItem['cgst_percent'] ?? 0 }}"
-            >
-        </td>
-        <td class="px-3 py-2">
-            <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="100"
-                name="items[{{ $idx }}][sgst_percent]"
-                class="po-sgst block w-20 rounded-lg border-gray-300 text-sm"
-                value="{{ $rowItem['sgst_percent'] ?? 0 }}"
-            >
-        </td>
-        <td class="px-3 py-2 text-right">
-            <button type="button" onclick="removePoRow(this)" class="text-xs text-red-600 hover:text-red-800 po-remove-btn" @if(count($displayItems) === 1) style="display:none;" @endif>Remove</button>
-        </td>
-        </tr>
+        @include('purchasing.orders.partials.line-row', [
+            'idx' => $idx,
+            'brands' => $brands,
+            'categories' => $categories ?? collect(),
+            'subCategories' => $subCategories ?? collect(),
+            'products' => $products,
+            'uoms' => $uoms,
+            'selectedBrandId' => $selectedBrandId,
+            'selectedCategoryId' => $rowItem['category_id'] ?? ($selectedProduct->category_id ?? null),
+            'selectedSubCategoryId' => $rowItem['sub_category_id'] ?? ($selectedProduct->sub_category_id ?? null),
+            'selectedProductId' => $rowItem['product_id'] ?? null,
+            'selectedProductName' => $selectedProduct?->name ?? '',
+            'batchNo' => $rowItem['batch_no'] ?? $rowItem['batch_name'] ?? '',
+            'uomId' => $rowItem['uom_id'] ?? null,
+            'quantity' => $rowItem['quantity'] ?? 1,
+            'unitCost' => $rowItem['unit_cost'] ?? 0,
+            'mrp' => $rowItem['mrp'] ?? 0,
+            'priceInclusiveTax' => $rowItem['price_inclusive_tax'] ?? $rowItem['purchase_price_inclusive'] ?? null,
+            'purchaseDiscountPercent' => $rowItem['purchase_discount_percent'] ?? null,
+            'taxPercent' => $rowItem['tax_percent'] ?? 0,
+            'cgstPercent' => $rowItem['cgst_percent'] ?? 0,
+            'sgstPercent' => $rowItem['sgst_percent'] ?? 0,
+            'igstPercent' => $rowItem['igst_percent'] ?? 0,
+            'showRemove' => count($displayItems) > 1,
+        ])
     @endforeach
     </tbody></table></div>
+    <input type="hidden" name="is_inter_state" id="po_is_inter_state" value="{{ old('is_inter_state', '0') }}">
 
     <template id="po-line-template">
         @include('purchasing.orders.partials.line-row', [
             'idx' => '__INDEX__',
             'brands' => $brands,
+            'categories' => $categories ?? collect(),
+            'subCategories' => $subCategories ?? collect(),
             'products' => $products,
             'uoms' => $uoms,
             'showRemove' => true,
@@ -442,17 +363,32 @@
             'name' => $p->name,
             'sku' => $p->sku ?? '',
             'brand_id' => $p->brand_id ? (string)$p->brand_id : '',
+            'category_id' => $p->category_id ? (string)$p->category_id : '',
+            'sub_category_id' => $p->sub_category_id ? (string)$p->sub_category_id : '',
             'tax_rate' => (float)($p->tax_rate ?? 0),
             'purchase_price' => (float)($p->purchase_price ?? 0),
             'mrp' => (float) ($p->calculation_mrp ?? $p->mrp ?? 0),
             'base_uom_id' => $p->base_uom_id ? (string)$p->base_uom_id : '',
         ];
     })->values();
+    $poCategoriesData = ($categories ?? collect())->map(fn ($c) => [
+        'id' => (string) $c->id,
+        'name' => $c->name,
+        'brand_id' => $c->brand_id ? (string) $c->brand_id : '',
+    ])->values();
+    $poSubCategoriesData = ($subCategories ?? collect())->map(fn ($sc) => [
+        'id' => (string) $sc->id,
+        'name' => $sc->name,
+        'category_id' => $sc->category_id ? (string) $sc->category_id : '',
+    ])->values();
 @endphp
 <script>
 let poi = {{ count($displayItems) }};
 
 const poProductsList = {!! json_encode($poProductsData) !!};
+const poCategoriesList = {!! json_encode($poCategoriesData) !!};
+const poSubCategoriesList = {!! json_encode($poSubCategoriesData) !!};
+let poIsInterState = false;
 
 let activeRow = null;
 let highlightedIndex = -1;
@@ -511,12 +447,121 @@ function handlePoBrandChange(brandSelect) {
         console.error('clearPoProductSelection failed', e);
     }
 
+    refillPoCategoryOptions(row, brandId, '');
+    refillPoSubCategoryOptions(row, '', '');
+
     if (brandId) {
         setPoProductPickerEnabled(row, true);
         brandSelect.classList.remove('border-rose-500', 'ring-1', 'ring-rose-500');
     } else {
         setPoProductPickerEnabled(row, false);
     }
+}
+
+function refillPoCategoryOptions(row, brandId, selectedId = '') {
+    const select = row.querySelector('.po-category');
+    if (!select) return;
+    select.innerHTML = '<option value="">All categories</option>';
+    if (!brandId) {
+        select.disabled = true;
+        select.classList.add('bg-slate-100', 'text-slate-400');
+        return;
+    }
+    select.disabled = false;
+    select.classList.remove('bg-slate-100', 'text-slate-400');
+    poCategoriesList
+        .filter((c) => !c.brand_id || String(c.brand_id) === String(brandId))
+        .forEach((c) => {
+            const opt = new Option(c.name, c.id);
+            if (String(selectedId) === String(c.id)) opt.selected = true;
+            select.add(opt);
+        });
+}
+
+function refillPoSubCategoryOptions(row, categoryId, selectedId = '') {
+    const select = row.querySelector('.po-subcategory');
+    if (!select) return;
+    select.innerHTML = '<option value="">All sub categories</option>';
+    if (!categoryId) {
+        select.disabled = true;
+        select.classList.add('bg-slate-100', 'text-slate-400');
+        return;
+    }
+    select.disabled = false;
+    select.classList.remove('bg-slate-100', 'text-slate-400');
+    poSubCategoriesList
+        .filter((sc) => String(sc.category_id) === String(categoryId))
+        .forEach((sc) => {
+            const opt = new Option(sc.name, sc.id);
+            if (String(selectedId) === String(sc.id)) opt.selected = true;
+            select.add(opt);
+        });
+}
+
+function handlePoCategoryChange(categorySelect) {
+    const row = categorySelect.closest('tr');
+    if (!row) return;
+    refillPoSubCategoryOptions(row, categorySelect.value, '');
+    try { clearPoProductSelection(categorySelect); } catch (e) {}
+    if (row.querySelector('.po-brand')?.value) {
+        setPoProductPickerEnabled(row, true);
+    }
+}
+
+function handlePoSubCategoryChange(subSelect) {
+    const row = subSelect.closest('tr');
+    if (!row) return;
+    try { clearPoProductSelection(subSelect); } catch (e) {}
+    if (row.querySelector('.po-brand')?.value) {
+        setPoProductPickerEnabled(row, true);
+    }
+}
+
+function normalizePoState(value) {
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+function detectPoInterState() {
+    const supplierState = normalizePoState(document.getElementById('billing_state')?.textContent);
+    const deliveryState = normalizePoState(document.getElementById('delivery_state')?.textContent);
+    return supplierState !== '' && deliveryState !== '' && supplierState !== deliveryState;
+}
+
+function applyPoGstMode(forceRecalc = true) {
+    poIsInterState = detectPoInterState();
+    const flag = document.getElementById('po_is_inter_state');
+    if (flag) flag.value = poIsInterState ? '1' : '0';
+
+    document.querySelectorAll('.po-cgst-header').forEach((el) => { el.style.display = poIsInterState ? 'none' : ''; });
+    document.querySelectorAll('.po-sgst-header').forEach((el) => { el.style.display = poIsInterState ? 'none' : ''; });
+    document.querySelectorAll('.po-igst-header').forEach((el) => { el.style.display = poIsInterState ? '' : 'none'; });
+
+    document.querySelectorAll('#po-lines tr.po-line-row, #po-line-template tr.po-line-row').forEach((row) => {
+        const cgstCell = row.querySelector('.po-cgst-cell');
+        const sgstCell = row.querySelector('.po-sgst-cell');
+        const igstCell = row.querySelector('.po-igst-cell');
+        const tax = parseFloat(row.querySelector('.po-tax')?.value) || 0;
+        const cgst = row.querySelector('.po-cgst');
+        const sgst = row.querySelector('.po-sgst');
+        const igst = row.querySelector('.po-igst');
+
+        if (cgstCell) cgstCell.style.display = poIsInterState ? 'none' : '';
+        if (sgstCell) sgstCell.style.display = poIsInterState ? 'none' : '';
+        if (igstCell) igstCell.style.display = poIsInterState ? '' : 'none';
+
+        if (poIsInterState) {
+            if (cgst) cgst.value = '0';
+            if (sgst) sgst.value = '0';
+            if (igst) igst.value = tax.toFixed(2);
+        } else {
+            if (igst) igst.value = '0';
+            if (cgst && sgst && forceRecalc) {
+                const half = (tax / 2).toFixed(2);
+                cgst.value = half;
+                sgst.value = half;
+            }
+        }
+    });
 }
 
 function openPoProductDropdown(triggerEl, initialQuery = null) {
@@ -632,11 +677,18 @@ function handleDropdownFilter(query, selectedIdOverride = null) {
 
     const q = (query || '').toLowerCase().trim();
 
+    const categorySelect = activeRow.querySelector('.po-category');
+    const subCategorySelect = activeRow.querySelector('.po-subcategory');
+    const activeCategoryId = categorySelect ? String(categorySelect.value || '') : '';
+    const activeSubCategoryId = subCategorySelect ? String(subCategorySelect.value || '') : '';
+
     currentFilteredProducts = poProductsList.filter(p => {
         // Include unbranded products so legacy catalog rows remain selectable until backfilled.
         if (selectedBrandId && p.brand_id && String(p.brand_id) !== selectedBrandId) {
             return false;
         }
+        if (activeCategoryId && p.category_id && String(p.category_id) !== activeCategoryId) return false;
+        if (activeSubCategoryId && p.sub_category_id && String(p.sub_category_id) !== activeSubCategoryId) return false;
         if (!q) return true;
         const nameMatch = (p.name || '').toLowerCase().includes(q);
         const skuMatch = (p.sku || '').toLowerCase().includes(q);
@@ -803,10 +855,12 @@ function clearPoProductSelection(triggerEl) {
     const tax = row.querySelector('.po-tax');
     const cgst = row.querySelector('.po-cgst');
     const sgst = row.querySelector('.po-sgst');
+    const igst = row.querySelector('.po-igst');
     if (cost) cost.value = '0';
     if (tax) tax.value = '0';
     if (cgst) cgst.value = '0';
     if (sgst) sgst.value = '0';
+    if (igst) igst.value = '0';
     recalculatePoTotals();
 }
 
@@ -830,11 +884,19 @@ function handlePoProductChange(select) {
     const taxInput = row.querySelector('.po-tax');
     const cgstInput = row.querySelector('.po-cgst');
     const sgstInput = row.querySelector('.po-sgst');
+    const igstInput = row.querySelector('.po-igst');
     const uomSelect = row.querySelector('.po-uom');
 
     if (taxInput) taxInput.value = taxVal;
-    if (cgstInput) cgstInput.value = (taxVal / 2).toFixed(2);
-    if (sgstInput) sgstInput.value = (taxVal / 2).toFixed(2);
+    if (poIsInterState) {
+        if (cgstInput) cgstInput.value = '0';
+        if (sgstInput) sgstInput.value = '0';
+        if (igstInput) igstInput.value = taxVal.toFixed(2);
+    } else {
+        if (cgstInput) cgstInput.value = (taxVal / 2).toFixed(2);
+        if (sgstInput) sgstInput.value = (taxVal / 2).toFixed(2);
+        if (igstInput) igstInput.value = '0';
+    }
     if (mrpInput && (!mrpInput.value || parseFloat(mrpInput.value) === 0)) {
         mrpInput.value = mrpVal;
     }
@@ -878,15 +940,32 @@ function syncPoTax(row, changed) {
     const tax = row.querySelector('.po-tax');
     const cgst = row.querySelector('.po-cgst');
     const sgst = row.querySelector('.po-sgst');
+    const igst = row.querySelector('.po-igst');
 
-    if (!tax || !cgst || !sgst) return;
+    if (!tax) return;
 
     const taxValue = parseFloat(tax.value) || 0;
+
+    if (poIsInterState) {
+        if (cgst) cgst.value = '0';
+        if (sgst) sgst.value = '0';
+        if (changed === 'igst' && igst) {
+            tax.value = (parseFloat(igst.value) || 0).toFixed(2);
+        } else if (igst) {
+            igst.value = taxValue.toFixed(2);
+        }
+        syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
+        recalculatePoTotals();
+        return;
+    }
+
+    if (!cgst || !sgst) return;
 
     if (changed === 'tax') {
         const half = (taxValue / 2).toFixed(2);
         cgst.value = half;
         sgst.value = half;
+        if (igst) igst.value = '0';
         syncPoPriceTaxPair(row, row.dataset.priceEditSource === 'inclusive' ? 'inclusive' : 'cost');
         recalculatePoTotals();
         return;
@@ -1087,6 +1166,7 @@ function addPoRow() {
     table.appendChild(newRow);
     poi++;
     updateRemoveButtons();
+    applyPoGstMode(false);
     recalculatePoTotals();
 
     const brandSelect = newRow.querySelector('.po-brand');
@@ -1159,6 +1239,9 @@ document.addEventListener('input', function (event) {
     } else if (input.classList.contains('po-sgst')) {
         const row = input.closest('tr');
         if (row) syncPoTax(row, 'sgst');
+    } else if (input.classList.contains('po-igst')) {
+        const row = input.closest('tr');
+        if (row) syncPoTax(row, 'igst');
     }
 
     if (
@@ -1455,6 +1538,7 @@ async function handleSupplierChange(supplierId) {
                 addr = supplierAddresses.find((a) => String(a.id) === String(billingId)) || supplierAddresses[0] || null;
             }
             renderBillingDetails(data.customer || null, addr);
+            applyPoGstMode(!initialLoad);
             if (statusText) statusText.innerText = 'Vendor billing loaded automatically';
             initialLoad = false;
         }
@@ -1469,6 +1553,7 @@ function handleDeliveryChange() {
     const select = document.getElementById('company_delivery_address_id');
     const addr = companyDeliveryAddresses.find((a) => String(a.id) === String(select?.value));
     renderDeliveryDetails(addr || null);
+    applyPoGstMode(true);
 }
 
 function handleWarehouseChange(selectEl) {
@@ -1543,6 +1628,10 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!event.target) return;
             if (event.target.classList.contains('po-brand')) {
                 handlePoBrandChange(event.target);
+            } else if (event.target.classList.contains('po-category')) {
+                handlePoCategoryChange(event.target);
+            } else if (event.target.classList.contains('po-subcategory')) {
+                handlePoSubCategoryChange(event.target);
             } else if (event.target.classList.contains('po-product')) {
                 handlePoProductChange(event.target);
             }

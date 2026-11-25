@@ -45,6 +45,22 @@ class WorkspaceContext
 
             if ($company) {
                 session([self::COMPANY_ID => $company->id]);
+            }
+        }
+
+        if (! $company && auth()->check() && auth()->user()->company_id) {
+            $company = $this->findActiveCompany(auth()->user()->company_id);
+            if ($company) {
+                session([self::COMPANY_ID => $company->id]);
+            }
+        }
+
+        if (! $company) {
+            $fallback = Company::query()->where('is_active', true)->where('is_default', true)->first()
+                ?: Company::query()->where('is_active', true)->first();
+            if ($fallback) {
+                $company = $fallback;
+                session([self::COMPANY_ID => $company->id]);
             } else {
                 session()->forget([self::COMPANY_ID, self::BRANCH_ID, self::FINANCIAL_YEAR_ID]);
 

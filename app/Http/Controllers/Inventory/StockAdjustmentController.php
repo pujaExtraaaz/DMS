@@ -11,12 +11,16 @@ use App\Domains\Inventory\Models\StockMovement;
 use App\Domains\Organization\Models\Warehouse;
 use App\Http\Controllers\Controller;
 use App\Support\DocumentNumberService;
+use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
 use App\Support\Traits\SortableAndSearchable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StockAdjustmentController extends Controller
 {
@@ -27,7 +31,7 @@ class StockAdjustmentController extends Controller
         protected DocumentNumberService $documentNumberService,
     ) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $query = StockAdjustment::query()
             ->with(['warehouse', 'creator'])
@@ -63,6 +67,10 @@ class StockAdjustmentController extends Controller
             defaultSort: 'adjustment_date',
             defaultDirection: 'desc'
         );
+
+        if ($export = $this->exportAdjustments($request, $query)) {
+            return $export;
+        }
 
         $adjustments = $query->paginate(15)->withQueryString();
 
@@ -365,5 +373,76 @@ class StockAdjustmentController extends Controller
             }
             return $this->flashError('Failed to delete stock adjustment: ' . $e->getMessage(), 'inventory.adjustments.index');
         }
+    }
+
+    protected function exportAdjustments(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)
+            ->with(['warehouse', 'creator', 'items.product', 'items.uom'])
+            ->get();
+
+        $headers = [
+            'Adjustment No', 'Adjustment Date', 'Warehouse', 'Reason', 'Status',
+            'Total Items', 'Notes', 'Created By', 'Created At'
+        ];
+
+        $adjRows = $records->map(function (StockAdjustment $adj) {
+            return [
+                'Adjustment No' => $adj->adjustment_no,
+                'Adjustment Date' => optional($adj->adjustment_date)->format('Y-m-d'),
+                'Warehouse' => $adj->warehouse?->name ?? '',
+                'Reason' => ucfirst((string) $adj->reason),
+                'Status' => ucfirst((string) $adj->status),
+                'Total Items' => $adj->items->count(),
+                'Notes' => $adj->notes ?? '',
+                'Created By' => $adj->creator?->name ?? '',
+                'Created At' => optional($adj->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->all();
+
+        if ($format === 'xlsx') {
+            $itemHeaders = [
+                'Adjustment No', 'Adjustment Date', 'Warehouse', 'Product Code', 'Product Name',
+                'Quantity', 'UOM', 'Notes'
+            ];
+
+            $itemRows = [];
+            foreach ($records as $adj) {
+                foreach ($adj->items as $item) {
+                    $itemRows[] = [
+                        'Adjustment No' => $adj->adjustment_no,
+                        'Adjustment Date' => optional($adj->adjustment_date)->format('Y-m-d'),
+                        'Warehouse' => $adj->warehouse?->name ?? '',
+                        'Product Code' => $item->product?->code ?? $item->product?->sku ?? '',
+                        'Product Name' => $item->product?->name ?? '',
+                        'Quantity' => (float) $item->quantity,
+                        'UOM' => $item->uom?->code ?? $item->uom?->name ?? '',
+                        'Notes' => $item->notes ?? '',
+                    ];
+                }
+            }
+
+            return DocumentExporter::exportMultiSheetExcel([
+                'Stock Adjustments' => [
+                    'columns' => array_combine($headers, $headers),
+                    'rows' => $adjRows,
+                ],
+                'Adjustment Items' => [
+                    'columns' => array_combine($itemHeaders, $itemHeaders),
+                    'rows' => $itemRows,
+                ],
+            ], 'stock-adjustments-master-' . now()->format('Y-m-d'));
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($adjRows, $headers, 'stock-adjustments-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($adjRows, array_combine($headers, $headers), 'Stock Adjustments Report', 'stock-adjustments-' . now()->format('Y-m-d') . '.pdf');
     }
 }

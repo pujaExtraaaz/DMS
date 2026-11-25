@@ -33,6 +33,8 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
+use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
 use App\Support\Traits\ExportsListing;
 use App\Support\Traits\SortableAndSearchable;
 use Symfony\Component\HttpFoundation\Response;
@@ -309,6 +311,150 @@ class CustomerController extends Controller
         ]);
     }
 
+    public function quickStoreBusinessGroup(Request $request): JsonResponse
+    {
+        $name = trim((string) $request->input('name', ''));
+
+        if ($name === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business Group Name is required.',
+            ], 422);
+        }
+
+        if (mb_strlen($name) > 255) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business Group Name cannot exceed 255 characters.',
+            ], 422);
+        }
+
+        $exists = BusinessGroup::whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])->exists();
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A business group with this name already exists.',
+            ], 422);
+        }
+
+        $baseCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $name));
+        if ($baseCode === '') {
+            $baseCode = 'BG';
+        }
+        $baseCode = substr($baseCode, 0, 15);
+        $code = $baseCode;
+        $suffix = 1;
+        while (BusinessGroup::where('code', $code)->exists()) {
+            $code = substr($baseCode, 0, 13) . '_' . $suffix;
+            $suffix++;
+        }
+
+        try {
+            $group = BusinessGroup::create([
+                'name' => $name,
+                'code' => $code,
+                'country' => 'India',
+                'logo_emoji' => $request->input('logo_emoji') ?: '🏢',
+                'is_active' => true,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Business group created successfully.',
+                'item' => [
+                    'id' => $group->id,
+                    'name' => $group->name,
+                    'code' => $group->code,
+                    'logo_emoji' => $group->logo_emoji ?: '🏢',
+                ],
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create business group: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function quickUpdateBusinessGroup(Request $request, BusinessGroup $businessGroup): JsonResponse
+    {
+        $name = trim((string) $request->input('name', ''));
+
+        if ($name === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business Group Name is required.',
+            ], 422);
+        }
+
+        if (mb_strlen($name) > 255) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business Group Name cannot exceed 255 characters.',
+            ], 422);
+        }
+
+        $exists = BusinessGroup::where('id', '!=', $businessGroup->id)
+            ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A business group with this name already exists.',
+            ], 422);
+        }
+
+        $payload = ['name' => $name];
+        if ($request->filled('logo_emoji')) {
+            $payload['logo_emoji'] = $request->input('logo_emoji');
+        }
+
+        $businessGroup->update($payload);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Business group updated successfully.',
+            'item' => [
+                'id' => $businessGroup->id,
+                'name' => $businessGroup->fresh()->name,
+                'code' => $businessGroup->code,
+                'logo_emoji' => $businessGroup->fresh()->logo_emoji ?: '🏢',
+            ],
+        ]);
+    }
+
+    public function quickDestroyBusinessGroup(BusinessGroup $businessGroup): JsonResponse
+    {
+        $blockReason = $businessGroup->getDeleteBlockReason();
+        if ($blockReason) {
+            return response()->json([
+                'success' => false,
+                'message' => $blockReason,
+            ], 422);
+        }
+
+        try {
+            DB::transaction(function () use ($businessGroup) {
+                if (Schema::hasColumn('companies', 'business_group_id')) {
+                    Company::where('business_group_id', $businessGroup->id)->update(['business_group_id' => null]);
+                }
+                $businessGroup->companies()->detach();
+                $businessGroup->delete();
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Business group deleted successfully.',
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete business group: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function index(Request $request): View|Response
     {
         if ($request->wantsJson() && $request->has('autocomplete')) {
@@ -351,8 +497,11 @@ class CustomerController extends Controller
                     $q->where('is_active', true);
                 } elseif ($request->status === 'inactive') {
                     $q->where('is_active', false);
+                } elseif ($request->status === 'frozen') {
+                    $q->where('credit_status', 'frozen');
                 }
             })
+            ->when($request->filled('credit_status'), fn ($q) => $q->where('credit_status', $request->credit_status))
             ->when($request->filled('target_status'), function ($q) use ($request) {
                 $status = strtolower(str_replace(' ', '_', (string) $request->target_status));
                 if ($status === 'assigned') {
@@ -403,37 +552,7 @@ class CustomerController extends Controller
                 });
             });
 
-        $exportHeaders = [
-            'Party Name', 'Code', 'Party Type', 'Phone', 'GSTIN', 'Area',
-            'Target Amount (₹)', 'Target Period', 'Achieved Sales (₹)', 'Shortfall (₹)', 'Achievement %', 'Remaining Days', 'Target Status', 'Status'
-        ];
-        if ($export = $this->exportIfRequested($request, $query, 'Parties', 'Parties', $exportHeaders, function ($item) {
-            $target = $item->activeSalesTarget() ?? $item->latestSalesTarget();
-            $targetAmount = (float) ($target?->target_amount ?? ($item->target_amount ?? 0));
-            $achieved = (float) ($target?->achievement?->achieved_amount ?? 0);
-            $shortfall = $targetAmount > 0 ? max(0, $targetAmount - $achieved) : 0;
-            $percent = $targetAmount > 0 ? round(($achieved / $targetAmount) * 100, 1) : 0;
-            $period = $target ? ($target->starts_on?->format('d-m-Y') . ' to ' . $target->ends_on?->format('d-m-Y')) : '—';
-            $status = $target ? $target->progress_status : ($targetAmount > 0 ? 'Assigned' : 'Unassigned');
-            $remDays = $target ? $target->remaining_days_label : '—';
-
-            return [
-                $item->name,
-                $item->code,
-                $item->party_type_label,
-                $item->phone ?: '',
-                $item->gstin ?: '',
-                $item->area?->name ?? '',
-                $targetAmount > 0 ? number_format($targetAmount, 2) : '—',
-                $period,
-                $targetAmount > 0 ? number_format($achieved, 2) : '—',
-                $targetAmount > 0 ? number_format($shortfall, 2) : '—',
-                $targetAmount > 0 ? "{$percent}%" : '—',
-                $remDays,
-                $status,
-                $item->is_active ? 'Active' : 'Inactive',
-            ];
-        })) {
+        if ($export = $this->exportParties($request, $query)) {
             return $export;
         }
 
@@ -457,10 +576,12 @@ class CustomerController extends Controller
             'targetStatus' => $request->string('target_status'),
             'targetStartDate' => $request->string('target_start_date'),
             'targetEndDate' => $request->string('target_end_date'),
+            'businessGroupId' => $request->string('business_group_id'),
+            'salespersonId' => $request->string('salesperson_id'),
             'areas' => Area::where('is_active', true)->orderBy('name')->get(),
             'customerTypes' => CustomerType::where('is_active', true)->orderBy('name')->get(),
-            'businessGroups' => BusinessGroup::query()->orderBy('name')->get(['id', 'name']),
-            'salespersons' => User::query()->orderBy('name')->limit(500)->get(['id', 'name']),
+            'businessGroups' => BusinessGroup::query()->orderBy('name')->get(['id', 'name', 'code', 'logo_emoji']),
+            'salespersons' => \App\Http\Controllers\Sales\InvoiceController::getSalespersons(),
             'sort' => $sortData['sort'],
             'direction' => $sortData['direction'],
         ]);
@@ -489,13 +610,18 @@ class CustomerController extends Controller
             })
             ->when($request->filled('area_id'), fn ($q) => $q->where('area_id', $request->area_id))
             ->when($request->filled('customer_type_id'), fn ($q) => $q->where('customer_type_id', $request->customer_type_id))
+            ->when($request->filled('business_group_id'), fn ($q) => $q->where('business_group_id', $request->business_group_id))
+            ->when($request->filled('salesperson_id'), fn ($q) => $q->where('salesperson_id', $request->salesperson_id))
             ->when($request->filled('status'), function ($q) use ($request) {
                 if ($request->status === 'active') {
                     $q->where('is_active', true);
                 } elseif ($request->status === 'inactive') {
                     $q->where('is_active', false);
+                } elseif ($request->status === 'frozen') {
+                    $q->where('credit_status', 'frozen');
                 }
-            });
+            })
+            ->when($request->filled('credit_status'), fn ($q) => $q->where('credit_status', $request->credit_status));
 
         // Search party name, trade name, code, phone, gstin, email, and area name/code
         if ($term !== '') {
@@ -553,20 +679,44 @@ class CustomerController extends Controller
         $isInitialsSearch = $q !== '' && $digits === '' && strlen($initialsQuery) >= 1 && strlen($initialsQuery) <= 4;
 
         $contacts = PhoneDirectoryContact::query()
-            ->with(['designationMaster', 'company'])
+            ->with(['designationMaster', 'company', 'department'])
             ->whereNull('archived_at')
             ->where('status', 'active')
             ->when($q !== '', function ($query) use ($q, $digits, $initialsQuery, $isInitialsSearch) {
                 $query->where(function ($sub) use ($q, $digits, $initialsQuery, $isInitialsSearch) {
                     $sub->where('contact_name', 'like', "%{$q}%")
+                        ->orWhere('company_name', 'like', "%{$q}%")
+                        ->orWhereHas('company', fn ($cq) => $cq->where('companies.name', 'like', "%{$q}%"))
+                        ->orWhereHas('parties', fn ($pq) => $pq->where('customers.name', 'like', "%{$q}%")->orWhere('customers.trade_name', 'like', "%{$q}%"))
                         ->orWhere('mobile_number', 'like', "%{$q}%")
                         ->orWhere('alternate_mobile', 'like', "%{$q}%")
                         ->orWhere('whatsapp_number', 'like', "%{$q}%")
+                        ->orWhere('office_phone', 'like', "%{$q}%")
                         ->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('alternate_email', 'like', "%{$q}%")
                         ->orWhere('designation', 'like', "%{$q}%")
-                        ->orWhereHas('designationMaster', fn ($dq) => $dq->where('name', 'like', "%{$q}%"))
-                        ->orWhere('company_name', 'like', "%{$q}%")
-                        ->orWhereHas('company', fn ($cq) => $cq->where('name', 'like', "%{$q}%"));
+                        ->orWhereHas('designationMaster', fn ($dq) => $dq->where('designations.name', 'like', "%{$q}%"))
+                        ->orWhereHas('department', fn ($depq) => $depq->where('phone_directory_departments.name', 'like', "%{$q}%"));
+
+                    // Multi-token search: e.g. "Lucknow Director" or "Amitabh Lucknow"
+                    $tokens = array_filter(explode(' ', $q));
+                    if (count($tokens) > 1) {
+                        $sub->orWhere(function ($tokenQuery) use ($tokens) {
+                            foreach ($tokens as $token) {
+                                $tokenQuery->where(function ($tq) use ($token) {
+                                    $tq->where('contact_name', 'like', "%{$token}%")
+                                        ->orWhere('company_name', 'like', "%{$token}%")
+                                        ->orWhereHas('company', fn ($cq) => $cq->where('companies.name', 'like', "%{$token}%"))
+                                        ->orWhereHas('parties', fn ($pq) => $pq->where('customers.name', 'like', "%{$token}%")->orWhere('customers.trade_name', 'like', "%{$token}%"))
+                                        ->orWhere('designation', 'like', "%{$token}%")
+                                        ->orWhereHas('designationMaster', fn ($dq) => $dq->where('designations.name', 'like', "%{$token}%"))
+                                        ->orWhereHas('department', fn ($depq) => $depq->where('phone_directory_departments.name', 'like', "%{$token}%"))
+                                        ->orWhere('email', 'like', "%{$token}%")
+                                        ->orWhere('mobile_number', 'like', "%{$token}%");
+                                });
+                            }
+                        });
+                    }
 
                     // Number search: match digits inside phone fields (ignores spaces/dashes).
                     if ($digits !== '') {
@@ -578,6 +728,9 @@ class CustomerController extends Controller
                             ['%'.$digits.'%']
                         )->orWhereRaw(
                             "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(whatsapp_number,''), ' ', ''), '-', ''), '+', ''), '/', '') LIKE ?",
+                            ['%'.$digits.'%']
+                        )->orWhereRaw(
+                            "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(office_phone,''), ' ', ''), '-', ''), '+', ''), '/', '') LIKE ?",
                             ['%'.$digits.'%']
                         );
                     }
@@ -595,8 +748,10 @@ class CustomerController extends Controller
                     }
                 });
             })
+            ->select('phone_directory_contacts.*')
+            ->distinct()
             ->orderBy('contact_name', 'asc')
-            ->limit($q === '' ? 100 : 40)
+            ->limit($q === '' ? 100 : 100)
             ->get()
             ->map(function (PhoneDirectoryContact $contact) {
                 return [
@@ -605,8 +760,10 @@ class CustomerController extends Controller
                     'name' => $contact->contact_name,
                     'designation' => $contact->designation ?: ($contact->designationMaster?->name ?? ''),
                     'designation_id' => $contact->designation_id,
+                    'department' => $contact->department?->name ?? '',
                     'company_name' => $contact->effective_company_name ?: ($contact->company_name ?? ''),
                     'company_id' => $contact->company_id,
+                    'company_website' => $contact->company_website,
                     'phone' => $contact->mobile_number,
                     'alternate_phone' => $contact->alternate_mobile,
                     'mobile' => $contact->mobile_number,
@@ -635,6 +792,7 @@ class CustomerController extends Controller
             'designation' => 'nullable|string|max:100',
             'company_id' => 'nullable|integer|exists:companies,id',
             'company_name' => 'nullable|string|max:255',
+            'company_website' => 'nullable|string|max:500',
             'whatsapp_number' => 'nullable|string|max:30',
             'email' => 'nullable|email|max:255',
         ]);
@@ -667,6 +825,7 @@ class CustomerController extends Controller
                     'designation_id' => $existing->designation_id,
                     'company_name' => $existing->effective_company_name ?: ($existing->company_name ?? ''),
                     'company_id' => $existing->company_id,
+                    'company_website' => $existing->company_website,
                     'phone' => $existing->mobile_number,
                     'alternate_phone' => $existing->alternate_mobile,
                     'mobile' => $existing->mobile_number,
@@ -694,6 +853,11 @@ class CustomerController extends Controller
             $designation = \App\Domains\Master\Models\Designation::find($designationId)?->name;
         }
 
+        $companyWebsite = ! empty($validated['company_website']) ? trim($validated['company_website']) : null;
+        if ($companyWebsite && ! preg_match('~^https?://~i', $companyWebsite)) {
+            $companyWebsite = 'https://' . $companyWebsite;
+        }
+
         $contact = PhoneDirectoryContact::create([
             'contact_name' => $validated['contact_name'],
             'mobile_number' => $validated['mobile_number'],
@@ -701,6 +865,7 @@ class CustomerController extends Controller
             'email' => $validated['email'] ?? null,
             'company_id' => $companyId,
             'company_name' => $companyName,
+            'company_website' => $companyWebsite,
             'designation_id' => $designationId,
             'designation' => $designation,
             'contact_type' => 'customer',
@@ -723,6 +888,7 @@ class CustomerController extends Controller
                 'designation_id' => $contact->designation_id,
                 'company_name' => $contact->effective_company_name ?: ($contact->company_name ?? ''),
                 'company_id' => $contact->company_id,
+                'company_website' => $contact->company_website,
                 'phone' => $contact->mobile_number,
                 'alternate_phone' => $contact->alternate_mobile,
                 'mobile' => $contact->mobile_number,
@@ -877,6 +1043,7 @@ class CustomerController extends Controller
                         'designation' => $newPhoneContact->designation ?: ($newPhoneContact->designationMaster?->name ?? ''),
                         'other_designation' => '',
                         'company_name' => $newPhoneContact->effective_company_name ?: ($newPhoneContact->company_name ?? ''),
+                        'company_website' => $newPhoneContact->company_website,
                         'phone' => $newPhoneContact->mobile_number,
                         'alternate_phone' => $newPhoneContact->alternate_mobile,
                         'whatsapp' => $newPhoneContact->whatsapp_number,
@@ -1119,6 +1286,7 @@ class CustomerController extends Controller
                     'designation' => $c->phone_directory_contact_id ? ($c->effective_designation ?: $resolved['designation']) : $resolved['designation'],
                     'other_designation' => $c->phone_directory_contact_id ? '' : $resolved['other_designation'],
                     'company_name' => $c->effective_company_name,
+                    'company_website' => $c->effective_company_website,
                     'phone' => $c->effective_phone,
                     'alternate_phone' => $c->effective_alternate_phone,
                     'whatsapp' => $c->effective_whatsapp_number,
@@ -1151,6 +1319,7 @@ class CustomerController extends Controller
                         'designation' => $newPhoneContact->designation ?: ($newPhoneContact->designationMaster?->name ?? ''),
                         'other_designation' => '',
                         'company_name' => $newPhoneContact->effective_company_name ?: ($newPhoneContact->company_name ?? ''),
+                        'company_website' => $newPhoneContact->company_website,
                         'phone' => $newPhoneContact->mobile_number,
                         'alternate_phone' => $newPhoneContact->alternate_mobile,
                         'whatsapp' => $newPhoneContact->whatsapp_number,
@@ -1422,7 +1591,7 @@ class CustomerController extends Controller
      */
     public function gstLookup(Request $request): JsonResponse
     {
-        $gstin = $request->input('gstin', $request->query('gstin'));
+        $gstin = strtoupper(trim((string) $request->input('gstin', $request->query('gstin'))));
 
         if (! $gstin) {
             return response()->json([
@@ -1431,8 +1600,22 @@ class CustomerController extends Controller
             ], 422);
         }
 
-        $result = $this->gstLookupService->search((string) $gstin);
+        $duplicateParty = Customer::query()
+            ->whereRaw('UPPER(TRIM(gstin)) = ?', [$gstin])
+            ->when($request->filled('exclude_id'), fn ($q) => $q->where('id', '!=', $request->exclude_id))
+            ->first();
+
+        $result = $this->gstLookupService->search($gstin);
         $status = ! empty($result['success']) ? 200 : ($result['status_code'] ?? 422);
+
+        if ($duplicateParty) {
+            $result['duplicate_party'] = [
+                'id' => $duplicateParty->id,
+                'name' => $duplicateParty->name,
+                'code' => $duplicateParty->code,
+            ];
+            $result['duplicate_warning'] = "A party with this GSTIN already exists: {$duplicateParty->name} ({$duplicateParty->code}).";
+        }
 
         if (! empty($result['success']) && isset($result['party'])) {
             $taxpayerType = $result['party']['taxpayer_type'] ?? null;
@@ -1557,6 +1740,27 @@ class CustomerController extends Controller
 
     protected function validated(Request $request, ?Customer $customer = null): array
     {
+        if ($request->filled('website')) {
+            $website = trim((string) $request->input('website'));
+            if (! preg_match('~^https?://~i', $website)) {
+                $website = 'https://' . $website;
+            }
+            $request->merge(['website' => $website]);
+        }
+        if ($request->filled('location_link')) {
+            $loc = trim((string) $request->input('location_link'));
+            if (! preg_match('~^https?://~i', $loc) && (str_contains($loc, 'maps') || str_contains($loc, 'goo.gl') || str_contains($loc, '.') || str_starts_with($loc, 'geo:'))) {
+                $loc = 'https://' . $loc;
+            }
+            $request->merge(['location_link' => $loc]);
+        }
+        if ($request->filled('gstin')) {
+            $request->merge(['gstin' => strtoupper(trim((string) $request->input('gstin')))]);
+        }
+        if ($request->filled('pan')) {
+            $request->merge(['pan' => strtoupper(trim((string) $request->input('pan')))]);
+        }
+
         $rules = [
             'return_to' => 'nullable|string|max:100',
             'lead_id' => 'nullable|integer|exists:leads,id',
@@ -1583,6 +1787,8 @@ class CustomerController extends Controller
             'gem_authorizations.*.gem_registered' => 'nullable|in:0,1',
             'gem_authorizations.*.gem_authorized' => 'nullable|in:0,1',
             'gem_authorizations.*.authorization_number' => 'nullable|string|max:100',
+            'gem_authorizations.*.category' => 'nullable|string|max:255',
+            'gem_authorizations.*.date_of_issue' => 'nullable|date',
             'gem_authorizations.*.remove_document_ids' => 'nullable|array',
             'gem_authorizations.*.remove_document_ids.*' => 'integer',
             'gem_authorizations.*.documents' => 'nullable|array',
@@ -1592,12 +1798,6 @@ class CustomerController extends Controller
                 'string',
                 'max:20',
                 'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[0-9A-Z]{1}[0-9A-Z]{1}$/i',
-                Rule::unique('customers', 'gstin')->ignore($customer?->id)->where(function ($q) use ($customer) {
-                    $companyId = $customer?->company_id ?? auth()->user()?->company_id;
-                    if ($companyId) {
-                        $q->where('company_id', $companyId);
-                    }
-                }),
             ],
             'gst_registration_type' => 'nullable|string|max:50',
             'pan' => ['nullable', 'string', 'max:10', 'regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i'],
@@ -1654,7 +1854,7 @@ class CustomerController extends Controller
             'bank_accounts.*.branch_name' => 'nullable|string|max:255',
             'bank_accounts.*.account_number' => 'nullable|string|max:50',
             'bank_accounts.*.account_type' => 'nullable|in:current,savings',
-            'bank_accounts.*.ifsc_code' => 'nullable|string|max:20',
+            'bank_accounts.*.ifsc_code' => ['nullable', 'string', 'max:11', 'regex:/^[A-Z]{4}0[A-Z0-9]{6}$/i'],
             'bank_accounts.*.is_primary' => 'nullable|boolean',
             'credit_cheques' => 'nullable|array',
             'credit_cheques.*.id' => 'nullable|integer',
@@ -1675,9 +1875,37 @@ class CustomerController extends Controller
             'location_link' => filled($request->input('location_link')) ? trim((string) $request->input('location_link')) : null,
         ]);
 
-        $validator = Validator::make($request->all(), $rules);
+        $messages = [
+            'gstin.regex' => 'Please enter a valid 15-character GSTIN (e.g. 27AACCN0053F1ZW).',
+            'pan.regex' => 'Please enter a valid 10-character Indian PAN (e.g. ABCDE1234F).',
+            'website.regex' => 'Please enter a valid website URL (e.g. https://example.com).',
+            'location_link.regex' => 'Please enter a valid map or location URL.',
+            'bank_accounts.*.ifsc_code.regex' => 'Please enter a valid 11-character IFSC code (e.g. HDFC0001234).',
+        ];
 
-        $validator->after(function ($validator) use ($request) {
+        $validator = Validator::make($request->all(), $rules, $messages);
+
+        $validator->after(function ($validator) use ($request, $customer) {
+            // Check for duplicate GSTIN within company scope
+            if ($request->filled('gstin')) {
+                $cleanGstin = strtoupper(trim((string) $request->input('gstin')));
+                $duplicateQuery = Customer::query()
+                    ->whereRaw('UPPER(TRIM(gstin)) = ?', [$cleanGstin])
+                    ->when($customer?->id, fn ($q) => $q->where('id', '!=', $customer->id));
+
+                $companyId = $customer?->company_id ?? auth()->user()?->company_id;
+                if ($companyId) {
+                    $duplicateQuery->where(function ($q) use ($companyId) {
+                        $q->where('company_id', $companyId)->orWhereNull('company_id');
+                    });
+                }
+
+                $existingCustomer = $duplicateQuery->first();
+                if ($existingCustomer) {
+                    $validator->errors()->add('gstin', "A party with this GSTIN already exists: {$existingCustomer->name} ({$existingCustomer->code}).");
+                }
+            }
+
             $addresses = $request->input('addresses', []);
             if (is_array($addresses)) {
                 $defaultBillingCount = 0;
@@ -1744,6 +1972,8 @@ class CustomerController extends Controller
                 $active = filled($row['brand_id'] ?? null)
                     || $registered
                     || filled($row['authorization_number'] ?? null)
+                    || filled($row['category'] ?? null)
+                    || filled($row['date_of_issue'] ?? null)
                     || $request->hasFile("gem_authorizations.{$index}.documents");
 
                 if (! $active) {
@@ -1785,6 +2015,13 @@ class CustomerController extends Controller
         $data['reference_by'] = filled($data['reference_by'] ?? null) ? trim($data['reference_by']) : null;
         $data['website'] = filled($data['website'] ?? null) ? trim($data['website']) : null;
         $data['location_link'] = filled($data['location_link'] ?? null) ? trim($data['location_link']) : null;
+
+        $pan = strtoupper(trim((string) ($data['pan'] ?? '')));
+        if (empty($pan) && filled($data['gstin'] ?? null) && strlen($data['gstin']) >= 12) {
+            $pan = substr(strtoupper(trim($data['gstin'])), 2, 10);
+        }
+        $data['pan'] = $pan ?: null;
+
         $data['credit_limit'] = $data['credit_limit'] ?? 0;
         $data['credit_days'] = $data['credit_days'] ?? 0;
         $data['interest_rate'] = $data['interest_rate'] ?? 18;
@@ -1808,7 +2045,6 @@ class CustomerController extends Controller
         } elseif (! empty($data['gstin']) && strlen($data['gstin']) >= 12) {
             $data['pan'] = substr($data['gstin'], 2, 10);
         }
-
         unset($data['contacts'], $data['addresses'], $data['bank_accounts'], $data['gem_authorizations'], $data['lead_id'], $data['return_to']);
 
         return $data;
@@ -1874,7 +2110,7 @@ class CustomerController extends Controller
         $handledContactIds = [];
 
         foreach ($contacts as $row) {
-            $id = $row['id'] ?? null;
+            $id = ! empty($row['id']) ? (int) $row['id'] : null;
             $payload = collect($row)->except('id')->all();
             if ($id && $existingContacts->has($id)) {
                 $existingContacts[$id]->update($payload);
@@ -2096,6 +2332,8 @@ class CustomerController extends Controller
             $active = filled($row['brand_id'] ?? null)
                 || $registered
                 || filled($row['authorization_number'] ?? null)
+                || filled($row['category'] ?? null)
+                || filled($row['date_of_issue'] ?? null)
                 || $request->hasFile("gem_authorizations.{$index}.documents");
 
             if (! $active || blank($row['brand_id'] ?? null)) {
@@ -2109,6 +2347,8 @@ class CustomerController extends Controller
                 'authorization_number' => $registered && ($row['gem_authorized'] ?? '0') === '1'
                     ? (trim((string) ($row['authorization_number'] ?? '')) ?: null)
                     : null,
+                'category' => trim((string) ($row['category'] ?? '')) ?: null,
+                'date_of_issue' => filled($row['date_of_issue'] ?? null) ? $row['date_of_issue'] : null,
             ];
 
             $record = null;
@@ -2242,6 +2482,7 @@ class CustomerController extends Controller
                 'target_type' => 'value',
                 'owner_type' => 'party',
                 'customer_id' => $customer->id,
+                'salesperson_id' => $customer->salesperson_id,
                 'company_id' => $customer->company_id,
                 'branch_id' => $customer->branch_id,
                 'financial_year_id' => \App\Domains\Organization\Models\FinancialYear::current($customer->company_id)?->id,
@@ -2271,6 +2512,7 @@ class CustomerController extends Controller
                 'target_type' => 'value',
                 'owner_type' => 'party',
                 'customer_id' => $customer->id,
+                'salesperson_id' => $customer->salesperson_id,
                 'company_id' => $customer->company_id,
                 'branch_id' => $customer->branch_id,
                 'financial_year_id' => \App\Domains\Organization\Models\FinancialYear::current($customer->company_id)?->id,
@@ -2478,7 +2720,7 @@ class CustomerController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'code', 'is_active']),
             'availablePhoneContacts' => PhoneDirectoryContact::query()
-                ->with(['designationMaster', 'company'])
+                ->with(['designationMaster', 'company', 'department'])
                 ->whereNull('archived_at')
                 ->where('status', 'active')
                 ->orderBy('contact_name')
@@ -2490,6 +2732,7 @@ class CustomerController extends Controller
                         'name' => $c->contact_name,
                         'designation' => $c->designation ?: ($c->designationMaster?->name ?? ''),
                         'designation_id' => $c->designation_id,
+                        'department' => $c->department?->name ?? '',
                         'company_name' => $c->effective_company_name ?: ($c->company_name ?? ''),
                         'phone' => $c->mobile_number,
                         'alternate_phone' => $c->alternate_mobile,
@@ -2504,5 +2747,281 @@ class CustomerController extends Controller
                 ->values()
                 ->all(),
         ];
+    }
+
+    protected function exportParties(Request $request, \Illuminate\Database\Eloquent\Builder $query): ?Response
+    {
+        if (! $request->filled('export')) {
+            return null;
+        }
+
+        $format = strtolower($request->string('export')->toString());
+        if (! in_array($format, ['csv', 'xlsx', 'excel', 'pdf'], true)) {
+            return null;
+        }
+
+        // Eager load all relations to prevent N+1 queries
+        $parties = (clone $query)->with([
+            'customerType',
+            'businessGroup',
+            'area',
+            'route',
+            'salesperson',
+            'salesManager',
+            'contacts.designation',
+            'contacts.phoneDirectoryContact',
+            'addresses',
+            'bankAccounts',
+            'gemAuthorizations.brand',
+            'salesTargets.achievement',
+        ])->get();
+
+        $filename = 'Parties-' . now()->format('Ymd-His');
+
+        $headers = [
+            'Party Name',
+            'Trade Name',
+            'Party Code',
+            'Party Type',
+            'Classification / Customer Type',
+            'Business Group',
+            'Phone',
+            'Alternate Phone',
+            'Email',
+            'Company Website',
+            'Location Link',
+            'Billing Address',
+            'Shipping Address',
+            'City',
+            'State',
+            'Pincode',
+            'Country',
+            'Area',
+            'Route',
+            'Salesperson',
+            'Sales Manager',
+            'GSTIN',
+            'PAN',
+            'GST Registration Type',
+            'Udyam / MSME Number',
+            'Composition Dealer',
+            'Credit Limit (₹)',
+            'Credit Days',
+            'Credit Status',
+            'Interest Rate (%)',
+            'Payment Terms',
+            'Credit Period Basis',
+            'Target Amount (₹)',
+            'Target Period',
+            'Achieved Sales (₹)',
+            'Shortfall (₹)',
+            'Achievement %',
+            'Target Status',
+            'Primary Contact Person',
+            'Primary Contact Phone',
+            'Primary Contact Email',
+            'Primary Bank Name',
+            'Primary Account Number',
+            'Primary IFSC Code',
+            'Total Contacts',
+            'Total Addresses',
+            'Total Bank Accounts',
+            'Total GEM Authorizations',
+            'Status',
+            'Created Date',
+        ];
+
+        $masterRows = [];
+        $contactsRows = [];
+        $addressesRows = [];
+        $bankAccountsRows = [];
+        $gemAuthRows = [];
+
+        foreach ($parties as $item) {
+            $target = $item->activeSalesTarget() ?? $item->latestSalesTarget();
+            $targetAmount = (float) ($target?->target_amount ?? ($item->target_amount ?? 0));
+            $achieved = (float) ($target?->achievement?->achieved_amount ?? 0);
+            $shortfall = $targetAmount > 0 ? max(0, $targetAmount - $achieved) : 0;
+            $percent = $targetAmount > 0 ? round(($achieved / $targetAmount) * 100, 1) : 0;
+            $period = $target ? ($target->starts_on?->format('d-m-Y') . ' to ' . $target->ends_on?->format('d-m-Y')) : '—';
+            $status = $target ? $target->progress_status : ($targetAmount > 0 ? 'Assigned' : 'Unassigned');
+
+            $primaryContact = $item->contacts->firstWhere('is_primary', true) ?? $item->contacts->first();
+            $primaryBank = $item->bankAccounts->firstWhere('is_primary', true) ?? $item->bankAccounts->first();
+
+            $masterRows[] = [
+                $item->name,
+                $item->trade_name ?: '—',
+                $item->code,
+                $item->party_type_label,
+                $item->customerType?->name ?? '—',
+                $item->businessGroup?->name ?? '—',
+                $item->phone ?: '—',
+                $item->alternate_phone ?: '—',
+                $item->email ?: '—',
+                $item->website ?: '—',
+                $item->location_link ?: '—',
+                $item->address ?: '—',
+                $item->shipping_name ?: ($item->shipping_address ?: '—'),
+                $item->city ?: '—',
+                $item->state ?: '—',
+                $item->pincode ?: '—',
+                $item->country ?: 'India',
+                $item->area?->name ?? '—',
+                $item->route?->name ?? '—',
+                $item->salesperson?->name ?? '—',
+                $item->salesManager?->name ?? '—',
+                $item->gstin ?: '—',
+                $item->pan ?: '—',
+                $item->gst_registration_type ?: 'Regular',
+                $item->udyam_number ?: '—',
+                $item->gst_registration_type === 'Composition' ? 'Yes' : 'No',
+                $item->credit_limit > 0 ? number_format((float) $item->credit_limit, 2, '.', '') : '0.00',
+                $item->credit_days ?? 0,
+                $item->creditStatusLabel(),
+                $item->interest_rate > 0 ? number_format((float) $item->interest_rate, 2, '.', '') : '0.00',
+                $item->payment_terms ?: '—',
+                $item->creditPeriodBasisLabel(),
+                $targetAmount > 0 ? number_format($targetAmount, 2, '.', '') : '0.00',
+                $period,
+                $targetAmount > 0 ? number_format($achieved, 2, '.', '') : '0.00',
+                $targetAmount > 0 ? number_format($shortfall, 2, '.', '') : '0.00',
+                $targetAmount > 0 ? "{$percent}%" : '0%',
+                $status,
+                $primaryContact?->effective_name ?? ($primaryContact?->name ?? '—'),
+                $primaryContact?->effective_phone ?? ($primaryContact?->phone ?? '—'),
+                $primaryContact?->effective_email ?? ($primaryContact?->email ?? '—'),
+                $primaryBank?->bank_name ?? '—',
+                $primaryBank?->account_number ?? '—',
+                $primaryBank?->ifsc_code ?? '—',
+                $item->contacts->count(),
+                $item->addresses->count(),
+                $item->bankAccounts->count(),
+                $item->gemAuthorizations->count(),
+                $item->is_active ? 'Active' : 'Inactive',
+                $item->created_at?->format('d/m/Y H:i') ?? '—',
+            ];
+
+            // Child Contacts
+            foreach ($item->contacts as $c) {
+                $contactsRows[] = [
+                    $item->code,
+                    $item->name,
+                    $c->effective_name ?: $c->name,
+                    $c->effective_designation ?: ($c->designation?->name ?: ($c->role ?: '—')),
+                    $c->effective_company_name ?: ($c->company_name ?: '—'),
+                    $c->effective_company_website ?: ($c->company_website ?: '—'),
+                    $c->effective_phone ?: ($c->phone ?: '—'),
+                    $c->effective_alternate_phone ?: ($c->alternate_phone ?: '—'),
+                    $c->effective_whatsapp_number ?: ($c->whatsapp_number ?: '—'),
+                    $c->effective_email ?: ($c->email ?: '—'),
+                    $c->is_primary ? 'Yes' : 'No',
+                    $c->is_active ? 'Active' : 'Inactive',
+                ];
+            }
+
+            // Child Addresses
+            foreach ($item->addresses as $a) {
+                $addressesRows[] = [
+                    $item->code,
+                    $item->name,
+                    $a->label ?: 'Office',
+                    ucfirst($a->type ?: 'both'),
+                    $a->contact_person ?: '—',
+                    $a->contact_phone ?: '—',
+                    $a->address_line_1 ?: ($a->address ?: '—'),
+                    $a->address_line_2 ?: '—',
+                    $a->city ?: '—',
+                    $a->state ?: '—',
+                    $a->pincode ?: '—',
+                    $a->is_default_billing ? 'Yes' : 'No',
+                    $a->is_default_delivery ? 'Yes' : 'No',
+                    $a->gstin ?: '—',
+                ];
+            }
+
+            // Child Bank Accounts
+            foreach ($item->bankAccounts as $b) {
+                $bankAccountsRows[] = [
+                    $item->code,
+                    $item->name,
+                    $b->bank_name ?: '—',
+                    $b->account_holder_name ?: '—',
+                    $b->branch_name ?: '—',
+                    $b->account_number ?: '—',
+                    ucfirst($b->account_type ?: 'current'),
+                    $b->ifsc_code ?: '—',
+                    $b->is_primary ? 'Yes' : 'No',
+                ];
+            }
+
+            // Child GEM Authorizations
+            foreach ($item->gemAuthorizations as $gem) {
+                $gemAuthRows[] = [
+                    $item->code,
+                    $item->name,
+                    $gem->brand?->name ?? '—',
+                    $gem->category ?: '—',
+                    $gem->date_of_issue?->format('d/m/Y') ?? '—',
+                    $gem->gem_registered ? 'Registered' : 'Not Registered',
+                    $gem->gem_authorized ? 'Authorized' : 'Not Authorized',
+                    $gem->authorization_number ?: '—',
+                ];
+            }
+        }
+
+        if ($format === 'xlsx' || $format === 'excel') {
+            $sheets = [
+                [
+                    'title' => 'Parties Master',
+                    'headers' => $headers,
+                    'rows' => $masterRows,
+                    'meta' => [
+                        '_title' => 'Parties & Suppliers Master Register',
+                        'Total Parties' => count($masterRows),
+                        'Exported At' => now()->format('d M Y H:i:s'),
+                    ],
+                ],
+                [
+                    'title' => 'Contacts',
+                    'headers' => ['Party Code', 'Party Name', 'Contact Person', 'Designation', 'Company Name', 'Company Website', 'Phone', 'Alternate Phone', 'WhatsApp', 'Email', 'Primary Contact', 'Status'],
+                    'rows' => $contactsRows,
+                    'meta' => ['_title' => 'Party Contact Persons (' . count($contactsRows) . ' Records)'],
+                ],
+                [
+                    'title' => 'Addresses',
+                    'headers' => ['Party Code', 'Party Name', 'Address Label', 'Type', 'Contact Person', 'Contact Phone', 'Address Line 1', 'Address Line 2', 'City', 'State', 'Pincode', 'Default Billing', 'Default Delivery', 'GSTIN'],
+                    'rows' => $addressesRows,
+                    'meta' => ['_title' => 'Party Addresses (' . count($addressesRows) . ' Records)'],
+                ],
+                [
+                    'title' => 'Bank Accounts',
+                    'headers' => ['Party Code', 'Party Name', 'Bank Name', 'Account Holder', 'Branch Name', 'Account Number', 'Account Type', 'IFSC Code', 'Primary Account'],
+                    'rows' => $bankAccountsRows,
+                    'meta' => ['_title' => 'Party Bank Accounts (' . count($bankAccountsRows) . ' Records)'],
+                ],
+                [
+                    'title' => 'GEM Authorizations',
+                    'headers' => ['Party Code', 'Party Name', 'Brand / OEM', 'Category', 'Date of Issue', 'Product Registration Status', 'Authorization Status', 'Authorization Number'],
+                    'rows' => $gemAuthRows,
+                    'meta' => ['_title' => 'Party GEM Authorizations (' . count($gemAuthRows) . ' Records)'],
+                ],
+            ];
+
+            return DocumentExporter::exportMultiSheetExcel($filename . '.xlsx', $sheets);
+        }
+
+        if ($format === 'csv') {
+            return DocumentExporter::exportCsv($filename . '.csv', $headers, $masterRows, [
+                '_title' => 'Parties Master Export',
+                'Total Records' => count($masterRows),
+                'Exported At' => now()->format('d M Y H:i:s'),
+            ]);
+        }
+
+        return ReportExporter::pdf($filename . '.pdf', 'Parties Master Report', $headers, $masterRows, [
+            'Generated' => now()->format('d M Y H:i'),
+            'Total Parties' => (string) count($masterRows),
+        ]);
     }
 }

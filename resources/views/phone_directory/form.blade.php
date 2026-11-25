@@ -40,6 +40,7 @@
         otherDesignation: @js((string) old('other_designation', $resolvedDesignation['other_designation'] ?? '')),
         selectedCompanyId: @js((string) old('company_id', $contact->company_id ?? ($isEdit ? '' : ($defaultCompanyId ?? '')))),
         companyName: @js((string) old('company_name', $contact->company?->name ?? $contact->company_name ?? '')),
+        companyWebsite: @js((string) old('company_website', $contact->company_website ?? '')),
         selectedClassificationId: @js((string) old('customer_type_id', old('classification_id', $contact->customer_type_id ?? ''))),
         country: @js(old('country', $contact->country ?? 'India')),
         state: @js(old('state', $contact->state ?? '')),
@@ -274,6 +275,26 @@
                                 <div x-show="filteredCompanies.length === 0" class="px-3 py-2 text-xs text-slate-400">No companies found</div>
                             </div>
                         </div>
+                    </div>
+
+                    <div>
+                        <div class="mb-1 flex items-center justify-between gap-2">
+                            <label class="pd-label mb-0" for="company_website">Company Website</label>
+                        </div>
+                        <input
+                            type="url"
+                            id="company_website"
+                            name="company_website"
+                            x-model="companyWebsite"
+                            @blur="normalizeWebsite()"
+                            value="{{ old('company_website', $contact->company_website) }}"
+                            placeholder="https://www.example.com"
+                            class="pd-field"
+                            autocomplete="url"
+                        >
+                        @error('company_website')
+                            <p class="mt-1 text-xs text-rose-600">{{ $message }}</p>
+                        @enderror
                     </div>
                 </div>
             </section>
@@ -510,6 +531,7 @@ function contactFormHandler(config) {
         otherDesignation: config.otherDesignation || '',
         selectedCompanyId: config.selectedCompanyId || '',
         selectedCompanyName: config.companyName || '',
+        companyWebsite: config.companyWebsite || '',
         selectedClassificationId: config.selectedClassificationId || '',
         country: config.country || 'India',
         state: config.state || '',
@@ -631,6 +653,13 @@ function contactFormHandler(config) {
                 this.selectedCompanyId = '';
                 this.selectedCompanyName = '';
             }
+        },
+        normalizeWebsite() {
+            let val = String(this.companyWebsite || '').trim();
+            if (val && !/^https?:\/\//i.test(val)) {
+                val = 'https://' + val;
+            }
+            this.companyWebsite = val;
         },
         selectClassification(opt) {
             this.selectedClassificationId = opt ? String(opt.id) : '';

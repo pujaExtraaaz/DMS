@@ -69,10 +69,19 @@ class PartiesImport implements ToCollection, WithHeadingRow
             $typeName = \App\Support\NameCase::format((string) ($data['classification'] ?? $data['customer_type'] ?? 'RETAIL'));
             $type = $types[strtolower($typeName)] ?? null;
             if (! $type) {
+                $baseCode = strtoupper(substr(preg_replace('/[^A-Za-z0-9]/', '', Str::slug($typeName, '_')), 0, 15)) ?: 'TYPE';
+                $code = $baseCode;
+                $counter = 1;
+                while (CustomerType::where('code', $code)->exists()) {
+                    $suffix = (string) $counter;
+                    $code = substr($baseCode, 0, 20 - strlen($suffix)) . $suffix;
+                    $counter++;
+                }
+
                 $type = CustomerType::firstOrCreate(
                     ['name' => $typeName],
                     [
-                        'code' => strtoupper(Str::slug($typeName, '_')),
+                        'code' => $code,
                         'is_active' => true,
                     ]
                 );

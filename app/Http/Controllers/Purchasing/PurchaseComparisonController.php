@@ -9,6 +9,8 @@ use App\Domains\Purchasing\Models\PurchaseComparison;
 use App\Domains\Purchasing\Models\PurchaseComparisonFile;
 use App\Domains\Purchasing\Services\PurchaseComparisonService;
 use App\Http\Controllers\Controller;
+use App\Support\DocumentExporter;
+use App\Support\ReportExporter;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -19,17 +21,18 @@ use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PurchaseComparisonController extends Controller
 {
     public function __construct(private readonly PurchaseComparisonService $comparisons) {}
 
-    public function index(Request $request): View
+    public function index(Request $request): View|Response|StreamedResponse
     {
         $search = trim((string) $request->query('search', ''));
-        $sheets = PurchaseComparison::query()
-            ->with(['preparer', 'vendors.supplier'])
+        $query = PurchaseComparison::query()
+            ->with(['preparer', 'approver', 'vendors.supplier', 'items'])
             ->withCount('items')
             ->when($request->filled('status'), fn ($query) => $query->where('status', $request->string('status')))
             ->when($search !== '', function ($query) use ($search) {
@@ -40,9 +43,13 @@ class PurchaseComparisonController extends Controller
                 });
             })
             ->latest('comparison_date')
-            ->latest('id')
-            ->paginate(20)
-            ->withQueryString();
+            ->latest('id');
+
+        if ($export = $this->exportComparisons($request, $query)) {
+            return $export;
+        }
+
+        $sheets = $query->paginate(20)->withQueryString();
 
         return view('purchasing.comparisons.index', compact('sheets', 'search'));
     }
@@ -629,5 +636,78 @@ class PurchaseComparisonController extends Controller
             'country_of_origin' => '',
             'remarks' => '',
         ];
+    }
+
+    protected function exportComparisons(Request $request, $query): Response|StreamedResponse|null
+    {
+        $format = strtolower((string) ($request->input('export') ?: $request->input('format') ?: ''));
+        if (! in_array($format, ['xlsx', 'csv', 'pdf'], true)) {
+            return null;
+        }
+
+        $records = (clone $query)->get();
+
+        $headers = [
+            'Comparison No', 'Date', 'Indent No', 'Customer / Project', 'Delivery Date',
+            'Status', 'Total Items', 'Prepared By', 'Approved By', 'Remarks', 'Created At'
+        ];
+
+        $compRows = $records->map(function (PurchaseComparison $c) {
+            return [
+                'Comparison No' => $c->number,
+                'Date' => optional($c->comparison_date)->format('Y-m-d'),
+                'Indent No' => $c->indent_no ?? '',
+                'Customer / Project' => $c->customer_project ?? '',
+                'Delivery Date' => optional($c->required_delivery_date)->format('Y-m-d'),
+                'Status' => ucfirst(str_replace('_', ' ', (string) $c->status)),
+                'Total Items' => $c->items_count ?? $c->items->count(),
+                'Prepared By' => $c->preparer?->name ?? '',
+                'Approved By' => $c->approver?->name ?? '',
+                'Remarks' => $c->remarks ?? '',
+                'Created At' => optional($c->created_at)->format('Y-m-d H:i:s'),
+            ];
+        })->all();
+
+        if ($format === 'xlsx') {
+            $itemHeaders = [
+                'Comparison No', 'Date', 'Item Name', 'Model / SKU', 'Description',
+                'Quantity', 'Final Rate (₹)', 'Final Freight (₹)', 'Final Amount (₹)', 'Selection Reason'
+            ];
+
+            $itemRows = [];
+            foreach ($records as $c) {
+                foreach ($c->items as $item) {
+                    $itemRows[] = [
+                        'Comparison No' => $c->number,
+                        'Date' => optional($c->comparison_date)->format('Y-m-d'),
+                        'Item Name' => $item->item_name,
+                        'Model / SKU' => $item->model_sku ?? '',
+                        'Description' => $item->description ?? '',
+                        'Quantity' => (float) $item->required_quantity,
+                        'Final Rate (₹)' => number_format((float) $item->final_rate, 2, '.', ''),
+                        'Final Freight (₹)' => number_format((float) $item->final_freight, 2, '.', ''),
+                        'Final Amount (₹)' => number_format((float) $item->final_amount, 2, '.', ''),
+                        'Selection Reason' => $item->selection_reason ?? '',
+                    ];
+                }
+            }
+
+            return DocumentExporter::exportMultiSheetExcel([
+                'Comparisons' => [
+                    'columns' => array_combine($headers, $headers),
+                    'rows' => $compRows,
+                ],
+                'Comparison Items' => [
+                    'columns' => array_combine($itemHeaders, $itemHeaders),
+                    'rows' => $itemRows,
+                ],
+            ], 'purchase-comparisons-master-' . now()->format('Y-m-d'));
+        }
+
+        if ($format === 'csv') {
+            return ReportExporter::csv($compRows, $headers, 'purchase-comparisons-' . now()->format('Y-m-d') . '.csv');
+        }
+
+        return ReportExporter::pdf($compRows, array_combine($headers, $headers), 'Purchase Comparisons Report', 'purchase-comparisons-' . now()->format('Y-m-d') . '.pdf');
     }
 }

@@ -33,5 +33,10 @@ class TallyBooksServiceProvider extends ServiceProvider
     {
         View::addNamespace('tally', resource_path('views/tally'));
         View::composer('tally::components.layouts.app', ShellComposer::class);
+        View::composer(['tally::*', 'tally::components.*'], function ($view) {
+            $context = app(WorkspaceContext::class);
+            $context->resolve();
+            $view->with('workspace', $context);
+        });
     }
 }

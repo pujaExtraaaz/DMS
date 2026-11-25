@@ -51,10 +51,14 @@ class SubCategoryController extends Controller
 
         $this->applySearch($query, $request->input('search'), ['name']);
 
-        if ($export = $this->exportIfRequested($request, $query, 'Sub-Categories', 'Sub Categories', ['Name', 'Category', 'Status'], fn ($item) => [
+        $query->with(['category.brand'])->withCount('products');
+        if ($export = $this->exportIfRequested($request, $query, 'Sub-Categories', 'Sub Categories', ['Subcategory Name', 'Category', 'Brand', 'Products Count', 'Status', 'Created Date'], fn ($item) => [
             $item->name,
-            $item->category?->name ?? '',
+            $item->category?->name ?? '—',
+            $item->category?->brand?->name ?? '—',
+            (string) ($item->products_count ?? 0),
             $item->is_active ? 'Active' : 'Inactive',
+            $item->created_at?->format('d/m/Y') ?? '—',
         ])) {
             return $export;
         }

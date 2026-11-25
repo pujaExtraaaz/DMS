@@ -14,6 +14,21 @@ class UpdateContactRequest extends FormRequest
         );
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('company_website')) {
+            $website = trim((string) $this->input('company_website'));
+            if ($website !== '') {
+                if (! preg_match('~^https?://~i', $website)) {
+                    $website = 'https://' . $website;
+                }
+                $this->merge(['company_website' => $website]);
+            } else {
+                $this->merge(['company_website' => null]);
+            }
+        }
+    }
+
     public function rules(): array
     {
         return [
@@ -26,6 +41,7 @@ class UpdateContactRequest extends FormRequest
             'department_id' => ['nullable', 'exists:phone_directory_departments,id'],
             'company_id' => ['nullable', 'integer', 'exists:companies,id'],
             'company_name' => ['nullable', 'string', 'max:255'],
+            'company_website' => ['nullable', 'string', 'max:500', 'url'],
             'customer_type_id' => ['nullable', 'integer', 'exists:customer_types,id'],
             'classification_id' => ['nullable', 'integer', 'exists:customer_types,id'],
             'category_id' => ['nullable', 'exists:phone_directory_categories,id'],
@@ -45,6 +61,18 @@ class UpdateContactRequest extends FormRequest
             'is_important' => ['nullable', 'boolean'],
             'status' => ['nullable', 'in:active,inactive'],
             'notes' => ['nullable', 'string', 'max:2000'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'contact_name.required' => 'The contact name is required.',
+            'mobile_number.required' => 'The primary mobile number is required.',
+            'contact_type.required' => 'Please select a contact type.',
+            'profile_photo.image' => 'The profile photo must be an image file (jpeg, png, webp).',
+            'profile_photo.max' => 'The profile photo may not be greater than 3MB.',
+            'company_website.url' => 'Please enter a valid website URL (e.g. https://www.example.com).',
         ];
     }
 }

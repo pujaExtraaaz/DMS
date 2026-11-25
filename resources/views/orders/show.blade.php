@@ -24,12 +24,17 @@
                     </x-ui.button>
                 @endif
 
-            <a
-                href="{{ route('orders.pdf', ['q' => $order->order_no]) }}"
-                class="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-                Export PDF
-            </a>
+            <div class="relative inline-block text-left" x-data="{ exportOpen: false }">
+                <button type="button" @click="exportOpen = !exportOpen" @click.away="exportOpen = false" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50">
+                    Export
+                    <svg class="ml-1.5 h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div x-show="exportOpen" class="origin-top-right absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 py-1" style="display: none;">
+                    <a href="{{ route('orders.export.single', ['order' => $order, 'format' => 'xlsx']) }}" class="flex items-center px-4 py-2 text-xs text-gray-700 hover:bg-gray-100 font-medium">Excel (.xlsx)</a>
+                    <a href="{{ route('orders.export.single', ['order' => $order, 'format' => 'csv']) }}" class="flex items-center px-4 py-2 text-xs text-gray-700 hover:bg-gray-100 font-medium">CSV</a>
+                    <a href="{{ route('orders.export.single', ['order' => $order, 'format' => 'pdf']) }}" class="flex items-center px-4 py-2 text-xs text-gray-700 hover:bg-gray-100 font-medium">PDF</a>
+                </div>
+            </div>
 
             @can('update', $order)
                 <x-ui.button

@@ -2,10 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Domains\Master\Observers\ProductPriceObserver;
 use App\Domains\Organization\Models\Branch;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\FinancialYear;
 use App\Domains\Sync\Support\BooksCompany;
+use App\Domains\Sync\Support\SyncGuard;
 use App\Domains\TallySync\Bridge\TallyInbound;
 use App\Domains\TallySync\Import\TallyBulkUpsert;
 use App\Domains\TallySync\Import\TallyImportLookupCache;
@@ -137,12 +139,15 @@ class ImportTallyCommand extends Command
         }
 
         $inbound->setForceOverwrite($force);
+        $inbound->setBulkXmlImport(true);
 
         $lookup = new TallyImportLookupCache;
+        $lookup->warmDms($company);
+        $inbound->setLookupCache($lookup);
+        $this->line('Lookup cache warmed for DMS masters.');
         if ($withBooks) {
             $booksCompany = BooksCompany::ensureForOrganization($company);
             $lookup->warmBooks($booksCompany);
-            $inbound->setLookupCache($lookup);
             $this->line('Lookup cache warmed for Books masters.');
         }
 
@@ -181,20 +186,34 @@ class ImportTallyCommand extends Command
             $this->indexSourceFiles($stages, $chunkSize);
         }
 
-        TallyBulkUpsert::withFastSession(function () use ($inbound, $stages, $fast, $queueVouchers, $companyName, $lookup, $withBooks) {
-            foreach ($stages as $stage) {
-                if ($withBooks && $stage['target'] === 'books') {
-                    // Refresh cache after each master stage so voucher lines resolve new ids.
-                    $booksCompany = \Tally\Models\Company::query()
-                        ->whereRaw('LOWER(name) = ?', [mb_strtolower($companyName)])
-                        ->first();
-                    if ($booksCompany) {
-                        $lookup->warmBooks($booksCompany);
-                        $inbound->setLookupCache($lookup);
+        TallyBulkUpsert::withFastSession(function () use ($inbound, $stages, $fast, $queueVouchers, $companyName, $lookup, $withBooks, $company) {
+            // Tally XML already lands in DMS + Books explicitly — skip per-row BooksSyncObserver / price history.
+            SyncGuard::run(function () use ($inbound, $stages, $fast, $queueVouchers, $companyName, $lookup, $withBooks, $company) {
+                $priceObserverWasDisabled = ProductPriceObserver::$disabled;
+                ProductPriceObserver::$disabled = true;
+
+                try {
+                    foreach ($stages as $stage) {
+                        if ($stage['target'] === 'dms' && in_array($stage['key'], ['stock_items', 'stock_groups', 'units', 'godowns'], true)) {
+                            $lookup->warmDms($company);
+                            $inbound->setLookupCache($lookup);
+                        }
+                        if ($withBooks && $stage['target'] === 'books') {
+                            // Refresh cache after each master stage so voucher lines resolve new ids.
+                            $booksCompany = \Tally\Models\Company::query()
+                                ->whereRaw('LOWER(name) = ?', [mb_strtolower($companyName)])
+                                ->first();
+                            if ($booksCompany) {
+                                $lookup->warmBooks($booksCompany);
+                                $inbound->setLookupCache($lookup);
+                            }
+                        }
+                        $this->runStage($inbound, $stage, $fast, $queueVouchers, $companyName);
                     }
+                } finally {
+                    ProductPriceObserver::$disabled = $priceObserverWasDisabled;
                 }
-                $this->runStage($inbound, $stage, $fast, $queueVouchers, $companyName);
-            }
+            });
         });
 
         if ($queueVouchers) {
@@ -468,6 +487,7 @@ class ImportTallyCommand extends Command
 
         $created = $updated = $skipped = $conflicts = 0;
         foreach ($chunks as $i => $chunkPath) {
+            $chunkStarted = microtime(true);
             $xml = File::get($chunkPath);
             try {
                 $result = $inbound->apply($stage['key'], $xml, $stage['target']);
@@ -476,13 +496,12 @@ class ImportTallyCommand extends Command
                 $skipped += (int) ($result['skipped'] ?? 0);
                 $conflicts += (int) ($result['conflicts'] ?? 0);
             } catch (\Throwable $e) {
-                $this->error("  chunk ".($i + 1).'/'.count($chunks).' failed: '.$e->getMessage());
+                $this->error('  chunk '.($i + 1).'/'.count($chunks).' failed: '.$e->getMessage());
                 $conflicts++;
             }
             unset($xml);
-            if (($i + 1) % 5 === 0 || $i + 1 === count($chunks)) {
-                $this->line('  … chunk '.($i + 1).'/'.count($chunks));
-            }
+            $elapsed = round(microtime(true) - $chunkStarted, 1);
+            $this->line('  … chunk '.($i + 1).'/'.count($chunks)." ({$elapsed}s)");
         }
 
         $this->record($label, $sourceCount, $created, $updated, $skipped, $conflicts, basename($stage['file']));

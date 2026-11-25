@@ -93,6 +93,10 @@ class CustomerSync
             ? Customer::PARTY_TYPE_BOTH
             : ($party->type === 'supplier' ? Customer::PARTY_TYPE_SUNDRY_CREDITORS : Customer::PARTY_TYPE_SUNDRY_DEBTORS);
 
+        $gstReg = $party->gst_registration_type?->label()
+            ?? (is_string($party->gst_registration_type) ? $party->gst_registration_type : null);
+        $gstReg = Customer::normalizeGstRegistrationType($gstReg);
+
         $attributes = [
             'company_id' => $organizationId,
             'customer_type_id' => $typeId,
@@ -100,10 +104,12 @@ class CustomerSync
             'trade_name' => $party->ledger?->mailing_name ?: $party->legal_name,
             'code' => $code,
             'party_type' => $partyType,
-            'phone' => $party->phone,
+            'phone' => $party->mobile ?: $party->phone,
             'email' => $party->email,
             'address' => $party->billing_address,
             'gstin' => $party->gstin,
+            'pan' => $party->pan ?: $party->ledger?->pan,
+            'gst_registration_type' => $gstReg,
             'state' => $party->state,
             'pincode' => $party->ledger?->pincode,
             'credit_limit' => $party->credit_limit,
@@ -111,6 +117,12 @@ class CustomerSync
             'interest_rate' => $party->ledger?->calculate_interest ? $party->ledger?->interest_rate : null,
             'is_active' => (bool) $party->is_active,
         ];
+
+        // Avoid wiping DMS-enriched fields when Books party omits values.
+        $attributes = array_filter(
+            $attributes,
+            static fn ($value) => $value !== null && $value !== ''
+        );
 
         $customer ? $customer->update($attributes) : $customer = Customer::query()->create($attributes);
         SyncLinks::store(self::KEY, $customer, $party);

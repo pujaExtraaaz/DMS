@@ -71,6 +71,7 @@ class PhoneDirectoryExportController extends Controller
             'Designation',
             'Department',
             'Company / Organization',
+            'Company Website',
             'Category',
             'Primary Mobile',
             'Alternate Mobile',
@@ -109,6 +110,7 @@ class PhoneDirectoryExportController extends Controller
                     $c->designation ?? '',
                     $c->department?->name ?? '',
                     $c->effective_company_name ?: ($c->company_name ?? ''),
+                    $c->company_website ?? '',
                     $c->category?->name ?? '',
                     $c->mobile_number,
                     $c->alternate_mobile ?? '',
@@ -154,6 +156,7 @@ class PhoneDirectoryExportController extends Controller
             'Designation',
             'Department',
             'Company / Organization',
+            'Company Website',
             'Category',
             'Primary Mobile',
             'Alternate Mobile',
@@ -193,7 +196,7 @@ class PhoneDirectoryExportController extends Controller
             ],
         ];
 
-        $sheet->getStyle('A1:Y1')->applyFromArray($headerStyle);
+        $sheet->getStyle('A1:Z1')->applyFromArray($headerStyle);
         $sheet->getRowDimension(1)->setRowHeight(26);
 
         // Data rows
@@ -207,6 +210,7 @@ class PhoneDirectoryExportController extends Controller
                 $c->designation ?? '',
                 $c->department?->name ?? '',
                 $c->effective_company_name ?: ($c->company_name ?? ''),
+                $c->company_website ?? '',
                 $c->category?->name ?? '',
                 $c->mobile_number,
                 $c->alternate_mobile ?? '',

@@ -60,6 +60,9 @@ class TallyInbound
 
     private ?TallyImportLookupCache $lookupCache = null;
 
+    /** Bulk `dms:import-tally` — skip row locks and per-item activity logs. */
+    private bool $bulkXmlImport = false;
+
     public function setForceOverwrite(bool $force): self
     {
         $this->forceOverwrite = $force;
@@ -70,6 +73,13 @@ class TallyInbound
     public function setLookupCache(?TallyImportLookupCache $cache): self
     {
         $this->lookupCache = $cache;
+
+        return $this;
+    }
+
+    public function setBulkXmlImport(bool $bulk): self
+    {
+        $this->bulkXmlImport = $bulk;
 
         return $this;
     }
@@ -403,15 +413,23 @@ class TallyInbound
             })
             ->first();
 
+        $address = $this->addressLinesFromLedger($node);
+        $lines = preg_split("/\r\n|\n|\r/", $address) ?: [];
         $attributes = [
             'company_id' => $organization->id,
             'name' => $name,
-            'address' => $this->text($node, 'ADDRESS') ?: null,
+            'address' => $address !== '' ? ($lines[0] ?? $address) : null,
+            'address_line_2' => count($lines) > 1 ? trim(implode(', ', array_slice($lines, 1))) : null,
+            'state' => $this->truncateField($this->stateFromLedger($node) ?: null, 80),
+            'pincode' => $this->truncateField($this->pincodeFromLedger($node) ?: null, 12),
+            'country' => $this->truncateField($this->countryFromLedger($node) ?: null, 80) ?: 'India',
+            'phone' => $this->truncateField($this->phoneFromLedger($node), 30),
+            'email' => $this->truncateField($this->emailFromLedger($node), 120),
             'is_active' => true,
         ];
 
         if ($branch) {
-            $branch->fill($attributes)->save();
+            $branch->fill($this->withoutBlank($attributes))->save();
             $this->counts['updated']++;
         } else {
             \App\Domains\Organization\Models\Branch::query()->create($attributes + [
@@ -506,16 +524,24 @@ class TallyInbound
             })
             ->first();
 
+        $address = $this->addressLinesFromLedger($node);
+        $lines = preg_split("/\r\n|\n|\r/", $address) ?: [];
         $attributes = [
             'company_id' => $organization->id,
             'branch_id' => $branchId,
             'name' => $name,
-            'address' => $this->text($node, 'ADDRESS') ?: null,
+            'address' => $address !== '' ? ($lines[0] ?? $address) : null,
+            'address_line_2' => count($lines) > 1 ? trim(implode(', ', array_slice($lines, 1))) : null,
+            'state' => $this->truncateField($this->stateFromLedger($node) ?: null, 80),
+            'pincode' => $this->truncateField($this->pincodeFromLedger($node) ?: null, 12),
+            'country' => $this->truncateField($this->countryFromLedger($node) ?: null, 80) ?: 'India',
+            'contact_person' => $this->truncateField($this->contactPersonFromLedger($node) ?: null, 120),
+            'contact_phone' => $this->truncateField($this->phoneFromLedger($node), 30),
             'is_active' => true,
         ];
 
         if ($warehouse) {
-            $warehouse->fill($attributes)->save();
+            $warehouse->fill($this->withoutBlank($attributes))->save();
             $this->counts['updated']++;
         } else {
             \App\Domains\Organization\Models\Warehouse::query()->create($attributes + [
@@ -541,67 +567,114 @@ class TallyInbound
             ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
             ->first();
 
+        $gstin = $this->gstinFromLedger($node);
+        $pan = $this->panFromLedger($node, $gstin);
+        $address = $this->addressLinesFromLedger($node);
+        $state = $this->stateFromLedger($node);
+        $pincode = $this->pincodeFromLedger($node);
+        $phone = $this->phoneFromLedger($node);
+        $email = $this->emailFromLedger($node);
+        $tradeName = $this->mailingNameFromLedger($node, $name);
+        $gstReg = \App\Domains\Master\Models\Customer::normalizeGstRegistrationType(
+            $this->gstRegistrationTypeFromLedger($node)
+        );
+        $creditLimitRaw = $this->text($node, 'CREDITLIMIT');
+        $creditDaysRaw = $this->text($node, 'BILLCREDITPERIOD');
+        $interestOn = $this->yes($this->text($node, 'ISINTERESTON'));
+        $interestRateRaw = $this->text($node, 'INTERESTRATE');
+        $website = $this->firstNonEmptyText($node, ['WEBSITE', 'LEDGERWEBSITE']);
+        $openedOn = $this->date($this->firstNonEmptyText($node, ['CREATEDDATE', 'STARTINGFROM', 'OPENINGDATE']));
+        $udyam = $this->udyamFromLedger($node);
+
         $attributes = [
             'company_id' => $organization->id,
             'name' => $name,
             'party_type' => $role === 'supplier'
                 ? \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS
                 : \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_DEBTORS,
-            'phone' => $this->truncateField($this->firstPhone($this->text($node, 'LEDGERPHONE')), 20),
-            'email' => $this->truncateField($this->text($node, 'EMAIL') ?: null, 120),
-            'address' => $this->text($node, 'ADDRESS') ?: null,
-            'gstin' => $this->truncateField($this->text($node, 'PARTYGSTIN') ?: null, 20),
-            'state' => $this->truncateField($this->text($node, 'STATENAME') ?: null, 80),
-            'pincode' => $this->truncateField($this->text($node, 'PINCODE') ?: null, 12),
-            'credit_limit' => (float) str_replace(',', '', $this->text($node, 'CREDITLIMIT') ?: '0'),
-            'credit_days' => (int) $this->text($node, 'BILLCREDITPERIOD'),
+            'trade_name' => $this->truncateField($tradeName !== '' ? $tradeName : null, 180),
+            'phone' => $this->truncateField($phone, 30),
+            'email' => $this->truncateField($email, 120),
+            'website' => $this->truncateField($website !== '' ? $website : null, 255),
+            'opened_on' => $openedOn,
+            'udyam_number' => $this->truncateField($udyam !== '' ? $udyam : null, 50),
+            'address' => $address !== '' ? $address : null,
+            'gstin' => $this->truncateField($gstin !== '' ? $gstin : null, 20),
+            'pan' => $this->truncateField($pan !== '' ? $pan : null, 20),
+            'gst_registration_type' => $gstReg,
+            'state' => $this->truncateField($state !== '' ? $state : null, 80),
+            'pincode' => $this->truncateField($pincode !== '' ? $pincode : null, 12),
             'is_active' => true,
         ];
 
+        if (trim($creditLimitRaw) !== '') {
+            $attributes['credit_limit'] = (float) str_replace(',', '', $creditLimitRaw);
+        }
+        if (trim($creditDaysRaw) !== '') {
+            $attributes['credit_days'] = (int) $creditDaysRaw;
+        }
+        if ($interestOn && trim($interestRateRaw) !== '') {
+            $attributes['interest_rate'] = (float) str_replace(',', '', $interestRateRaw);
+        }
+
         if ($customer) {
-            $customer->fill($attributes)->save();
+            $customer->fill($this->withoutBlank($attributes))->save();
             $this->counts['updated']++;
         } else {
             $customer = \App\Domains\Master\Models\Customer::query()->create($attributes + [
                 'code' => \App\Support\CodeGenerator::forParty($organization->id),
+                'credit_limit' => $attributes['credit_limit'] ?? 0,
+                'credit_days' => $attributes['credit_days'] ?? 0,
             ]);
             $this->counts['created']++;
         }
 
         $this->syncPartyAddressFromLedger($customer, $node);
         $this->syncPartyBankFromLedger($customer, $node);
+        $this->syncPartyDirectoryContact($customer, $node);
+        $this->maybeUpdateCompanyBank($organization, $node);
 
         $this->mapDms('ledger', \App\Domains\Master\Models\Customer::class, $name, $this->text($node, 'GUID') ?: null);
     }
 
     private function syncPartyAddressFromLedger(\App\Domains\Master\Models\Customer $customer, \DOMElement $node): void
     {
-        $address = $this->text($node, 'ADDRESS');
-        $state = $this->text($node, 'STATENAME');
-        $pincode = $this->text($node, 'PINCODE');
-        if ($address === '' && $state === '' && $pincode === '') {
+        $address = $this->addressLinesFromLedger($node);
+        $state = $this->stateFromLedger($node);
+        $pincode = $this->pincodeFromLedger($node);
+        $gstin = $this->gstinFromLedger($node);
+        $contact = $this->contactPersonFromLedger($node);
+        $contactPhone = $this->phoneFromLedger($node);
+        if ($address === '' && $state === '' && $pincode === '' && $gstin === '' && $contact === '' && ! $contactPhone) {
             return;
         }
 
         $existing = $customer->addresses()->where('is_default_billing', true)->first()
             ?: $customer->addresses()->orderBy('id')->first();
 
+        $lines = preg_split("/\r\n|\n|\r/", $address) ?: [];
+        $line1 = trim((string) ($lines[0] ?? ''));
+        $line2 = trim(implode(', ', array_values(array_filter(array_slice($lines, 1)))));
+
         $attrs = [
             'customer_id' => $customer->id,
             'type' => 'billing',
             'label' => 'Tally',
-            'address' => $address ?: null,
-            'address_line_1' => $address ?: null,
-            'state' => $state ?: null,
-            'pincode' => $pincode ?: null,
-            'gstin' => $this->text($node, 'PARTYGSTIN') ?: null,
+            'address' => $address !== '' ? $address : null,
+            'address_line_1' => $line1 !== '' ? $line1 : null,
+            'address_line_2' => $line2 !== '' ? $line2 : null,
+            'state' => $state !== '' ? $state : null,
+            'pincode' => $pincode !== '' ? $pincode : null,
+            'gstin' => $gstin !== '' ? $gstin : null,
+            'contact_person' => $contact !== '' ? $this->truncateField($contact, 120) : null,
+            'contact_phone' => $this->truncateField($contactPhone, 30),
             'is_default' => true,
             'is_default_billing' => true,
             'is_active' => true,
         ];
 
         if ($existing) {
-            $existing->fill($attrs)->save();
+            $existing->fill($this->withoutBlank($attrs))->save();
         } else {
             \App\Domains\Master\Models\PartyAddress::query()->create($attrs);
             $this->counts['created']++;
@@ -610,17 +683,14 @@ class TallyInbound
 
     private function syncPartyBankFromLedger(\App\Domains\Master\Models\Customer $customer, \DOMElement $node): void
     {
-        $bankName = '';
-        $account = '';
-        $ifsc = '';
-        foreach ($node->getElementsByTagName('PAYMENTDETAILS.LIST') as $payment) {
-            if (! $payment instanceof \DOMElement) {
-                continue;
-            }
-            $bankName = $this->text($payment, 'BANKNAME') ?: $bankName;
-            $account = $this->text($payment, 'ACCOUNTNUMBER') ?: $account;
-            $ifsc = $this->text($payment, 'IFSCODE') ?: $ifsc;
+        $payment = $this->preferredPaymentDetails($node);
+        if (! $payment instanceof \DOMElement) {
+            return;
         }
+
+        $bankName = $this->text($payment, 'BANKNAME') ?: $this->firstNestedText($payment, 'BANKNAME');
+        $account = $this->text($payment, 'ACCOUNTNUMBER') ?: $this->firstNestedText($payment, 'ACCOUNTNUMBER');
+        $ifsc = $this->text($payment, 'IFSCODE') ?: $this->firstNestedText($payment, 'IFSCODE');
         if ($bankName === '' && $account === '' && $ifsc === '') {
             return;
         }
@@ -628,11 +698,16 @@ class TallyInbound
         $existing = $customer->bankAccounts()->where('is_primary', true)->first()
             ?: $customer->bankAccounts()->orderBy('id')->first();
 
+        $branch = $this->text($payment, 'BRANCHNAME')
+            ?: $this->text($payment, 'BRANCH')
+            ?: $this->firstNestedText($payment, 'BRANCHNAME')
+            ?: $this->firstNestedText($payment, 'BRANCH');
         $attrs = [
             'customer_id' => $customer->id,
-            'bank_name' => $this->truncateField($bankName ?: 'Bank', 120) ?: 'Bank',
-            'account_number' => $this->truncateField($account ?: null, 64),
+            'bank_name' => $this->truncateField($bankName !== '' ? $bankName : 'Bank', 120) ?: 'Bank',
+            'account_number' => $this->truncateField($account !== '' ? $account : null, 64),
             'ifsc_code' => $this->truncateField($ifsc !== '' ? strtoupper(preg_replace('/\s+/', '', $ifsc) ?? $ifsc) : null, 20),
+            'branch_name' => $this->truncateField($branch !== '' ? $branch : null, 120),
             'account_holder_name' => $this->truncateField($customer->name, 120),
             'is_primary' => true,
             'is_active' => true,
@@ -640,7 +715,7 @@ class TallyInbound
 
         try {
             if ($existing) {
-                $existing->fill($attrs)->save();
+                $existing->fill($this->withoutBlank($attrs))->save();
             } else {
                 \App\Domains\Master\Models\PartyBankAccount::query()->create($attrs);
                 $this->counts['created']++;
@@ -648,6 +723,181 @@ class TallyInbound
         } catch (\Throwable $exception) {
             report($exception);
         }
+    }
+
+    private function syncPartyDirectoryContact(\App\Domains\Master\Models\Customer $customer, \DOMElement $node): void
+    {
+        $contactName = $this->contactPersonFromLedger($node);
+        $phone = $this->phoneFromLedger($node);
+        $email = $this->emailFromLedger($node);
+        if ($contactName === '' && ! $phone && ! $email) {
+            return;
+        }
+
+        $displayName = $contactName !== '' ? $contactName : ($customer->name.' Contact');
+        $query = \App\Domains\PhoneDirectory\Models\PhoneDirectoryContact::query()
+            ->where('company_id', $customer->company_id);
+        if ($phone) {
+            $query->where(function ($q) use ($phone, $displayName) {
+                $q->where('mobile_number', $phone)
+                    ->orWhereRaw('LOWER(contact_name) = ?', [mb_strtolower($displayName)]);
+            });
+        } else {
+            $query->whereRaw('LOWER(contact_name) = ?', [mb_strtolower($displayName)]);
+        }
+        $contact = $query->first();
+
+        $type = $customer->party_type === \App\Domains\Master\Models\Customer::PARTY_TYPE_SUNDRY_CREDITORS
+            ? 'supplier'
+            : 'customer';
+
+        $attrs = [
+            'company_id' => $customer->company_id,
+            'contact_name' => $displayName,
+            'contact_type' => $type,
+            'company_name' => $customer->name,
+            'mobile_number' => $this->truncateField($phone, 20),
+            'email' => $this->truncateField($email, 120),
+            'state' => $this->truncateField($customer->state, 80),
+            'address' => $customer->address,
+            'pincode' => $this->truncateField($customer->pincode, 12),
+            'status' => 'active',
+        ];
+
+        try {
+            if ($contact) {
+                $contact->fill($this->withoutBlank($attrs))->save();
+            } else {
+                $contact = \App\Domains\PhoneDirectory\Models\PhoneDirectoryContact::query()->create($attrs);
+                $this->counts['created']++;
+            }
+
+            $partyContact = \App\Domains\Master\Models\PartyContact::query()
+                ->where('customer_id', $customer->id)
+                ->where(function ($q) use ($contact, $phone, $displayName) {
+                    $q->where('phone_directory_contact_id', $contact->id);
+                    if ($phone) {
+                        $q->orWhere('phone', $phone);
+                    }
+                    $q->orWhereRaw('LOWER(name) = ?', [mb_strtolower($displayName)]);
+                })
+                ->first();
+
+            $partyAttrs = [
+                'customer_id' => $customer->id,
+                'phone_directory_contact_id' => $contact->id,
+                'name' => $displayName,
+                'phone' => $this->truncateField($phone, 20),
+                'email' => $this->truncateField($email, 120),
+                'role' => 'Contact',
+                'is_primary' => true,
+                'is_active' => true,
+            ];
+
+            if ($partyContact) {
+                $partyContact->fill($this->withoutBlank($partyAttrs))->save();
+            } else {
+                \App\Domains\Master\Models\PartyContact::query()->create($partyAttrs);
+                $this->counts['created']++;
+            }
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function maybeUpdateCompanyBank(\App\Domains\Organization\Models\Company $organization, \DOMElement $node): void
+    {
+        // Prefer explicit company bank string from payment details ("HDFC BANK 50200088458819").
+        $companyBank = $this->firstNonEmptyText($node, ['COMPANYBANK']);
+        $bankName = '';
+        $account = '';
+        $ifsc = '';
+        $branch = '';
+
+        if ($companyBank !== '') {
+            if (preg_match('/^(.*?)[\s\-]+(\d{9,20})\s*$/u', $companyBank, $match)) {
+                $bankName = trim($match[1]);
+                $account = trim($match[2]);
+            } else {
+                $bankName = $companyBank;
+            }
+        }
+
+        $parent = strtolower($this->text($node, 'PARENT'));
+        $isBankLedger = str_contains($parent, 'bank');
+        $payment = $this->preferredPaymentDetails($node);
+        if ($payment instanceof \DOMElement && ($isBankLedger || $companyBank === '')) {
+            // Avoid mixing COMPANYBANK (e.g. HDFC+account) with an unrelated party IFSC.
+            $bankName = $bankName !== '' ? $bankName : ($this->text($payment, 'BANKNAME') ?: $this->firstNestedText($payment, 'BANKNAME'));
+            $account = $account !== '' ? $account : ($this->text($payment, 'ACCOUNTNUMBER') ?: $this->firstNestedText($payment, 'ACCOUNTNUMBER'));
+            $ifsc = $this->text($payment, 'IFSCODE') ?: $this->firstNestedText($payment, 'IFSCODE');
+            $branch = $this->text($payment, 'BRANCHNAME')
+                ?: $this->text($payment, 'BRANCH')
+                ?: $this->firstNestedText($payment, 'BRANCHNAME')
+                ?: $this->firstNestedText($payment, 'BRANCH');
+        }
+
+        // Only stamp company profile from clear bank-account ledgers or COMPANYBANK tags.
+        if (! $isBankLedger && $companyBank === '') {
+            return;
+        }
+        if ($bankName === '' && $account === '' && $ifsc === '') {
+            return;
+        }
+
+        $attrs = [];
+        // Prefer a coherent bank-ledger snapshot (name+account+ifsc together) over piecemeal blanks.
+        $hasFullBankSnapshot = $isBankLedger && $account !== '' && ($bankName !== '' || $ifsc !== '');
+        if ($bankName !== '' && (blank($organization->bank_name) || $hasFullBankSnapshot)) {
+            $attrs['bank_name'] = $this->truncateField($bankName, 120);
+        }
+        if ($account !== '' && (blank($organization->bank_account_no) || $hasFullBankSnapshot)) {
+            $attrs['bank_account_no'] = $this->truncateField($account, 64);
+        }
+        if ($ifsc !== '' && (blank($organization->bank_ifsc) || $hasFullBankSnapshot)) {
+            $attrs['bank_ifsc'] = $this->truncateField(strtoupper(preg_replace('/\s+/', '', $ifsc) ?? $ifsc), 20);
+        }
+        if ($branch !== '' && (blank($organization->bank_branch) || $hasFullBankSnapshot)) {
+            $attrs['bank_branch'] = $this->truncateField($branch, 120);
+        }
+        // COMPANYBANK with account but no IFSC: don't leave a mismatched prior IFSC.
+        if ($companyBank !== '' && $account !== '' && $ifsc === '' && filled($organization->bank_ifsc) && ! $isBankLedger) {
+            // keep existing ifsc; name/account still fill blanks above
+        }
+
+        if ($attrs === []) {
+            return;
+        }
+
+        try {
+            $organization->fill($attrs)->save();
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function udyamFromLedger(\DOMElement $node): string
+    {
+        foreach (['MSMEREGISTRATIONNUMBER', 'UDYAMNUMBER', 'UDYAM', 'MSMENO'] as $tag) {
+            $value = $this->firstNonEmptyText($node, [$tag]);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        foreach ($node->getElementsByTagName('MSMEREGISTRATIONDETAILS.LIST') as $list) {
+            if (! $list instanceof \DOMElement) {
+                continue;
+            }
+            foreach (['MSMEREGISTRATIONNUMBER', 'UDYAMNUMBER', 'REGISTRATIONNUMBER', 'NUMBER'] as $tag) {
+                $value = $this->cleanXmlText($this->text($list, $tag) ?: $this->firstNestedText($list, $tag));
+                if ($value !== '' && ! $this->isTallyPlaceholder($value)) {
+                    return $value;
+                }
+            }
+        }
+
+        return '';
     }
 
     private function dmsPayHead(\App\Domains\Organization\Models\Company $organization, \DOMElement $node, string $name): void
@@ -732,6 +982,90 @@ class TallyInbound
     private function dmsProduct(\App\Domains\Organization\Models\Company $organization, \DOMElement $node, string $name): void
     {
         $unitName = $this->text($node, 'BASEUNITS') ?: 'Nos';
+        $uom = $this->resolveDmsUom($unitName);
+
+        [$brandId, $categoryId, $subCategoryId] = $this->resolveProductParents(
+            $organization,
+            $this->normalizeParentName($this->text($node, 'PARENT'))
+        );
+
+        $guid = $this->text($node, 'GUID') ?: null;
+        $taxRate = $this->dmsGstRate($node);
+        $supplyType = stripos($this->text($node, 'GSTTYPEOFSUPPLY'), 'service') !== false ? 'services' : 'goods';
+        $mrp = $this->leadingNumber($this->firstNonEmptyText($node, ['MRPRATE', 'MRP', 'STANDARDPRICE']));
+        $purchase = $this->leadingNumber($this->firstNonEmptyText($node, ['STANDARDCOST', 'PURCHASERATE', 'RATE']));
+        $attributes = [
+            'company_id' => $organization->id,
+            'name' => $name,
+            'description' => $this->text($node, 'DESCRIPTION') ?: null,
+            'base_uom_id' => $uom->id,
+            'brand_id' => $brandId,
+            'category_id' => $categoryId,
+            'sub_category_id' => $subCategoryId,
+            'hsn_code' => $this->text($node, 'HSNCODE') ?: null,
+            'tax_rate' => $taxRate ?? 0,
+            'is_active' => true,
+        ];
+        if ($mrp > 0) {
+            $attributes['calculation_mrp'] = $mrp;
+            $attributes['selling_price'] = $mrp;
+        }
+        if ($purchase > 0) {
+            $attributes['purchase_price'] = $purchase;
+        }
+
+        // GUID first, then normalized name. Row locks only for live connector polls (not bulk XML).
+        $persist = function () use ($organization, $guid, $name, $attributes, $supplyType) {
+            $found = $this->findDmsProduct($organization, $guid, $name);
+            if ($found) {
+                $found->fill($this->withoutBlank($attributes))->save();
+                $this->counts['updated']++;
+
+                return $found;
+            }
+
+            $created = \App\Domains\Master\Models\Product::query()->create($attributes + [
+                'sku' => \App\Support\CodeGenerator::forProduct($organization->id),
+                'serial_no' => \App\Support\CodeGenerator::forProductSerial(),
+                'supply_type' => $supplyType,
+            ]);
+            $this->counts['created']++;
+
+            return $created;
+        };
+
+        $product = $this->bulkXmlImport
+            ? $persist()
+            : DB::transaction($persist);
+
+        app(\App\Domains\Tally\Services\TallySyncMappingService::class)->createOrUpdate(
+            $product,
+            \App\Domains\Master\Models\Product::class,
+            'stock_item',
+            $guid,
+            $name,
+            'synced'
+        );
+        $this->lookupCache?->rememberDmsProduct((int) $organization->id, $name, (int) $product->id);
+        $this->lookupCache?->rememberDmsProductGuid($guid, (int) $product->id);
+        if ($mrp > 0) {
+            $this->syncProductPriceMaster($organization, $product, $mrp, $uom->id);
+        }
+        if (! $this->bulkXmlImport) {
+            \App\Domains\TallySync\Support\InboundActivityLog::item('stock_item', 'synced', $name);
+        }
+    }
+
+    private function resolveDmsUom(string $unitName): \App\Domains\Master\Models\Uom
+    {
+        $cachedId = $this->lookupCache?->dmsUomId($unitName);
+        if ($cachedId) {
+            $uom = \App\Domains\Master\Models\Uom::query()->find($cachedId);
+            if ($uom) {
+                return $uom;
+            }
+        }
+
         $uom = \App\Domains\Master\Models\Uom::query()
             ->where(function ($q) use ($unitName) {
                 $q->whereRaw('LOWER(code) = ?', [mb_strtolower($unitName)])
@@ -747,54 +1081,66 @@ class TallyInbound
             $this->counts['created']++;
         }
 
-        [$brandId, $categoryId, $subCategoryId] = $this->resolveProductParents($organization, $this->normalizeParentName($this->text($node, 'PARENT')));
+        $this->lookupCache?->rememberDmsUom($unitName, (int) $uom->id);
 
-        $guid = $this->text($node, 'GUID') ?: null;
-        $taxRate = $this->dmsGstRate($node);
-        $supplyType = stripos($this->text($node, 'GSTTYPEOFSUPPLY'), 'service') !== false ? 'services' : 'goods';
-        $attributes = [
-            'company_id' => $organization->id,
-            'name' => $name,
-            'description' => $this->text($node, 'DESCRIPTION') ?: null,
-            'base_uom_id' => $uom->id,
-            'brand_id' => $brandId,
-            'category_id' => $categoryId,
-            'sub_category_id' => $subCategoryId,
-            'hsn_code' => $this->text($node, 'HSNCODE') ?: null,
-            'tax_rate' => $taxRate ?? 0,
-            'is_active' => true,
-        ];
+        return $uom;
+    }
 
-        // GUID first, then normalized name. Lock to stop concurrent connector polls
-        // creating one SKU per pull for the same Tally stock item.
-        $product = DB::transaction(function () use ($organization, $guid, $name, $attributes, $supplyType) {
-            $found = $this->findDmsProduct($organization, $guid, $name);
-            if ($found) {
-                $found->fill($attributes)->save();
-                $this->counts['updated']++;
-
-                return $found;
+    private function syncProductPriceMaster(
+        \App\Domains\Organization\Models\Company $organization,
+        \App\Domains\Master\Models\Product $product,
+        float $mrp,
+        ?int $uomId
+    ): void {
+        try {
+            $type = \App\Domains\Master\Models\CustomerType::query()
+                ->whereRaw('LOWER(name) = ?', ['tally mrp'])
+                ->first();
+            if (! $type) {
+                $type = \App\Domains\Master\Models\CustomerType::query()->create([
+                    'name' => 'Tally MRP',
+                    'code' => 'TALLY-MRP',
+                    'description' => 'Imported from Tally stock item MRP rates (no PRICELEVEL in export).',
+                    'is_active' => true,
+                ]);
+                $this->counts['created']++;
             }
 
-            $created = \App\Domains\Master\Models\Product::query()->create($attributes + [
-                'sku' => \App\Support\CodeGenerator::forProduct($organization->id),
-                'serial_no' => \App\Support\CodeGenerator::forProductSerial(),
-                'supply_type' => $supplyType,
-            ]);
-            $this->counts['created']++;
+            $existing = \App\Domains\Master\Models\PriceMaster::query()
+                ->where('company_id', $organization->id)
+                ->where('product_id', $product->id)
+                ->where('customer_type_id', $type->id)
+                ->where(function ($q) {
+                    $q->where('type', \App\Domains\Master\Models\PriceMaster::TYPE_CUSTOMER_TYPE)
+                        ->orWhereNull('type');
+                })
+                ->first();
 
-            return $created;
-        });
+            $attrs = [
+                'company_id' => $organization->id,
+                'type' => \App\Domains\Master\Models\PriceMaster::TYPE_CUSTOMER_TYPE,
+                'name' => $product->name,
+                'customer_type_id' => $type->id,
+                'product_id' => $product->id,
+                'uom_id' => $uomId,
+                'rate' => $mrp,
+                'entered_rate' => $mrp,
+                'rate_includes_gst' => false,
+                'retail_price' => $mrp,
+                'retail_price_entered' => $mrp,
+                'retail_price_gst_mode' => 'exclusive',
+                'min_qty' => 1,
+            ];
 
-        app(\App\Domains\Tally\Services\TallySyncMappingService::class)->createOrUpdate(
-            $product,
-            \App\Domains\Master\Models\Product::class,
-            'stock_item',
-            $guid,
-            $name,
-            'synced'
-        );
-        \App\Domains\TallySync\Support\InboundActivityLog::item('stock_item', 'synced', $name);
+            if ($existing) {
+                $existing->fill($this->withoutBlank($attrs))->save();
+            } else {
+                \App\Domains\Master\Models\PriceMaster::query()->create($attrs);
+                $this->counts['created']++;
+            }
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
     }
 
     private function findDmsProduct(
@@ -802,31 +1148,56 @@ class TallyInbound
         ?string $guid,
         string $name
     ): ?\App\Domains\Master\Models\Product {
+        $useLock = ! $this->bulkXmlImport;
+
         if ($guid) {
-            $mapping = app(\App\Domains\Tally\Services\TallySyncMappingService::class)->findForTally('stock_item', $guid);
-            if ($mapping) {
-                $byGuid = \App\Domains\Master\Models\Product::query()
-                    ->whereKey($mapping->entity_id)
-                    ->where('company_id', $organization->id)
-                    ->lockForUpdate()
-                    ->first();
+            $entityId = $this->lookupCache?->dmsProductIdByGuid($guid);
+            if (! $entityId) {
+                $mapping = app(\App\Domains\Tally\Services\TallySyncMappingService::class)->findForTally('stock_item', $guid);
+                $entityId = $mapping ? (int) $mapping->entity_id : null;
+            }
+            if ($entityId) {
+                $query = \App\Domains\Master\Models\Product::query()
+                    ->whereKey($entityId)
+                    ->where('company_id', $organization->id);
+                if ($useLock) {
+                    $query->lockForUpdate();
+                }
+                $byGuid = $query->first();
                 if ($byGuid) {
                     return $byGuid;
                 }
             }
         }
 
+        $cachedId = $this->lookupCache?->dmsProductId((int) $organization->id, $name);
+        if ($cachedId) {
+            $query = \App\Domains\Master\Models\Product::query()
+                ->whereKey($cachedId)
+                ->where('company_id', $organization->id);
+            if ($useLock) {
+                $query->lockForUpdate();
+            }
+            $byName = $query->first();
+            if ($byName) {
+                return $byName;
+            }
+        }
+
         $normalized = \App\Support\TitleCase::format($name);
 
-        return \App\Domains\Master\Models\Product::query()
+        $query = \App\Domains\Master\Models\Product::query()
             ->where('company_id', $organization->id)
             ->where(function ($q) use ($name, $normalized) {
                 $q->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
                     ->orWhereRaw('LOWER(name) = ?', [mb_strtolower($normalized)]);
             })
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->first();
+            ->orderBy('id');
+        if ($useLock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
     }
 
     /**
@@ -838,12 +1209,20 @@ class TallyInbound
             return [null, null, null];
         }
 
+        $cached = $this->lookupCache?->dmsProductParentIds((int) $organization->id, $parent);
+        if ($cached !== null) {
+            return $cached;
+        }
+
         $sub = \App\Domains\Catalog\Models\SubCategory::query()
             ->whereRaw('LOWER(name) = ?', [mb_strtolower($parent)])
             ->whereHas('category.brand', fn ($q) => $q->where('company_id', $organization->id))
             ->first();
         if ($sub) {
-            return [$sub->category?->brand_id, $sub->category_id, $sub->id];
+            $ids = [$sub->category?->brand_id, $sub->category_id, $sub->id];
+            $this->lookupCache?->rememberDmsProductParent((int) $organization->id, $parent, $ids);
+
+            return $ids;
         }
 
         $category = \App\Domains\Catalog\Models\Category::query()
@@ -851,13 +1230,23 @@ class TallyInbound
             ->whereHas('brand', fn ($q) => $q->where('company_id', $organization->id))
             ->first();
         if ($category) {
-            return [$category->brand_id, $category->id, null];
+            $ids = [$category->brand_id, $category->id, null];
+            $this->lookupCache?->rememberDmsProductParent((int) $organization->id, $parent, $ids);
+
+            return $ids;
         }
 
-        $brand = \App\Domains\Catalog\Models\Brand::query()
-            ->where('company_id', $organization->id)
-            ->whereRaw('LOWER(name) = ?', [mb_strtolower($parent)])
-            ->first();
+        $brandId = $this->lookupCache?->dmsBrandId((int) $organization->id, $parent);
+        $brand = null;
+        if ($brandId) {
+            $brand = \App\Domains\Catalog\Models\Brand::query()->find($brandId);
+        }
+        if (! $brand) {
+            $brand = \App\Domains\Catalog\Models\Brand::query()
+                ->where('company_id', $organization->id)
+                ->whereRaw('LOWER(name) = ?', [mb_strtolower($parent)])
+                ->first();
+        }
 
         if (! $brand) {
             $brand = \App\Domains\Catalog\Models\Brand::query()->create([
@@ -868,7 +1257,11 @@ class TallyInbound
             $this->counts['created']++;
         }
 
-        return [$brand->id, null, null];
+        $this->lookupCache?->rememberDmsBrand((int) $organization->id, $parent, (int) $brand->id);
+        $ids = [$brand->id, null, null];
+        $this->lookupCache?->rememberDmsProductParent((int) $organization->id, $parent, $ids);
+
+        return $ids;
     }
 
     private function mapDms(string $tallyType, string $dmsClass, string $name, ?string $guid): void
@@ -1146,36 +1539,63 @@ class TallyInbound
             $parent->code = $parentCode;
             $parent->save();
         }
-        $opening = (float) str_replace(',', '', $this->text($node, 'OPENINGBALANCE'));
-        $gst = strtolower($this->text($node, 'GSTREGISTRATIONTYPE'));
+        $openingRaw = $this->text($node, 'OPENINGBALANCE');
+        $opening = (float) str_replace(',', '', $openingRaw !== '' ? $openingRaw : '0');
+        $gstRaw = $this->gstRegistrationTypeFromLedger($node);
+        $gst = strtolower($gstRaw);
         $gstType = match (true) {
             str_contains($gst, 'composition') => GstRegistrationType::Composition,
             str_contains($gst, 'unregistered') => GstRegistrationType::Unregistered,
             str_contains($gst, 'consumer') => GstRegistrationType::Consumer,
             default => GstRegistrationType::Regular,
         };
-        $ledger = $this->named($company, Ledger::class, 'books_ledger', $node, $name, [
+        $gstin = $this->gstinFromLedger($node);
+        $pan = $this->panFromLedger($node, $gstin);
+        $address = $this->addressLinesFromLedger($node);
+        $phone = $this->phoneFromLedger($node);
+        $mobile = $this->mobileFromLedger($node);
+        $email = $this->emailFromLedger($node);
+        $contact = $this->contactPersonFromLedger($node);
+        $state = $this->stateFromLedger($node);
+        $country = $this->countryFromLedger($node);
+        $pincode = $this->pincodeFromLedger($node);
+        $mailingName = $this->mailingNameFromLedger($node, $name);
+        $creditLimitRaw = $this->text($node, 'CREDITLIMIT');
+        $creditDaysRaw = $this->text($node, 'BILLCREDITPERIOD');
+        $interestOn = $this->yes($this->text($node, 'ISINTERESTON'));
+        $interestRateRaw = $this->text($node, 'INTERESTRATE');
+
+        $ledgerAttrs = [
             'account_group_id' => $parent->id,
-            'mailing_name' => $this->text($node, 'MAILINGNAME') ?: $name,
-            'address' => $this->text($node, 'ADDRESS') ?: null,
-            'phone' => $this->truncateField($this->firstPhone($this->text($node, 'LEDGERPHONE')), 30),
-            'email' => $this->truncateField($this->text($node, 'EMAIL') ?: null, 120),
-            'contact_person' => $this->truncateField($this->text($node, 'LEDGERCONTACT') ?: null, 120),
-            'gstin' => $this->truncateField($this->text($node, 'PARTYGSTIN') ?: null, 20),
+            'mailing_name' => $mailingName,
+            'address' => $address !== '' ? $address : null,
+            'phone' => $this->truncateField($phone, 30),
+            'email' => $this->truncateField($email, 120),
+            'contact_person' => $this->truncateField($contact !== '' ? $contact : null, 120),
+            'gstin' => $this->truncateField($gstin !== '' ? $gstin : null, 20),
             'gst_registration_type' => $gstType,
-            'pan' => $this->text($node, 'INCOMETAXNUMBER') ?: null,
-            'state' => $this->text($node, 'STATENAME') ?: null,
-            'country' => $this->text($node, 'COUNTRYNAME') ?: null,
-            'pincode' => $this->text($node, 'PINCODE') ?: null,
+            'pan' => $pan !== '' ? $pan : null,
+            'state' => $state !== '' ? $state : null,
+            'country' => $country !== '' ? $country : null,
+            'pincode' => $pincode !== '' ? $pincode : null,
             'opening_balance' => abs($opening),
             'opening_balance_type' => $opening < 0 ? OpeningBalanceType::Debit : OpeningBalanceType::Credit,
             'maintain_bill_wise' => $this->yes($this->text($node, 'ISBILLWISEON')),
             'cost_centres_applicable' => $this->yes($this->text($node, 'ISCOSTCENTRESON')),
-            'credit_limit' => (float) str_replace(',', '', $this->text($node, 'CREDITLIMIT')),
-            'credit_days' => (int) $this->text($node, 'BILLCREDITPERIOD'),
-            'calculate_interest' => $this->yes($this->text($node, 'ISINTERESTON')),
+            'calculate_interest' => $interestOn,
             'is_active' => true,
-        ]);
+        ];
+        if (trim($creditLimitRaw) !== '') {
+            $ledgerAttrs['credit_limit'] = (float) str_replace(',', '', $creditLimitRaw);
+        }
+        if (trim($creditDaysRaw) !== '') {
+            $ledgerAttrs['credit_days'] = (int) $creditDaysRaw;
+        }
+        if ($interestOn && trim($interestRateRaw) !== '') {
+            $ledgerAttrs['interest_rate'] = (float) str_replace(',', '', $interestRateRaw);
+        }
+
+        $ledger = $this->named($company, Ledger::class, 'books_ledger', $node, $name, $ledgerAttrs);
 
         $this->bankAccount($ledger, $node);
         $this->rememberLedgerOpening($ledger);
@@ -1184,10 +1604,12 @@ class TallyInbound
         $partyRole = $this->partyRoleFromParent($parentLower);
         if ($partyRole !== null) {
             $party = Party::query()->firstOrNew(['company_id' => $company->id, 'ledger_id' => $ledger->id]);
-            $party->fill([
+            $partyAttrs = [
                 'type' => $partyRole === 'supplier' ? 'supplier' : 'customer',
                 'legal_name' => $name,
+                'contact_person' => $ledger->contact_person,
                 'phone' => $ledger->phone,
+                'mobile' => $this->truncateField($mobile, 30),
                 'email' => $ledger->email,
                 'billing_address' => $ledger->address,
                 'state' => $ledger->state,
@@ -1198,7 +1620,8 @@ class TallyInbound
                 'credit_limit' => $ledger->credit_limit,
                 'credit_days' => $ledger->credit_days,
                 'is_active' => true,
-            ]);
+            ];
+            $party->fill($party->exists ? $this->withoutBlank($partyAttrs) : $partyAttrs);
             $party->save();
             $this->pushToDms($party);
         }
@@ -1563,47 +1986,69 @@ class TallyInbound
         $sourceGodownId = null;
         $destinationGodownId = null;
         $lineNo = 0;
-        foreach ($node->getElementsByTagName('ALLINVENTORYENTRIES.LIST') as $entry) {
-            if (! $entry instanceof \DOMElement || $entry->parentNode !== $node) {
-                continue;
+        $voucherDest = $this->text($node, 'DESTINATIONGODOWN') ?: $this->text($node, 'DESTINATIONGODOWNNAME');
+        $tagged = [
+            'ALLINVENTORYENTRIES.LIST' => null,
+            'INVENTORYENTRIES.LIST' => null,
+            'INVENTORYENTRIESIN.LIST' => true,
+            'INVENTORYENTRIESOUT.LIST' => false,
+        ];
+        foreach ($tagged as $tag => $forceDeemedIn) {
+            foreach ($node->getElementsByTagName($tag) as $entry) {
+                if (! $entry instanceof \DOMElement || $entry->parentNode !== $node) {
+                    continue;
+                }
+                $product = Product::query()->where('company_id', $company->id)->where('name', $this->text($entry, 'STOCKITEMNAME'))->first();
+                if (! $product) {
+                    continue;
+                }
+                $godownName = $this->text($entry, 'GODOWNNAME');
+                $batch = $entry->getElementsByTagName('BATCHALLOCATIONS.LIST')->item(0);
+                if ($godownName === '' && $batch instanceof \DOMElement) {
+                    $godownName = $this->text($batch, 'GODOWNNAME');
+                }
+                $destName = $this->text($entry, 'DESTINATIONGODOWNNAME');
+                if ($destName === '' && $batch instanceof \DOMElement) {
+                    $destName = $this->text($batch, 'DESTINATIONGODOWNNAME')
+                        ?: $this->text($batch, 'DESTINATIONGODOWN')
+                        ?: $this->text($batch, 'TARGETGODOWNNAME');
+                }
+                if ($destName === '' && $voucherDest !== '') {
+                    $destName = $voucherDest;
+                }
+                $godown = $godownName !== ''
+                    ? Godown::query()->firstOrCreate(['company_id' => $company->id, 'name' => $godownName], ['is_active' => true])
+                    : null;
+                $dest = $destName !== ''
+                    ? Godown::query()->firstOrCreate(['company_id' => $company->id, 'name' => $destName], ['is_active' => true])
+                    : null;
+                $sourceGodownId = $sourceGodownId ?: $godown?->id;
+                $destinationGodownId = $destinationGodownId ?: $dest?->id;
+                $qtyText = $this->text($entry, 'ACTUALQTY') ?: $this->text($entry, 'BILLEDQTY');
+                if ($qtyText === '' && $batch instanceof \DOMElement) {
+                    $qtyText = $this->text($batch, 'ACTUALQTY') ?: $this->text($batch, 'BILLEDQTY');
+                }
+                $qty = abs($this->leadingNumber($qtyText));
+                $deemedIn = $forceDeemedIn;
+                if ($deemedIn === null) {
+                    $deemedIn = $this->yes($this->text($entry, 'ISDEEMEDPOSITIVE'))
+                        || $this->text($entry, 'ISDEEMEDPOSITIVE') === '';
+                }
+                if (! $deemedIn) {
+                    $qty = -abs($qty);
+                }
+                $amount = (float) str_replace(',', '', $this->text($entry, 'AMOUNT'));
+                $lineNo++;
+                $lines[] = [
+                    'line_number' => $lineNo,
+                    'product_id' => $product->id,
+                    'godown_id' => $godown?->id ?: $sourceGodownId,
+                    'quantity' => $qty,
+                    'rate' => $this->leadingNumber($this->text($entry, 'RATE')),
+                    'value' => abs($amount),
+                    'batch_number' => $batch instanceof \DOMElement ? ($this->text($batch, 'BATCHNAME') ?: null) : null,
+                ];
             }
-            $product = Product::query()->where('company_id', $company->id)->where('name', $this->text($entry, 'STOCKITEMNAME'))->first();
-            if (! $product) {
-                continue;
-            }
-            $godownName = $this->text($entry, 'GODOWNNAME');
-            $batch = $entry->getElementsByTagName('BATCHALLOCATIONS.LIST')->item(0);
-            if ($godownName === '' && $batch instanceof \DOMElement) {
-                $godownName = $this->text($batch, 'GODOWNNAME');
-            }
-            $destName = $this->text($entry, 'DESTINATIONGODOWNNAME');
-            if ($destName === '' && $batch instanceof \DOMElement) {
-                $destName = $this->text($batch, 'DESTINATIONGODOWNNAME');
-            }
-            $godown = $godownName !== ''
-                ? Godown::query()->firstOrCreate(['company_id' => $company->id, 'name' => $godownName], ['is_active' => true])
-                : null;
-            $dest = $destName !== ''
-                ? Godown::query()->firstOrCreate(['company_id' => $company->id, 'name' => $destName], ['is_active' => true])
-                : null;
-            $sourceGodownId = $sourceGodownId ?: $godown?->id;
-            $destinationGodownId = $destinationGodownId ?: $dest?->id;
-            $qty = $this->leadingNumber($this->text($entry, 'ACTUALQTY') ?: ($batch instanceof \DOMElement ? $this->text($batch, 'ACTUALQTY') : ''));
-            $amount = (float) str_replace(',', '', $this->text($entry, 'AMOUNT'));
-            $deemedIn = $this->yes($this->text($entry, 'ISDEEMEDPOSITIVE'));
-            if (! $deemedIn && $qty > 0) {
-                $qty = -abs($qty);
-            }
-            $lineNo++;
-            $lines[] = [
-                'line_number' => $lineNo,
-                'product_id' => $product->id,
-                'godown_id' => $godown?->id ?: $sourceGodownId,
-                'quantity' => $qty,
-                'rate' => $this->leadingNumber($this->text($entry, 'RATE')),
-                'value' => abs($amount),
-                'batch_number' => $batch instanceof \DOMElement ? ($this->text($batch, 'BATCHNAME') ?: null) : null,
-            ];
         }
 
         if ($lines === []) {
@@ -1962,7 +2407,8 @@ class TallyInbound
             $values['name'] = $name;
         }
         if ($existing) {
-            $existing->fill($values);
+            // Keep richer local values when Tally omits a field on re-import.
+            $existing->fill($this->withoutBlank($values));
             $existing->save();
             $this->counts['updated']++;
             $this->lookupCache?->rememberModel($class, (int) $company->id, $nameColumn === 'name' ? $name : (string) ($values[$nameColumn] ?? $name), (int) $existing->getKey());
@@ -2423,13 +2869,7 @@ class TallyInbound
 
     private function bankAccount(Ledger $ledger, \DOMElement $node): void
     {
-        $payment = null;
-        foreach ($node->getElementsByTagName('PAYMENTDETAILS.LIST') as $list) {
-            if ($list instanceof \DOMElement && $list->parentNode === $node) {
-                $payment = $list;
-                break;
-            }
-        }
+        $payment = $this->preferredPaymentDetails($node);
         if (! $payment instanceof \DOMElement) {
             return;
         }
@@ -2441,14 +2881,21 @@ class TallyInbound
             return;
         }
 
-        // Incomplete bank rows must not abort the whole ledger import.
-        if ($account === '' || $ifsc === '') {
+        // Prefer full rows; still keep bank name when account/IFSC incomplete.
+        if ($account === '' && $ifsc === '' && $bankName === '') {
             return;
         }
 
-        $ifsc = strtoupper(preg_replace('/\s+/', '', $ifsc) ?? $ifsc);
-        if (strlen($ifsc) > 20) {
-            $ifsc = substr($ifsc, 0, 20);
+        $ifscNormalized = $ifsc !== ''
+            ? strtoupper(preg_replace('/\s+/', '', $ifsc) ?? $ifsc)
+            : '';
+        if (strlen($ifscNormalized) > 20) {
+            $ifscNormalized = substr($ifscNormalized, 0, 20);
+        }
+
+        // Books bank accounts historically require account+IFSC for unique rows.
+        if ($account === '' || $ifscNormalized === '') {
+            return;
         }
 
         try {
@@ -2464,11 +2911,11 @@ class TallyInbound
                 'ledger_id' => $ledger->id,
                 'bank_name' => $this->truncateField($bankName !== '' ? $bankName : $ledger->name, 120) ?: $ledger->name,
                 'account_number' => $this->truncateField($account, 64) ?: $account,
-                'ifsc' => $ifsc,
+                'ifsc' => $ifscNormalized,
             ];
 
             if ($existing) {
-                $existing->fill($attrs)->save();
+                $existing->fill($this->withoutBlank($attrs))->save();
             } else {
                 BankAccount::query()->create($attrs);
             }
@@ -2724,6 +3171,304 @@ class TallyInbound
             'vouchers' => 'books_voucher',
             default => $key,
         };
+    }
+
+    /**
+     * Drop null/blank values so re-import does not wipe richer existing fields.
+     * Keeps 0 / false intentionally.
+     *
+     * @param  array<string, mixed>  $attrs
+     * @return array<string, mixed>
+     */
+    private function withoutBlank(array $attrs): array
+    {
+        $out = [];
+        foreach ($attrs as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $out[$key] = $value;
+        }
+
+        return $out;
+    }
+
+    private function cleanXmlText(?string $value): string
+    {
+        $value = trim(preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]/', '', (string) $value) ?? '');
+        if ($value === '') {
+            return '';
+        }
+
+        return html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
+    private function isTallyPlaceholder(string $value): bool
+    {
+        $value = $this->cleanXmlText($value);
+        if ($value === '') {
+            return true;
+        }
+
+        $lower = mb_strtolower($value);
+        if (str_contains($lower, 'not applicable')) {
+            return true;
+        }
+        if (preg_match('/^(?:\x04\s*)?any\b/u', $lower) === 1) {
+            return true;
+        }
+
+        // Tally often prefixes placeholders with control char &#4;
+        return str_starts_with($value, "\x04");
+    }
+
+    /**
+     * First non-empty text among tags (direct children preferred, then descendants).
+     *
+     * @param  list<string>  $tags
+     */
+    private function firstNonEmptyText(\DOMElement $node, array $tags, bool $deep = true): string
+    {
+        foreach ($tags as $tag) {
+            $direct = $this->text($node, $tag);
+            if ($direct !== '' && ! $this->isTallyPlaceholder($direct)) {
+                return $this->cleanXmlText($direct);
+            }
+        }
+
+        if (! $deep) {
+            return '';
+        }
+
+        foreach ($tags as $tag) {
+            foreach ($node->getElementsByTagName($tag) as $child) {
+                if (! $child instanceof \DOMElement) {
+                    continue;
+                }
+                $value = $this->cleanXmlText($child->textContent);
+                if ($value !== '' && ! $this->isTallyPlaceholder($value)) {
+                    return $value;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function gstinFromLedger(\DOMElement $node): string
+    {
+        $direct = $this->text($node, 'PARTYGSTIN');
+        if ($direct !== '' && ! $this->isTallyPlaceholder($direct)) {
+            return strtoupper($this->cleanXmlText($direct));
+        }
+
+        $best = '';
+        $bestFrom = '';
+        foreach ($node->getElementsByTagName('LEDGSTREGDETAILS.LIST') as $list) {
+            if (! $list instanceof \DOMElement) {
+                continue;
+            }
+            $gstin = $this->text($list, 'GSTIN');
+            if ($gstin === '' || $this->isTallyPlaceholder($gstin)) {
+                continue;
+            }
+            $from = $this->text($list, 'APPLICABLEFROM');
+            if ($best === '' || $from >= $bestFrom) {
+                $best = $this->cleanXmlText($gstin);
+                $bestFrom = $from;
+            }
+        }
+        if ($best !== '') {
+            return strtoupper($best);
+        }
+
+        $fallback = $this->firstNonEmptyText($node, ['GSTIN']);
+
+        return $fallback !== '' ? strtoupper($fallback) : '';
+    }
+
+    private function gstRegistrationTypeFromLedger(\DOMElement $node): string
+    {
+        $best = '';
+        $bestFrom = '';
+        foreach ($node->getElementsByTagName('LEDGSTREGDETAILS.LIST') as $list) {
+            if (! $list instanceof \DOMElement) {
+                continue;
+            }
+            $type = $this->text($list, 'GSTREGISTRATIONTYPE');
+            if ($type === '' || $this->isTallyPlaceholder($type)) {
+                continue;
+            }
+            $from = $this->text($list, 'APPLICABLEFROM');
+            if ($best === '' || $from >= $bestFrom) {
+                $best = $this->cleanXmlText($type);
+                $bestFrom = $from;
+            }
+        }
+        if ($best !== '') {
+            return $best;
+        }
+
+        return $this->firstNonEmptyText($node, ['GSTREGISTRATIONTYPE']);
+    }
+
+    private function panFromLedger(\DOMElement $node, string $gstin = ''): string
+    {
+        $pan = $this->firstNonEmptyText($node, ['INCOMETAXNUMBER']);
+        if ($pan !== '') {
+            return strtoupper($pan);
+        }
+
+        $gstin = strtoupper(preg_replace('/\s+/', '', $gstin) ?? $gstin);
+        if (preg_match('/^[0-9]{2}([A-Z]{5}[0-9]{4}[A-Z])[A-Z0-9]{3}$/', $gstin, $match)) {
+            return $match[1];
+        }
+
+        return '';
+    }
+
+    private function addressLinesFromLedger(\DOMElement $node): string
+    {
+        $lines = [];
+        foreach ($node->getElementsByTagName('ADDRESS') as $child) {
+            if (! $child instanceof \DOMElement) {
+                continue;
+            }
+            $value = $this->cleanXmlText($child->textContent);
+            if ($value === '' || $this->isTallyPlaceholder($value)) {
+                continue;
+            }
+            if (! in_array($value, $lines, true)) {
+                $lines[] = $value;
+            }
+        }
+
+        if ($lines === []) {
+            $direct = $this->cleanXmlText($this->text($node, 'ADDRESS'));
+            if ($direct !== '' && ! $this->isTallyPlaceholder($direct)) {
+                $lines[] = $direct;
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    private function stateFromLedger(\DOMElement $node): string
+    {
+        foreach (['STATENAME', 'STATE', 'PRIORSTATENAME', 'PLACEOFSUPPLY'] as $tag) {
+            $value = $this->firstNonEmptyText($node, [$tag]);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function countryFromLedger(\DOMElement $node): string
+    {
+        return $this->firstNonEmptyText($node, ['COUNTRYNAME', 'COUNTRYOFRESIDENCE', 'COUNTRY']);
+    }
+
+    private function pincodeFromLedger(\DOMElement $node): string
+    {
+        return $this->firstNonEmptyText($node, ['PINCODE']);
+    }
+
+    private function phoneFromLedger(\DOMElement $node): ?string
+    {
+        foreach (['LEDGERPHONE', 'LEDGERMOBILE', 'PHONENUMBER'] as $tag) {
+            $raw = $this->firstNonEmptyText($node, [$tag]);
+            $phone = $this->firstPhone($raw);
+            if ($phone) {
+                return $phone;
+            }
+        }
+
+        return null;
+    }
+
+    private function mobileFromLedger(\DOMElement $node): ?string
+    {
+        foreach (['LEDGERMOBILE', 'PHONENUMBER', 'LEDGERPHONE'] as $tag) {
+            $raw = $this->firstNonEmptyText($node, [$tag]);
+            $phone = $this->firstPhone($raw);
+            if ($phone) {
+                return $phone;
+            }
+        }
+
+        return null;
+    }
+
+    private function emailFromLedger(\DOMElement $node): ?string
+    {
+        $email = $this->firstNonEmptyText($node, ['EMAIL']);
+
+        return $email !== '' ? $email : null;
+    }
+
+    private function contactPersonFromLedger(\DOMElement $node): string
+    {
+        return $this->firstNonEmptyText($node, ['LEDGERCONTACT', 'CONTACTPERSON']);
+    }
+
+    private function mailingNameFromLedger(\DOMElement $node, string $fallbackName): string
+    {
+        $candidates = [];
+        $direct = $this->cleanXmlText($this->text($node, 'MAILINGNAME'));
+        if ($direct !== '') {
+            $candidates[] = $direct;
+        }
+        foreach ($node->getElementsByTagName('MAILINGNAME') as $child) {
+            if ($child instanceof \DOMElement) {
+                $value = $this->cleanXmlText($child->textContent);
+                if ($value !== '') {
+                    $candidates[] = $value;
+                }
+            }
+        }
+
+        $currencyish = ['INR', 'USD', 'EUR', 'GBP', 'AED', '₹', 'RS', 'RS.'];
+        foreach ($candidates as $candidate) {
+            if ($this->isTallyPlaceholder($candidate)) {
+                continue;
+            }
+            if (in_array(mb_strtoupper($candidate), $currencyish, true)) {
+                continue;
+            }
+
+            return $candidate;
+        }
+
+        return $fallbackName;
+    }
+
+    private function preferredPaymentDetails(\DOMElement $node): ?\DOMElement
+    {
+        $fallback = null;
+        $default = null;
+        foreach ($node->getElementsByTagName('PAYMENTDETAILS.LIST') as $payment) {
+            if (! $payment instanceof \DOMElement) {
+                continue;
+            }
+            $fallback ??= $payment;
+            $bankName = $this->text($payment, 'BANKNAME') ?: $this->firstNestedText($payment, 'BANKNAME');
+            $account = $this->text($payment, 'ACCOUNTNUMBER') ?: $this->firstNestedText($payment, 'ACCOUNTNUMBER');
+            $ifsc = $this->text($payment, 'IFSCODE') ?: $this->firstNestedText($payment, 'IFSCODE');
+            $filled = $bankName !== '' || $account !== '' || $ifsc !== '';
+            if ($this->yes($this->text($payment, 'SETASDEFAULT')) && $filled) {
+                return $payment;
+            }
+            if ($this->yes($this->text($payment, 'SETASDEFAULT'))) {
+                $default ??= $payment;
+            }
+            if ($filled) {
+                return $payment;
+            }
+        }
+
+        return $default ?? $fallback;
     }
 
     private function text(\DOMElement $node, string $tag): string

@@ -79,6 +79,7 @@
             <input type="text"
                    @if($fieldName) id="{{ $fieldName }}_search_input" @endif
                    x-model="searchQuery"
+                   :title="searchQuery"
                    @focus="openDropdown()"
                    @input="openDropdown()"
                    @keydown.escape="closeDropdown()"
@@ -121,13 +122,14 @@
             <template x-for="(opt, index) in filteredOptions" :key="opt.id">
                 <div @click="selectOption(opt)"
                      @mouseenter="highlightedIndex = index"
+                     :title="opt.name"
                      :class="{
                          'bg-indigo-50 text-indigo-900 font-semibold': String(selectedId) === String(opt.id),
                          'bg-slate-50': highlightedIndex === index && String(selectedId) !== String(opt.id)
                      }"
-                     class="p-2.5 hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer text-xs flex items-center justify-between transition-colors">
-                    <span class="font-medium" x-text="opt.name"></span>
-                    <span x-show="opt.code" class="font-mono text-[11px] text-slate-400" x-text="opt.code"></span>
+                     class="p-2.5 hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer text-xs flex items-start justify-between gap-2 transition-colors">
+                    <span class="font-medium whitespace-normal break-words leading-relaxed flex-1" x-text="opt.name"></span>
+                    <span x-show="opt.code" class="font-mono text-[11px] text-slate-400 shrink-0" x-text="opt.code"></span>
                 </div>
             </template>
             <div x-show="filteredOptions.length === 0" class="p-3 text-center text-xs text-slate-500 italic">

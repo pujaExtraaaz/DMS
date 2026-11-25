@@ -5,6 +5,9 @@
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('quotations.index')">Back</x-ui.button>
         <x-ui.button variant="secondary" :href="route('quotations.preview', $item)" target="_blank">Preview</x-ui.button>
+        <a href="{{ route('quotations.export', ['quotation' => $item, 'format' => 'pdf']) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 transition-colors">PDF</a>
+        <a href="{{ route('quotations.export', ['quotation' => $item, 'format' => 'xlsx']) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 transition-colors">Excel</a>
+        <a href="{{ route('quotations.export', ['quotation' => $item, 'format' => 'csv']) }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 transition-colors">CSV</a>
         @if($item->isEditable())
             <x-ui.button variant="secondary" :href="route('quotations.edit', $item)">Edit</x-ui.button>
         @endif
