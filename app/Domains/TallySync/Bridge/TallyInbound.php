@@ -60,6 +60,9 @@ class TallyInbound
 
     private ?TallyImportLookupCache $lookupCache = null;
 
+    /** Bulk `dms:import-tally` — skip row locks and per-item activity logs. */
+    private bool $bulkXmlImport = false;
+
     public function setForceOverwrite(bool $force): self
     {
         $this->forceOverwrite = $force;
@@ -70,6 +73,13 @@ class TallyInbound
     public function setLookupCache(?TallyImportLookupCache $cache): self
     {
         $this->lookupCache = $cache;
+
+        return $this;
+    }
+
+    public function setBulkXmlImport(bool $bulk): self
+    {
+        $this->bulkXmlImport = $bulk;
 
         return $this;
     }
@@ -972,22 +982,12 @@ class TallyInbound
     private function dmsProduct(\App\Domains\Organization\Models\Company $organization, \DOMElement $node, string $name): void
     {
         $unitName = $this->text($node, 'BASEUNITS') ?: 'Nos';
-        $uom = \App\Domains\Master\Models\Uom::query()
-            ->where(function ($q) use ($unitName) {
-                $q->whereRaw('LOWER(code) = ?', [mb_strtolower($unitName)])
-                    ->orWhereRaw('LOWER(name) = ?', [mb_strtolower($unitName)]);
-            })
-            ->first();
-        if (! $uom) {
-            $uom = \App\Domains\Master\Models\Uom::query()->create([
-                'name' => $unitName,
-                'code' => $unitName,
-                'is_active' => true,
-            ]);
-            $this->counts['created']++;
-        }
+        $uom = $this->resolveDmsUom($unitName);
 
-        [$brandId, $categoryId, $subCategoryId] = $this->resolveProductParents($organization, $this->normalizeParentName($this->text($node, 'PARENT')));
+        [$brandId, $categoryId, $subCategoryId] = $this->resolveProductParents(
+            $organization,
+            $this->normalizeParentName($this->text($node, 'PARENT'))
+        );
 
         $guid = $this->text($node, 'GUID') ?: null;
         $taxRate = $this->dmsGstRate($node);
@@ -1014,9 +1014,8 @@ class TallyInbound
             $attributes['purchase_price'] = $purchase;
         }
 
-        // GUID first, then normalized name. Lock to stop concurrent connector polls
-        // creating one SKU per pull for the same Tally stock item.
-        $product = DB::transaction(function () use ($organization, $guid, $name, $attributes, $supplyType) {
+        // GUID first, then normalized name. Row locks only for live connector polls (not bulk XML).
+        $persist = function () use ($organization, $guid, $name, $attributes, $supplyType) {
             $found = $this->findDmsProduct($organization, $guid, $name);
             if ($found) {
                 $found->fill($this->withoutBlank($attributes))->save();
@@ -1033,7 +1032,11 @@ class TallyInbound
             $this->counts['created']++;
 
             return $created;
-        });
+        };
+
+        $product = $this->bulkXmlImport
+            ? $persist()
+            : DB::transaction($persist);
 
         app(\App\Domains\Tally\Services\TallySyncMappingService::class)->createOrUpdate(
             $product,
@@ -1043,10 +1046,44 @@ class TallyInbound
             $name,
             'synced'
         );
+        $this->lookupCache?->rememberDmsProduct((int) $organization->id, $name, (int) $product->id);
+        $this->lookupCache?->rememberDmsProductGuid($guid, (int) $product->id);
         if ($mrp > 0) {
             $this->syncProductPriceMaster($organization, $product, $mrp, $uom->id);
         }
-        \App\Domains\TallySync\Support\InboundActivityLog::item('stock_item', 'synced', $name);
+        if (! $this->bulkXmlImport) {
+            \App\Domains\TallySync\Support\InboundActivityLog::item('stock_item', 'synced', $name);
+        }
+    }
+
+    private function resolveDmsUom(string $unitName): \App\Domains\Master\Models\Uom
+    {
+        $cachedId = $this->lookupCache?->dmsUomId($unitName);
+        if ($cachedId) {
+            $uom = \App\Domains\Master\Models\Uom::query()->find($cachedId);
+            if ($uom) {
+                return $uom;
+            }
+        }
+
+        $uom = \App\Domains\Master\Models\Uom::query()
+            ->where(function ($q) use ($unitName) {
+                $q->whereRaw('LOWER(code) = ?', [mb_strtolower($unitName)])
+                    ->orWhereRaw('LOWER(name) = ?', [mb_strtolower($unitName)]);
+            })
+            ->first();
+        if (! $uom) {
+            $uom = \App\Domains\Master\Models\Uom::query()->create([
+                'name' => $unitName,
+                'code' => $unitName,
+                'is_active' => true,
+            ]);
+            $this->counts['created']++;
+        }
+
+        $this->lookupCache?->rememberDmsUom($unitName, (int) $uom->id);
+
+        return $uom;
     }
 
     private function syncProductPriceMaster(
@@ -1111,31 +1148,56 @@ class TallyInbound
         ?string $guid,
         string $name
     ): ?\App\Domains\Master\Models\Product {
+        $useLock = ! $this->bulkXmlImport;
+
         if ($guid) {
-            $mapping = app(\App\Domains\Tally\Services\TallySyncMappingService::class)->findForTally('stock_item', $guid);
-            if ($mapping) {
-                $byGuid = \App\Domains\Master\Models\Product::query()
-                    ->whereKey($mapping->entity_id)
-                    ->where('company_id', $organization->id)
-                    ->lockForUpdate()
-                    ->first();
+            $entityId = $this->lookupCache?->dmsProductIdByGuid($guid);
+            if (! $entityId) {
+                $mapping = app(\App\Domains\Tally\Services\TallySyncMappingService::class)->findForTally('stock_item', $guid);
+                $entityId = $mapping ? (int) $mapping->entity_id : null;
+            }
+            if ($entityId) {
+                $query = \App\Domains\Master\Models\Product::query()
+                    ->whereKey($entityId)
+                    ->where('company_id', $organization->id);
+                if ($useLock) {
+                    $query->lockForUpdate();
+                }
+                $byGuid = $query->first();
                 if ($byGuid) {
                     return $byGuid;
                 }
             }
         }
 
+        $cachedId = $this->lookupCache?->dmsProductId((int) $organization->id, $name);
+        if ($cachedId) {
+            $query = \App\Domains\Master\Models\Product::query()
+                ->whereKey($cachedId)
+                ->where('company_id', $organization->id);
+            if ($useLock) {
+                $query->lockForUpdate();
+            }
+            $byName = $query->first();
+            if ($byName) {
+                return $byName;
+            }
+        }
+
         $normalized = \App\Support\TitleCase::format($name);
 
-        return \App\Domains\Master\Models\Product::query()
+        $query = \App\Domains\Master\Models\Product::query()
             ->where('company_id', $organization->id)
             ->where(function ($q) use ($name, $normalized) {
                 $q->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
                     ->orWhereRaw('LOWER(name) = ?', [mb_strtolower($normalized)]);
             })
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->first();
+            ->orderBy('id');
+        if ($useLock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
     }
 
     /**
@@ -1147,12 +1209,20 @@ class TallyInbound
             return [null, null, null];
         }
 
+        $cached = $this->lookupCache?->dmsProductParentIds((int) $organization->id, $parent);
+        if ($cached !== null) {
+            return $cached;
+        }
+
         $sub = \App\Domains\Catalog\Models\SubCategory::query()
             ->whereRaw('LOWER(name) = ?', [mb_strtolower($parent)])
             ->whereHas('category.brand', fn ($q) => $q->where('company_id', $organization->id))
             ->first();
         if ($sub) {
-            return [$sub->category?->brand_id, $sub->category_id, $sub->id];
+            $ids = [$sub->category?->brand_id, $sub->category_id, $sub->id];
+            $this->lookupCache?->rememberDmsProductParent((int) $organization->id, $parent, $ids);
+
+            return $ids;
         }
 
         $category = \App\Domains\Catalog\Models\Category::query()
@@ -1160,13 +1230,23 @@ class TallyInbound
             ->whereHas('brand', fn ($q) => $q->where('company_id', $organization->id))
             ->first();
         if ($category) {
-            return [$category->brand_id, $category->id, null];
+            $ids = [$category->brand_id, $category->id, null];
+            $this->lookupCache?->rememberDmsProductParent((int) $organization->id, $parent, $ids);
+
+            return $ids;
         }
 
-        $brand = \App\Domains\Catalog\Models\Brand::query()
-            ->where('company_id', $organization->id)
-            ->whereRaw('LOWER(name) = ?', [mb_strtolower($parent)])
-            ->first();
+        $brandId = $this->lookupCache?->dmsBrandId((int) $organization->id, $parent);
+        $brand = null;
+        if ($brandId) {
+            $brand = \App\Domains\Catalog\Models\Brand::query()->find($brandId);
+        }
+        if (! $brand) {
+            $brand = \App\Domains\Catalog\Models\Brand::query()
+                ->where('company_id', $organization->id)
+                ->whereRaw('LOWER(name) = ?', [mb_strtolower($parent)])
+                ->first();
+        }
 
         if (! $brand) {
             $brand = \App\Domains\Catalog\Models\Brand::query()->create([
@@ -1177,7 +1257,11 @@ class TallyInbound
             $this->counts['created']++;
         }
 
-        return [$brand->id, null, null];
+        $this->lookupCache?->rememberDmsBrand((int) $organization->id, $parent, (int) $brand->id);
+        $ids = [$brand->id, null, null];
+        $this->lookupCache?->rememberDmsProductParent((int) $organization->id, $parent, $ids);
+
+        return $ids;
     }
 
     private function mapDms(string $tallyType, string $dmsClass, string $name, ?string $guid): void

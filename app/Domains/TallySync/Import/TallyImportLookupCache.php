@@ -2,6 +2,8 @@
 
 namespace App\Domains\TallySync\Import;
 
+use App\Domains\Master\Models\Product as DmsProduct;
+use App\Domains\Organization\Models\Company as OrganizationCompany;
 use Illuminate\Support\Facades\DB;
 use Tally\Models\AccountGroup;
 use Tally\Models\Company;
@@ -19,6 +21,22 @@ final class TallyImportLookupCache
 {
     /** @var array<string, array<string, int>> */
     private array $maps = [];
+
+    /** @var array<string, array{0:?int,1:?int,2:?int}> */
+    private array $dmsParentByName = [];
+
+    /** @var array<string, int> tally_guid (lower) => DMS product id */
+    private array $dmsProductGuid = [];
+
+    public function warmDms(OrganizationCompany $company): void
+    {
+        $cid = (int) $company->id;
+        $this->maps['dms_product:'.$cid] = $this->loadDmsProductMap($cid);
+        $this->maps['dms_uom'] = $this->loadDmsUomMap();
+        $this->maps['dms_brand:'.$cid] = $this->loadMap('brands', $cid, 'name');
+        $this->warmDmsCatalogParents($cid);
+        $this->warmDmsProductGuids();
+    }
 
     public function warmBooks(Company $company): void
     {
@@ -90,6 +108,76 @@ final class TallyImportLookupCache
     public function rememberProductGroup(int $companyId, string $name, int $id): void
     {
         $this->put('product_group:'.$companyId, $name, $id);
+    }
+
+    public function dmsProductId(int $companyId, string $name): ?int
+    {
+        return $this->get('dms_product:'.$companyId, $name);
+    }
+
+    public function rememberDmsProduct(int $companyId, string $name, int $id): void
+    {
+        $this->put('dms_product:'.$companyId, $name, $id);
+    }
+
+    public function dmsProductIdByGuid(?string $guid): ?int
+    {
+        if ($guid === null || $guid === '') {
+            return null;
+        }
+        $k = mb_strtolower(trim($guid));
+
+        return $this->dmsProductGuid[$k] ?? null;
+    }
+
+    public function rememberDmsProductGuid(?string $guid, int $productId): void
+    {
+        if ($guid === null || $guid === '') {
+            return;
+        }
+        $this->dmsProductGuid[mb_strtolower(trim($guid))] = $productId;
+    }
+
+    public function dmsUomId(string $unitName): ?int
+    {
+        return $this->get('dms_uom', $unitName);
+    }
+
+    public function rememberDmsUom(string $unitName, int $id): void
+    {
+        $this->put('dms_uom', $unitName, $id);
+    }
+
+    /**
+     * @return array{0:?int,1:?int,2:?int}|null brand_id, category_id, sub_category_id
+     */
+    public function dmsProductParentIds(int $companyId, string $parent): ?array
+    {
+        $k = $companyId.':'.$this->norm($parent);
+
+        return $this->dmsParentByName[$k] ?? null;
+    }
+
+    /**
+     * @param  array{0:?int,1:?int,2:?int}  $ids
+     */
+    public function rememberDmsProductParent(int $companyId, string $parent, array $ids): void
+    {
+        $k = $companyId.':'.$this->norm($parent);
+        if ($k === $companyId.':') {
+            return;
+        }
+        $this->dmsParentByName[$k] = $ids;
+    }
+
+    public function dmsBrandId(int $companyId, string $name): ?int
+    {
+        return $this->get('dms_brand:'.$companyId, $name);
+    }
+
+    public function rememberDmsBrand(int $companyId, string $name, int $id): void
+    {
+        $this->put('dms_brand:'.$companyId, $name, $id);
     }
 
     public function costCentreId(int $companyId, string $name): ?int
@@ -209,5 +297,107 @@ final class TallyImportLookupCache
         }
 
         return $map;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function loadDmsProductMap(int $companyId): array
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('products')) {
+            return [];
+        }
+        $rows = DB::table('products')
+            ->where('company_id', $companyId)
+            ->whereNull('deleted_at')
+            ->select(['id', 'name'])
+            ->get();
+        $map = [];
+        foreach ($rows as $row) {
+            $name = (string) $row->name;
+            $map[$this->norm($name)] = (int) $row->id;
+            $formatted = \App\Support\TitleCase::format($name);
+            if ($formatted !== $name) {
+                $map[$this->norm($formatted)] = (int) $row->id;
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function loadDmsUomMap(): array
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('uoms')) {
+            return [];
+        }
+        $rows = DB::table('uoms')->select(['id', 'name', 'code'])->get();
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$this->norm((string) $row->code)] = (int) $row->id;
+            $map[$this->norm((string) $row->name)] = (int) $row->id;
+        }
+
+        return $map;
+    }
+
+    private function warmDmsCatalogParents(int $companyId): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('sub_categories')) {
+            return;
+        }
+
+        $subs = DB::table('sub_categories as sc')
+            ->join('categories as c', 'c.id', '=', 'sc.category_id')
+            ->join('brands as b', 'b.id', '=', 'c.brand_id')
+            ->where('b.company_id', $companyId)
+            ->select(['sc.id as sub_id', 'sc.name as sub_name', 'c.id as category_id', 'b.id as brand_id'])
+            ->get();
+        foreach ($subs as $row) {
+            $this->dmsParentByName[$companyId.':'.$this->norm((string) $row->sub_name)] = [
+                (int) $row->brand_id,
+                (int) $row->category_id,
+                (int) $row->sub_id,
+            ];
+        }
+
+        $categories = DB::table('categories as c')
+            ->join('brands as b', 'b.id', '=', 'c.brand_id')
+            ->where('b.company_id', $companyId)
+            ->select(['c.id as category_id', 'c.name as category_name', 'b.id as brand_id'])
+            ->get();
+        foreach ($categories as $row) {
+            $k = $companyId.':'.$this->norm((string) $row->category_name);
+            if (! isset($this->dmsParentByName[$k])) {
+                $this->dmsParentByName[$k] = [(int) $row->brand_id, (int) $row->category_id, null];
+            }
+        }
+
+        foreach ($this->maps['dms_brand:'.$companyId] ?? [] as $norm => $brandId) {
+            $k = $companyId.':'.$norm;
+            if (! isset($this->dmsParentByName[$k])) {
+                $this->dmsParentByName[$k] = [$brandId, null, null];
+            }
+        }
+    }
+
+    private function warmDmsProductGuids(): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('tally_sync_mappings')) {
+            return;
+        }
+
+        $entityType = DmsProduct::class;
+        $rows = DB::table('tally_sync_mappings')
+            ->where('tally_type', 'stock_item')
+            ->where('entity_type', $entityType)
+            ->whereNotNull('tally_guid')
+            ->select(['tally_guid', 'entity_id'])
+            ->get();
+        foreach ($rows as $row) {
+            $this->rememberDmsProductGuid((string) $row->tally_guid, (int) $row->entity_id);
+        }
     }
 }
