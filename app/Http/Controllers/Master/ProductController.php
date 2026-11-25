@@ -1579,6 +1579,24 @@ class ProductController extends Controller
     /**
      * Handle customized product data export (Excel, CSV, PDF) with selectable columns.
      */
+    /** DomPDF is slow on large tables; cap rows for acceptable download time. */
+    private const PDF_EXPORT_MAX_ROWS = 500;
+
+    private const PDF_EXPORT_MAX_COLUMNS = 12;
+
+    /** @var array<string, string> */
+    private const EXPORT_RELATION_MAP = [
+        'brand' => 'brand',
+        'category' => 'category',
+        'sub_category' => 'subCategory',
+        'product_type' => 'productType',
+        'base_uom' => 'baseUom',
+        'alternate_uom' => 'alternateUom',
+    ];
+
+    /** @var list<string> */
+    private const PDF_EXCLUDED_COLUMNS = ['image', 'description', 'specification', 'warranty_terms'];
+
     protected function exportProducts(Request $request, \Illuminate\Database\Eloquent\Builder $query): ?Response
     {
         if (! $request->filled('export')) {
@@ -1613,11 +1631,40 @@ class ProductController extends Controller
                 $selectedKeys = $this->getDefaultExportColumnKeys();
             }
         } else {
-            $selectedKeys = $this->getDefaultExportColumnKeys();
+            $selectedKeys = $format === 'pdf'
+                ? $this->getPdfExportColumnKeys()
+                : $this->getDefaultExportColumnKeys();
         }
 
-        // Eager load related models to prevent N+1 queries
-        $query->with(['baseUom', 'alternateUom', 'brand', 'category', 'subCategory', 'productType']);
+        $pdfExtraMeta = [];
+        if ($format === 'pdf') {
+            $selectedKeys = array_values(array_filter(
+                $selectedKeys,
+                fn (string $key) => ! in_array($key, self::PDF_EXCLUDED_COLUMNS, true)
+            ));
+            if (count($selectedKeys) > self::PDF_EXPORT_MAX_COLUMNS) {
+                $selectedKeys = array_slice($selectedKeys, 0, self::PDF_EXPORT_MAX_COLUMNS);
+                $pdfExtraMeta['Columns'] = 'Limited to '.self::PDF_EXPORT_MAX_COLUMNS.' columns for PDF (use Excel for all fields).';
+            }
+        }
+
+        $relations = [];
+        foreach ($selectedKeys as $key) {
+            if (isset(self::EXPORT_RELATION_MAP[$key])) {
+                $relations[] = self::EXPORT_RELATION_MAP[$key];
+            }
+        }
+        if ($relations !== []) {
+            $query->with(array_values(array_unique($relations)));
+        }
+
+        if ($format === 'pdf') {
+            $total = (clone $query)->count();
+            if ($total > self::PDF_EXPORT_MAX_ROWS) {
+                $pdfExtraMeta['Note'] = 'Showing first '.self::PDF_EXPORT_MAX_ROWS." of {$total} products. Use Excel for the full list.";
+            }
+            $query->limit(self::PDF_EXPORT_MAX_ROWS);
+        }
 
         $products = $query->get();
         $productIds = $products->pluck('id')->all();
@@ -1651,7 +1698,11 @@ class ProductController extends Controller
         foreach ($products as $p) {
             $row = [];
             foreach ($selectedKeys as $key) {
-                $row[] = $columnDefinitions[$key]['resolver']($p, $stockSummary, $openingStocks);
+                $value = $columnDefinitions[$key]['resolver']($p, $stockSummary, $openingStocks);
+                if ($format === 'pdf' && is_string($value) && strlen($value) > 120) {
+                    $value = substr($value, 0, 117).'...';
+                }
+                $row[] = $value;
             }
             $rows[] = $row;
         }
@@ -1660,7 +1711,7 @@ class ProductController extends Controller
             return \App\Support\DocumentExporter::exportCsv('Products-'.now()->format('Ymd-His').'.csv', $headers, $rows);
         }
 
-        return \App\Support\DocumentExporter::exportTabular('Products', 'Products', $headers, $rows, $format);
+        return \App\Support\DocumentExporter::exportTabular('Products', 'Products', $headers, $rows, $format, $pdfExtraMeta);
     }
 
     /**
@@ -1922,5 +1973,44 @@ class ProductController extends Controller
     public function getDefaultExportColumnKeys(): array
     {
         return array_keys($this->getExportColumnDefinitions());
+    }
+
+    /**
+     * Compact column set for quick PDF exports (fields marked default in the export UI).
+     *
+     * @return list<string>
+     */
+    public function getQuickExportColumnKeys(): array
+    {
+        $definitions = $this->getExportColumnDefinitions();
+        $keys = [];
+
+        foreach ($this->getExportColumnGroups() as $group) {
+            foreach ($group['fields'] as $key => $field) {
+                if (($field['default'] ?? false) && isset($definitions[$key])) {
+                    $keys[] = $key;
+                }
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * PDF quick export: default columns without stock (stock aggregation is slow).
+     *
+     * @return list<string>
+     */
+    public function getPdfExportColumnKeys(): array
+    {
+        return array_values(array_filter(
+            $this->getQuickExportColumnKeys(),
+            fn (string $key) => ! in_array($key, [
+                'available_stock',
+                'in_transit_stock',
+                'total_stock',
+                'opening_stock',
+            ], true)
+        ));
     }
 }
