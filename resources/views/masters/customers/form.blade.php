@@ -1395,7 +1395,7 @@
                            @click="openContactDirectoryDropdown()"
                            @input="onContactSearchInput()"
                            @keydown.escape="contactDropdownOpen = false"
-                           placeholder="Search by mobile number or contact initials (e.g. 98… / RK)…"
+                           placeholder="Search by contact name, company, mobile, email, designation..."
                            autocomplete="off"
                            class="block w-full pl-9 pr-10 py-2 rounded-xl border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400">
                     <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center gap-1">
@@ -1446,8 +1446,11 @@
                                         <template x-if="item.company_name">
                                             <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
                                                 <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-                                                <span class="truncate max-w-[140px]" x-text="item.company_name"></span>
+                                                <span class="truncate max-w-[220px]" x-text="item.company_name" :title="item.company_name"></span>
                                             </span>
+                                        </template>
+                                        <template x-if="item.department">
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600" x-text="item.department"></span>
                                         </template>
                                     </div>
                                     <div class="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5 flex-wrap">
@@ -1501,9 +1504,16 @@
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                             <span>+ Create New Contact in Phone Directory</span>
                         </button>
-                        <a href="{{ route('phone-directory.index') }}" target="_blank" class="px-2 py-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 hover:underline">
-                            Open Directory ↗
-                        </a>
+                        <div class="flex items-center gap-2">
+                            <a href="{{ route('phone-directory.index') }}" target="_blank" class="px-2 py-1 text-[11px] font-medium text-slate-500 hover:text-indigo-600 hover:underline">
+                                Open Directory ↗
+                            </a>
+                            <button type="button"
+                                    @click="contactDropdownOpen = false"
+                                    class="px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition shadow-2xs">
+                                Done
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3147,14 +3157,14 @@ function partyFormController() {
                 whatsapp: item.whatsapp || item.whatsapp_number || '',
                 whatsapp_number: item.whatsapp_number || item.whatsapp || '',
                 email: item.email || '',
+                department: item.department || '',
                 is_primary: this.contacts.length === 0,
                 avatar_bg_class: item.avatar_bg_class || 'bg-slate-100 text-slate-700',
                 initials: item.initials || (item.name ? item.name.substring(0, 2).toUpperCase() : 'CO'),
                 view_url: item.view_url || null,
             });
 
-            this.contactSearchQuery = '';
-            this.contactDropdownOpen = false;
+            // Keep dropdown open and keep query so user can select multiple contacts from the same company
         },
 
         customContactModalOpen: false,

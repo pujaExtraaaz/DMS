@@ -27,6 +27,17 @@
                 </select>
 
                 <select
+                    name="due_filter"
+                    data-dynamic-filter
+                    class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                >
+                    <option value="">Due: All</option>
+                    <option value="due_soon" @selected(request('due_filter') === 'due_soon')>Due Soon (1-15 Days)</option>
+                    <option value="due_today" @selected(request('due_filter') === 'due_today')>Due Today</option>
+                    <option value="overdue" @selected(request('due_filter') === 'overdue')>Overdue</option>
+                </select>
+
+                <select
                     name="einvoice_status"
                     data-dynamic-filter
                     class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
@@ -146,6 +157,9 @@
                     <x-ui.sortable-th column="status" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')">
                         Status
                     </x-ui.sortable-th>
+                    <x-ui.sortable-th column="due_date" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')">
+                        Remaining Days
+                    </x-ui.sortable-th>
                     <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500">Compliance</th>
                     <x-ui.sortable-th column="grand_total" :current-sort="$sort ?? request('sort', 'invoice_date')" :current-direction="$direction ?? request('direction', 'desc')" default-direction="desc" align="right">
                         Total
@@ -166,6 +180,21 @@
                     <td class="px-6 py-4 text-sm text-slate-600">{{ $invoice->invoice_date?->format('d M Y') }}</td>
                     <td class="px-6 py-4 text-sm">
                         <x-ui.badge variant="info">{{ ucfirst($invoice->status) }}</x-ui.badge>
+                    </td>
+                    <td class="px-6 py-4 text-xs whitespace-nowrap">
+                        @php
+                            $dueInfo = $invoice->getRemainingDaysInfo();
+                        @endphp
+                        <div class="flex flex-col gap-1 items-start">
+                            <x-ui.badge :variant="$dueInfo['badge_variant']" size="sm">
+                                {{ $dueInfo['display_text'] }}
+                            </x-ui.badge>
+                            @if($dueInfo['credit_period_label'] && $dueInfo['credit_period_label'] !== 'N/A')
+                                <span class="text-[11px] text-slate-500 font-medium">
+                                    Credit: {{ $dueInfo['credit_period_label'] }}
+                                </span>
+                            @endif
+                        </div>
                     </td>
                     <td class="px-6 py-4 text-xs whitespace-nowrap">
                         <div class="flex flex-col gap-1 items-start">
@@ -229,7 +258,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="p-0">
+                    <td colspan="9" class="p-0">
                         <x-ui.empty-state
                             title="No invoices found"
                             description="Try clearing search or filters to see more results."
