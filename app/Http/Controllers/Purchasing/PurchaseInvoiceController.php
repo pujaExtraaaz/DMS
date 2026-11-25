@@ -82,6 +82,10 @@ class PurchaseInvoiceController extends Controller
         if ($request->filled('export')) {
             $exportFormat = strtolower($request->string('export')->toString());
             if (in_array($exportFormat, ['csv', 'excel', 'xlsx', 'pdf'], true)) {
+                if ($exportFormat === 'pdf') {
+                    $query->limit(\App\Support\DompdfConfigurator::MAX_TABULAR_ROWS);
+                }
+
                 return DocumentExporter::exportPurchaseInvoicesListing($query->get(), $exportFormat);
             }
         }

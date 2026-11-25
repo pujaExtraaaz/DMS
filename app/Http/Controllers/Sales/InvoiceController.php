@@ -175,7 +175,30 @@ class InvoiceController extends Controller
             ->when($request->filled('einvoice_status'), fn ($q) => $q->where('einvoice_status', $request->einvoice_status))
             ->when($request->filled('eway_bill_status'), fn ($q) => $q->where('eway_bill_status', $request->eway_bill_status))
             ->when($request->filled('date_from'), fn ($q) => $q->whereDate('invoice_date', '>=', $request->date_from))
-            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('invoice_date', '<=', $request->date_to));
+            ->when($request->filled('date_to'), fn ($q) => $q->whereDate('invoice_date', '<=', $request->date_to))
+            ->when($request->filled('due_filter'), function ($q) use ($request) {
+                $today = now()->toDateString();
+                $dueFilter = $request->string('due_filter')->toString();
+                $openUnpaid = function ($sub) {
+                    $sub->whereNotIn('status', ['paid', 'cancelled', 'canceled'])
+                        ->where(function ($paidCheck) {
+                            $paidCheck->whereNull('paid_amount')
+                                ->orWhereRaw('paid_amount < grand_total');
+                        });
+                };
+
+                if ($dueFilter === 'due_today') {
+                    $q->where($openUnpaid)->whereDate('due_date', '=', $today);
+                } elseif ($dueFilter === 'due_soon') {
+                    $q->where($openUnpaid)
+                        ->whereDate('due_date', '>=', now()->addDay()->toDateString())
+                        ->whereDate('due_date', '<=', now()->addDays(15)->toDateString());
+                } elseif ($dueFilter === 'overdue') {
+                    $q->where($openUnpaid)
+                        ->whereNotNull('due_date')
+                        ->whereDate('due_date', '<', $today);
+                }
+            });
 
         $this->applySearch(
             $query,
@@ -187,6 +210,7 @@ class InvoiceController extends Controller
         $allowedSorts = [
             'invoice_no' => 'invoice_no',
             'invoice_date' => 'invoice_date',
+            'due_date' => 'due_date',
             'status' => 'status',
             'grand_total' => 'grand_total',
             'created_at' => 'created_at',
@@ -213,6 +237,10 @@ class InvoiceController extends Controller
         if ($request->filled('export')) {
             $exportFormat = strtolower($request->string('export')->toString());
             if (in_array($exportFormat, ['csv', 'excel', 'xlsx', 'pdf'], true)) {
+                if ($exportFormat === 'pdf') {
+                    $query->limit(\App\Support\DompdfConfigurator::MAX_TABULAR_ROWS);
+                }
+
                 return DocumentExporter::exportSalesInvoicesListing($query->get(), $exportFormat);
             }
         }
@@ -226,6 +254,7 @@ class InvoiceController extends Controller
             'salespersonId' => $request->input('salesperson_id'),
             'search' => $request->string('search'),
             'status' => $request->string('status'),
+            'dueFilter' => $request->string('due_filter'),
             'einvoiceStatus' => $request->string('einvoice_status'),
             'ewayBillStatus' => $request->string('eway_bill_status'),
             'customerId' => $request->input('customer_id'),
