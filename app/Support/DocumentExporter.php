@@ -119,7 +119,8 @@ class DocumentExporter
      */
     public static function exportPdf(string $view, array $data, string $filename, string $paper = 'a4', string $orientation = 'portrait'): Response
     {
-        $pdf = Pdf::loadView($view, $data)->setPaper($paper, $orientation);
+        DompdfConfigurator::bootstrap();
+        $pdf = DompdfConfigurator::apply(Pdf::loadView($view, $data))->setPaper($paper, $orientation);
 
         return $pdf->download($filename);
     }
@@ -1172,7 +1173,10 @@ class DocumentExporter
     public static function exportPurchaseInvoicesListing(Collection|iterable $invoices, string $format): Response|StreamedResponse
     {
         if ($invoices instanceof \Illuminate\Database\Eloquent\Collection) {
-            $invoices->loadMissing(['supplier', 'warehouse', 'branch', 'items.product', 'items.uom']);
+            $relations = $format === 'pdf'
+                ? ['supplier', 'warehouse', 'branch']
+                : ['supplier', 'warehouse', 'branch', 'items.product', 'items.uom'];
+            $invoices->loadMissing($relations);
         }
 
         $filename = 'Purchase-Invoices-' . now()->format('Ymd-His') . '.' . ($format === 'excel' ? 'xlsx' : $format);
@@ -1291,10 +1295,28 @@ class DocumentExporter
             return self::exportCsv($filename, $invoiceHeaders, $invoiceRows, $meta, $totals);
         }
 
-        return ReportExporter::pdf($filename, 'Purchase Invoices Report', $invoiceHeaders, $invoiceRows, [
-            'Generated' => now()->format('d M Y H:i'),
-            'Total Amount' => '₹ ' . number_format($totalSum, 2),
-        ]);
+        if ($format === 'pdf') {
+            $pdfHeaders = ['Invoice No', 'Date', 'Supplier', 'Warehouse', 'Status', 'Total (₹)'];
+            $pdfRows = [];
+            foreach ($invoices as $inv) {
+                $pdfRows[] = [
+                    $inv->invoice_no ?: $inv->invoice_number,
+                    $inv->invoice_date?->format('d-m-Y') ?? '',
+                    $inv->supplier?->name ?? '',
+                    $inv->warehouse?->name ?? '',
+                    ucfirst((string) $inv->status),
+                    number_format((float) ($inv->total_amount ?: $inv->grand_total), 2),
+                ];
+            }
+
+            return ReportExporter::pdf($filename, 'Purchase Invoices Report', $pdfHeaders, $pdfRows, [
+                'Generated' => now()->format('d M Y H:i'),
+                'Total Amount' => '₹ ' . number_format($totalSum, 2),
+                'Records' => (string) count($pdfRows),
+            ]);
+        }
+
+        throw new \InvalidArgumentException('Unsupported export format: '.$format);
     }
 
     /**
@@ -1303,7 +1325,10 @@ class DocumentExporter
     public static function exportSalesInvoicesListing(Collection|iterable $invoices, string $format): Response|StreamedResponse
     {
         if ($invoices instanceof \Illuminate\Database\Eloquent\Collection) {
-            $invoices->loadMissing(['customer', 'salesperson', 'order', 'items.product', 'items.uom']);
+            $relations = $format === 'pdf'
+                ? ['customer', 'salesperson', 'order']
+                : ['customer', 'salesperson', 'order', 'items.product', 'items.uom'];
+            $invoices->loadMissing($relations);
         }
 
         $filename = 'Sales-Invoices-' . now()->format('Ymd-His') . '.' . ($format === 'excel' ? 'xlsx' : $format);
@@ -1427,10 +1452,31 @@ class DocumentExporter
             return self::exportCsv($filename, $invoiceHeaders, $invoiceRows, $meta, $totals);
         }
 
-        return ReportExporter::pdf($filename, 'Sales Invoices Report', $invoiceHeaders, $invoiceRows, [
-            'Generated' => now()->format('d M Y H:i'),
-            'Total Amount' => '₹ ' . number_format($totalSum, 2),
-        ]);
+        if ($format === 'pdf') {
+            $pdfHeaders = ['Invoice No', 'Date', 'Due Date', 'Customer', 'Salesperson', 'Status', 'Grand Total (₹)', 'Paid (₹)', 'Balance (₹)'];
+            $pdfRows = [];
+            foreach ($invoices as $inv) {
+                $pdfRows[] = [
+                    $inv->invoice_no,
+                    $inv->invoice_date?->format('d-m-Y') ?? '',
+                    $inv->due_date?->format('d-m-Y') ?? '',
+                    $inv->customer?->name ?? '',
+                    $inv->salesperson?->name ?? '—',
+                    ucfirst((string) $inv->status),
+                    number_format((float) $inv->grand_total, 2),
+                    number_format((float) $inv->paid_amount, 2),
+                    number_format((float) ($inv->grand_total - $inv->paid_amount), 2),
+                ];
+            }
+
+            return ReportExporter::pdf($filename, 'Sales Invoices Report', $pdfHeaders, $pdfRows, [
+                'Generated' => now()->format('d M Y H:i'),
+                'Total Amount' => '₹ ' . number_format($totalSum, 2),
+                'Records' => (string) count($pdfRows),
+            ]);
+        }
+
+        throw new \InvalidArgumentException('Unsupported export format: '.$format);
     }
 
     public static function exportTabular(string $basename, string $title, array $headers, array $rows, string $format, array $extraMeta = []): Response|StreamedResponse

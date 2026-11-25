@@ -16,9 +16,9 @@ use Symfony\Component\HttpFoundation\Response;
 class ReportExporter
 {
   /**
-   * Row count above which we build minimal HTML instead of a Blade view (faster DomPDF).
+   * Always use lightweight HTML for tabular PDFs (Blade + borders is slow on shared hosting).
    */
-  private const FAST_PDF_ROW_THRESHOLD = 40;
+  private const FAST_PDF_ROW_THRESHOLD = 0;
 
   /**
    * @param  array<int, string>  $headers  Column labels for row 1.
@@ -43,18 +43,24 @@ class ReportExporter
    */
   public static function pdf(string $filename, string $title, array $headers, iterable $rows, array $meta = []): Response
   {
-    @set_time_limit(180);
-
-    $previousLimit = ini_get('memory_limit');
-    if ($previousLimit !== false && $previousLimit !== '-1') {
-      $bytes = self::memoryLimitToBytes($previousLimit);
-      if ($bytes > 0 && $bytes < 1536 * 1024 * 1024) {
-        @ini_set('memory_limit', '1536M');
-      }
-    }
+    DompdfConfigurator::bootstrap();
 
     $rowList = is_array($rows) ? $rows : iterator_to_array($rows, false);
-    $rowCount = count($rowList);
+    [$rowList, $capNote] = DompdfConfigurator::capRows($rowList);
+    if ($capNote !== null) {
+      $meta['Note'] = $capNote;
+    }
+
+    if (count($headers) > 14) {
+      $headers = array_slice($headers, 0, 14);
+      $rowList = array_map(
+        static fn (array $row) => array_slice(array_values($row), 0, 14),
+        $rowList
+      );
+      $meta['Columns'] = 'Limited to 14 columns in PDF (use Excel for all fields).';
+    }
+
+    $rowList = self::trimCellValues($rowList);
 
     $dompdf = count($rowList) >= self::FAST_PDF_ROW_THRESHOLD
       ? Pdf::loadHTML(self::buildFastTabularHtml($title, $headers, $rowList, $meta))
@@ -65,14 +71,29 @@ class ReportExporter
         'meta' => $meta,
       ]);
 
-    $pdf = $dompdf
-      ->setPaper('a4', 'landscape')
-      ->setOption('isRemoteEnabled', false)
-      ->setOption('isPhpEnabled', false)
-      ->setOption('isFontSubsettingEnabled', false)
-      ->setOption('dpi', 72);
+    $pdf = DompdfConfigurator::apply($dompdf)->setPaper('a4', 'landscape');
 
     return $pdf->download($filename);
+  }
+
+  /**
+   * @param  array<int, array<int, string|int|float|null>>  $rows
+   * @return array<int, array<int, string|int|float|null>>
+   */
+  private static function trimCellValues(array $rows): array
+  {
+    foreach ($rows as $i => $row) {
+      foreach ($row as $k => $cell) {
+        if ($k === '_total') {
+          continue;
+        }
+        if (is_string($cell) && strlen($cell) > 80) {
+          $rows[$i][$k] = substr($cell, 0, 77).'...';
+        }
+      }
+    }
+
+    return $rows;
   }
 
   /**
@@ -128,21 +149,4 @@ class ReportExporter
       .'</body></html>';
   }
 
-  private static function memoryLimitToBytes(string $limit): int
-  {
-    $limit = trim($limit);
-    if ($limit === '-1') {
-      return -1;
-    }
-
-    $unit = strtolower(substr($limit, -1));
-    $value = (int) $limit;
-
-    return match ($unit) {
-      'g' => $value * 1024 * 1024 * 1024,
-      'm' => $value * 1024 * 1024,
-      'k' => $value * 1024,
-      default => $value,
-    };
-  }
 }

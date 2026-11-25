@@ -1580,7 +1580,7 @@ class ProductController extends Controller
      * Handle customized product data export (Excel, CSV, PDF) with selectable columns.
      */
     /** DomPDF is slow on large tables; cap rows for acceptable download time. */
-    private const PDF_EXPORT_MAX_ROWS = 500;
+    private const PDF_EXPORT_MAX_ROWS = 300;
 
     private const PDF_EXPORT_MAX_COLUMNS = 12;
 
