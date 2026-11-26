@@ -4,7 +4,6 @@
     </IfModule>
 
     RewriteEngine On
-    RewriteBase /dms/
 
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
