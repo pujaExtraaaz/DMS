@@ -128,8 +128,9 @@ class DmsVoucherImporter
         }
 
         $this->ensureFinancialYear($date);
-        $lines = $this->inventoryLines($node);
-        $totals = $this->sumLines($lines);
+        $gst = $this->voucherGst($node);
+        $lines = $this->inventoryLines($node, $gst);
+        $totals = $this->sumLines($lines, $gst);
 
         $invoice = Invoice::query()
             ->where('company_id', $this->organization->id)
@@ -140,10 +141,17 @@ class DmsVoucherImporter
             'company_id' => $this->organization->id,
             'invoice_no' => $number,
             'customer_id' => $party->id,
+            'salesperson_id' => $this->resolveSalespersonId($node),
             'invoice_date' => $date,
             'status' => 'issued',
+            'price_type' => 'exclusive',
+            'tax_type' => $totals['tax_type'],
             'subtotal' => $totals['subtotal'],
+            'taxable_amount' => $totals['subtotal'],
             'tax_amount' => $totals['tax'],
+            'cgst_amount' => $totals['cgst'],
+            'sgst_amount' => $totals['sgst'],
+            'igst_amount' => $totals['igst'],
             'grand_total' => $totals['grand'],
             'notes' => $this->text($node, 'NARRATION') ?: null,
             'reference_no' => $this->text($node, 'REFERENCE') ?: null,
@@ -184,8 +192,9 @@ class DmsVoucherImporter
         }
 
         $this->ensureFinancialYear($date);
-        $lines = $this->inventoryLines($node);
-        $totals = $this->sumLines($lines);
+        $gst = $this->voucherGst($node);
+        $lines = $this->inventoryLines($node, $gst);
+        $totals = $this->sumLines($lines, $gst);
         $warehouse = $this->firstWarehouseFromLines($lines);
 
         $doc = PurchaseInvoice::query()
@@ -200,8 +209,14 @@ class DmsVoucherImporter
             'warehouse_id' => $warehouse?->id,
             'invoice_date' => $date,
             'status' => 'posted',
+            'price_type' => 'exclusive',
+            'tax_type' => $totals['tax_type'],
             'subtotal' => $totals['subtotal'],
+            'taxable_amount' => $totals['subtotal'],
             'tax_amount' => $totals['tax'],
+            'cgst_amount' => $totals['cgst'],
+            'sgst_amount' => $totals['sgst'],
+            'igst_amount' => $totals['igst'],
             'grand_total' => $totals['grand'],
             'notes' => $this->text($node, 'NARRATION') ?: null,
         ];
@@ -222,8 +237,17 @@ class DmsVoucherImporter
                 'uom_id' => $line['uom_id'],
                 'quantity' => $line['qty'],
                 'unit_cost' => $line['rate'],
-                'tax_percent' => 0,
-                'line_total' => $line['amount'],
+                'entered_unit_cost' => $line['rate'],
+                'price_type' => 'exclusive',
+                'taxable_amount' => $line['amount'],
+                'tax_percent' => $line['tax_rate'],
+                'cgst_percent' => $line['cgst_rate'],
+                'sgst_percent' => $line['sgst_rate'],
+                'igst_percent' => $line['igst_rate'],
+                'cgst_amount' => $line['cgst'],
+                'sgst_amount' => $line['sgst'],
+                'igst_amount' => $line['igst'],
+                'line_total' => round($line['amount'] + $line['tax'], 2),
             ]);
         }
 
@@ -535,15 +559,16 @@ class DmsVoucherImporter
             return;
         }
 
-        $lines = $this->inventoryLines($node);
-        $totals = $this->sumLines($lines);
+        $gst = $this->voucherGst($node);
+        $lines = $this->inventoryLines($node, $gst);
+        $totals = $this->sumLines($lines, $gst);
 
         $order = Order::query()->where('order_no', $number)->first();
 
         $attrs = [
             'order_no' => $number,
             'customer_id' => $party->id,
-            'salesperson_id' => $this->defaultSalespersonId(),
+            'salesperson_id' => $this->resolveSalespersonId($node) ?: $this->defaultSalespersonId(),
             'order_date' => $date,
             'status' => 'approved',
             'subtotal' => $totals['subtotal'],
@@ -593,8 +618,9 @@ class DmsVoucherImporter
             return;
         }
 
-        $lines = $this->inventoryLines($node);
-        $totals = $this->sumLines($lines);
+        $gst = $this->voucherGst($node);
+        $lines = $this->inventoryLines($node, $gst);
+        $totals = $this->sumLines($lines, $gst);
 
         $doc = PurchaseOrder::query()
             ->where('company_id', $this->organization->id)
@@ -629,8 +655,12 @@ class DmsVoucherImporter
                 'uom_id' => $line['uom_id'],
                 'quantity' => $line['qty'],
                 'unit_cost' => $line['rate'],
-                'tax_percent' => 0,
-                'line_total' => $line['amount'],
+                'tax_percent' => $line['tax_rate'],
+                'cgst_percent' => $line['cgst_rate'],
+                'sgst_percent' => $line['sgst_rate'],
+                'cgst_amount' => $line['cgst'],
+                'sgst_amount' => $line['sgst'],
+                'line_total' => round($line['amount'] + $line['tax'], 2),
             ]);
         }
 
@@ -658,8 +688,9 @@ class DmsVoucherImporter
             $uniqueNo = $number.'/'.$date;
         }
 
-        $lines = $this->inventoryLines($node);
-        $totals = $this->sumLines($lines);
+        $gst = $this->voucherGst($node);
+        $lines = $this->inventoryLines($node, $gst);
+        $totals = $this->sumLines($lines, $gst);
 
         $doc = Quotation::query()
             ->where('quotation_no', $uniqueNo)
@@ -674,7 +705,7 @@ class DmsVoucherImporter
             'company_id' => $this->organization->id,
             'quotation_no' => $uniqueNo,
             'customer_id' => $party->id,
-            'salesperson_id' => $this->defaultSalespersonId(),
+            'salesperson_id' => $this->resolveSalespersonId($node) ?: $this->defaultSalespersonId(),
             'quotation_date' => $date,
             'status' => 'sent',
             'subtotal' => $totals['subtotal'],
@@ -733,8 +764,9 @@ class DmsVoucherImporter
         $number = 'DC-'.trim($safe, '-').'-'.str_replace('-', '', $date);
 
         $this->ensureFinancialYear($date);
-        $lines = $this->inventoryLines($node);
-        $totals = $this->sumLines($lines);
+        $gst = $this->voucherGst($node);
+        $lines = $this->inventoryLines($node, $gst);
+        $totals = $this->sumLines($lines, $gst);
 
         $invoice = Invoice::query()
             ->where('company_id', $this->organization->id)
@@ -745,10 +777,17 @@ class DmsVoucherImporter
             'company_id' => $this->organization->id,
             'invoice_no' => $number,
             'customer_id' => $party->id,
+            'salesperson_id' => $this->resolveSalespersonId($node),
             'invoice_date' => $date,
             'status' => 'issued',
+            'price_type' => 'exclusive',
+            'tax_type' => $totals['tax_type'],
             'subtotal' => $totals['subtotal'],
+            'taxable_amount' => $totals['subtotal'],
             'tax_amount' => $totals['tax'],
+            'cgst_amount' => $totals['cgst'],
+            'sgst_amount' => $totals['sgst'],
+            'igst_amount' => $totals['igst'],
             'grand_total' => $totals['grand'],
             'notes' => trim(($this->text($node, 'NARRATION') ?: '').' [Delivery Challan '.$rawNumber.']'),
             'delivery_note_no' => $rawNumber,
@@ -899,10 +938,12 @@ class DmsVoucherImporter
     }
 
     /**
-     * @return list<array{product_id:int,uom_id:?int,qty:float,rate:float,amount:float,tax:float,godown:?Warehouse,destination:?Warehouse}>
+     * @param  array{cgst_rate:float,sgst_rate:float,igst_rate:float,tax_rate:float,cgst_amount:float,sgst_amount:float,igst_amount:float,tax_amount:float,tax_type:string}|null  $gst
+     * @return list<array{product_id:int,uom_id:?int,qty:float,rate:float,amount:float,tax:float,tax_rate:float,cgst_rate:float,sgst_rate:float,igst_rate:float,cgst:float,sgst:float,igst:float,hsn_code:?string,godown:?Warehouse,destination:?Warehouse}>
      */
-    private function inventoryLines(\DOMElement $node): array
+    private function inventoryLines(\DOMElement $node, ?array $gst = null): array
     {
+        $gst ??= $this->emptyGst();
         $lines = [];
         $voucherDest = $this->text($node, 'DESTINATIONGODOWN') ?: $this->text($node, 'DESTINATIONGODOWNNAME');
 
@@ -956,24 +997,36 @@ class DmsVoucherImporter
                 if ($rate <= 0 && abs($qty) > 0) {
                     $rate = round($amount / abs($qty), 2);
                 }
+                $taxable = $amount > 0 ? $amount : round(abs($qty) * $rate, 2);
+
+                $lineGst = $this->lineGstFromEntry($entry, $product, $gst, $taxable, $rate);
+
                 $lines[] = [
                     'product_id' => $product->id,
                     'uom_id' => $product->base_uom_id,
                     'qty' => $qty,
                     'rate' => $rate,
-                    'amount' => $amount > 0 ? $amount : round(abs($qty) * $rate, 2),
-                    'tax' => 0.0,
+                    'amount' => $taxable,
+                    'tax' => $lineGst['tax'],
+                    'tax_rate' => $lineGst['tax_rate'],
+                    'cgst_rate' => $lineGst['cgst_rate'],
+                    'sgst_rate' => $lineGst['sgst_rate'],
+                    'igst_rate' => $lineGst['igst_rate'],
+                    'cgst' => $lineGst['cgst'],
+                    'sgst' => $lineGst['sgst'],
+                    'igst' => $lineGst['igst'],
+                    'hsn_code' => $this->text($entry, 'GSTHSNNAME') ?: ($product->hsn_code ?? null),
                     'godown' => $godownName !== '' ? $this->ensureWarehouse($godownName) : null,
                     'destination' => $destName !== '' ? $this->ensureWarehouse($destName) : null,
                 ];
             }
         }
 
-        return $lines;
+        return $this->allocateVoucherTaxToLines($lines, $gst);
     }
 
     /**
-     * @param  list<array{product_id:int,uom_id:?int,qty:float,rate:float,amount:float,tax:float}>  $lines
+     * @param  list<array{product_id:int,uom_id:?int,qty:float,rate:float,amount:float,tax:float,tax_rate:float,cgst_rate:float,sgst_rate:float,igst_rate:float,cgst:float,sgst:float,igst:float,hsn_code:?string}>  $lines
      */
     private function writeInvoiceItems(int $invoiceId, array $lines): void
     {
@@ -982,31 +1035,61 @@ class DmsVoucherImporter
                 'invoice_id' => $invoiceId,
                 'product_id' => $line['product_id'],
                 'uom_id' => $line['uom_id'],
-                'quantity' => $line['qty'],
+                'quantity' => abs($line['qty']),
+                'price_type' => 'exclusive',
+                'entered_unit_price' => $line['rate'],
                 'unit_price' => $line['rate'],
+                'taxable_amount' => $line['amount'],
+                'tax_rate' => $line['tax_rate'],
+                'cgst_rate' => $line['cgst_rate'],
+                'sgst_rate' => $line['sgst_rate'],
+                'igst_rate' => $line['igst_rate'],
+                'hsn_code' => $line['hsn_code'] ?? null,
                 'tax_amount' => $line['tax'],
-                'line_total' => $line['amount'],
+                'cgst_amount' => $line['cgst'],
+                'sgst_amount' => $line['sgst'],
+                'igst_amount' => $line['igst'],
+                'line_total' => round($line['amount'] + $line['tax'], 2),
             ]);
         }
     }
 
     /**
-     * @param  list<array{amount:float,tax:float}>  $lines
-     * @return array{subtotal:float,tax:float,grand:float}
+     * @param  list<array{amount:float,tax:float,cgst:float,sgst:float,igst:float}>  $lines
+     * @param  array{cgst_amount:float,sgst_amount:float,igst_amount:float,tax_amount:float,tax_type:string}|null  $gst
+     * @return array{subtotal:float,tax:float,cgst:float,sgst:float,igst:float,grand:float,tax_type:string}
      */
-    private function sumLines(array $lines): array
+    private function sumLines(array $lines, ?array $gst = null): array
     {
         $subtotal = 0.0;
         $tax = 0.0;
+        $cgst = 0.0;
+        $sgst = 0.0;
+        $igst = 0.0;
         foreach ($lines as $line) {
             $subtotal += (float) $line['amount'];
             $tax += (float) $line['tax'];
+            $cgst += (float) ($line['cgst'] ?? 0);
+            $sgst += (float) ($line['sgst'] ?? 0);
+            $igst += (float) ($line['igst'] ?? 0);
+        }
+
+        // Prefer voucher duty ledger totals when present (exact Tally amounts).
+        if ($gst && ($gst['tax_amount'] ?? 0) > 0.009) {
+            $tax = (float) $gst['tax_amount'];
+            $cgst = (float) $gst['cgst_amount'];
+            $sgst = (float) $gst['sgst_amount'];
+            $igst = (float) $gst['igst_amount'];
         }
 
         return [
             'subtotal' => round($subtotal, 2),
             'tax' => round($tax, 2),
+            'cgst' => round($cgst, 2),
+            'sgst' => round($sgst, 2),
+            'igst' => round($igst, 2),
             'grand' => round($subtotal + $tax, 2),
+            'tax_type' => $gst['tax_type'] ?? (($igst > 0.009 && ($cgst + $sgst) < 0.009) ? 'inter' : 'intra'),
         ];
     }
 
@@ -1022,6 +1105,339 @@ class DmsVoucherImporter
         }
 
         return Warehouse::query()->where('company_id', $this->organization->id)->orderBy('id')->first();
+    }
+
+    /**
+     * @return array{cgst_rate:float,sgst_rate:float,igst_rate:float,tax_rate:float,cgst_amount:float,sgst_amount:float,igst_amount:float,tax_amount:float,tax_type:string}
+     */
+    private function emptyGst(): array
+    {
+        return [
+            'cgst_rate' => 0.0,
+            'sgst_rate' => 0.0,
+            'igst_rate' => 0.0,
+            'tax_rate' => 0.0,
+            'cgst_amount' => 0.0,
+            'sgst_amount' => 0.0,
+            'igst_amount' => 0.0,
+            'tax_amount' => 0.0,
+            'tax_type' => 'intra',
+        ];
+    }
+
+    /**
+     * Read voucher-level GST duty ledgers + RATEDETAILS from Tally XML.
+     *
+     * @return array{cgst_rate:float,sgst_rate:float,igst_rate:float,tax_rate:float,cgst_amount:float,sgst_amount:float,igst_amount:float,tax_amount:float,tax_type:string}
+     */
+    private function voucherGst(\DOMElement $node): array
+    {
+        $gst = $this->emptyGst();
+
+        foreach ($node->getElementsByTagName('RATEDETAILS.LIST') as $rateNode) {
+            if (! $rateNode instanceof \DOMElement) {
+                continue;
+            }
+            $head = strtoupper($this->text($rateNode, 'GSTRATEDUTYHEAD'));
+            $rate = $this->leadingNumber($this->text($rateNode, 'GSTRATE'));
+            if ($rate <= 0) {
+                continue;
+            }
+            if (str_contains($head, 'IGST')) {
+                $gst['igst_rate'] = $rate;
+            } elseif (str_contains($head, 'CGST')) {
+                $gst['cgst_rate'] = $rate;
+            } elseif (str_contains($head, 'SGST') || str_contains($head, 'UTGST')) {
+                $gst['sgst_rate'] = $rate;
+            }
+        }
+
+        foreach (['ALLLEDGERENTRIES.LIST', 'LEDGERENTRIES.LIST'] as $tag) {
+            foreach ($node->getElementsByTagName($tag) as $entry) {
+                if (! $entry instanceof \DOMElement) {
+                    continue;
+                }
+                $duty = $this->gstDutyKind($this->text($entry, 'LEDGERNAME'));
+                if ($duty === null) {
+                    continue;
+                }
+                $amount = abs($this->leadingNumber($this->text($entry, 'AMOUNT')));
+                if ($amount < 0.01) {
+                    continue;
+                }
+                $gst[$duty.'_amount'] += $amount;
+            }
+        }
+
+        $gst['tax_amount'] = round($gst['cgst_amount'] + $gst['sgst_amount'] + $gst['igst_amount'], 2);
+
+        if ($gst['igst_amount'] > 0.009 && ($gst['cgst_amount'] + $gst['sgst_amount']) < 0.009) {
+            $gst['tax_type'] = 'inter';
+            $gst['tax_rate'] = $gst['igst_rate'] > 0
+                ? $gst['igst_rate']
+                : (($gst['cgst_rate'] + $gst['sgst_rate']) > 0 ? ($gst['cgst_rate'] + $gst['sgst_rate']) : 0.0);
+        } else {
+            $gst['tax_type'] = 'intra';
+            $split = $gst['cgst_rate'] + $gst['sgst_rate'];
+            $gst['tax_rate'] = $split > 0 ? $split : ($gst['igst_rate'] > 0 ? $gst['igst_rate'] : 0.0);
+            if ($gst['cgst_rate'] <= 0 && $gst['sgst_rate'] <= 0 && $gst['tax_rate'] > 0) {
+                $gst['cgst_rate'] = round($gst['tax_rate'] / 2, 2);
+                $gst['sgst_rate'] = round($gst['tax_rate'] - $gst['cgst_rate'], 2);
+            }
+        }
+
+        return $gst;
+    }
+
+    private function gstDutyKind(string $ledgerName): ?string
+    {
+        $name = strtoupper(trim($ledgerName));
+        if ($name === '') {
+            return null;
+        }
+        // Match duty ledgers like "CGST", "SGST", "Output CGST @ 9%" — not "SALE GST IN PUNJAB".
+        if (preg_match('/\bIGST\b/', $name)) {
+            return 'igst';
+        }
+        if (preg_match('/\b(?:SGST|UTGST)\b/', $name)) {
+            return 'sgst';
+        }
+        if (preg_match('/\bCGST\b/', $name)) {
+            return 'cgst';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{cgst_rate:float,sgst_rate:float,igst_rate:float,tax_rate:float,tax_type:string}  $gst
+     * @return array{tax:float,tax_rate:float,cgst_rate:float,sgst_rate:float,igst_rate:float,cgst:float,sgst:float,igst:float}
+     */
+    private function lineGstFromEntry(\DOMElement $entry, Product $product, array $gst, float $taxable, float $rate): array
+    {
+        $taxRate = (float) ($gst['tax_rate'] ?? 0);
+        $cgstRate = (float) ($gst['cgst_rate'] ?? 0);
+        $sgstRate = (float) ($gst['sgst_rate'] ?? 0);
+        $igstRate = (float) ($gst['igst_rate'] ?? 0);
+
+        // Derive from inclusive vs exclusive rate when masters omit RATEDETAILS.
+        $incl = $this->leadingNumber($this->text($entry, 'INCLVATRATE'));
+        if ($taxRate <= 0 && $incl > 0 && $rate > 0 && $incl > $rate) {
+            $taxRate = round((($incl / $rate) - 1) * 100, 2);
+        }
+
+        if ($taxRate <= 0) {
+            $taxRate = (float) ($product->tax_rate ?? 0);
+        }
+
+        if ($taxRate > 0 && $cgstRate <= 0 && $sgstRate <= 0 && $igstRate <= 0) {
+            if (($gst['tax_type'] ?? 'intra') === 'inter') {
+                $igstRate = $taxRate;
+            } else {
+                $cgstRate = round($taxRate / 2, 2);
+                $sgstRate = round($taxRate - $cgstRate, 2);
+            }
+        }
+
+        $tax = round($taxable * ($taxRate / 100), 2);
+        if (($gst['tax_type'] ?? 'intra') === 'inter' || ($igstRate > 0 && ($cgstRate + $sgstRate) <= 0)) {
+            return [
+                'tax' => $tax,
+                'tax_rate' => $taxRate,
+                'cgst_rate' => 0.0,
+                'sgst_rate' => 0.0,
+                'igst_rate' => $igstRate > 0 ? $igstRate : $taxRate,
+                'cgst' => 0.0,
+                'sgst' => 0.0,
+                'igst' => $tax,
+            ];
+        }
+
+        $cgst = round($taxable * ($cgstRate / 100), 2);
+        $sgst = round($tax - $cgst, 2);
+
+        return [
+            'tax' => $tax,
+            'tax_rate' => $taxRate,
+            'cgst_rate' => $cgstRate,
+            'sgst_rate' => $sgstRate,
+            'igst_rate' => 0.0,
+            'cgst' => $cgst,
+            'sgst' => $sgst,
+            'igst' => 0.0,
+        ];
+    }
+
+    /**
+     * When line rates were 0 but voucher has duty totals, spread tax by taxable weight.
+     *
+     * @param  list<array<string,mixed>>  $lines
+     * @param  array{tax_amount:float,cgst_amount:float,sgst_amount:float,igst_amount:float,tax_type:string,tax_rate:float,cgst_rate:float,sgst_rate:float,igst_rate:float}  $gst
+     * @return list<array<string,mixed>>
+     */
+    private function allocateVoucherTaxToLines(array $lines, array $gst): array
+    {
+        if ($lines === [] || ($gst['tax_amount'] ?? 0) <= 0.009) {
+            return $lines;
+        }
+
+        $lineTax = array_sum(array_map(fn ($l) => (float) $l['tax'], $lines));
+        if ($lineTax > 0.009) {
+            return $lines;
+        }
+
+        $taxableTotal = array_sum(array_map(fn ($l) => (float) $l['amount'], $lines));
+        if ($taxableTotal <= 0) {
+            return $lines;
+        }
+
+        $remainingTax = (float) $gst['tax_amount'];
+        $remainingCgst = (float) $gst['cgst_amount'];
+        $remainingSgst = (float) $gst['sgst_amount'];
+        $remainingIgst = (float) $gst['igst_amount'];
+        $last = count($lines) - 1;
+
+        foreach ($lines as $i => &$line) {
+            $share = ((float) $line['amount']) / $taxableTotal;
+            if ($i === $last) {
+                $line['tax'] = round($remainingTax, 2);
+                $line['cgst'] = round($remainingCgst, 2);
+                $line['sgst'] = round($remainingSgst, 2);
+                $line['igst'] = round($remainingIgst, 2);
+            } else {
+                $line['tax'] = round($gst['tax_amount'] * $share, 2);
+                $line['cgst'] = round($gst['cgst_amount'] * $share, 2);
+                $line['sgst'] = round($gst['sgst_amount'] * $share, 2);
+                $line['igst'] = round($gst['igst_amount'] * $share, 2);
+                $remainingTax -= $line['tax'];
+                $remainingCgst -= $line['cgst'];
+                $remainingSgst -= $line['sgst'];
+                $remainingIgst -= $line['igst'];
+            }
+            $line['tax_rate'] = $gst['tax_rate'];
+            $line['cgst_rate'] = $gst['cgst_rate'];
+            $line['sgst_rate'] = $gst['sgst_rate'];
+            $line['igst_rate'] = $gst['igst_rate'];
+        }
+        unset($line);
+
+        return $lines;
+    }
+
+    private function resolveSalespersonId(\DOMElement $node): ?int
+    {
+        foreach ($this->salespersonNamesFromVoucher($node) as $name) {
+            $id = $this->ensureSalespersonUser($name);
+            if ($id) {
+                return $id;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function salespersonNamesFromVoucher(\DOMElement $node): array
+    {
+        $names = [];
+        foreach ($node->getElementsByTagName('COSTCENTREALLOCATIONS.LIST') as $cc) {
+            if (! $cc instanceof \DOMElement) {
+                continue;
+            }
+            $name = $this->text($cc, 'NAME');
+            if ($this->isUsableSalespersonName($name)) {
+                $names[] = $this->normalizePersonName($name);
+            }
+        }
+
+        $enteredBy = $this->text($node, 'ENTEREDBY');
+        if ($this->isUsableSalespersonName($enteredBy)) {
+            $names[] = $this->normalizePersonName($enteredBy);
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    private function isUsableSalespersonName(string $name): bool
+    {
+        $name = trim($name);
+        if ($name === '' || strlen($name) < 2) {
+            return false;
+        }
+        $upper = strtoupper($name);
+        $blocked = [
+            'ENTRY', 'NOT APPLICABLE', 'PRIMARY', 'PRIMARY BATCH', 'MAIN LOCATION',
+            'ADMIN', 'SYSTEM', 'NA', 'N/A', 'NONE', 'DEFAULT',
+        ];
+
+        return ! in_array($upper, $blocked, true)
+            && ! str_starts_with($upper, '&#')
+            && ! preg_match('/^\d+$/', $name);
+    }
+
+    private function normalizePersonName(string $name): string
+    {
+        $name = html_entity_decode(trim($name), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
+
+        return trim($name);
+    }
+
+    private function ensureSalespersonUser(string $name): ?int
+    {
+        $name = $this->normalizePersonName($name);
+        if (! $this->isUsableSalespersonName($name)) {
+            return null;
+        }
+
+        $user = User::query()
+            ->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])
+            ->first();
+
+        if (! $user) {
+            // Loose match: "MR KAPIL DHIR" ↔ "Kapil Dhir"
+            $compact = mb_strtolower(preg_replace('/\b(mr|mrs|ms|ji)\b\.?/i', '', $name) ?? $name);
+            $compact = trim(preg_replace('/\s+/', ' ', $compact) ?? $compact);
+            if ($compact !== '') {
+                $user = User::query()
+                    ->whereRaw('LOWER(name) LIKE ?', ['%'.$compact.'%'])
+                    ->first();
+            }
+        }
+
+        if (! $user) {
+            $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '.', $name) ?: 'salesperson');
+            $email = $slug.'@tally-import.local';
+            $suffix = 1;
+            while (User::query()->where('email', $email)->exists()) {
+                $email = $slug.$suffix.'@tally-import.local';
+                $suffix++;
+            }
+
+            $user = User::query()->create([
+                'company_id' => $this->organization->id,
+                'name' => $name,
+                'email' => $email,
+                'password' => bcrypt(str()->random(24)),
+            ]);
+            $this->counts['created']++;
+        }
+
+        try {
+            if (method_exists($user, 'hasRole') && ! $user->hasRole('salesperson')) {
+                $user->assignRole('salesperson');
+            }
+        } catch (\Throwable) {
+            // Role may not exist in every tenant — still usable via getSalespersons fallbacks.
+        }
+
+        if ($user->employee()->exists()) {
+            $user->employee()->update(['is_salesperson' => true]);
+        }
+
+        return (int) $user->id;
     }
 
     private function defaultSalespersonId(): int

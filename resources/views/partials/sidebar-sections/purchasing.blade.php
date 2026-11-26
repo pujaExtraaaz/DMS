@@ -71,6 +71,8 @@
             <a href="{{ route('purchasing.comparisons.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.comparisons.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Material Comparison</span></a>
             <a href="{{ route('purchasing.receipt-notes.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.receipt-notes.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Receipt Notes</span></a>
             <a href="{{ route('purchasing.invoices.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.invoices.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Purchase Invoices</span></a>
+            <a href="{{ route('purchasing.debit-notes.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.debit-notes.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Debit Notes</span></a>
+            <a href="{{ route('purchasing.supplier-payments.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.supplier-payments.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Supplier Payments</span></a>
             <a href="{{ route('purchasing.landed-costs.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.landed-costs.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Landed Costs</span></a>
             <a href="{{ route('purchasing.freight-bills.index') }}" class="{{ $itemClass }} {{ $linkClass(['purchasing.freight-bills.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Freight Bills</span></a>
         </div>

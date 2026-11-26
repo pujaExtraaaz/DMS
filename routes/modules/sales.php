@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Sales\DeliveryChallanController;
 use App\Http\Controllers\Sales\InvoiceController;
 use App\Http\Controllers\Sales\QuotationController;
 use App\Http\Controllers\Sales\RegionBrandPolicyController;
@@ -29,6 +30,7 @@ Route::prefix('invoices')->name('invoices.')->middleware('role_or_permission:sup
     Route::post('/{invoice}/eway/update-vehicle', [InvoiceController::class, 'updateEwayVehicle'])->name('eway.update-vehicle');
     Route::get('/{invoice}/edit', [InvoiceController::class, 'edit'])->name('edit');
     Route::put('/{invoice}', [InvoiceController::class, 'update'])->name('update');
+    Route::post('/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('cancel');
     Route::get('/{invoice}', [InvoiceController::class, 'show'])->name('show');
 });
 
@@ -53,4 +55,14 @@ Route::prefix('region-policies')->name('region-policies.')->middleware('role_or_
     Route::get('/{region_policy}/edit', [RegionBrandPolicyController::class, 'edit'])->name('edit');
     Route::put('/{region_policy}', [RegionBrandPolicyController::class, 'update'])->name('update');
     Route::delete('/{region_policy}', [RegionBrandPolicyController::class, 'destroy'])->name('destroy');
+});
+
+Route::prefix('delivery-challans')->name('delivery-challans.')->middleware('role_or_permission:super-admin|delivery-challans.view|delivery-challans.create|delivery-challans.edit|delivery-challans.manage|invoices.view|invoices.create|sales.view|sales.create|sales.edit|sales.manage|delivery.view|delivery.create|delivery.manage')->group(function () {
+    Route::get('/', [DeliveryChallanController::class, 'index'])->name('index');
+    Route::get('/create', [DeliveryChallanController::class, 'create'])->name('create');
+    Route::post('/', [DeliveryChallanController::class, 'store'])->name('store');
+    Route::get('/{deliveryChallan}', [DeliveryChallanController::class, 'show'])->name('show');
+    Route::post('/{deliveryChallan}/dispatch', [DeliveryChallanController::class, 'dispatchChallan'])->name('dispatch');
+    Route::post('/{deliveryChallan}/deliver', [DeliveryChallanController::class, 'deliver'])->name('deliver');
+    Route::post('/{deliveryChallan}/cancel', [DeliveryChallanController::class, 'cancel'])->name('cancel');
 });

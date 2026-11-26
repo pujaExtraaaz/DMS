@@ -7,6 +7,7 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\CreditNoteItem;
+use App\Domains\Organization\Services\FinancialYearService;
 use App\Models\User;
 use App\Support\AuditLogService;
 use App\Support\DocumentNumberService;
@@ -20,6 +21,7 @@ class CreditNoteService
         protected OutstandingLedgerService $outstandingLedgerService,
         protected AuditLogService $auditLogService,
         protected StockMovementService $stockMovementService,
+        protected FinancialYearService $financialYearService,
     ) {}
 
     public function create(array $data, User $actor): CreditNote
@@ -107,6 +109,10 @@ class CreditNoteService
             if (! in_array($locked->status, ['draft', 'approved'], true)) {
                 throw new InvalidArgumentException('Credit note cannot be posted in its current status.');
             }
+
+            $this->financialYearService->assertOpen(
+                $locked->credit_note_date?->toDateString() ?: now()->toDateString()
+            );
 
             if ($locked->status === 'draft') {
                 $locked->update([

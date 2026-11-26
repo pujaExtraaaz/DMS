@@ -16,23 +16,19 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 /**
  * Bulk import CRM Leads.
- * Accepts Excel / CSV columns based on the client specification:
- * - Contact Name (name)
- * - Company Name (company_name / organization)
- * - Title
- * - Email
- * - Secondary Email (secondary_email)
- * - Mobile (mobile)
- * - Second Mobile Number (secondary_mobile / SECND MOB)
- * - Phone (phone)
- * - Landline (landline)
- * - Sales Person (sales_person / salesperson / assigned_to)
- * - Tag (tag / tags)
- * - Sub Category (sub_category / subcategory)
- * - Mailing Street (mailing_street / street / address)
- * - Mailing City (mailing_city / city)
- * - Mailing State (mailing_state / state)
- * - Mailing Zip (mailing_zip / zip / pincode)
+ *
+ * Canonical columns: see BulkImportCatalog::get('leads')
+ *   contact_name, company_name, title, email, secondary_email,
+ *   mobile, second_mobile_number, phone, landline,
+ *   sales_person, tag, sub_category,
+ *   mailing_street, mailing_city, mailing_state, mailing_zip,
+ *   lead_source, campaign, priority, status, interested_product, notes
+ *
+ * Aliases: name → contact_name; organization → company_name;
+ * secondary_mobile / secnd_mob → second_mobile_number;
+ * salesperson / assigned_to → sales_person; source → lead_source;
+ * lead_campaign → campaign; product → interested_product;
+ * street/address/city/state/zip/pincode → mailing_* fields.
  */
 class LeadsImport implements ToCollection, WithHeadingRow
 {

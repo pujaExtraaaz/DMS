@@ -11,6 +11,7 @@ use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Warehouse;
+use App\Domains\Organization\Services\FinancialYearService;
 use App\Http\Controllers\Controller;
 use App\Support\DocumentNumberService;
 use App\Support\DocumentExporter;
@@ -33,6 +34,7 @@ class StockTransferController extends Controller
     public function __construct(
         protected StockMovementService $stockMovementService,
         protected DocumentNumberService $documentNumberService,
+        protected FinancialYearService $financialYearService,
     ) {}
 
     public function index(Request $request): View|Response|StreamedResponse
@@ -328,6 +330,7 @@ class StockTransferController extends Controller
         ]);
 
         try {
+            $this->financialYearService->assertOpen($validated['transfer_date']);
             $transfer = DB::transaction(function () use ($validated, $request) {
                 $transfer = StockTransfer::create([
                     'transfer_no' => $this->documentNumberService->nextDocument('TRF'),
@@ -375,6 +378,7 @@ class StockTransferController extends Controller
         }
 
         try {
+            $this->financialYearService->assertOpen($transfer->transfer_date?->toDateString() ?: now()->toDateString());
             DB::transaction(function () use ($transfer) {
                 $this->dispatchStock($transfer->load('items'), request()->user());
                 $transfer->update(['status' => 'in_transit']);
@@ -393,6 +397,7 @@ class StockTransferController extends Controller
         }
 
         try {
+            $this->financialYearService->assertOpen($transfer->transfer_date?->toDateString() ?: now()->toDateString());
             DB::transaction(function () use ($transfer) {
                 $transfer->load('items');
                 foreach ($transfer->items as $item) {

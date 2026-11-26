@@ -820,6 +820,10 @@
                         class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition">
                     + Add Item
                 </button>
+                <button type="button" @click="addGeneralEntry()"
+                        class="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition border border-amber-200/70">
+                    + General Entry
+                </button>
             </div>
         </div>
 
@@ -843,55 +847,76 @@
                 <tbody class="divide-y divide-slate-100">
                     <template x-for="(row, i) in lines" :key="row._key">
                         <tr class="align-top hover:bg-slate-50/50 transition-colors">
-                            {{-- Product & Serials Column --}}
+                            {{-- Product / General Entry Column --}}
                             <td class="p-3 align-top min-w-[320px] lg:min-w-[360px]">
-                                <select :name="`items[${i}][product_id]`"
-                                        x-model="row.product_id"
-                                        @change="onProductChange(i)"
-                                        required
-                                        class="block w-full rounded-md border-gray-300 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 h-[38px] px-3 py-2 bg-white">
-                                    <option value="">Select product...</option>
-                                    <template x-for="p in products" :key="p.id">
-                                        <option :value="p.id" x-text="p.name" :selected="String(p.id) === String(row.product_id)"></option>
-                                    </template>
-                                </select>
-                                <div class="mt-1 flex items-center justify-between text-[11px]">
-                                    <a href="{{ route('masters.products.create', ['return_to' => 'invoices.create', 'return_url' => route('invoices.create')]) }}"
-                                       @click="saveDraftAndRedirectToProduct($event, i)"
-                                       class="font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5"
-                                       title="Add a new product to master catalog">
-                                        + Quick Add
-                                    </a>
-                                    <template x-if="row.product_id">
-                                        <a :href="productEditUrl(row.product_id, i)"
-                                           @click="saveDraftAndRedirectToEditProduct($event, row.product_id, i)"
-                                           class="font-semibold text-amber-600 hover:text-amber-800 inline-flex items-center gap-1 transition-colors"
-                                           title="Edit this product in Product Master">
-                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                                            Edit Product
-                                        </a>
-                                    </template>
-                                </div>
+                                <input type="hidden" :name="`items[${i}][is_general]`" :value="row.is_general ? 1 : 0">
 
-                                {{-- Serial Number Tracking Block --}}
-                                <div class="mt-2" x-show="isSerialTracked(row)" x-cloak>
-                                    <div class="flex items-center justify-between mb-1">
-                                        <label class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-800">
-                                            Serial Numbers
-                                            <span class="text-[10px] font-bold uppercase text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">Tracked</span>
-                                        </label>
-                                        <span class="text-[10px] font-semibold text-slate-500 font-mono"
-                                              x-text="`Expected: ${Math.round(Number(row.quantity) || 1)}`"></span>
+                                <template x-if="row.is_general">
+                                    <div>
+                                        <div class="flex items-center justify-between gap-2 mb-1">
+                                            <span class="text-[11px] font-semibold text-amber-700">General Entry</span>
+                                            <span class="text-[10px] font-medium text-slate-400">Non-inventory charge</span>
+                                        </div>
+                                        <input type="text"
+                                               :name="`items[${i}][description]`"
+                                               x-model="row.description"
+                                               placeholder=""
+                                               required
+                                               class="block w-full rounded-md border-amber-200 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 h-[38px] px-3 py-2 bg-amber-50/40">
                                     </div>
-                                    <input type="text"
-                                           :name="`items[${i}][serial_numbers]`"
-                                           x-model="row.serial_numbers"
-                                           :required="isSerialTracked(row)"
-                                           placeholder="Enter serial number(s) comma separated"
-                                           class="block w-full rounded-md border-gray-300 px-2.5 py-2 text-xs font-mono text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-                                    <p class="mt-1 text-[10px] text-amber-700 font-medium"
-                                       x-text="`Requires ${Math.round(Number(row.quantity) || 1)} serial number(s), comma separated.`"></p>
-                                </div>
+                                </template>
+
+                                <template x-if="!row.is_general">
+                                    <div>
+                                        <select :name="`items[${i}][product_id]`"
+                                                x-model="row.product_id"
+                                                @change="onProductChange(i)"
+                                                required
+                                                class="block w-full rounded-md border-gray-300 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 h-[38px] px-3 py-2 bg-white">
+                                            <option value="">Select product...</option>
+                                            <template x-for="p in products" :key="p.id">
+                                                <option :value="p.id" x-text="p.name" :selected="String(p.id) === String(row.product_id)"></option>
+                                            </template>
+                                        </select>
+                                        <div class="mt-1 flex items-center justify-between text-[11px]">
+                                            <a href="{{ route('masters.products.create', ['return_to' => 'invoices.create', 'return_url' => route('invoices.create')]) }}"
+                                               @click="saveDraftAndRedirectToProduct($event, i)"
+                                               class="font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5"
+                                               title="Add a new product to master catalog">
+                                                + Quick Add
+                                            </a>
+                                            <template x-if="row.product_id">
+                                                <a :href="productEditUrl(row.product_id, i)"
+                                                   @click="saveDraftAndRedirectToEditProduct($event, row.product_id, i)"
+                                                   class="font-semibold text-amber-600 hover:text-amber-800 inline-flex items-center gap-1 transition-colors"
+                                                   title="Edit this product in Product Master">
+                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                                    Edit Product
+                                                </a>
+                                            </template>
+                                        </div>
+
+                                        {{-- Serial Number Tracking Block --}}
+                                        <div class="mt-2" x-show="isSerialTracked(row)" x-cloak>
+                                            <div class="flex items-center justify-between mb-1">
+                                                <label class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                                                    Serial Numbers
+                                                    <span class="text-[10px] font-bold uppercase text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded">Tracked</span>
+                                                </label>
+                                                <span class="text-[10px] font-semibold text-slate-500 font-mono"
+                                                      x-text="`Expected: ${Math.round(Number(row.quantity) || 1)}`"></span>
+                                            </div>
+                                            <input type="text"
+                                                   :name="`items[${i}][serial_numbers]`"
+                                                   x-model="row.serial_numbers"
+                                                   :required="isSerialTracked(row)"
+                                                   placeholder="Enter serial number(s) comma separated"
+                                                   class="block w-full rounded-md border-gray-300 px-2.5 py-2 text-xs font-mono text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                            <p class="mt-1 text-[10px] text-amber-700 font-medium"
+                                               x-text="`Requires ${Math.round(Number(row.quantity) || 1)} serial number(s), comma separated.`"></p>
+                                        </div>
+                                    </div>
+                                </template>
                             </td>
 
                             {{-- UOM Column --}}
@@ -989,14 +1014,27 @@
 
                             {{-- Tax Rate / IGST % Column --}}
                             <td class="p-3 align-top min-w-[100px] w-28 text-center">
-                                <div class="h-[38px] flex items-center justify-center font-semibold text-xs text-slate-700">
-                                    <span x-text="isIntraState() ? ((row.tax_rate || 0).toFixed(2) + '%') : ((row.tax_rate || 0).toFixed(2) + '% (IGST)')"></span>
-                                </div>
+                                <template x-if="row.is_general">
+                                    <input type="number"
+                                           step="0.01"
+                                           min="0"
+                                           max="100"
+                                           :name="`items[${i}][tax_rate]`"
+                                           x-model.number="row.tax_rate"
+                                           @input="recalc()"
+                                           class="block w-full h-[38px] px-2 py-2 text-xs font-mono text-center rounded-md border-amber-200 bg-amber-50/40 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
+                                </template>
+                                <template x-if="!row.is_general">
+                                    <div class="h-[38px] flex items-center justify-center font-semibold text-xs text-slate-700">
+                                        <input type="hidden" :name="`items[${i}][tax_rate]`" :value="row.tax_rate || 0">
+                                        <span x-text="isIntraState() ? ((row.tax_rate || 0).toFixed(2) + '%') : ((row.tax_rate || 0).toFixed(2) + '% (IGST)')"></span>
+                                    </div>
+                                </template>
                             </td>
 
                             {{-- Batch No Column --}}
                             <td class="p-3 align-top min-w-[140px] w-40">
-                                <div class="flex items-center gap-1">
+                                <div class="flex items-center gap-1" x-show="!row.is_general">
                                     <input type="text"
                                            :name="`items[${i}][batch_no]`"
                                            x-model="row.batch_no"
@@ -1010,6 +1048,7 @@
                                         Pick
                                     </button>
                                 </div>
+                                <div x-show="row.is_general" class="h-[38px] flex items-center justify-center text-[10px] text-slate-400">—</div>
                                 <template x-if="row.batch_meta">
                                     <p class="mt-1 text-[10px] text-slate-500" x-text="`Avail: ${row.batch_meta.available_qty} @ ₹${row.batch_meta.selling_price ?? row.batch_meta.unit_cost}` + (row.batch_meta.expiry_date ? ` · exp ${row.batch_meta.expiry_date}` : '')"></p>
                                 </template>
@@ -2320,24 +2359,35 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
 
                 if (Array.isArray(draft.lines) && draft.lines.length > 0) {
                     this.lines = draft.lines.map(it => {
-                        const p = this.products.find(prod => String(prod.id) === String(it.product_id));
-                        const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
+                        const isGeneral = Boolean(it.is_general);
+                        const p = isGeneral ? null : this.products.find(prod => String(prod.id) === String(it.product_id));
+                        const nos = this.defaultNosUom;
+                        const uomInfo = isGeneral
+                            ? {
+                                uom_id: it.uom_id ? String(it.uom_id) : (nos ? String(nos.id) : ''),
+                                unit: it.unit || (nos ? (nos.code || nos.name || 'NOS') : 'NOS'),
+                                allowed_uoms: nos ? [{ id: String(nos.id), code: nos.code || 'NOS', name: nos.name || 'Nos' }] : [],
+                                allow_unit_change: false,
+                            }
+                            : this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                         return {
                             _key: ++this._seq,
-                            product_id: it.product_id || '',
+                            is_general: isGeneral,
+                            description: it.description || '',
+                            product_id: isGeneral ? '' : (it.product_id || ''),
                             uom_id: uomInfo.uom_id,
                             unit: uomInfo.unit,
                             allowed_uoms: uomInfo.allowed_uoms,
                             allow_unit_change: uomInfo.allow_unit_change,
-                            tracking_type: it.tracking_type || (p ? p.tracking_type : 'none'),
+                            tracking_type: isGeneral ? 'none' : (it.tracking_type || (p ? p.tracking_type : 'none')),
                             quantity: Number(it.quantity) || 1,
                             ordered_quantity: Number(it.ordered_quantity || it.quantity) || 1,
                             unit_price: Number(it.unit_price) || 0,
                             discount_type: it.discount_type || 'flat',
                             discount_value: Number(it.discount_value) || 0,
                             tax_rate: (it.tax_rate !== undefined && it.tax_rate !== null) ? Number(it.tax_rate) : (p ? Number(p.tax_rate) : 0),
-                            batch_no: it.batch_no || '',
-                            serial_numbers: it.serial_numbers || '',
+                            batch_no: isGeneral ? '' : (it.batch_no || ''),
+                            serial_numbers: isGeneral ? '' : (it.serial_numbers || ''),
                             batch_meta: null,
                         };
                     });
@@ -2388,6 +2438,8 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                         const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                         return {
                             _key: ++this._seq,
+                            is_general: false,
+                            description: '',
                             product_id: it.product_id,
                             uom_id: uomInfo.uom_id,
                             unit: uomInfo.unit,
@@ -2450,14 +2502,14 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 const newProdIdStr = String(returnedNewProductId);
 
                 let placed = false;
-                if (targetIdx !== null && this.lines[targetIdx] && !this.lines[targetIdx].product_id) {
+                if (targetIdx !== null && this.lines[targetIdx] && !this.lines[targetIdx].is_general && !this.lines[targetIdx].product_id) {
                     this.lines[targetIdx].product_id = newProdIdStr;
                     this.onProductChange(targetIdx);
                     placed = true;
                 }
 
                 if (!placed) {
-                    const emptyIdx = this.lines.findIndex(r => !r.product_id);
+                    const emptyIdx = this.lines.findIndex(r => !r.is_general && !r.product_id);
                     if (emptyIdx !== -1) {
                         this.lines[emptyIdx].product_id = newProdIdStr;
                         this.onProductChange(emptyIdx);
@@ -2553,6 +2605,8 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 consigneeCity: this.consigneeCity || '',
                 consigneeActualState: this.consigneeActualState || '',
                 lines: (this.lines || []).map(r => ({
+                    is_general: Boolean(r.is_general),
+                    description: r.description || '',
                     product_id: r.product_id || '',
                     uom_id: r.uom_id || '',
                     unit: r.unit || 'PCS',
@@ -3287,6 +3341,8 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                             const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                             return {
                                 _key: ++this._seq,
+                                is_general: false,
+                                description: '',
                                 product_id: it.product_id,
                                 uom_id: uomInfo.uom_id,
                                 unit: uomInfo.unit,
@@ -3368,8 +3424,16 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         },
 
         get hasValidLineItems() {
-            return Array.isArray(this.lines) && this.lines.some(l => l.product_id && (Number(l.quantity) || 0) > 0);
+            return Array.isArray(this.lines) && this.lines.some(l => {
+                const qtyOk = (Number(l.quantity) || 0) > 0;
+                if (l.is_general) {
+                    return qtyOk && String(l.description || '').trim() !== '';
+                }
+                return qtyOk && l.product_id;
+            });
         },
+
+        defaultNosUom: @js(($defaultNosUom ?? null) ? ['id' => (string) $defaultNosUom->id, 'code' => $defaultNosUom->code, 'name' => $defaultNosUom->name] : null),
 
         get isEInvoiceApplicable() {
             return Boolean(this.companyGstin) && this.isB2B && this.hasValidLineItems;
@@ -3427,9 +3491,11 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             };
         },
 
-        addItem() {
-            this.lines.push({
+        createBlankItem(overrides = {}) {
+            return Object.assign({
                 _key: ++this._seq,
+                is_general: false,
+                description: '',
                 product_id: '',
                 uom_id: '',
                 unit: '—',
@@ -3445,7 +3511,25 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 batch_no: '',
                 serial_numbers: '',
                 batch_meta: null,
-            });
+            }, overrides);
+        },
+
+        addItem() {
+            this.lines.push(this.createBlankItem());
+            this.recalc();
+        },
+
+        addGeneralEntry() {
+            const nos = this.defaultNosUom;
+            this.lines.push(this.createBlankItem({
+                is_general: true,
+                description: '',
+                product_id: '',
+                uom_id: nos ? String(nos.id) : '',
+                unit: nos ? (nos.code || nos.name || 'NOS') : 'NOS',
+                allowed_uoms: nos ? [{ id: String(nos.id), code: nos.code || 'NOS', name: nos.name || 'Nos' }] : [],
+                allow_unit_change: false,
+            }));
             this.recalc();
         },
 
@@ -3527,10 +3611,15 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
                 selling_discount_type: 'percent',
                 selling_discount_value: 0,
             });
-            const empty = this.lines.find(r => !r.product_id) || this.lines[this.lines.length - 1];
-            if (empty) {
+            const empty = this.lines.find(r => !r.is_general && !r.product_id) || this.lines[this.lines.length - 1];
+            if (empty && !empty.is_general) {
                 empty.product_id = p.id;
                 this.onProductChange(this.lines.indexOf(empty));
+            } else {
+                this.addItem();
+                const lastIdx = this.lines.length - 1;
+                this.lines[lastIdx].product_id = p.id;
+                this.onProductChange(lastIdx);
             }
         },
 
@@ -3785,7 +3874,7 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
         // Commercial Scheme Helpers (preserved)
         eligibleSchemes() {
             const date = this.invoiceDate;
-            const validLines = this.lines.filter(l => l.product_id && (Number(l.quantity) || 0) > 0);
+            const validLines = this.lines.filter(l => !l.is_general && l.product_id && (Number(l.quantity) || 0) > 0);
 
             return this.schemes.filter(s => {
                 if (s.starts_on && date < s.starts_on) return false;
@@ -3812,7 +3901,7 @@ function salesInvoiceForm(products, uoms, schemes, customers, initialOrder, init
             const s = this.schemes.find(x => String(x.id) === String(this.selectedSchemeId));
             if (!s) return null;
 
-            const validLines = this.lines.filter(l => l.product_id && (Number(l.quantity) || 0) > 0);
+            const validLines = this.lines.filter(l => !l.is_general && l.product_id && (Number(l.quantity) || 0) > 0);
             let qualifying = [];
 
             if (s.product_ids && s.product_ids.length > 0) {

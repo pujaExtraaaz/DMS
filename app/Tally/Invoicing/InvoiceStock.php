@@ -31,7 +31,8 @@ class InvoiceStock implements InventoryEffect
         }
 
         foreach ($invoice->lines as $line) {
-            if (! $line->product_id) {
+            // Financial-only / already-received lines (e.g. PI against Receipt Note) omit godown.
+            if (! $line->product_id || ! $line->godown_id) {
                 continue;
             }
 

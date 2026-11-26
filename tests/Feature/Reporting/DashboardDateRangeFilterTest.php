@@ -99,8 +99,8 @@ class DashboardDateRangeFilterTest extends TestCase
         $response->assertViewIs('reporting.dashboard');
         $response->assertSee('Date range');
         $response->assertSee('Showing:');
-        $response->assertSee("This Month's Sales");
-        $response->assertSee("This Month's Purchases");
+        $response->assertSee('This FY Sales');
+        $response->assertSee('This FY Purchases');
         $response->assertSee('Receivables');
         $response->assertSee('Payables');
     }

@@ -93,19 +93,21 @@ class PurchaseInvoiceSync
             $books ? $books->update($attributes) : $books = BooksInvoice::query()->create($attributes);
             $books->lines()->delete();
             $number = 1;
-            $godownId = $this->godownId($invoice->warehouse, $company, $organizationId);
+            $defaultGodownId = $this->godownId($invoice->warehouse, $company, $organizationId);
             foreach ($invoice->items as $item) {
                 $productId = null;
                 if ($item->product) {
                     $this->products->push($item->product);
                     $productId = SyncLinks::acctId(ProductSync::KEY, $item->product);
                 }
+                // Stock already on Receipt Note — omit godown so InvoiceStock skips the line.
+                $lineGodownId = $item->receipt_note_item_id ? null : $defaultGodownId;
                 InvoiceLine::query()->create([
                     'invoice_id' => $books->id,
                     'line_number' => $number++,
-                    'item_name' => $item->product?->name ?: 'Item',
+                    'item_name' => $item->product?->name ?: ($item->description ?: 'Item'),
                     'product_id' => $productId,
-                    'godown_id' => $godownId,
+                    'godown_id' => $lineGodownId,
                     'quantity' => $item->quantity,
                     'rate' => $item->unit_cost,
                     'discount' => 0,
@@ -193,6 +195,38 @@ class PurchaseInvoiceSync
             }
             SyncLinks::store(self::KEY, $invoice, $books);
         });
+    }
+
+    /**
+     * Cancel the linked Books purchase invoice when a DMS PI is cancelled.
+     */
+    public function cancelBooksTwin(PurchaseInvoice $invoice): void
+    {
+        $books = BooksInvoice::query()->find(SyncLinks::acctId(self::KEY, $invoice));
+        if (! $books) {
+            return;
+        }
+
+        try {
+            if ($books->status === VoucherStatus::Draft) {
+                $books->lines()->delete();
+                $books->delete();
+                SyncLinks::forget(self::KEY, $invoice);
+
+                return;
+            }
+
+            if ($books->isCancelled()) {
+                return;
+            }
+
+            $user = \App\Models\User::query()->orderBy('id')->first();
+            if ($user) {
+                app(\Tally\Invoicing\InvoiceService::class)->cancel($books->fresh());
+            }
+        } catch (\Throwable $e) {
+            SyncFailureLogger::write(self::KEY, 'dms_to_books', $invoice, $e);
+        }
     }
 
     public function remove(Model $source): void

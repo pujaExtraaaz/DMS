@@ -12,6 +12,8 @@ class InvoiceItem extends Model
     protected $fillable = [
         'invoice_id',
         'product_id',
+        'is_general',
+        'description',
         'uom_id',
         'quantity',
         'price_type',
@@ -38,6 +40,7 @@ class InvoiceItem extends Model
     protected function casts(): array
     {
         return [
+            'is_general' => 'boolean',
             'quantity' => 'decimal:4',
             'entered_unit_price' => 'decimal:2',
             'unit_price' => 'decimal:2',
@@ -55,6 +58,20 @@ class InvoiceItem extends Model
             'line_total' => 'decimal:2',
             'serial_numbers' => 'array',
         ];
+    }
+
+    public function isGeneralEntry(): bool
+    {
+        return (bool) $this->is_general || ($this->product_id === null && filled($this->description));
+    }
+
+    public function getItemNameAttribute(): ?string
+    {
+        if ($this->isGeneralEntry()) {
+            return $this->description;
+        }
+
+        return $this->product?->name;
     }
 
     public function invoice(): BelongsTo

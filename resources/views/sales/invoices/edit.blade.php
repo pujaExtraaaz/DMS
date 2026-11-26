@@ -70,23 +70,29 @@
             ? implode(', ', $it->serial_numbers)
             : (filled($it->serial_numbers) ? (string) $it->serial_numbers : '');
 
+        $isGeneral = (bool) ($it->is_general || ($it->product_id === null && filled($it->description)));
+
         return [
             '_key' => $idx + 1,
             'id' => $it->id,
+            'is_general' => $isGeneral,
+            'description' => $it->description ?? '',
             'product_id' => $it->product_id ? (string) $it->product_id : '',
             'uom_id' => $it->uom_id ? (string) $it->uom_id : '',
             'unit' => $it->uom?->code ?? $it->uom?->name ?? ($p?->baseUom?->code ?? 'PCS'),
-            'allowed_uoms' => $allowedUoms->values()->toArray(),
-            'allow_unit_change' => $allowedUoms->count() > 1,
-            'tracking_type' => $isTracked ? 'serial' : ($p?->tracking_type ?? 'none'),
+            'allowed_uoms' => $isGeneral
+                ? (($it->uom_id) ? [['id' => (string) $it->uom_id, 'code' => $it->uom?->code ?? 'NOS', 'name' => $it->uom?->name ?? 'Nos']] : [])
+                : $allowedUoms->values()->toArray(),
+            'allow_unit_change' => $isGeneral ? false : $allowedUoms->count() > 1,
+            'tracking_type' => $isGeneral ? 'none' : ($isTracked ? 'serial' : ($p?->tracking_type ?? 'none')),
             'quantity' => (float) $it->quantity,
             'ordered_quantity' => null,
             'unit_price' => (float) $it->unit_price,
             'discount_type' => $it->discount_type ?? 'flat',
             'discount_value' => (float) ($it->discount_value ?? 0),
             'tax_rate' => (float) ($it->tax_rate ?? $p?->tax_rate ?? 0),
-            'batch_no' => $it->batch_no ?? '',
-            'serial_numbers' => $serials,
+            'batch_no' => $isGeneral ? '' : ($it->batch_no ?? ''),
+            'serial_numbers' => $isGeneral ? '' : $serials,
             'taxable_amount' => (float) $it->taxable_amount,
             'tax_amount' => (float) $it->tax_amount,
             'line_total' => (float) $it->line_total,
@@ -457,10 +463,13 @@ function editSalesInvoiceForm() {
               };
           },
 
-          addItem() {
-              if (this.isStatutoryLocked) return;
-              this.lines.push({
+          defaultNosUom: @js(($defaultNosUom ?? null) ? ['id' => (string) $defaultNosUom->id, 'code' => $defaultNosUom->code, 'name' => $defaultNosUom->name] : null),
+
+          createBlankItem(overrides = {}) {
+              return Object.assign({
                   _key: ++this._seq,
+                  is_general: false,
+                  description: '',
                   product_id: '',
                   uom_id: '',
                   unit: '—',
@@ -475,7 +484,27 @@ function editSalesInvoiceForm() {
                   tax_rate: 0,
                   batch_no: '',
                   serial_numbers: '',
-              });
+              }, overrides);
+          },
+
+          addItem() {
+              if (this.isStatutoryLocked) return;
+              this.lines.push(this.createBlankItem());
+              this.recalc();
+          },
+
+          addGeneralEntry() {
+              if (this.isStatutoryLocked) return;
+              const nos = this.defaultNosUom;
+              this.lines.push(this.createBlankItem({
+                  is_general: true,
+                  description: '',
+                  product_id: '',
+                  uom_id: nos ? String(nos.id) : '',
+                  unit: nos ? (nos.code || nos.name || 'NOS') : 'NOS',
+                  allowed_uoms: nos ? [{ id: String(nos.id), code: nos.code || 'NOS', name: nos.name || 'Nos' }] : [],
+                  allow_unit_change: false,
+              }));
               this.recalc();
           },
 
@@ -597,25 +626,36 @@ function editSalesInvoiceForm() {
 
                   if (Array.isArray(draft.lines) && draft.lines.length && !this.isStatutoryLocked) {
                       this.lines = draft.lines.map((it, idx) => {
-                          const p = this.products.find(prod => String(prod.id) === String(it.product_id));
-                          const uomInfo = this.resolveLineUom(it.product_id, it.uom_id, it.unit);
+                          const isGeneral = Boolean(it.is_general);
+                          const p = isGeneral ? null : this.products.find(prod => String(prod.id) === String(it.product_id));
+                          const nos = this.defaultNosUom;
+                          const uomInfo = isGeneral
+                              ? {
+                                  uom_id: it.uom_id ? String(it.uom_id) : (nos ? String(nos.id) : ''),
+                                  unit: it.unit || (nos ? (nos.code || nos.name || 'NOS') : 'NOS'),
+                                  allowed_uoms: nos ? [{ id: String(nos.id), code: nos.code || 'NOS', name: nos.name || 'Nos' }] : [],
+                                  allow_unit_change: false,
+                              }
+                              : this.resolveLineUom(it.product_id, it.uom_id, it.unit);
                           return {
                               _key: ++this._seq,
                               id: it.id || null,
-                              product_id: it.product_id ? String(it.product_id) : '',
+                              is_general: isGeneral,
+                              description: it.description || '',
+                              product_id: isGeneral ? '' : (it.product_id ? String(it.product_id) : ''),
                               uom_id: uomInfo.uom_id,
                               unit: uomInfo.unit,
                               allowed_uoms: uomInfo.allowed_uoms,
                               allow_unit_change: uomInfo.allow_unit_change,
-                              tracking_type: it.tracking_type || (p ? p.tracking_type : 'none'),
+                              tracking_type: isGeneral ? 'none' : (it.tracking_type || (p ? p.tracking_type : 'none')),
                               quantity: Number(it.quantity) || 1,
                               ordered_quantity: null,
                               unit_price: Number(it.unit_price) || 0,
                               discount_type: it.discount_type || 'flat',
                               discount_value: Number(it.discount_value) || 0,
                               tax_rate: (it.tax_rate !== undefined && it.tax_rate !== null) ? Number(it.tax_rate) : (p ? Number(p.tax_rate) : 0),
-                              batch_no: it.batch_no || '',
-                              serial_numbers: it.serial_numbers || '',
+                              batch_no: isGeneral ? '' : (it.batch_no || ''),
+                              serial_numbers: isGeneral ? '' : (it.serial_numbers || ''),
                           };
                       });
                   }
@@ -721,6 +761,8 @@ function editSalesInvoiceForm() {
                   targetRow: targetRowIndex,
                   lines: (this.lines || []).map(r => ({
                       id: r.id || null,
+                      is_general: Boolean(r.is_general),
+                      description: r.description || '',
                       product_id: r.product_id || '',
                       uom_id: r.uom_id || '',
                       unit: r.unit || '',
@@ -1874,7 +1916,12 @@ function editSalesInvoiceForm() {
                                 <td class="p-3 font-medium text-slate-800">
                                     <div class="flex items-center justify-between gap-2">
                                         <div>
-                                            <div>{{ $it->product?->name ?? $it->item_name }}</div>
+                                            <div>
+                                                {{ $it->product?->name ?? $it->description ?? $it->item_name }}
+                                                @if($it->is_general ?? false)
+                                                    <span class="ml-1 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">General</span>
+                                                @endif
+                                            </div>
                                             @if($it->product?->code)
                                                 <div class="text-[10px] text-slate-400">Code: {{ $it->product->code }}</div>
                                             @endif
@@ -1965,6 +2012,10 @@ function editSalesInvoiceForm() {
                             class="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition shadow-2xs">
                         + Add Item
                     </button>
+                    <button type="button" @click="addGeneralEntry()"
+                            class="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-3.5 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition shadow-2xs border border-amber-200/70">
+                        + General Entry
+                    </button>
                 </div>
             </div>
 
@@ -1988,8 +2039,27 @@ function editSalesInvoiceForm() {
                     <tbody class="divide-y divide-slate-100">
                         <template x-for="(row, i) in lines" :key="row._key">
                             <tr class="align-top hover:bg-slate-50/50 transition-colors">
-                                {{-- Product Column --}}
+                                {{-- Product / General Entry Column --}}
                                 <td class="p-3 align-top min-w-[300px]">
+                                    <input type="hidden" :name="`items[${i}][is_general]`" :value="row.is_general ? 1 : 0">
+
+                                    <template x-if="row.is_general">
+                                        <div>
+                                            <div class="flex items-center justify-between gap-2 mb-1">
+                                                <span class="text-[11px] font-semibold text-amber-700">General Entry</span>
+                                                <span class="text-[10px] font-medium text-slate-400">Non-inventory charge</span>
+                                            </div>
+                                            <input type="text"
+                                                   :name="`items[${i}][description]`"
+                                                   x-model="row.description"
+                                                   placeholder=""
+                                                   required
+                                                   class="block w-full rounded-md border-amber-200 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 h-[38px] px-3 py-2 bg-amber-50/40">
+                                        </div>
+                                    </template>
+
+                                    <template x-if="!row.is_general">
+                                        <div>
                                     <select :name="`items[${i}][product_id]`"
                                             x-model="row.product_id"
                                             @change="onProductChange(i)"
@@ -2033,6 +2103,8 @@ function editSalesInvoiceForm() {
                                         <p class="mt-1 text-[10px] text-amber-700 font-medium"
                                            x-text="`Requires ${Math.round(Number(row.quantity) || 1)} serial number(s), comma separated.`"></p>
                                     </div>
+                                        </div>
+                                    </template>
                                 </td>
 
                                 {{-- UOM Column --}}
@@ -2127,9 +2199,22 @@ function editSalesInvoiceForm() {
 
                                 {{-- Tax Rate / IGST % Column --}}
                                 <td class="p-3 align-top min-w-[95px] w-28 text-center">
-                                    <div class="h-[38px] flex items-center justify-center font-semibold text-xs text-slate-700">
-                                        <span x-text="isIntraState() ? ((row.tax_rate || 0).toFixed(2) + '%') : ((row.tax_rate || 0).toFixed(2) + '% (IGST)')"></span>
-                                    </div>
+                                    <template x-if="row.is_general">
+                                        <input type="number"
+                                               step="0.01"
+                                               min="0"
+                                               max="100"
+                                               :name="`items[${i}][tax_rate]`"
+                                               x-model.number="row.tax_rate"
+                                               @input="recalc()"
+                                               class="block w-full h-[38px] px-2 py-2 text-xs font-mono text-center rounded-md border-amber-200 bg-amber-50/40 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500">
+                                    </template>
+                                    <template x-if="!row.is_general">
+                                        <div class="h-[38px] flex items-center justify-center font-semibold text-xs text-slate-700">
+                                            <input type="hidden" :name="`items[${i}][tax_rate]`" :value="row.tax_rate || 0">
+                                            <span x-text="isIntraState() ? ((row.tax_rate || 0).toFixed(2) + '%') : ((row.tax_rate || 0).toFixed(2) + '% (IGST)')"></span>
+                                        </div>
+                                    </template>
                                 </td>
 
                                 {{-- Batch No Column --}}
@@ -2137,8 +2222,10 @@ function editSalesInvoiceForm() {
                                     <input type="text"
                                            :name="`items[${i}][batch_no]`"
                                            x-model="row.batch_no"
+                                           x-show="!row.is_general"
                                            placeholder="Optional"
                                            class="block w-full h-[38px] px-2.5 py-2 text-xs rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                    <div x-show="row.is_general" class="h-[38px] flex items-center justify-center text-[10px] text-slate-400">—</div>
                                 </td>
 
                                 {{-- Line Total Column --}}

@@ -15,7 +15,13 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
 /**
  * Bulk import Price Master rows.
- * Columns: customer_type (name), sku, uom_code, rate, min_qty
+ *
+ * Canonical columns: see BulkImportCatalog::get('price-master')
+ *   customer_type, part_number, uom_code, rate, min_qty, rate_includes_gst
+ *
+ * Aliases: sku / part_no / partnumber → part_number;
+ * customertype / customer_type_name / customer_type_code / type / classification → customer_type.
+ * customer_type defaults to Retail when blank. rate must be > 0.
  */
 class PriceMasterImport implements ToCollection, WithHeadingRow
 {

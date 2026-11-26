@@ -25,16 +25,12 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 /**
  * Bulk import Products from CSV/XLSX.
  *
- * Template columns (case-insensitive):
- *   name, part_number, model, product_type, brand, category, sub_category,
- *   uom_code, alternate_uom_code, conversion_factor, supply_type, hsn_code, tax_rate,
- *   track_serial, track_batch,
- *   height_cm, length_cm, width_cm, net_weight, weight_unit,
- *   purchase_price, trade_price, selling_price, mrp, purchase_price_tax_basis,
- *   costing_method, market_valuation_method,
- *   min_stock, reorder_level, specification, warranty, catalog_link, is_active
+ * Canonical columns: see BulkImportCatalog::get('products').
+ * Also accepts: series, customer_warranty_months, discount_percent,
+ * and legacy color_variant / sender_warranty_months when present.
  *
- * Aliases: sku / part_no / partnumber → part_number; uom → uom_code.
+ * Aliases: sku / part_no / partnumber → part_number; uom → uom_code;
+ * mrp → calculation_mrp; alt_mrp → alt_calculation_mrp.
  * Match on part number. When the part number is blank, match on name and model
  * so a second import updates the same product instead of creating another.
  * An existing product is updated only when a value changed; an identical row

@@ -131,6 +131,14 @@
                     View Invoice
                 </x-ui.button>
             @endif
+            @if(! in_array($order->status, ['cancelled'], true))
+                <x-ui.button
+                    variant="secondary"
+                    :href="route('delivery-challans.create', ['customer_id' => $order->customer_id, 'order_id' => $order->id, 'invoice_id' => $order->invoice?->id])"
+                >
+                    Delivery Challan
+                </x-ui.button>
+            @endif
         </x-slot>
     </x-ui.page-header>
 
@@ -471,6 +479,20 @@
                     >
                         {{ $order->invoice->invoice_no }}
                     </a>
+                </div>
+            @endif
+
+            @if($order->deliveryChallans->isNotEmpty())
+                <div class="mt-5">
+                    <p class="text-xs font-semibold uppercase text-gray-500">Delivery Challans</p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        @foreach($order->deliveryChallans as $dc)
+                            <li class="flex justify-between gap-2">
+                                <a href="{{ route('delivery-challans.show', $dc) }}" class="font-mono text-indigo-600 hover:underline">{{ $dc->challan_no }}</a>
+                                <span class="text-slate-500">{{ ucfirst($dc->status) }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
                 </div>
             @endif
         </x-ui.card>

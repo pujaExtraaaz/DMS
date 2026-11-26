@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\SetUserBranchScope::class,
             \App\Http\Middleware\SyncBooksWorkspace::class,
             \App\Http\Middleware\UppercaseNameInputs::class,
+            \App\Http\Middleware\RememberListingFilters::class,
         ]);
 
         $middleware->appendToGroup('api', [

@@ -178,6 +178,11 @@ class Invoice extends Model
         return $this->hasMany(\App\Domains\Payment\Models\CreditNote::class);
     }
 
+    public function deliveryChallans(): HasMany
+    {
+        return $this->hasMany(DeliveryChallan::class);
+    }
+
     public function getCreditNotesTotalAttribute(): float
     {
         if ($this->relationLoaded('creditNotes')) {

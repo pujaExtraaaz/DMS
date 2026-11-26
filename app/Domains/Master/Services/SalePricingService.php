@@ -37,9 +37,49 @@ class SalePricingService
         $totalIgst = 0.0;
 
         foreach ($items as $index => $item) {
-            $product = Product::findOrFail($item['product_id']);
+            $isGeneral = filter_var($item['is_general'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $uom = Uom::findOrFail($item['uom_id']);
             $quantity = (float) $item['quantity'];
+            $discType = $item['discount_type'] ?? 'flat';
+            $discVal = (float) ($item['discount_value'] ?? ($item['discount_amount'] ?? 0));
+
+            if ($isGeneral) {
+                $enteredPrice = (float) ($item['unit_price'] ?? 0);
+                $taxRate = (float) ($item['tax_rate'] ?? 0);
+
+                $calc = GstTaxCalculationService::calculateLine(
+                    $quantity,
+                    $enteredPrice,
+                    $taxRate,
+                    $priceType,
+                    $discType,
+                    $discVal,
+                    $isIntraState
+                );
+
+                $grossSubtotal += $calc['gross_taxable'];
+                $taxableSubtotal += $calc['taxable_amount'];
+                $totalItemDiscount += $calc['discount_amount'];
+                $totalTax += $calc['tax_amount'];
+                $totalCgst += $calc['cgst_amount'];
+                $totalSgst += $calc['sgst_amount'];
+                $totalIgst += $calc['igst_amount'];
+
+                $lines[] = array_merge($calc, [
+                    'product' => null,
+                    'uom' => $uom,
+                    'is_general' => true,
+                    'description' => trim((string) ($item['description'] ?? '')),
+                    'unitPrice' => (string) number_format($calc['unit_price'], 2, '.', ''),
+                    'discount' => $calc['discount_amount'],
+                    'tax' => $calc['tax_amount'],
+                    'lineTotal' => $calc['line_total'],
+                ]);
+
+                continue;
+            }
+
+            $product = Product::findOrFail($item['product_id']);
             $hasManualPrice = isset($item['unit_price'])
                 && $item['unit_price'] !== null
                 && $item['unit_price'] !== ''
@@ -58,8 +98,6 @@ class SalePricingService
 
             $enteredPrice = (float) $unitPrice;
             $taxRate = (float) ($product->tax_rate ?? 0);
-            $discType = $item['discount_type'] ?? 'flat';
-            $discVal = (float) ($item['discount_value'] ?? ($item['discount_amount'] ?? 0));
 
             $calc = GstTaxCalculationService::calculateLine(
                 $quantity,
@@ -82,6 +120,8 @@ class SalePricingService
             $lines[] = array_merge($calc, [
                 'product' => $product,
                 'uom' => $uom,
+                'is_general' => false,
+                'description' => null,
                 // Keep backward-compatible keys
                 'unitPrice' => (string) number_format($calc['unit_price'], 2, '.', ''),
                 'discount' => $calc['discount_amount'],

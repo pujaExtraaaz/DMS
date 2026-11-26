@@ -80,6 +80,7 @@ class BulkImportUpgradeTest extends TestCase
             'part_number', 'product_type', 'brand', 'category', 'sub_category',
             'alternate_uom_code', 'conversion_factor', 'track_serial', 'track_batch',
             'specification', 'warranty', 'catalog_link',
+            'alt_purchase_price', 'series', 'customer_warranty_months', 'discount_percent',
         ] as $header) {
             $this->assertStringContainsString($header, $content);
         }
@@ -97,7 +98,21 @@ class BulkImportUpgradeTest extends TestCase
         foreach ([
             'trade_name', 'opened_on', 'reference_by', 'udyam_number', 'website', 'location_link',
             'address_line_1', 'city', 'credit_status', 'credit_period_basis',
-            'bank_account_holder', 'bank_ifsc',
+            'bank_account_holder', 'bank_ifsc', 'level',
+        ] as $header) {
+            $this->assertStringContainsString($header, $content);
+        }
+    }
+
+    public function test_leads_template_includes_pipeline_columns(): void
+    {
+        $response = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'leads'));
+        $response->assertOk();
+        $content = $response->streamedContent();
+
+        foreach ([
+            'contact_name', 'mobile', 'sales_person', 'mailing_zip',
+            'lead_source', 'campaign', 'priority', 'status', 'interested_product', 'notes',
         ] as $header) {
             $this->assertStringContainsString($header, $content);
         }

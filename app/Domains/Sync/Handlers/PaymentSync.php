@@ -50,9 +50,9 @@ class PaymentSync
 
     public function push(Payment $payment): void
     {
-        $payment->loadMissing('invoice.customer');
-        $customer = $payment->invoice?->customer;
-        if (! $customer?->company_id || ! $payment->invoice) {
+        $payment->loadMissing(['invoice.customer', 'customer', 'allocations.invoice']);
+        $customer = $payment->customer ?: $payment->invoice?->customer;
+        if (! $customer?->company_id) {
             return;
         }
 
@@ -79,6 +79,12 @@ class PaymentSync
         }
 
         $amount = number_format((float) $payment->amount, 2, '.', '');
+        $reference = $payment->invoice?->invoice_no
+            ?: ($payment->allocations->first()?->invoice?->invoice_no)
+            ?: $payment->reference_no;
+        $narration = $payment->notes
+            ?: ($reference ? 'Receipt for '.$reference : 'Customer receipt '.$payment->payment_no);
+
         $attributes = [
             'company_id' => $company->id,
             'branch_id' => $branchId,
@@ -86,8 +92,8 @@ class PaymentSync
             'voucher_type' => VoucherType::Receipt,
             'voucher_number' => mb_substr($payment->payment_no, 0, 30),
             'voucher_date' => $date,
-            'reference_number' => $payment->invoice->invoice_no,
-            'narration' => $payment->notes ?: ('Receipt for '.$payment->invoice->invoice_no),
+            'reference_number' => $reference ? mb_substr((string) $reference, 0, 60) : null,
+            'narration' => $narration,
             'status' => VoucherStatus::Draft,
             'total_debit' => $amount,
             'total_credit' => $amount,
@@ -102,7 +108,7 @@ class PaymentSync
                 : $bankNote;
         }
 
-        DB::transaction(function () use (&$voucher, $attributes, $payment, $company, $party, $amount, $moneyLedgerId) {
+        DB::transaction(function () use (&$voucher, $attributes, $payment, $party, $amount, $moneyLedgerId) {
             $voucher ? $voucher->update($attributes) : $voucher = Voucher::query()->create($attributes);
             $voucher->entries()->delete();
             VoucherEntry::query()->create([
@@ -122,7 +128,7 @@ class PaymentSync
             SyncLinks::store(self::KEY, $payment, $voucher);
             if ($payment->status === 'completed') {
                 app(BooksPoster::class)->voucher($voucher, self::KEY);
-                $this->pushBillAllocation($voucher->fresh(), $payment, $party);
+                $this->pushBillAllocations($voucher->fresh(), $payment, $party);
             }
         });
     }
@@ -142,43 +148,63 @@ class PaymentSync
 
         return BooksCompany::receiptLedger($company, $payment->method ?? null);
     }
-    private function pushBillAllocation(Voucher $voucher, Payment $payment, Party $party): void
+    private function pushBillAllocations(Voucher $voucher, Payment $payment, Party $party): void
     {
-        if (! $voucher->isPosted() || ! $payment->invoice) {
+        if (! $voucher->isPosted()) {
             return;
         }
 
-        $booksInvoice = \Tally\Models\Invoice::query()
-            ->where('company_id', $voucher->company_id)
-            ->where('invoice_number', $payment->invoice->invoice_no)
-            ->first();
-
-        if (! $booksInvoice) {
-            return;
+        $rows = [];
+        if ($payment->allocations->isNotEmpty()) {
+            foreach ($payment->allocations as $allocation) {
+                $invoiceNo = $allocation->invoice?->invoice_no;
+                if (! $invoiceNo || (float) $allocation->amount <= 0) {
+                    continue;
+                }
+                $rows[] = [
+                    'invoice_no' => $invoiceNo,
+                    'amount' => (float) $allocation->amount,
+                ];
+            }
+        } elseif ($payment->invoice) {
+            $rows[] = [
+                'invoice_no' => $payment->invoice->invoice_no,
+                'amount' => (float) $payment->amount,
+            ];
         }
 
-        $bill = \Tally\Models\Bill::query()
-            ->where('company_id', $voucher->company_id)
-            ->where('ledger_id', $party->ledger_id)
-            ->where('bill_number', $booksInvoice->invoice_number)
-            ->first();
+        foreach ($rows as $row) {
+            $booksInvoice = \Tally\Models\Invoice::query()
+                ->where('company_id', $voucher->company_id)
+                ->where('invoice_number', $row['invoice_no'])
+                ->first();
 
-        if (! $bill) {
-            return;
+            if (! $booksInvoice) {
+                continue;
+            }
+
+            $bill = \Tally\Models\Bill::query()
+                ->where('company_id', $voucher->company_id)
+                ->where('ledger_id', $party->ledger_id)
+                ->where('bill_number', $booksInvoice->invoice_number)
+                ->first();
+
+            if (! $bill) {
+                continue;
+            }
+
+            \Tally\Models\BillAllocation::query()->updateOrCreate(
+                [
+                    'voucher_id' => $voucher->id,
+                    'bill_id' => $bill->id,
+                ],
+                [
+                    'company_id' => $voucher->company_id,
+                    'ledger_id' => $party->ledger_id,
+                    'amount' => number_format($row['amount'], 2, '.', ''),
+                ]
+            );
         }
-
-        $amount = number_format((float) $payment->amount, 2, '.', '');
-        \Tally\Models\BillAllocation::query()->updateOrCreate(
-            [
-                'voucher_id' => $voucher->id,
-                'bill_id' => $bill->id,
-            ],
-            [
-                'company_id' => $voucher->company_id,
-                'ledger_id' => $party->ledger_id,
-                'amount' => $amount,
-            ]
-        );
     }
 
     public function remove(Model $source): void

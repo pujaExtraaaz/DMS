@@ -250,6 +250,7 @@ class DashboardController extends Controller
                 'last_week' => "Last Week's Sales",
                 'this_month' => "This Month's Sales",
                 'last_month' => "Last Month's Sales",
+                'quarter' => "This Quarter's Sales",
                 'this_financial_year' => "This FY Sales",
                 'last_financial_year' => "Last FY Sales",
                 'all_time' => "Total Sales (All Time)",
@@ -262,6 +263,7 @@ class DashboardController extends Controller
                 'last_week' => "Last Week's Purchases",
                 'this_month' => "This Month's Purchases",
                 'last_month' => "Last Month's Purchases",
+                'quarter' => "This Quarter's Purchases",
                 'this_financial_year' => "This FY Purchases",
                 'last_financial_year' => "Last FY Purchases",
                 'all_time' => "Total Purchases (All Time)",
@@ -269,6 +271,7 @@ class DashboardController extends Controller
             },
             'revenue' => match ($canonicalRange) {
                 'this_month' => "Month Revenue",
+                'quarter' => "Quarter Revenue",
                 default => "Period Revenue",
             },
             'collections' => match ($canonicalRange) {
@@ -458,7 +461,7 @@ class DashboardController extends Controller
      */
     protected function resolveDateRange(Request $request, ?int $companyId): array
     {
-        $rawRange = strtolower(trim((string) $request->input('date_range', 'this_month')));
+        $rawRange = strtolower(trim((string) $request->input('date_range', 'this_financial_year')));
         $rawRange = str_replace(['-', ' '], '_', $rawRange);
 
         $canonical = match ($rawRange) {
@@ -473,7 +476,7 @@ class DashboardController extends Controller
             'last_financial_year' => 'last_financial_year',
             'all', 'all_time' => 'all_time',
             'custom' => 'custom',
-            default => 'this_month',
+            default => 'this_financial_year',
         };
 
         $from = null;
@@ -525,8 +528,8 @@ class DashboardController extends Controller
                 break;
 
             case 'quarter':
-                $from = now()->firstOfQuarter()->toDateString();
-                $to = now()->lastOfQuarter()->toDateString();
+                // India FY quarters (Apr–Mar): Q1 Apr–Jun, Q2 Jul–Sep, Q3 Oct–Dec, Q4 Jan–Mar
+                [$from, $to] = $this->currentFinancialQuarterBounds();
                 $label = 'This Quarter';
                 $showing = "Showing: {$from} → {$to}";
                 break;
@@ -589,6 +592,46 @@ class DashboardController extends Controller
         }
 
         return [$from, $to, $canonical, $label, $showing];
+    }
+
+    /**
+     * Current financial-year quarter bounds (Apr–Mar FY).
+     *
+     * @return array{0: string, 1: string}
+     */
+    protected function currentFinancialQuarterBounds(): array
+    {
+        $now = now();
+        $month = (int) $now->month;
+        $year = (int) $now->year;
+
+        // Q1 Apr–Jun, Q2 Jul–Sep, Q3 Oct–Dec, Q4 Jan–Mar (of the FY that started the previous April)
+        if ($month >= 4 && $month <= 6) {
+            return [
+                Carbon::create($year, 4, 1)->toDateString(),
+                Carbon::create($year, 6, 30)->toDateString(),
+            ];
+        }
+
+        if ($month >= 7 && $month <= 9) {
+            return [
+                Carbon::create($year, 7, 1)->toDateString(),
+                Carbon::create($year, 9, 30)->toDateString(),
+            ];
+        }
+
+        if ($month >= 10 && $month <= 12) {
+            return [
+                Carbon::create($year, 10, 1)->toDateString(),
+                Carbon::create($year, 12, 31)->toDateString(),
+            ];
+        }
+
+        // Jan–Mar = Q4 of FY that began last April
+        return [
+            Carbon::create($year, 1, 1)->toDateString(),
+            Carbon::create($year, 3, 31)->toDateString(),
+        ];
     }
 
     /**

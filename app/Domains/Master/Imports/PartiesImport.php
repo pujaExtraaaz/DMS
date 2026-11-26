@@ -20,14 +20,8 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 /**
  * Bulk import Parties (Customers / Suppliers).
  *
- * Template columns (case-insensitive):
- *   name, code, party_type, classification, trade_name, gstin, phone, email,
- *   opened_on, reference_by, udyam_number, website, location_link, is_active,
- *   area, route,
- *   address_line_1, address_line_2, city, state, pincode,
- *   credit_limit, credit_days, credit_status, credit_period_basis, interest_rate,
- *   contact_name, contact_role, contact_phone, contact_email,
- *   bank_account_holder, bank_name, bank_branch, bank_account_number, bank_account_type, bank_ifsc
+ * Canonical columns: see BulkImportCatalog::get('parties')
+ * (includes contact level; defaults to party).
  *
  * Legacy aliases: customer_type → classification; address → address_line_1.
  * Match on code; if blank, GSTIN; if blank, name (case-insensitive).
@@ -35,7 +29,7 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
  */
 class PartiesImport implements ToCollection, WithHeadingRow
 {
-    use Importable;
+    use BulkImportHelpers, Importable;
 
     public array $errors = [];
 
@@ -207,9 +201,16 @@ class PartiesImport implements ToCollection, WithHeadingRow
             ];
 
             if ($existing) {
-                $existing->update($payload);
-                $customer = $existing;
-                $this->updated++;
+                $compareKeys = array_keys($payload);
+                $current = $existing->only($compareKeys);
+                if (! $this->payloadChanged($current, $payload, $compareKeys)) {
+                    $customer = $existing;
+                    $this->skipped++;
+                } else {
+                    $existing->update($payload);
+                    $customer = $existing;
+                    $this->updated++;
+                }
             } else {
                 $customer = Customer::create($payload);
                 $this->created++;
@@ -310,17 +311,6 @@ class PartiesImport implements ToCollection, WithHeadingRow
                 );
             }
         }
-    }
-
-    protected function isTruthy(mixed $value): bool
-    {
-        if (is_bool($value)) {
-            return $value;
-        }
-
-        $normalized = strtolower(trim((string) $value));
-
-        return in_array($normalized, ['1', 'true', 'yes', 'y', 'on'], true);
     }
 
     /**

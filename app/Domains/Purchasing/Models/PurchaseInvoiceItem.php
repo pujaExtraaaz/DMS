@@ -16,6 +16,8 @@ class PurchaseInvoiceItem extends Model
         'receipt_note_item_id',
         'purchase_order_item_id',
         'product_id',
+        'is_general',
+        'description',
         'uom_id',
         'quantity',
         'received_qty',
@@ -44,6 +46,7 @@ class PurchaseInvoiceItem extends Model
     protected function casts(): array
     {
         return [
+            'is_general' => 'boolean',
             'quantity' => 'decimal:4',
             'received_qty' => 'decimal:4',
             'unit_cost' => 'decimal:4',
@@ -62,6 +65,20 @@ class PurchaseInvoiceItem extends Model
             'sgst_amount' => 'decimal:2',
             'igst_amount' => 'decimal:2',
         ];
+    }
+
+    public function isGeneralEntry(): bool
+    {
+        return (bool) $this->is_general || ($this->product_id === null && filled($this->description));
+    }
+
+    public function displayName(): string
+    {
+        if ($this->isGeneralEntry()) {
+            return (string) ($this->description ?: 'General Entry');
+        }
+
+        return (string) ($this->product?->name ?? 'Item');
     }
 
     public function remainingQty(): float

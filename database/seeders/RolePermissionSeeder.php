@@ -50,6 +50,13 @@ class RolePermissionSeeder extends Seeder
 
                 'sales.view',
                 'invoices.view',
+                'delivery-challans.view',
+                'delivery-challans.create',
+                'delivery-challans.edit',
+                'delivery-challans.manage',
+                'delivery-challans.dispatch',
+                'delivery-challans.deliver',
+                'delivery-challans.cancel',
 
                 'targets.view',
                 'targets.manage',
@@ -90,6 +97,10 @@ class RolePermissionSeeder extends Seeder
 
                 'sales.view',
                 'invoices.view',
+                'delivery-challans.view',
+                'delivery-challans.create',
+                'delivery-challans.dispatch',
+                'delivery-challans.deliver',
 
                 'targets.view',
                 'sales_targets.view',
@@ -124,6 +135,18 @@ class RolePermissionSeeder extends Seeder
                 'receipt-notes.cancel',
                 'receipt-notes.return',
                 'receipt-notes.export',
+                'debit-notes.view',
+                'debit-notes.create',
+                'debit-notes.edit',
+                'debit-notes.manage',
+                'debit-notes.approve',
+                'debit-notes.post',
+                'debit-notes.cancel',
+                'supplier-payments.view',
+                'supplier-payments.create',
+                'supplier-payments.edit',
+                'supplier-payments.manage',
+                'supplier-payments.cancel',
             ],
 
             'accounts' => [
@@ -142,6 +165,18 @@ class RolePermissionSeeder extends Seeder
                 'credit-notes.create',
                 'credit-notes.edit',
                 'credit-notes.manage',
+                'debit-notes.view',
+                'debit-notes.create',
+                'debit-notes.edit',
+                'debit-notes.manage',
+                'debit-notes.approve',
+                'debit-notes.post',
+                'debit-notes.cancel',
+                'supplier-payments.view',
+                'supplier-payments.create',
+                'supplier-payments.edit',
+                'supplier-payments.manage',
+                'supplier-payments.cancel',
                 'interest.view',
                 'interest.manage',
                 'od.view',
@@ -172,6 +207,10 @@ class RolePermissionSeeder extends Seeder
                 'inventory.manage',
                 'stock.view',
                 'purchases.view',
+                'receipt-notes.view',
+                'delivery-challans.view',
+                'delivery-challans.dispatch',
+                'delivery-challans.deliver',
             ],
 
             'finance' => [
@@ -187,6 +226,10 @@ class RolePermissionSeeder extends Seeder
                 'invoices.edit',
                 'invoices.manage',
 
+                'delivery-challans.view',
+                'delivery-challans.create',
+                'delivery-challans.manage',
+
                 'payments.view',
                 'payments.create',
                 'payments.edit',
@@ -197,6 +240,16 @@ class RolePermissionSeeder extends Seeder
                 'cheques.manage',
                 'credit-notes.view',
                 'credit-notes.manage',
+                'debit-notes.view',
+                'debit-notes.create',
+                'debit-notes.manage',
+                'debit-notes.approve',
+                'debit-notes.post',
+                'debit-notes.cancel',
+                'supplier-payments.view',
+                'supplier-payments.create',
+                'supplier-payments.manage',
+                'supplier-payments.cancel',
 
                 'settlement.view',
                 'settlement.create',
@@ -218,6 +271,9 @@ class RolePermissionSeeder extends Seeder
                 'logistics.manage',
                 'delivery.view',
                 'delivery.manage',
+                'delivery-challans.view',
+                'delivery-challans.dispatch',
+                'delivery-challans.deliver',
                 'settlement.entry',
             ],
 
@@ -226,9 +282,14 @@ class RolePermissionSeeder extends Seeder
                 'logistics.view',
                 'delivery.view',
                 'delivery.manage',
+                'delivery-challans.view',
+                'delivery-challans.dispatch',
+                'delivery-challans.deliver',
                 'settlement.entry',
             ],
         ];
+
+        $knownRoleNames = array_keys($roles);
 
         foreach ($roles as $roleName => $rolePermissions) {
             $role = Role::query()->firstOrCreate([
@@ -248,6 +309,108 @@ class RolePermissionSeeder extends Seeder
             $merged = array_values(array_unique(array_merge($existing, $rolePermissions)));
             $role->syncPermissions($merged);
         }
+
+        // Custom / hand-tuned roles: inherit new voucher module perms from related parents.
+        Role::query()
+            ->where('guard_name', 'web')
+            ->whereNotIn('name', $knownRoleNames)
+            ->each(function (Role $role) {
+                $existing = $role->permissions()->pluck('name')->all();
+                $extra = $this->inheritedNewModulePermissions($existing);
+                if ($extra === []) {
+                    return;
+                }
+                $role->syncPermissions(array_values(array_unique(array_merge($existing, $extra))));
+            });
+    }
+
+    /**
+     * Map related parent permissions → new voucher module permissions for custom roles.
+     *
+     * @param  list<string>  $existing
+     * @return list<string>
+     */
+    protected function inheritedNewModulePermissions(array $existing): array
+    {
+        $has = static fn (string $name): bool => in_array($name, $existing, true);
+        $extra = [];
+
+        if ($has('purchases.view') || $has('purchase-orders.view') || $has('receipt-notes.view')) {
+            $extra = array_merge($extra, [
+                'debit-notes.view',
+                'supplier-payments.view',
+            ]);
+        }
+        if ($has('purchases.create') || $has('purchase-orders.create') || $has('receipt-notes.create')) {
+            $extra = array_merge($extra, [
+                'debit-notes.create',
+                'supplier-payments.create',
+            ]);
+        }
+        if ($has('purchases.edit') || $has('purchase-orders.edit') || $has('receipt-notes.edit')) {
+            $extra = array_merge($extra, [
+                'debit-notes.edit',
+                'supplier-payments.edit',
+            ]);
+        }
+        if ($has('purchases.manage') || $has('purchase-orders.manage') || $has('receipt-notes.manage')) {
+            $extra = array_merge($extra, [
+                'debit-notes.manage',
+                'debit-notes.approve',
+                'debit-notes.post',
+                'debit-notes.cancel',
+                'supplier-payments.manage',
+                'supplier-payments.cancel',
+            ]);
+        }
+
+        if ($has('payments.view') || $has('credit-notes.view') || $has('accounting.view')) {
+            $extra = array_merge($extra, [
+                'debit-notes.view',
+                'supplier-payments.view',
+            ]);
+        }
+        if ($has('payments.create') || $has('credit-notes.create')) {
+            $extra = array_merge($extra, [
+                'debit-notes.create',
+                'supplier-payments.create',
+            ]);
+        }
+        if ($has('payments.manage') || $has('credit-notes.manage')) {
+            $extra = array_merge($extra, [
+                'debit-notes.manage',
+                'debit-notes.approve',
+                'debit-notes.post',
+                'debit-notes.cancel',
+                'supplier-payments.manage',
+                'supplier-payments.cancel',
+            ]);
+        }
+
+        if ($has('sales.view') || $has('invoices.view') || $has('orders.view') || $has('delivery.view')) {
+            $extra[] = 'delivery-challans.view';
+        }
+        if ($has('sales.create') || $has('invoices.create') || $has('orders.create') || $has('delivery.create')) {
+            $extra[] = 'delivery-challans.create';
+        }
+        if ($has('sales.edit') || $has('invoices.edit') || $has('delivery.edit')) {
+            $extra[] = 'delivery-challans.edit';
+        }
+        if ($has('sales.manage') || $has('invoices.manage') || $has('delivery.manage')) {
+            $extra = array_merge($extra, [
+                'delivery-challans.manage',
+                'delivery-challans.dispatch',
+                'delivery-challans.deliver',
+                'delivery-challans.cancel',
+            ]);
+        }
+
+        $catalog = DmsPermissionCatalog::names();
+
+        return array_values(array_filter(
+            array_unique($extra),
+            fn (string $name) => in_array($name, $catalog, true) && ! in_array($name, $existing, true)
+        ));
     }
 
     protected function seedPermissions(): array

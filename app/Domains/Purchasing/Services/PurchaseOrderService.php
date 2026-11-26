@@ -688,70 +688,15 @@ class PurchaseOrderService
                     $anyReceiptNote = true;
                 }
 
-                $piItem = PurchaseInvoiceItem::create([
-                    'purchase_invoice_id' => $invoice->id,
-                    'receipt_note_item_id' => $item['receipt_note_item_id'] ?? null,
-                    'purchase_order_item_id' => $item['purchase_order_item_id'] ?? null,
-                    'product_id' => $item['product_id'],
-                    'uom_id' => $item['uom_id'],
-                    'quantity' => $item['quantity'],
-                    'received_qty' => $isFromReceiptNote ? $item['quantity'] : 0,
-                    'unit_cost' => $item['unit_cost'],
-                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
-                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
-                    'price_type' => $priceType,
-                    'entered_unit_cost' => $item['entered_unit_cost'] ?? $item['unit_cost'],
-                    'unit_cost' => $item['unit_cost'],
-                    'taxable_amount' => $item['taxable_amount'] ?? ($item['quantity'] * $item['unit_cost']),
-                    'tax_percent' => $item['tax_percent'],
-                    'cgst_percent' => $item['cgst_percent'],
-                    'sgst_percent' => $item['sgst_percent'],
-                    'igst_percent' => $item['igst_percent'] ?? 0,
-                    'cgst_amount' => $item['cgst_amount'],
-                    'sgst_amount' => $item['sgst_amount'],
-                    'igst_amount' => $item['igst_amount'] ?? 0,
-                    'line_total' => $item['line_total'],
-                    'other_vendor_rate' => $item['other_vendor_rate'],
-                    'batch_no' => $item['batch_no'] ?? null,
-                    'batch_selling_price' => $item['batch_selling_price'] ?? null,
-                    'batch_mrp' => $item['batch_mrp'] ?? null,
-                    'expiry_date' => $item['expiry_date'] ?? null,
-                ]);
-
-                if ($isFromReceiptNote) {
-                    $rnItem = ReceiptNoteItem::find($item['receipt_note_item_id']);
-                    if ($rnItem) {
-                        $rnItem->update([
-                            'invoiced_qty' => (float) $rnItem->invoiced_qty + (float) $item['quantity'],
-                        ]);
-                        app(ReceiptNoteService::class)->syncReceiptNoteStatus($rnItem->receiptNote);
-                    }
-                }
-
-                if (! $isFromReceiptNote && ! empty($item['serials']) && is_array($item['serials'])) {
-                    $prod = Product::find($item['product_id']);
-                    if ($prod && $prod->isSerialTracked()) {
-                        $this->serialBatchService->assignSerials(
-                            $prod,
-                            $item['serials'],
-                            $invoice->warehouse_id,
-                            $piItem,
-                            $actor,
-                            'in_transit',
-                        );
-                    }
-                }
-
-                VendorPriceHistory::create([
-                    'supplier_id' => $supplierId,
-                    'product_id' => $item['product_id'],
-                    'uom_id' => $item['uom_id'],
-                    'unit_cost' => $item['unit_cost'],
-                    'effective_from' => $data['invoice_date'],
-                    'reference_type' => $invoice->getMorphClass(),
-                    'reference_id' => $invoice->id,
-                    'created_by' => $actor->id,
-                ]);
+                $this->persistPurchaseInvoiceItem(
+                    $invoice,
+                    $item,
+                    $priceType,
+                    $isFromReceiptNote,
+                    $supplierId,
+                    $data['invoice_date'],
+                    $actor,
+                );
             }
 
             $invoice->syncSupplierPayable();
@@ -1083,70 +1028,15 @@ class PurchaseOrderService
                     $anyReceiptNote = true;
                 }
 
-                $piItem = PurchaseInvoiceItem::create([
-                    'purchase_invoice_id' => $invoice->id,
-                    'receipt_note_item_id' => $item['receipt_note_item_id'] ?? null,
-                    'purchase_order_item_id' => $item['purchase_order_item_id'] ?? null,
-                    'product_id' => $item['product_id'],
-                    'uom_id' => $item['uom_id'],
-                    'quantity' => $item['quantity'],
-                    'received_qty' => $isFromReceiptNote ? $item['quantity'] : 0,
-                    'unit_cost' => $item['unit_cost'],
-                    'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
-                    'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
-                    'price_type' => $priceType,
-                    'entered_unit_cost' => $item['entered_unit_cost'] ?? $item['unit_cost'],
-                    'unit_cost' => $item['unit_cost'],
-                    'taxable_amount' => $item['taxable_amount'] ?? ($item['quantity'] * $item['unit_cost']),
-                    'tax_percent' => $item['tax_percent'],
-                    'cgst_percent' => $item['cgst_percent'],
-                    'sgst_percent' => $item['sgst_percent'],
-                    'igst_percent' => $item['igst_percent'] ?? 0,
-                    'cgst_amount' => $item['cgst_amount'],
-                    'sgst_amount' => $item['sgst_amount'],
-                    'igst_amount' => $item['igst_amount'] ?? 0,
-                    'line_total' => $item['line_total'],
-                    'other_vendor_rate' => $item['other_vendor_rate'],
-                    'batch_no' => $item['batch_no'] ?? null,
-                    'batch_selling_price' => $item['batch_selling_price'] ?? null,
-                    'batch_mrp' => $item['batch_mrp'] ?? null,
-                    'expiry_date' => $item['expiry_date'] ?? null,
-                ]);
-
-                if ($isFromReceiptNote) {
-                    $rnItem = ReceiptNoteItem::find($item['receipt_note_item_id']);
-                    if ($rnItem) {
-                        $rnItem->update([
-                            'invoiced_qty' => (float) $rnItem->invoiced_qty + (float) $item['quantity'],
-                        ]);
-                        app(ReceiptNoteService::class)->syncReceiptNoteStatus($rnItem->receiptNote);
-                    }
-                }
-
-                if (! $isFromReceiptNote && ! empty($item['serials']) && is_array($item['serials'])) {
-                    $prod = Product::find($item['product_id']);
-                    if ($prod && $prod->isSerialTracked()) {
-                        $this->serialBatchService->assignSerials(
-                            $prod,
-                            $item['serials'],
-                            $invoice->warehouse_id,
-                            $piItem,
-                            $actor,
-                            'in_transit',
-                        );
-                    }
-                }
-
-                VendorPriceHistory::create([
-                    'supplier_id' => $supplierId,
-                    'product_id' => $item['product_id'],
-                    'uom_id' => $item['uom_id'],
-                    'unit_cost' => $item['unit_cost'],
-                    'effective_from' => $data['invoice_date'],
-                    'reference_type' => $invoice->getMorphClass(),
-                    'reference_id' => $invoice->id,
-                    'created_by' => $actor->id,
-                ]);
+                $this->persistPurchaseInvoiceItem(
+                    $invoice,
+                    $item,
+                    $priceType,
+                    $isFromReceiptNote,
+                    $supplierId,
+                    $data['invoice_date'],
+                    $actor,
+                );
             }
 
             // Sync SupplierPayable
@@ -1295,6 +1185,11 @@ class PurchaseOrderService
 
             foreach ($invoice->items as $item) {
                 if ($item->receipt_note_item_id) {
+                    continue;
+                }
+
+                // Non-inventory charge lines never receive into stock.
+                if ($item->isGeneralEntry()) {
                     continue;
                 }
 
@@ -1457,6 +1352,12 @@ class PurchaseOrderService
                 'status' => 'cancelled',
             ]);
 
+            try {
+                app(\App\Domains\Sync\Handlers\PurchaseInvoiceSync::class)->cancelBooksTwin($invoice);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
             return $invoice;
         });
     }
@@ -1478,6 +1379,91 @@ class PurchaseOrderService
         $order->update(['status' => $status]);
     }
 
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function persistPurchaseInvoiceItem(
+        PurchaseInvoice $invoice,
+        array $item,
+        string $priceType,
+        bool $isFromReceiptNote,
+        int $supplierId,
+        mixed $invoiceDate,
+        User $actor,
+    ): PurchaseInvoiceItem {
+        $isGeneral = (bool) ($item['is_general'] ?? false);
+
+        $piItem = PurchaseInvoiceItem::create([
+            'purchase_invoice_id' => $invoice->id,
+            'receipt_note_item_id' => $item['receipt_note_item_id'] ?? null,
+            'purchase_order_item_id' => $item['purchase_order_item_id'] ?? null,
+            'product_id' => $isGeneral ? null : $item['product_id'],
+            'is_general' => $isGeneral,
+            'description' => $isGeneral ? ($item['description'] ?? null) : null,
+            'uom_id' => $item['uom_id'],
+            'quantity' => $item['quantity'],
+            'received_qty' => ($isFromReceiptNote || $isGeneral) ? $item['quantity'] : 0,
+            'unit_cost' => $item['unit_cost'],
+            'purchase_price_inclusive' => $item['purchase_price_inclusive'] ?? null,
+            'purchase_discount_percent' => $item['purchase_discount_percent'] ?? null,
+            'price_type' => $priceType,
+            'entered_unit_cost' => $item['entered_unit_cost'] ?? $item['unit_cost'],
+            'taxable_amount' => $item['taxable_amount'] ?? ($item['quantity'] * $item['unit_cost']),
+            'tax_percent' => $item['tax_percent'],
+            'cgst_percent' => $item['cgst_percent'],
+            'sgst_percent' => $item['sgst_percent'],
+            'igst_percent' => $item['igst_percent'] ?? 0,
+            'cgst_amount' => $item['cgst_amount'],
+            'sgst_amount' => $item['sgst_amount'],
+            'igst_amount' => $item['igst_amount'] ?? 0,
+            'line_total' => $item['line_total'],
+            'other_vendor_rate' => $item['other_vendor_rate'] ?? null,
+            'batch_no' => $isGeneral ? null : ($item['batch_no'] ?? null),
+            'batch_selling_price' => $isGeneral ? null : ($item['batch_selling_price'] ?? null),
+            'batch_mrp' => $isGeneral ? null : ($item['batch_mrp'] ?? null),
+            'expiry_date' => $isGeneral ? null : ($item['expiry_date'] ?? null),
+        ]);
+
+        if ($isFromReceiptNote) {
+            $rnItem = ReceiptNoteItem::find($item['receipt_note_item_id']);
+            if ($rnItem) {
+                $rnItem->update([
+                    'invoiced_qty' => (float) $rnItem->invoiced_qty + (float) $item['quantity'],
+                ]);
+                app(ReceiptNoteService::class)->syncReceiptNoteStatus($rnItem->receiptNote);
+            }
+        }
+
+        if (! $isGeneral && ! $isFromReceiptNote && ! empty($item['serials']) && is_array($item['serials'])) {
+            $prod = Product::find($item['product_id']);
+            if ($prod && $prod->isSerialTracked()) {
+                $this->serialBatchService->assignSerials(
+                    $prod,
+                    $item['serials'],
+                    $invoice->warehouse_id,
+                    $piItem,
+                    $actor,
+                    'in_transit',
+                );
+            }
+        }
+
+        if (! $isGeneral && ! empty($item['product_id'])) {
+            VendorPriceHistory::create([
+                'supplier_id' => $supplierId,
+                'product_id' => $item['product_id'],
+                'uom_id' => $item['uom_id'],
+                'unit_cost' => $item['unit_cost'],
+                'effective_from' => $invoiceDate,
+                'reference_type' => $invoice->getMorphClass(),
+                'reference_id' => $invoice->id,
+                'created_by' => $actor->id,
+            ]);
+        }
+
+        return $piItem;
+    }
+
     protected function normalizeItems(array $items): array
     {
         if ($items === []) {
@@ -1491,8 +1477,18 @@ class PurchaseOrderService
                 continue;
             }
 
+            $description = trim((string) ($item['description'] ?? ''));
+            $isGeneral = filter_var($item['is_general'] ?? false, FILTER_VALIDATE_BOOLEAN)
+                || (empty($item['product_id']) && $description !== '');
+
+            if ($isGeneral && $description === '') {
+                throw ValidationException::withMessages([
+                    'items' => 'General entry lines require a description.',
+                ]);
+            }
+
             $uomId = $item['uom_id'] ?? null;
-            if (! empty($item['product_id'])) {
+            if (! $isGeneral && ! empty($item['product_id'])) {
                 $product = Product::with(['baseUom', 'alternateUom', 'productUoms.uom'])->find($item['product_id']);
                 if ($product) {
                     if (! $uomId) {
@@ -1501,6 +1497,17 @@ class PurchaseOrderService
                         throw ValidationException::withMessages(['items' => ["The selected unit is not valid for product '{$product->name}'."]]);
                     }
                 }
+            }
+
+            if ($isGeneral && ! $uomId) {
+                $uomId = Uom::query()->where('code', 'NOS')->value('id')
+                    ?? Uom::query()->orderBy('id')->value('id');
+            }
+
+            if (! $uomId) {
+                throw ValidationException::withMessages([
+                    'items' => 'A unit of measure is required for each line item.',
+                ]);
             }
 
             $taxPercent = isset($item['tax_percent'])
@@ -1540,7 +1547,9 @@ class PurchaseOrderService
             $normalized[] = [
                 'receipt_note_item_id' => ! empty($item['receipt_note_item_id']) ? (int) $item['receipt_note_item_id'] : null,
                 'purchase_order_item_id' => ! empty($item['purchase_order_item_id']) ? (int) $item['purchase_order_item_id'] : null,
-                'product_id' => (int) $item['product_id'],
+                'product_id' => $isGeneral ? null : (int) $item['product_id'],
+                'is_general' => $isGeneral,
+                'description' => $isGeneral ? $description : null,
                 'uom_id' => (int) $uomId,
                 'quantity' => $qty,
                 'unit_cost' => $unitCost,
@@ -1551,11 +1560,14 @@ class PurchaseOrderService
                 'cgst_percent' => $cgstPercent,
                 'sgst_percent' => $sgstPercent,
                 'weight' => isset($item['weight']) ? (float) $item['weight'] : null,
-                'batch_no' => $item['batch_no'] ?? $item['batch_number'] ?? $item['batch_name'] ?? null,
-                'serial_no' => filled($item['serial_no'] ?? null) ? trim((string) $item['serial_no']) : null,
+                'batch_no' => $isGeneral ? null : ($item['batch_no'] ?? $item['batch_number'] ?? $item['batch_name'] ?? null),
+                'serial_no' => $isGeneral ? null : (filled($item['serial_no'] ?? null) ? trim((string) $item['serial_no']) : null),
                 'batch_selling_price' => isset($item['batch_selling_price']) && $item['batch_selling_price'] !== '' ? (float) $item['batch_selling_price'] : null,
                 'batch_mrp' => $mrp,
-                'serials' => (function () use ($item) {
+                'serials' => (function () use ($item, $isGeneral) {
+                    if ($isGeneral) {
+                        return [];
+                    }
                     $prod = Product::find($item['product_id'] ?? null);
                     if (! $prod || ! $prod->isSerialTracked()) {
                         return [];

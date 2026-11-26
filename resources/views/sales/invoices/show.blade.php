@@ -36,16 +36,25 @@
     <x-slot name="actions">
         <x-ui.button variant="secondary" :href="route('invoices.index')">Back</x-ui.button>
         @if(auth()->user()?->can('invoices.edit') || auth()->user()?->can('invoices.manage') || auth()->user()?->can('sales.edit') || auth()->user()?->can('sales.manage') || auth()->user()?->hasRole('super-admin'))
-            <x-ui.button variant="secondary" :href="route('invoices.edit', $invoice)" title="{{ $invoice->isStatutoryLocked() ? 'Statutory documents generated - pricing is locked' : 'Edit invoice details and items' }}">
-                @if($invoice->isStatutoryLocked())
-                    <span class="inline-flex items-center gap-1 text-slate-700">
-                        <svg class="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                        Edit Details
-                    </span>
-                @else
-                    Edit
-                @endif
-            </x-ui.button>
+            @if($invoice->status !== 'cancelled')
+                <x-ui.button variant="secondary" :href="route('invoices.edit', $invoice)" title="{{ $invoice->isStatutoryLocked() ? 'Statutory documents generated - pricing is locked' : 'Edit invoice details and items' }}">
+                    @if($invoice->isStatutoryLocked())
+                        <span class="inline-flex items-center gap-1 text-slate-700">
+                            <svg class="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                            Edit Details
+                        </span>
+                    @else
+                        Edit
+                    @endif
+                </x-ui.button>
+                <form method="POST" action="{{ route('invoices.cancel', $invoice) }}" class="inline" onsubmit="return confirm('Cancel this tax invoice? Stock and outstanding will be reversed. Cancel IRN/E-Way first if generated.');">
+                    @csrf
+                    <input type="hidden" name="reason" value="Cancelled from invoice screen">
+                    <button type="submit" class="inline-flex items-center px-3.5 py-2 border border-rose-300 shadow-sm text-sm font-semibold rounded-lg text-rose-700 bg-white hover:bg-rose-50 transition">
+                        Cancel Invoice
+                    </button>
+                </form>
+            @endif
         @endif
         <button type="button" @click="printSettingsModal = true" class="inline-flex items-center px-3.5 py-2 border border-slate-300 shadow-sm text-sm font-semibold rounded-lg text-slate-700 bg-white hover:bg-slate-50 transition">
             <svg class="w-4 h-4 mr-1.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
@@ -74,15 +83,53 @@
         </div>
         <x-ui.button variant="secondary" :href="route('invoices.preview', $invoice)">Preview</x-ui.button>
         <x-ui.button variant="secondary" :href="route('invoices.e-invoice.document', $invoice)">E-Invoice Doc</x-ui.button>
-        @if($invoice->isEWayBillGenerated() || ($invoice->eWayBill && in_array($invoice->eWayBill->status, ['generated', 'active']) && filled($invoice->eWayBill->eway_bill_no)))
-            <x-ui.button variant="secondary" :href="route('invoices.eway.document', $invoice)">E-Way Bill Doc</x-ui.button>
-        @else
-            <x-ui.button type="button" variant="secondary" @click="generateEwayModal = true">Generate E-Way Bill</x-ui.button>
+        @if($invoice->status !== 'cancelled')
+            @if($invoice->isEWayBillGenerated() || ($invoice->eWayBill && in_array($invoice->eWayBill->status, ['generated', 'active']) && filled($invoice->eWayBill->eway_bill_no)))
+                <x-ui.button variant="secondary" :href="route('invoices.eway.document', $invoice)">E-Way Bill Doc</x-ui.button>
+            @else
+                <x-ui.button type="button" variant="secondary" @click="generateEwayModal = true">Generate E-Way Bill</x-ui.button>
+            @endif
+            <x-ui.button variant="secondary" :href="route('delivery-challans.create', ['customer_id' => $invoice->customer_id, 'invoice_id' => $invoice->id, 'order_id' => $invoice->order_id])">Delivery Challan</x-ui.button>
+            <form method="POST" action="{{ route('payment-links.create', $invoice) }}" class="inline">@csrf<x-ui.button type="submit" variant="secondary">Payment Link</x-ui.button></form>
+            <x-ui.button variant="primary" :href="route('payments.create', ['invoice_id' => $invoice->id])">Record Payment</x-ui.button>
         @endif
-        <form method="POST" action="{{ route('payment-links.create', $invoice) }}" class="inline">@csrf<x-ui.button type="submit" variant="secondary">Payment Link</x-ui.button></form>
-        <x-ui.button variant="primary" :href="route('payments.create', ['invoice_id' => $invoice->id])">Record Payment</x-ui.button>
     </x-slot>
 </x-ui.page-header>
+
+@if($invoice->status === 'cancelled')
+    <div class="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        This tax invoice is cancelled. Stock and outstanding were reversed; money and statutory actions are locked.
+    </div>
+@endif
+
+@if($invoice->creditNotes->isNotEmpty() || $invoice->deliveryChallans->isNotEmpty())
+    <div class="mb-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        @if($invoice->creditNotes->isNotEmpty())
+            <x-ui.card title="Credit Notes">
+                <ul class="divide-y divide-slate-100 text-sm">
+                    @foreach($invoice->creditNotes as $cn)
+                        <li class="py-2 flex items-center justify-between gap-2">
+                            <a href="{{ route('credit-notes.show', $cn) }}" class="font-mono text-indigo-600 hover:underline">{{ $cn->credit_note_no }}</a>
+                            <span class="text-slate-500">{{ ucfirst($cn->status) }} · ₹{{ number_format($cn->grand_total, 2) }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            </x-ui.card>
+        @endif
+        @if($invoice->deliveryChallans->isNotEmpty())
+            <x-ui.card title="Delivery Challans">
+                <ul class="divide-y divide-slate-100 text-sm">
+                    @foreach($invoice->deliveryChallans as $dc)
+                        <li class="py-2 flex items-center justify-between gap-2">
+                            <a href="{{ route('delivery-challans.show', $dc) }}" class="font-mono text-indigo-600 hover:underline">{{ $dc->challan_no }}</a>
+                            <span class="text-slate-500">{{ ucfirst($dc->status) }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            </x-ui.card>
+        @endif
+    </div>
+@endif
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <x-ui.card class="lg:col-span-2" title="Items">
@@ -98,7 +145,12 @@
             @foreach($invoice->items as $item)
                 <tr>
                     <td class="px-6 py-4 text-sm">
-                        <div class="font-medium text-slate-900">{{ $item->product?->name ?? $item->item_name }}</div>
+                        <div class="font-medium text-slate-900">
+                            {{ $item->product?->name ?? $item->description ?? $item->item_name }}
+                            @if($item->is_general ?? false)
+                                <span class="ml-1 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">General</span>
+                            @endif
+                        </div>
                         @php
                             $serials = is_array($item->serial_numbers) ? $item->serial_numbers : (filled($item->serial_numbers) ? explode(',', $item->serial_numbers) : []);
                             $serials = array_filter(array_map('trim', $serials));

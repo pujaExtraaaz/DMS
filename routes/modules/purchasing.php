@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Purchasing\CompanyDeliveryAddressController;
+use App\Http\Controllers\Purchasing\DebitNoteController;
 use App\Http\Controllers\Purchasing\FreightBillController;
 use App\Http\Controllers\Purchasing\PurchaseComparisonController;
 use App\Http\Controllers\Purchasing\LandedCostController;
@@ -8,9 +9,10 @@ use App\Http\Controllers\Purchasing\PurchaseInvoiceController;
 use App\Http\Controllers\Purchasing\PurchaseInwardController;
 use App\Http\Controllers\Purchasing\PurchaseOrderController;
 use App\Http\Controllers\Purchasing\ReceiptNoteController;
+use App\Http\Controllers\Purchasing\SupplierPaymentController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission:super-admin|purchases.view|purchases.create|purchases.edit|purchases.delete|purchases.manage|purchase-orders.view|purchase-orders.create|purchase-orders.edit|purchase-orders.delete|purchase-orders.manage|inventory.view|inventory.manage')->group(function () {
+Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission:super-admin|purchases.view|purchases.create|purchases.edit|purchases.delete|purchases.manage|purchase-orders.view|purchase-orders.create|purchase-orders.edit|purchase-orders.delete|purchase-orders.manage|debit-notes.view|debit-notes.create|debit-notes.manage|supplier-payments.view|supplier-payments.create|supplier-payments.manage|inventory.view|inventory.manage')->group(function () {
     Route::get('comparisons', [PurchaseComparisonController::class, 'index'])->name('comparisons.index');
     Route::get('comparisons/create', [PurchaseComparisonController::class, 'create'])->name('comparisons.create');
     Route::post('comparisons', [PurchaseComparisonController::class, 'store'])->name('comparisons.store');
@@ -121,4 +123,18 @@ Route::prefix('purchasing')->name('purchasing.')->middleware('role_or_permission
     Route::get('freight-bills/{freightBill}/edit', [FreightBillController::class, 'edit'])->name('freight-bills.edit');
     Route::put('freight-bills/{freightBill}', [FreightBillController::class, 'update'])->name('freight-bills.update');
     Route::delete('freight-bills/{freightBill}', [FreightBillController::class, 'destroy'])->name('freight-bills.destroy');
+
+    Route::get('debit-notes', [DebitNoteController::class, 'index'])->name('debit-notes.index');
+    Route::get('debit-notes/create', [DebitNoteController::class, 'create'])->name('debit-notes.create');
+    Route::post('debit-notes', [DebitNoteController::class, 'store'])->name('debit-notes.store');
+    Route::get('debit-notes/{debitNote}', [DebitNoteController::class, 'show'])->name('debit-notes.show');
+    Route::post('debit-notes/{debitNote}/approve', [DebitNoteController::class, 'approve'])->name('debit-notes.approve');
+    Route::post('debit-notes/{debitNote}/post', [DebitNoteController::class, 'post'])->name('debit-notes.post');
+    Route::post('debit-notes/{debitNote}/cancel', [DebitNoteController::class, 'cancel'])->name('debit-notes.cancel');
+
+    Route::get('supplier-payments', [SupplierPaymentController::class, 'index'])->name('supplier-payments.index');
+    Route::get('supplier-payments/create', [SupplierPaymentController::class, 'create'])->name('supplier-payments.create');
+    Route::post('supplier-payments', [SupplierPaymentController::class, 'store'])->name('supplier-payments.store');
+    Route::get('supplier-payments/{supplierPayment}', [SupplierPaymentController::class, 'show'])->name('supplier-payments.show');
+    Route::post('supplier-payments/{supplierPayment}/cancel', [SupplierPaymentController::class, 'cancel'])->name('supplier-payments.cancel');
 });

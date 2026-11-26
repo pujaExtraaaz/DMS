@@ -1,7 +1,6 @@
 @extends('layouts.dms')
 @section('title', 'Bulk Import')
 @section('content')
-<x-ui.page-header title="Bulk Import" description="Import Setup, Catalog, Products, Parties and Price List from CSV/Excel. Download each template, fill it, then upload in the order shown — the system validates, updates by key, and provides an error report." />
 
 @if(session('status'))
     <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center justify-between">
@@ -224,27 +223,40 @@
 @endif
 
 <p class="mb-4 text-xs text-slate-500">
-    Recommended order: Companies &rarr; Branches &rarr; Warehouses &rarr; Financial Years &rarr; UOMs &rarr; Brands &rarr; Categories &rarr; Sub Categories &rarr; Product Types &rarr; Products &rarr; Parties &rarr; Price List.
+    Recommended order: Companies &rarr; Branches &rarr; Warehouses &rarr; Financial Years &rarr; UOMs &rarr; Brands &rarr; Categories &rarr; Sub Categories &rarr; Product Types &rarr; Products &rarr; Parties &rarr; Price List &rarr; CRM Leads &rarr; Phone Directory &rarr; Purchase Orders.
+    Templates are CSV with a header row plus one sample row. Column names are case-insensitive.
 </p>
 
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-    @foreach([
-        'companies' => ['Companies', 'Match on Code. Creates/updates company profile fields.'],
-        'branches' => ['Branches', 'Requires company_code, name, branch_type, phone, address, state, city, country. Match on Company Code + Branch Code.'],
-        'warehouses' => ['Warehouses', 'Requires company_code, branch_code, name, address, state, city, country. Branch must exist first.'],
-        'financial-years' => ['Financial Years', 'Requires company_code, name, starts_on, ends_on. No overlapping ranges; one current open year per company.'],
-        'uoms' => ['UOMs', 'Match on Code. Required before Products / Price List imports.'],
-        'brands' => ['Brands', 'Match on Company + Name. Optional company_code uses your login company when blank.'],
-        'categories' => ['Categories', 'Match on Brand + Name. Import Brands first.'],
-        'sub-categories' => ['Sub Categories', 'Match on Brand + Category + Name. Import Categories first.'],
-        'product-types' => ['Product Types', 'Match on Company + Name/Code. Sets track_serial and description.'],
-        'products' => ['Products', 'Match on Part Number. Normalizes UOMs (PCS, PCS (PCS-PIECES), PIECES, etc.). An existing product is updated only when something changed, otherwise it is skipped.'],
-        'parties' => ['Parties (Customers &amp; Suppliers)', 'Match on Code, else GSTIN, else Name — re-import updates instead of duplicating. Classification, area and route auto-created.'],
-        'price-master' => ['Price List', 'Match on Customer Type + Part Number + UOM + Min Qty. Supports rate_includes_gst and normalized UOMs.'],
-        'leads' => ['CRM Leads', 'Match on Mobile or Email. Maps Contact Name, Company, Title, Mobiles, Address, etc.'],
-    ] as $type => [$label, $note])
-        <x-ui.card :title="$label">
-            <p class="text-xs text-slate-500 mb-3">{!! $note !!}</p>
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    @foreach($importTypes as $type => $definition)
+        <x-ui.card :title="$definition['label']">
+            <p class="text-xs text-slate-500 mb-3">{!! $definition['note'] !!}</p>
+
+            <div class="mb-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5 text-[11px] text-slate-700">
+                <div>
+                    <span class="font-semibold uppercase tracking-wide text-slate-500">Required</span>
+                    <div class="mt-1 flex flex-wrap gap-1">
+                        @foreach($definition['required'] as $column)
+                            <code class="rounded bg-rose-100 px-1.5 py-0.5 font-mono text-[10px] text-rose-800">{{ $column }}</code>
+                        @endforeach
+                    </div>
+                </div>
+                <div>
+                    <span class="font-semibold uppercase tracking-wide text-slate-500">Match key</span>
+                    <p class="mt-0.5 text-slate-600">{{ $definition['match'] }}</p>
+                </div>
+                <details class="group">
+                    <summary class="cursor-pointer select-none font-semibold uppercase tracking-wide text-indigo-600 hover:text-indigo-800">
+                        Template columns ({{ count($definition['columns']) }})
+                    </summary>
+                    <div class="mt-1.5 flex flex-wrap gap-1">
+                        @foreach($definition['columns'] as $column)
+                            <code class="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-700 ring-1 ring-slate-200">{{ $column }}</code>
+                        @endforeach
+                    </div>
+                </details>
+            </div>
+
             <div class="flex flex-col gap-2">
                 <a href="{{ route('masters.bulk-import.template', $type) }}"
                    class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">

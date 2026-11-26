@@ -323,6 +323,7 @@ class DocumentNumberSeries extends Model
             'DC' => 'Delivery Challan',
             // Money
             'PAY' => 'Payment',
+            'SPAY' => 'Supplier Payment',
             'REC' => 'Receipt',
             'CON' => 'Contra',
             'JRN' => 'Journal',

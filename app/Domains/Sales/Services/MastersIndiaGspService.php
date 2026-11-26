@@ -573,7 +573,7 @@ class MastersIndiaGspService
 
             return [
                 'SlNo' => (string) ($i + 1),
-                'PrdDesc' => substr((string) ($item->product?->name ?? $item->item_name ?? 'Item'), 0, 100),
+                'PrdDesc' => substr((string) ($item->product?->name ?? $item->description ?? $item->item_name ?? 'Item'), 0, 100),
                 'IsServc' => 'N',
                 'HsnCd' => (string) ($item->hsn_code ?? $item->product?->hsn_code ?? '85176200'),
                 'Qty' => (float) $item->quantity,
@@ -733,8 +733,8 @@ class MastersIndiaGspService
             return [
                 'itemNo' => $i + 1,
                 'productId' => (int) ($item->product_id ?: ($i + 1)),
-                'productName' => substr((string) ($item->product?->name ?: $item->item_name ?: 'Product'), 0, 100),
-                'productDesc' => substr((string) ($item->product?->description ?: ($item->product?->name ?: 'Item')), 0, 100),
+                'productName' => substr((string) ($item->product?->name ?: $item->description ?: $item->item_name ?: 'Product'), 0, 100),
+                'productDesc' => substr((string) ($item->product?->description ?: ($item->description ?: ($item->product?->name ?: 'Item'))), 0, 100),
                 'hsnCode' => (int) ($hsn ?: 85176200),
                 'quantity' => (float) $item->quantity,
                 'qtyUnit' => $uomCode,

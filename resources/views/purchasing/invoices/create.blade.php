@@ -423,18 +423,23 @@
             <div>
                 <div class="flex items-center gap-3">
                     <h3 class="text-sm font-semibold text-slate-700">Line Items</h3>
-                    <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
-                        <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
-                               :class="priceType === 'exclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
-                            <input type="radio" name="price_type" value="exclusive" :checked="priceType === 'exclusive'" @change="switchPriceType('exclusive')" class="sr-only">
+                    <div class="inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold" role="group" aria-label="Tax Mode Toggle">
+                        <button type="button"
+                                @click="switchPriceType('exclusive')"
+                                :class="priceType === 'exclusive' ? 'bg-white text-indigo-700 shadow-2xs font-bold border border-slate-200' : 'text-slate-600 hover:text-slate-900 font-medium border border-transparent'"
+                                class="cursor-pointer px-3 py-1 rounded-md transition flex items-center gap-1.5 focus:outline-none">
+                            <span class="w-1.5 h-1.5 rounded-full transition-colors" :class="priceType === 'exclusive' ? 'bg-indigo-600' : 'bg-transparent'"></span>
                             Tax Exclusive
-                        </label>
-                        <label class="cursor-pointer px-2.5 py-1 rounded-md transition"
-                               :class="priceType === 'inclusive' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-600 hover:text-slate-900'">
-                            <input type="radio" name="price_type" value="inclusive" :checked="priceType === 'inclusive'" @change="switchPriceType('inclusive')" class="sr-only">
+                        </button>
+                        <button type="button"
+                                @click="switchPriceType('inclusive')"
+                                :class="priceType === 'inclusive' ? 'bg-white text-indigo-700 shadow-2xs font-bold border border-slate-200' : 'text-slate-600 hover:text-slate-900 font-medium border border-transparent'"
+                                class="cursor-pointer px-3 py-1 rounded-md transition flex items-center gap-1.5 focus:outline-none">
+                            <span class="w-1.5 h-1.5 rounded-full transition-colors" :class="priceType === 'inclusive' ? 'bg-indigo-600' : 'bg-transparent'"></span>
                             Tax Inclusive
-                        </label>
+                        </button>
                     </div>
+                    <input type="hidden" name="price_type" :value="priceType">
                 </div>
                 <p class="text-xs text-slate-500 mt-1">
                     <span x-show="priceType === 'exclusive'">Unit cost is before GST. Tax is added on top, and Purchase Price Incl. GST is calculated from it.</span>
@@ -487,51 +492,72 @@
                     <template x-for="(row, i) in items" :key="row._key || i">
                         <tr class="align-top hover:bg-slate-50/50 transition-colors">
                             <td class="p-3 min-w-[340px] lg:min-w-[380px]">
-                                <div class="flex items-center justify-between gap-2 mb-1">
-                                    <span class="text-[11px] font-semibold text-slate-500">Product</span>
-                                    <a :href="createProductUrl(i)"
-                                       @click.prevent="saveDraftAndRedirectToProduct(i)"
-                                       class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap">
-                                        + Create product
-                                    </a>
-                                </div>
-                                <select :name="`items[${i}][product_id]`"
-                                        x-model="row.product_id"
-                                        @change="onProductChange(i); itemsError = ''"
-                                        required
-                                        class="block w-full rounded-md border-gray-300 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-h-[38px] px-3 py-2 bg-white">
-                                    <option value="">Select product...</option>
-                                    <template x-for="p in products" :key="p.id">
-                                        <option :value="p.id"
-                                                :data-code="p.sku || ''"
-                                                :data-subtext="p.sku ? ('Part No: ' + p.sku) : ''"
-                                                x-text="p.sku ? (p.name + ' (' + p.sku + ')') : p.name"></option>
-                                    </template>
-                                </select>
-                                <template x-if="getSelectedProductSku(row.product_id)">
-                                    <div class="mt-1 text-[11px] text-slate-500 flex items-center gap-1.5 font-mono">
-                                        <span class="text-slate-400">Part No / SKU:</span>
-                                        <span class="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" x-text="getSelectedProductSku(row.product_id)"></span>
-                                    </div>
-                                </template>
+                                <input type="hidden" :name="`items[${i}][is_general]`" :value="row.is_general ? 1 : 0">
                                 <input type="hidden" :name="`items[${i}][receipt_note_item_id]`" :value="row.receipt_note_item_id || ''">
 
-                                    <template x-if="isSerialTracked(row)">
-                                        <div class="mt-2">
-                                            <label class="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                                                Serial number
-                                                <span class="text-[10px] font-bold uppercase text-amber-700">Required</span>
-                                            </label>
-                                            <template x-for="(sNo, sIdx) in (row.serial_numbers || [])" :key="'serial-' + i + '-' + sIdx">
-                                                <input type="text"
-                                                       :name="`items[${i}][serial_numbers][${sIdx}]`"
-                                                       x-model="row.serial_numbers[sIdx]"
-                                                       :placeholder="(row.serial_numbers.length > 1) ? ('Serial ' + (sIdx + 1)) : 'Serial number'"
-                                                       required
-                                                       class="mb-1 block w-full rounded-md border-gray-300 px-2.5 py-2 text-xs font-mono text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-                                            </template>
+                                <template x-if="row.is_general">
+                                    <div>
+                                        <div class="flex items-center justify-between gap-2 mb-1">
+                                            <span class="text-[11px] font-semibold text-amber-700">General Entry</span>
+                                            <span class="text-[10px] font-medium text-slate-400">Non-inventory charge</span>
                                         </div>
-                                    </template>
+                                        <input type="text"
+                                               :name="`items[${i}][description]`"
+                                               x-model="row.description"
+                                               @input="itemsError = ''"
+                                               placeholder=""
+                                               required
+                                               class="block w-full rounded-md border-amber-200 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 min-h-[38px] px-3 py-2 bg-amber-50/40">
+                                    </div>
+                                </template>
+
+                                <template x-if="!row.is_general">
+                                    <div>
+                                        <div class="flex items-center justify-between gap-2 mb-1">
+                                            <span class="text-[11px] font-semibold text-slate-500">Product</span>
+                                            <a :href="createProductUrl(i)"
+                                               @click.prevent="saveDraftAndRedirectToProduct(i)"
+                                               class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap">
+                                                + Create product
+                                            </a>
+                                        </div>
+                                        <select :name="`items[${i}][product_id]`"
+                                                x-model="row.product_id"
+                                                @change="onProductChange(i); itemsError = ''"
+                                                required
+                                                class="block w-full rounded-md border-gray-300 text-xs sm:text-sm font-medium text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-h-[38px] px-3 py-2 bg-white">
+                                            <option value="">Select product...</option>
+                                            <template x-for="p in products" :key="p.id">
+                                                <option :value="p.id"
+                                                        :data-code="p.sku || ''"
+                                                        :data-subtext="p.sku ? ('Part No: ' + p.sku) : ''"
+                                                        x-text="p.sku ? (p.name + ' (' + p.sku + ')') : p.name"></option>
+                                            </template>
+                                        </select>
+                                        <template x-if="getSelectedProductSku(row.product_id)">
+                                            <div class="mt-1 text-[11px] text-slate-500 flex items-center gap-1.5 font-mono">
+                                                <span class="text-slate-400">Part No / SKU:</span>
+                                                <span class="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200" x-text="getSelectedProductSku(row.product_id)"></span>
+                                            </div>
+                                        </template>
+                                        <template x-if="isSerialTracked(row)">
+                                            <div class="mt-2">
+                                                <label class="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                                                    Serial number
+                                                    <span class="text-[10px] font-bold uppercase text-amber-700">Required</span>
+                                                </label>
+                                                <template x-for="(sNo, sIdx) in (row.serial_numbers || [])" :key="'serial-' + i + '-' + sIdx">
+                                                    <input type="text"
+                                                           :name="`items[${i}][serial_numbers][${sIdx}]`"
+                                                           x-model="row.serial_numbers[sIdx]"
+                                                           :placeholder="(row.serial_numbers.length > 1) ? ('Serial ' + (sIdx + 1)) : 'Serial number'"
+                                                           required
+                                                           class="mb-1 block w-full rounded-md border-gray-300 px-2.5 py-2 text-xs font-mono text-slate-800 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
                             </td>
 
                             <td class="p-3 align-top min-w-[85px] w-24 text-center">
@@ -595,9 +621,8 @@
                                        step="0.01"
                                        :name="`items[${i}][purchase_discount_percent]`"
                                        x-model.number="row.purchase_discount_percent"
-                                       readonly
-                                       tabindex="-1"
-                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 bg-slate-50 shadow-sm">
+                                       @input="onDiscountPercentChange(i)"
+                                       class="block w-full min-h-[38px] px-2.5 py-2 text-xs font-mono text-right rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
                             </td>
 
                             <td class="p-3 align-top min-w-[130px] w-36">
@@ -664,7 +689,7 @@
                 <tfoot>
                     <tr class="border-t border-slate-200 bg-slate-50/60">
                         <td colspan="13" class="p-3">
-                            <div class="sticky left-3 inline-flex items-center gap-3">
+                            <div class="sticky left-3 inline-flex flex-wrap items-center gap-3">
                                 <button type="button"
                                         @click="addItem()"
                                         id="add-item-btn"
@@ -673,6 +698,15 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                                     </svg>
                                     + Add Item
+                                </button>
+                                <button type="button"
+                                        @click="addGeneralEntry()"
+                                        id="add-general-entry-btn"
+                                        class="inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:text-amber-900 border border-amber-200/70 shadow-2xs transition">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    + General Entry
                                 </button>
                                 <span class="text-xs text-slate-500 font-medium">
                                     Total: <span class="font-semibold text-slate-700" x-text="items.length"></span> <span x-text="items.length === 1 ? 'item' : 'items'"></span>
@@ -848,12 +882,17 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
             }
 
             if (!this.items || this.items.length === 0) {
-                this.itemsError = 'The items field is required. Please add at least one product.';
+                this.itemsError = 'The items field is required. Please add at least one product or general entry.';
             } else {
                 let hasValidItem = false;
                 for (let i = 0; i < this.items.length; i++) {
                     const item = this.items[i];
-                    if (!item.product_id) {
+                    if (item.is_general) {
+                        if (!String(item.description || '').trim()) {
+                            this.itemsError = `Please enter a description for general entry line #${i + 1}.`;
+                            return false;
+                        }
+                    } else if (!item.product_id) {
                         this.itemsError = `Please select a product for line #${i + 1}.`;
                         return false;
                     }
@@ -861,7 +900,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
                         this.itemsError = `Please enter a valid quantity greater than 0 for line #${i + 1}.`;
                         return false;
                     }
-                    if (this.isSerialTracked(item)) {
+                    if (!item.is_general && this.isSerialTracked(item)) {
                         const serials = (item.serial_numbers || []).filter(s => String(s || '').trim() !== '');
                         const needed = Math.round(Number(item.quantity) || 1);
                         if (serials.length < needed) {
@@ -873,7 +912,7 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
                 }
 
                 if (!hasValidItem) {
-                    this.itemsError = 'The items field is required. Please select at least one product.';
+                    this.itemsError = 'The items field is required. Please select at least one product or general entry.';
                     return false;
                 }
             }
@@ -1102,9 +1141,13 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
             this.recalc();
         },
 
-        createBlankItem() {
-            return {
+        defaultNosUom: @js($defaultNosUom ? ['id' => (string) $defaultNosUom->id, 'code' => $defaultNosUom->code, 'name' => $defaultNosUom->name] : null),
+
+        createBlankItem(overrides = {}) {
+            return Object.assign({
                 _key: 'item_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+                is_general: false,
+                description: '',
                 product_id: '',
                 uom_id: '',
                 unit: '—',
@@ -1122,11 +1165,26 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
                 batch_mrp: 0,
                 serial_numbers: [],
                 line_total: 0
-            };
+            }, overrides);
         },
 
         addItem() {
             this.items.push(this.createBlankItem());
+            this.itemsError = '';
+            this.recalc();
+        },
+
+        addGeneralEntry() {
+            const nos = this.defaultNosUom;
+            this.items.push(this.createBlankItem({
+                is_general: true,
+                description: '',
+                product_id: '',
+                uom_id: nos ? String(nos.id) : '',
+                unit: nos ? (nos.code || nos.name || 'NOS') : 'NOS',
+                allowed_uoms: nos ? [{ id: String(nos.id), code: nos.code || 'NOS', name: nos.name || 'Nos' }] : [],
+                allow_unit_change: false,
+            }));
             this.itemsError = '';
             this.recalc();
         },
@@ -1140,9 +1198,26 @@ function purchaseInvoiceForm(products, initialOrder, initialOrders, odAccounts, 
             if (!row) return;
             const mrp = Number(row.batch_mrp) || 0;
             const inclusive = Number(row.purchase_price_inclusive) || 0;
-            row.purchase_discount_percent = mrp > 0
-                ? Number((((mrp - inclusive) / mrp) * 100).toFixed(2))
-                : 0;
+            // Only auto-derive discount when both MRP and a real purchase price exist.
+            // Avoids Disc%=100 when MRP is typed first and purchase price is still 0.
+            if (mrp > 0 && inclusive > 0) {
+                row.purchase_discount_percent = Number((((mrp - inclusive) / mrp) * 100).toFixed(2));
+            } else if (mrp <= 0) {
+                row.purchase_discount_percent = 0;
+            }
+        },
+
+        onDiscountPercentChange(index) {
+            const row = this.items[index];
+            if (!row) return;
+            const mrp = Number(row.batch_mrp) || 0;
+            const disc = Number(row.purchase_discount_percent) || 0;
+            if (mrp > 0) {
+                row.purchase_price_inclusive = Number((mrp * (1 - (disc / 100))).toFixed(2));
+                this.onPurchasePriceInclusiveChange(index);
+                return;
+            }
+            this.recalc();
         },
 
         grossFromBase(base, taxPercent) {

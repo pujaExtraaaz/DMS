@@ -27,13 +27,26 @@ class DocumentNumberService
             $dateString = $date->toDateString();
             $hasCompanyScope = Schema::hasColumn('document_sequences', 'company_id');
 
-            // Unique key is (prefix, sequence_date). Prefer matching that row first so
-            // company/branch filter mismatches (e.g. null vs 1) do not cause duplicate inserts.
-            $sequence = DB::table('document_sequences')
+            // Prefer company-scoped sequence rows to avoid cross-company number collisions.
+            $sequenceQuery = DB::table('document_sequences')
                 ->where('prefix', $prefix)
-                ->whereDate('sequence_date', $dateString)
-                ->lockForUpdate()
-                ->first();
+                ->whereDate('sequence_date', $dateString);
+
+            if ($hasCompanyScope && $companyId) {
+                $sequence = (clone $sequenceQuery)
+                    ->where('company_id', $companyId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $sequence) {
+                    $sequence = (clone $sequenceQuery)
+                        ->whereNull('company_id')
+                        ->lockForUpdate()
+                        ->first();
+                }
+            } else {
+                $sequence = $sequenceQuery->lockForUpdate()->first();
+            }
 
             if (! $sequence) {
                 $row = [
@@ -56,11 +69,15 @@ class DocumentNumberService
 
                 DB::table('document_sequences')->insertOrIgnore($row);
 
-                $sequence = DB::table('document_sequences')
+                $reload = DB::table('document_sequences')
                     ->where('prefix', $prefix)
-                    ->whereDate('sequence_date', $dateString)
-                    ->lockForUpdate()
-                    ->first();
+                    ->whereDate('sequence_date', $dateString);
+                if ($hasCompanyScope && $companyId) {
+                    $sequence = (clone $reload)->where('company_id', $companyId)->lockForUpdate()->first()
+                        ?: (clone $reload)->whereNull('company_id')->lockForUpdate()->first();
+                } else {
+                    $sequence = $reload->lockForUpdate()->first();
+                }
             }
 
             if (! $sequence) {

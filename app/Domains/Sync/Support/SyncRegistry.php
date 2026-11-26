@@ -33,11 +33,14 @@ use App\Domains\Payment\Models\Cheque;
 use App\Domains\Payment\Models\CreditNote;
 use App\Domains\Payment\Models\OutstandingLedger;
 use App\Domains\Payment\Models\Payment;
+use App\Domains\Purchasing\Models\DebitNote;
 use App\Domains\Purchasing\Models\FreightBill;
 use App\Domains\Purchasing\Models\LandedCost;
 use App\Domains\Purchasing\Models\PurchaseInvoice;
 use App\Domains\Purchasing\Models\PurchaseInward;
+use App\Domains\Purchasing\Models\ReceiptNote;
 use App\Domains\Purchasing\Models\PurchaseOrder;
+use App\Domains\Purchasing\Models\SupplierPayment;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sales\Models\Quotation;
 use App\Domains\Settlement\Models\Settlement;
@@ -51,6 +54,7 @@ use App\Domains\Sync\Handlers\ChequeSync;
 use App\Domains\Sync\Handlers\CompanySync;
 use App\Domains\Sync\Handlers\CreditNoteSync;
 use App\Domains\Sync\Handlers\CustomerSync;
+use App\Domains\Sync\Handlers\DebitNoteSync;
 use App\Domains\Sync\Handlers\DeliverySync;
 use App\Domains\Sync\Handlers\EmployeeSync;
 use App\Domains\Sync\Handlers\ExpenseTypeSync;
@@ -77,9 +81,11 @@ use App\Domains\Sync\Handlers\StockMovementSync;
 use App\Domains\Sync\Handlers\StockTransferSync;
 use App\Domains\Sync\Handlers\StockValuationSettingSync;
 use App\Domains\Sync\Handlers\SubCategorySync;
+use App\Domains\Sync\Handlers\SupplierPaymentSync;
 use App\Domains\Sync\Handlers\UomSync;
 use App\Domains\Sync\Handlers\WarehouseSync;
 use Illuminate\Database\Eloquent\Model;
+use Tally\Accounting\VoucherType;
 use Tally\Inventory\StockTransactionType;
 use Tally\Invoicing\InvoiceKind;
 use Tally\Models\BankAccount;
@@ -122,13 +128,21 @@ final class SyncRegistry
                 InvoiceKind::Sales => InvoiceSync::class,
                 InvoiceKind::Purchase => PurchaseInvoiceSync::class,
                 InvoiceKind::CreditNote => CreditNoteSync::class,
+                InvoiceKind::DebitNote => DebitNoteSync::class,
                 default => null,
             },
-            Payment::class, Voucher::class => PaymentSync::class,
+            Payment::class => PaymentSync::class,
+            Voucher::class => match (true) {
+                $model->voucher_type === VoucherType::Payment => SupplierPaymentSync::class,
+                SyncLinks::dmsId(SupplierPaymentSync::KEY, $model) !== null => SupplierPaymentSync::class,
+                default => PaymentSync::class,
+            },
             PurchaseInvoice::class => PurchaseInvoiceSync::class,
             CreditNote::class => CreditNoteSync::class,
+            DebitNote::class => DebitNoteSync::class,
+            SupplierPayment::class => SupplierPaymentSync::class,
             PurchaseOrder::class, BooksPurchaseOrder::class => PurchaseOrderSync::class,
-            PurchaseInward::class => GoodsReceiptSync::class,
+            PurchaseInward::class, ReceiptNote::class => GoodsReceiptSync::class,
             FreightBill::class => FreightBillSync::class,
             LandedCost::class => LandedCostSync::class,
             Order::class, BooksSalesOrder::class => SalesOrderSync::class,
@@ -176,13 +190,20 @@ final class SyncRegistry
             BooksInvoice::class => match ($model->kind) {
                 InvoiceKind::Purchase => PurchaseInvoiceSync::KEY,
                 InvoiceKind::CreditNote => CreditNoteSync::KEY,
+                InvoiceKind::DebitNote => DebitNoteSync::KEY,
                 default => InvoiceSync::KEY,
             },
-            Payment::class, Voucher::class => PaymentSync::KEY,
+            Payment::class => PaymentSync::KEY,
+            Voucher::class => ($model->voucher_type === VoucherType::Payment
+                || SyncLinks::dmsId(SupplierPaymentSync::KEY, $model) !== null)
+                ? SupplierPaymentSync::KEY
+                : PaymentSync::KEY,
             PurchaseInvoice::class => PurchaseInvoiceSync::KEY,
             CreditNote::class => CreditNoteSync::KEY,
+            DebitNote::class => DebitNoteSync::KEY,
+            SupplierPayment::class => SupplierPaymentSync::KEY,
             PurchaseOrder::class, BooksPurchaseOrder::class => PurchaseOrderSync::KEY,
-            PurchaseInward::class => GoodsReceiptSync::KEY,
+            PurchaseInward::class, ReceiptNote::class => GoodsReceiptSync::KEY,
             FreightBill::class => FreightBillSync::KEY,
             LandedCost::class => LandedCostSync::KEY,
             Order::class, BooksSalesOrder::class => SalesOrderSync::KEY,

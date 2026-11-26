@@ -61,9 +61,29 @@ class BulkImportMastersCoverageTest extends TestCase
 
         $price = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'price-master'))->streamedContent();
         $this->assertStringContainsString('rate_includes_gst', $price);
+        $this->assertStringContainsString('part_number', $price);
 
         $products = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'products'))->streamedContent();
         $this->assertStringContainsString('alt_purchase_price', $products);
+        $this->assertStringContainsString('series', $products);
+        $this->assertStringContainsString('discount_percent', $products);
+
+        $parties = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'parties'))->streamedContent();
+        $this->assertStringContainsString('level', $parties);
+
+        $leads = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'leads'))->streamedContent();
+        $this->assertStringContainsString('lead_source', $leads);
+        $this->assertStringContainsString('interested_product', $leads);
+
+        $phone = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'phone-directory'))->streamedContent();
+        $this->assertStringContainsString('primary_mobile', $phone);
+        $this->assertStringContainsString('contact_type', $phone);
+
+        $pos = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'purchase-orders'))->streamedContent();
+        $this->assertStringContainsString('po_no', $pos);
+        $this->assertStringContainsString('supplier_code', $pos);
+        $this->assertStringContainsString('part_number', $pos);
+        $this->assertStringContainsString('unit_cost', $pos);
 
         $branchesTpl = $this->actingAs($this->user)->get(route('masters.bulk-import.template', 'branches'))->streamedContent();
         $this->assertStringContainsString('branch_type', $branchesTpl);

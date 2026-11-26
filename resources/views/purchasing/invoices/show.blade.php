@@ -10,31 +10,29 @@
 @endphp
 <x-ui.page-header :title="$invoice->invoice_no">
     <x-slot name="actions">
-        <x-ui.button variant="secondary" :href="route('purchasing.invoices.index')">
-            Back
-        </x-ui.button>
-
-        <div class="flex flex-col sm:items-end gap-2">
-            <x-ui.button
-                variant="primary"
-                :href="route('purchasing.invoices.create')"
-            >
+        <div class="flex flex-wrap items-center gap-2 w-full">
+            <x-ui.button variant="secondary" :href="route('purchasing.invoices.index')">
+                Back
+            </x-ui.button>
+            <x-ui.button variant="primary" :href="route('purchasing.invoices.create')">
                 + Create New Purchase Invoice
             </x-ui.button>
-
-            <div class="flex items-center gap-2">
-                @if($invoice->canReceiveMaterial())
-                    <x-ui.button variant="primary" :href="route('purchasing.invoices.receive-material', $invoice)">
-                        Receive Material
-                    </x-ui.button>
-                @endif
-                <x-ui.button
-                    variant="secondary"
-                    :href="route('purchasing.invoices.preview', $invoice)"
-                >
-                    Preview Invoice
+            @if($invoice->canReceiveMaterial())
+                <x-ui.button variant="primary" :href="route('purchasing.invoices.receive-material', $invoice)">
+                    Receive Material
                 </x-ui.button>
-            </div>
+            @endif
+            @if($invoice->status === 'posted')
+                <x-ui.button variant="secondary" :href="route('purchasing.debit-notes.create', ['supplier_id' => $invoice->supplier_id, 'purchase_invoice_id' => $invoice->id])">
+                    Debit Note
+                </x-ui.button>
+                <x-ui.button variant="secondary" :href="route('purchasing.supplier-payments.create', ['supplier_id' => $invoice->supplier_id, 'purchase_invoice_id' => $invoice->id])">
+                    Pay Supplier
+                </x-ui.button>
+            @endif
+            <x-ui.button variant="secondary" :href="route('purchasing.invoices.preview', $invoice)">
+                Preview Invoice
+            </x-ui.button>
         </div>
     </x-slot>
 </x-ui.page-header>
@@ -273,4 +271,33 @@
         </div>
     </div>
 </x-ui.card>
+
+@if($invoice->debitNotes->isNotEmpty() || $invoice->supplierPayments->isNotEmpty())
+    <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        @if($invoice->debitNotes->isNotEmpty())
+            <x-ui.card title="Debit Notes">
+                <ul class="divide-y divide-slate-100 text-sm">
+                    @foreach($invoice->debitNotes as $dn)
+                        <li class="py-2 flex items-center justify-between gap-2">
+                            <a href="{{ route('purchasing.debit-notes.show', $dn) }}" class="font-mono text-indigo-600 hover:underline">{{ $dn->debit_note_no }}</a>
+                            <span class="text-slate-500">{{ ucfirst($dn->status) }} · ₹{{ number_format($dn->grand_total, 2) }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            </x-ui.card>
+        @endif
+        @if($invoice->supplierPayments->isNotEmpty())
+            <x-ui.card title="Supplier Payments">
+                <ul class="divide-y divide-slate-100 text-sm">
+                    @foreach($invoice->supplierPayments as $pay)
+                        <li class="py-2 flex items-center justify-between gap-2">
+                            <a href="{{ route('purchasing.supplier-payments.show', $pay) }}" class="font-mono text-indigo-600 hover:underline">{{ $pay->payment_no }}</a>
+                            <span class="text-slate-500">{{ ucfirst($pay->status) }} · ₹{{ number_format($pay->amount, 2) }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            </x-ui.card>
+        @endif
+    </div>
+@endif
 @endsection

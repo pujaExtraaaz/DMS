@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Purchasing;
 use App\Domains\Banking\Models\OdAccount;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
+use App\Domains\Master\Models\Uom;
 use App\Domains\Organization\Models\Company;
 use App\Domains\Organization\Models\Warehouse;
 use App\Domains\Organization\Services\FinancialYearService;
@@ -194,6 +195,9 @@ class PurchaseInvoiceController extends Controller
 
         $savedDraft = $request->session()->get('purchase_invoice_draft');
 
+        $defaultNosUom = Uom::query()->where('code', 'NOS')->first()
+            ?? Uom::query()->orderBy('id')->first();
+
         return view('purchasing.invoices.create', [
             'order' => $order,
             'initialOrders' => $initialOrders,
@@ -205,6 +209,7 @@ class PurchaseInvoiceController extends Controller
             'newProduct' => $newProduct,
             'savedDraft' => $savedDraft,
             'odAccounts' => $odAccounts,
+            'defaultNosUom' => $defaultNosUom,
         ]);
     }
 
@@ -255,7 +260,9 @@ class PurchaseInvoiceController extends Controller
             'due_date' => 'nullable|date',
             'items' => 'required|array|min:1',
             'items.*.receipt_note_item_id' => 'nullable|exists:receipt_note_items,id',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.is_general' => 'nullable|boolean',
+            'items.*.description' => 'nullable|string|max:255',
+            'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.uom_id' => 'nullable|exists:uoms,id',
             'items.*.purchase_order_item_id' => 'nullable|exists:purchase_order_items,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
@@ -269,6 +276,8 @@ class PurchaseInvoiceController extends Controller
             'items.*.serial_numbers' => 'nullable|array',
             'items.*.serial_numbers.*' => 'nullable|string|max:100',
         ]);
+
+        $this->assertPurchaseInvoiceItemRules($validated['items']);
 
         if (filled($request->input('courier_docket_no')) && ! filled($validated['receipt_doc_no'] ?? null)) {
             $validated['receipt_doc_no'] = $request->input('courier_docket_no');
@@ -395,6 +404,8 @@ class PurchaseInvoiceController extends Controller
             'inventoryMovements',
             'odAccount',
             'bankAccountTransactions',
+            'debitNotes',
+            'supplierPayments',
         ]);
 
         return view('purchasing.invoices.show', compact('invoice'));
@@ -602,6 +613,8 @@ class PurchaseInvoiceController extends Controller
 
             return [
                 'product_id' => $it->product_id,
+                'is_general' => (bool) $it->is_general,
+                'description' => $it->description,
                 'uom_id' => $it->uom_id ?? $it->product?->base_uom_id,
                 'unit' => $it->uom?->code ?? ($it->product?->unit ?? 'PCS'),
                 'tracking_type' => $it->product?->tracking_type ?? 'none',
@@ -620,6 +633,9 @@ class PurchaseInvoiceController extends Controller
             ];
         })->values();
 
+        $defaultNosUom = Uom::query()->where('code', 'NOS')->first()
+            ?? Uom::query()->orderBy('id')->first();
+
         return view('purchasing.invoices.edit', [
             'invoice' => $invoice,
             'suppliers' => $suppliers,
@@ -628,6 +644,7 @@ class PurchaseInvoiceController extends Controller
             'odAccounts' => $odAccounts,
             'initialOrders' => $initialOrders,
             'invoiceItems' => $invoiceItems,
+            'defaultNosUom' => $defaultNosUom,
         ]);
     }
 
@@ -688,7 +705,9 @@ class PurchaseInvoiceController extends Controller
             'due_date' => 'nullable|date',
             'items' => 'required|array|min:1',
             'items.*.receipt_note_item_id' => 'nullable|exists:receipt_note_items,id',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.is_general' => 'nullable|boolean',
+            'items.*.description' => 'nullable|string|max:255',
+            'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.uom_id' => 'nullable|exists:uoms,id',
             'items.*.purchase_order_item_id' => 'nullable|exists:purchase_order_items,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
@@ -702,6 +721,8 @@ class PurchaseInvoiceController extends Controller
             'items.*.serial_numbers' => 'nullable|array',
             'items.*.serial_numbers.*' => 'nullable|string|max:100',
         ]);
+
+        $this->assertPurchaseInvoiceItemRules($validated['items']);
 
         if (filled($request->input('courier_docket_no')) && ! filled($validated['receipt_doc_no'] ?? null)) {
             $validated['receipt_doc_no'] = $request->input('courier_docket_no');
@@ -1279,5 +1300,33 @@ class PurchaseInvoiceController extends Controller
                 ];
             })
             ->values();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    protected function assertPurchaseInvoiceItemRules(array $items): void
+    {
+        foreach ($items as $index => $item) {
+            $line = $index + 1;
+            $isGeneral = filter_var($item['is_general'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $description = trim((string) ($item['description'] ?? ''));
+            $productId = $item['product_id'] ?? null;
+
+            if ($isGeneral) {
+                if ($description === '') {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.description" => "Please enter a description for general entry line #{$line}.",
+                    ]);
+                }
+                continue;
+            }
+
+            if (empty($productId)) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_id" => "Please select a product for line #{$line}.",
+                ]);
+            }
+        }
     }
 }

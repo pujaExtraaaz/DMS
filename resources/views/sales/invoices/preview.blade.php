@@ -762,7 +762,7 @@
                 <tr>
                     <td class="text-center">{{ $idx + 1 }}</td>
                     <td>
-                        <div class="font-bold">{{ $item->product?->name }}</div>
+                        <div class="font-bold">{{ $item->product?->name ?? $item->description ?? $item->item_name }}</div>
                         @if($item->product?->code)
                             <div style="font-size: 9px; color: #64748b;">Code: {{ $item->product->code }}</div>
                         @endif

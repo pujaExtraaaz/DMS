@@ -118,6 +118,35 @@ class InvoiceSync
         });
     }
 
+    /**
+     * Cancel the linked Books sales invoice when a DMS tax invoice is cancelled.
+     */
+    public function cancelBooksTwin(Invoice $invoice): void
+    {
+        $books = BooksInvoice::query()->find(SyncLinks::acctId(self::KEY, $invoice));
+        if (! $books) {
+            return;
+        }
+
+        try {
+            if ($books->status === VoucherStatus::Draft) {
+                $books->lines()->delete();
+                $books->delete();
+                SyncLinks::forget(self::KEY, $invoice);
+
+                return;
+            }
+
+            if ($books->isCancelled()) {
+                return;
+            }
+
+            app(\Tally\Invoicing\InvoiceService::class)->cancel($books->fresh());
+        } catch (\Throwable $e) {
+            SyncFailureLogger::write(self::KEY, 'dms_to_books', $invoice, $e);
+        }
+    }
+
     public function remove(Model $source): void
     {
         if ($source instanceof Invoice) {

@@ -128,6 +128,11 @@ class Order extends Model
         return $this->hasOne(Invoice::class);
     }
 
+    public function deliveryChallans(): HasMany
+    {
+        return $this->hasMany(\App\Domains\Sales\Models\DeliveryChallan::class);
+    }
+
     public function pendingQty(): float
     {
         return (float) $this->items->sum(function (OrderItem $item) {

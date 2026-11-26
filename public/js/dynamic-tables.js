@@ -109,10 +109,21 @@
                     targetContainer.setAttribute(attr.name, attr.value);
                 });
 
+                let historyUrl = targetUrl;
+                try {
+                    const historyUrlObj = new URL(targetUrl, window.location.origin);
+                    if (historyUrlObj.searchParams.has('reset_filters')) {
+                        historyUrlObj.searchParams.delete('reset_filters');
+                        historyUrl = historyUrlObj.pathname + (historyUrlObj.searchParams.toString() ? '?' + historyUrlObj.searchParams.toString() : '') + historyUrlObj.hash;
+                    }
+                } catch (err) {
+                    // keep targetUrl
+                }
+
                 if (pushState) {
-                    window.history.pushState(null, '', targetUrl);
+                    window.history.pushState(null, '', historyUrl);
                 } else {
-                    window.history.replaceState(null, '', targetUrl);
+                    window.history.replaceState(null, '', historyUrl);
                 }
 
                 // If user was typing in the search box, restore focus
@@ -185,12 +196,19 @@
             return;
         }
 
-        // Reset filter button
+        // Reset filter button — always clear persisted listing filters
         const resetLink = e.target.closest('[data-reset-filters]');
         if (resetLink) {
             e.preventDefault();
             const container = getContainer(resetLink);
-            fetchAndSwap(resetLink.href, false, container);
+            const resetUrl = new URL(resetLink.href, window.location.origin);
+            const keepTab = resetUrl.searchParams.get('tab');
+            resetUrl.search = '';
+            if (keepTab) {
+                resetUrl.searchParams.set('tab', keepTab);
+            }
+            resetUrl.searchParams.set('reset_filters', '1');
+            fetchAndSwap(resetUrl.toString(), false, container);
             return;
         }
 

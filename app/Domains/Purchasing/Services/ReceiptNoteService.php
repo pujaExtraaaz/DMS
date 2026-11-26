@@ -9,12 +9,14 @@ use App\Domains\Inventory\Services\StockMovementService;
 use App\Domains\Master\Models\Customer;
 use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
+use App\Domains\Purchasing\Models\PurchaseInward;
 use App\Domains\Purchasing\Models\PurchaseOrder;
 use App\Domains\Purchasing\Models\PurchaseOrderItem;
 use App\Domains\Purchasing\Models\ReceiptNote;
 use App\Domains\Purchasing\Models\ReceiptNoteItem;
 use App\Domains\Purchasing\Models\ReceiptNoteReturn;
 use App\Domains\Purchasing\Models\ReceiptNoteReturnItem;
+use App\Domains\Organization\Services\FinancialYearService;
 use App\Models\User;
 use App\Support\DocumentNumberService;
 use Illuminate\Http\UploadedFile;
@@ -29,6 +31,7 @@ class ReceiptNoteService
         protected SerialBatchService $serialBatchService,
         protected DocumentNumberService $documentNumberService,
         protected PurchaseOrderService $purchaseOrderService,
+        protected FinancialYearService $financialYearService,
     ) {}
 
     /**
@@ -52,6 +55,16 @@ class ReceiptNoteService
 
             $poId = ! empty($data['purchase_order_id']) ? (int) $data['purchase_order_id'] : null;
             $receiptDate = ! empty($data['receipt_date']) ? Carbon::parse($data['receipt_date']) : now();
+
+            // Prevent dual GRN: legacy Purchase Inward + Receipt Note on the same PO.
+            if ($poId && PurchaseInward::query()
+                ->where('purchase_order_id', $poId)
+                ->whereNotIn('status', ['cancelled', 'draft'])
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'purchase_order_id' => 'This Purchase Order already has a Goods Receipt (Purchase Inward). Use that document or cancel it before creating a Receipt Note.',
+                ]);
+            }
 
             $receiptNoteNo = ! empty($data['receipt_note_no'])
                 ? strtoupper(trim((string) $data['receipt_note_no']))
@@ -173,6 +186,10 @@ class ReceiptNoteService
                     'receipt_note' => "Receipt Note cannot be confirmed in {$note->status} status.",
                 ]);
             }
+
+            $this->financialYearService->assertOpen(
+                $note->receipt_date?->toDateString() ?: now()->toDateString()
+            );
 
             $note->load(['items.product.baseUom', 'items.uom', 'warehouse']);
 
@@ -340,6 +357,12 @@ class ReceiptNoteService
                 'cancelled_at' => now(),
                 'cancelled_by' => $actor->id,
             ]);
+
+            try {
+                app(\App\Domains\Sync\Handlers\GoodsReceiptSync::class)->cancelBooksTwin($note);
+            } catch (\Throwable $e) {
+                report($e);
+            }
 
             return $note->fresh();
         });

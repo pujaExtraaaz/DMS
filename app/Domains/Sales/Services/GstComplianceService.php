@@ -416,7 +416,7 @@ class GstComplianceService
         } else {
             foreach ($items as $idx => $item) {
                 $lineNo = $idx + 1;
-                $prodName = trim((string) ($item->product?->name ?: $item->item_name ?: "Item #{$lineNo}"));
+                $prodName = trim((string) ($item->product?->name ?: $item->description ?: $item->item_name ?: "Item #{$lineNo}"));
 
                 $hsn = trim((string) ($item->hsn_code ?: $item->product?->hsn_code ?: ''));
                 if (blank($hsn)) {

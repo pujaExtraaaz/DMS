@@ -23,6 +23,7 @@ use App\Domains\Sales\Models\EWayBill;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sales\Models\InvoiceItem;
 use App\Domains\Sales\Services\GstComplianceService;
+use App\Domains\Sales\Services\InvoiceCancellationService;
 use App\Domains\Sales\Services\InvoiceNumberGenerator;
 use App\Domains\Sales\Services\MastersIndiaGspService;
 use App\Domains\Scheme\Models\Scheme;
@@ -66,6 +67,7 @@ class InvoiceController extends Controller
         protected SchemeService $schemeService,
         protected SerialBatchService $serialBatchService,
         protected AuditLogService $auditLogService,
+        protected InvoiceCancellationService $invoiceCancellationService,
     ) {}
 
     /**
@@ -100,7 +102,8 @@ class InvoiceController extends Controller
                   ->orWhereHas('employee', fn ($e) => $e->where('is_salesperson', true))
                   ->orWhereHas('salesTargets')
                   ->orWhereHas('salesInvoices')
-                  ->orWhereIn('name', ['Kapil Dhir', 'Abdul Majid', 'Sakshi']);
+                  ->orWhere('email', 'like', '%@tally-import.local')
+                  ->orWhereIn('name', ['Kapil Dhir', 'Abdul Majid', 'Sakshi', 'Vivek Gupta', 'Vivek Kondal', 'Kapil Ji', 'Mr Kapil Dhir']);
             })
             ->orderBy('name')
             ->get();
@@ -395,6 +398,9 @@ class InvoiceController extends Controller
             'uoms' => Uom::where('is_active', true)
                 ->orderBy('name')
                 ->get(),
+            'defaultNosUom' => Uom::query()->where('code', 'NOS')->first()
+                ?? Uom::query()->where('code', 'Nos')->first()
+                ?? Uom::query()->whereRaw('LOWER(name) = ?', ['nos'])->first(),
 
             'schemes' => Scheme::with(['brand', 'slabs', 'products'])
                 ->where('status', 'active')
@@ -689,15 +695,20 @@ class InvoiceController extends Controller
             'consignee_city' => 'nullable|string|max:100',
             'consignee_actual_state' => 'nullable|string|max:100',
             'items' => 'required|array|min:1',
-            'items.*.product_id' => 'required|exists:products,id',
+            'items.*.is_general' => 'nullable|boolean',
+            'items.*.description' => 'nullable|string|max:255',
+            'items.*.product_id' => 'nullable|exists:products,id',
             'items.*.uom_id' => 'required|exists:uoms,id',
             'items.*.quantity' => 'required|numeric|min:0.0001',
             'items.*.unit_price' => 'nullable|numeric|min:0',
+            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'items.*.discount_type' => 'nullable|in:percent,flat',
             'items.*.discount_value' => 'nullable|numeric|min:0',
             'items.*.batch_no' => 'nullable|string|max:60',
             'items.*.serial_numbers' => 'nullable',
         ]);
+
+        $this->assertSalesInvoiceItemRules($validated['items']);
 
         // Validate each item's selected UOM is configured/allowed for that product.
         $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
@@ -708,6 +719,10 @@ class InvoiceController extends Controller
 
         $allEnteredSerials = [];
         foreach ($validated['items'] as $itemIdx => $valItem) {
+            if (filter_var($valItem['is_general'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                continue;
+            }
+
             $pId = $valItem['product_id'] ?? null;
             $prod = $dbProducts->get($pId);
             if ($prod && ! $prod->isAllowedUom($valItem['uom_id'] ?? null)) {
@@ -814,7 +829,13 @@ class InvoiceController extends Controller
                         ->pluck('invoiced_qty', 'product_id');
 
                     foreach ($validated['items'] as $itemIdx => $valItem) {
-                        $pId = $valItem['product_id'];
+                        if (filter_var($valItem['is_general'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                            continue;
+                        }
+                        $pId = $valItem['product_id'] ?? null;
+                        if (! $pId) {
+                            continue;
+                        }
                         $orderLines = $orderItemsByProduct->get($pId);
                         if ($orderLines) {
                             $totalOrdQty = (float) $orderLines->sum('quantity');
@@ -921,14 +942,16 @@ class InvoiceController extends Controller
                 if (!empty($validated['scheme_id'])) {
                     $scheme = Scheme::with(['slabs', 'products'])->findOrFail($validated['scheme_id']);
 
-                    $evalItems = collect($pricing['lines'])->map(fn ($l) => [
-                        'product_id' => $l['product']->id,
-                        'brand_id' => $l['product']->brand_id,
-                        'quantity' => (float) $l['quantity'],
-                        'unit_price' => (float) $l['unitPrice'],
-                        'discount_amount' => (float) $l['discount'],
-                        'line_total' => (float) $l['lineTotal'],
-                    ])->all();
+                    $evalItems = collect($pricing['lines'])
+                        ->filter(fn ($l) => ! empty($l['product']))
+                        ->map(fn ($l) => [
+                            'product_id' => $l['product']->id,
+                            'brand_id' => $l['product']->brand_id,
+                            'quantity' => (float) $l['quantity'],
+                            'unit_price' => (float) $l['unitPrice'],
+                            'discount_amount' => (float) $l['discount'],
+                            'line_total' => (float) $l['lineTotal'],
+                        ])->values()->all();
 
                     $eval = $this->schemeService->evaluateScheme($scheme, $validated['invoice_date'], $evalItems);
                     if (! $eval['eligible']) {
@@ -1122,11 +1145,12 @@ class InvoiceController extends Controller
                 }
 
                 foreach ($pricing['lines'] as $idx => $line) {
-                    $product = $line['product'];
+                    $isGeneral = (bool) ($line['is_general'] ?? false);
+                    $product = $line['product'] ?? null;
                     $uom = $line['uom'];
                     $inputRow = $validated['items'][$idx] ?? [];
                     $serialsRaw = $inputRow['serial_numbers'] ?? null;
-                    if ($product->isSerialTracked()) {
+                    if (! $isGeneral && $product && $product->isSerialTracked()) {
                         if (is_array($serialsRaw)) {
                             $serials = collect($serialsRaw)->map(fn ($s) => trim((string) $s))->filter()->values()->all();
                         } else {
@@ -1138,7 +1162,9 @@ class InvoiceController extends Controller
 
                     $invoiceItem = InvoiceItem::create([
                         'invoice_id' => $invoice->id,
-                        'product_id' => $product->id,
+                        'product_id' => $isGeneral ? null : $product?->id,
+                        'is_general' => $isGeneral,
+                        'description' => $isGeneral ? ($line['description'] ?? ($inputRow['description'] ?? null)) : null,
                         'uom_id' => $uom->id,
                         'quantity' => $line['quantity'],
                         'price_type' => $line['price_type'] ?? $priceType,
@@ -1152,8 +1178,8 @@ class InvoiceController extends Controller
                         'cgst_rate' => $line['cgst_rate'] ?? 0,
                         'sgst_rate' => $line['sgst_rate'] ?? 0,
                         'igst_rate' => $line['igst_rate'] ?? 0,
-                        'hsn_code' => $product->hsn_code,
-                        'batch_no' => $inputRow['batch_no'] ?? null,
+                        'hsn_code' => $isGeneral ? null : $product?->hsn_code,
+                        'batch_no' => $isGeneral ? null : ($inputRow['batch_no'] ?? null),
                         'serial_numbers' => $serials !== [] ? $serials : null,
                         'tax_amount' => $line['tax_amount'] ?? $line['tax'],
                         'cgst_amount' => $line['cgst_amount'] ?? 0,
@@ -1162,17 +1188,19 @@ class InvoiceController extends Controller
                         'line_total' => $line['line_total'] ?? $line['lineTotal'],
                     ]);
 
-                    $this->serialBatchService->sellSerials($serials, $invoice, $product, $invoiceItem);
+                    if (! $isGeneral && $product) {
+                        $this->serialBatchService->sellSerials($serials, $invoice, $product, $invoiceItem);
 
-                    $this->stockMovementService->recordOut(
-                        product: $product,
-                        uom: $uom,
-                        quantity: (float) $line['quantity'],
-                        type: 'sale',
-                        reference: $invoice,
-                        notes: $linkedOrder ? "Sale from order {$linkedOrder->order_no} via invoice {$invoice->invoice_no}" : "Direct invoice {$invoice->invoice_no}",
-                        user: auth()->user(),
-                    );
+                        $this->stockMovementService->recordOut(
+                            product: $product,
+                            uom: $uom,
+                            quantity: (float) $line['quantity'],
+                            type: 'sale',
+                            reference: $invoice,
+                            notes: $linkedOrder ? "Sale from order {$linkedOrder->order_no} via invoice {$invoice->invoice_no}" : "Direct invoice {$invoice->invoice_no}",
+                            user: auth()->user(),
+                        );
+                    }
                 }
 
                 if ($linkedOrder) {
@@ -1293,6 +1321,9 @@ class InvoiceController extends Controller
                 ->orderBy('name')
                 ->get(),
             'uoms' => Uom::where('is_active', true)->orderBy('name')->get(),
+            'defaultNosUom' => Uom::query()->where('code', 'NOS')->first()
+                ?? Uom::query()->where('code', 'Nos')->first()
+                ?? Uom::query()->whereRaw('LOWER(name) = ?', ['nos'])->first(),
             'schemes' => Scheme::with(['brand', 'slabs', 'products'])->where('status', 'active')->orderBy('name')->get(),
             'stateOptions' => \App\Support\IndianStates::options(),
             'sellingTermsAndConditions' => $company?->selling_terms_and_conditions,
@@ -1420,10 +1451,13 @@ class InvoiceController extends Controller
             $rules['tax_type'] = 'nullable|in:intra,inter,cgst_sgst,igst';
             $rules['round_off'] = 'nullable|numeric|between:-500,500';
             $rules['items'] = 'required|array|min:1';
-            $rules['items.*.product_id'] = 'required|exists:products,id';
+            $rules['items.*.is_general'] = 'nullable|boolean';
+            $rules['items.*.description'] = 'nullable|string|max:255';
+            $rules['items.*.product_id'] = 'nullable|exists:products,id';
             $rules['items.*.uom_id'] = 'required|exists:uoms,id';
             $rules['items.*.quantity'] = 'required|numeric|min:0.0001';
             $rules['items.*.unit_price'] = 'nullable|numeric|min:0';
+            $rules['items.*.tax_rate'] = 'nullable|numeric|min:0|max:100';
             $rules['items.*.discount_type'] = 'nullable|in:percent,flat';
             $rules['items.*.discount_value'] = 'nullable|numeric|min:0';
             $rules['items.*.batch_no'] = 'nullable|string|max:60';
@@ -1433,6 +1467,8 @@ class InvoiceController extends Controller
         $validated = $request->validate($rules);
 
         if ($shouldUpdateItems) {
+            $this->assertSalesInvoiceItemRules($validated['items']);
+
             // Validate each item's selected UOM and serial numbers
             $productIds = collect($validated['items'])->pluck('product_id')->filter()->unique();
             $dbProducts = Product::with(['baseUom', 'alternateUom', 'productUoms.uom'])
@@ -1442,6 +1478,10 @@ class InvoiceController extends Controller
 
             $allEnteredSerials = [];
             foreach ($validated['items'] as $itemIdx => $valItem) {
+                if (filter_var($valItem['is_general'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    continue;
+                }
+
                 $pId = $valItem['product_id'] ?? null;
                 $prod = $dbProducts->get($pId);
                 if ($prod && ! $prod->isAllowedUom($valItem['uom_id'] ?? null)) {
@@ -1708,11 +1748,12 @@ class InvoiceController extends Controller
 
                     // 3. Insert newly calculated invoice items & issue stock/serials
                     foreach ($pricing['lines'] as $idx => $line) {
-                        $product = $line['product'];
+                        $isGeneral = (bool) ($line['is_general'] ?? false);
+                        $product = $line['product'] ?? null;
                         $uom = $line['uom'];
                         $inputRow = $validated['items'][$idx] ?? [];
                         $serialsRaw = $inputRow['serial_numbers'] ?? null;
-                        if ($product->isSerialTracked()) {
+                        if (! $isGeneral && $product && $product->isSerialTracked()) {
                             if (is_array($serialsRaw)) {
                                 $serials = collect($serialsRaw)->map(fn ($s) => trim((string) $s))->filter()->values()->all();
                             } else {
@@ -1724,7 +1765,9 @@ class InvoiceController extends Controller
 
                         $invoiceItem = InvoiceItem::create([
                             'invoice_id' => $invoice->id,
-                            'product_id' => $product->id,
+                            'product_id' => $isGeneral ? null : $product?->id,
+                            'is_general' => $isGeneral,
+                            'description' => $isGeneral ? ($line['description'] ?? ($inputRow['description'] ?? null)) : null,
                             'uom_id' => $uom->id,
                             'quantity' => $line['quantity'],
                             'price_type' => $line['price_type'] ?? $priceType,
@@ -1738,8 +1781,8 @@ class InvoiceController extends Controller
                             'cgst_rate' => $line['cgst_rate'] ?? 0,
                             'sgst_rate' => $line['sgst_rate'] ?? 0,
                             'igst_rate' => $line['igst_rate'] ?? 0,
-                            'hsn_code' => $product->hsn_code,
-                            'batch_no' => $inputRow['batch_no'] ?? null,
+                            'hsn_code' => $isGeneral ? null : $product?->hsn_code,
+                            'batch_no' => $isGeneral ? null : ($inputRow['batch_no'] ?? null),
                             'serial_numbers' => $serials !== [] ? $serials : null,
                             'tax_amount' => $line['tax_amount'] ?? $line['tax'],
                             'cgst_amount' => $line['cgst_amount'] ?? 0,
@@ -1748,17 +1791,19 @@ class InvoiceController extends Controller
                             'line_total' => $line['line_total'] ?? $line['lineTotal'],
                         ]);
 
-                        $this->serialBatchService->sellSerials($serials, $invoice, $product, $invoiceItem);
+                        if (! $isGeneral && $product) {
+                            $this->serialBatchService->sellSerials($serials, $invoice, $product, $invoiceItem);
 
-                        $this->stockMovementService->recordOut(
-                            product: $product,
-                            uom: $uom,
-                            quantity: (float) $line['quantity'],
-                            type: 'sale',
-                            reference: $invoice,
-                            notes: "Sale via revised invoice {$invoice->invoice_no}",
-                            user: auth()->user(),
-                        );
+                            $this->stockMovementService->recordOut(
+                                product: $product,
+                                uom: $uom,
+                                quantity: (float) $line['quantity'],
+                                type: 'sale',
+                                reference: $invoice,
+                                notes: "Sale via revised invoice {$invoice->invoice_no}",
+                                user: auth()->user(),
+                            );
+                        }
                     }
 
                     // 4. Update financial totals in invoice update payload
@@ -1898,6 +1943,8 @@ class InvoiceController extends Controller
             'items.product',
             'items.uom',
             'payments',
+            'creditNotes',
+            'deliveryChallans',
             'eInvoice',
             'eWayBill',
             'order',
@@ -2167,6 +2214,26 @@ class InvoiceController extends Controller
         return redirect()->route('invoices.show', $invoice)->with('success', $note);
     }
 
+    public function cancel(Request $request, Invoice $invoice): RedirectResponse
+    {
+        if (! $this->authorizeInvoiceEdit($request->user(), $invoice)) {
+            abort(403, 'Unauthorized: You do not have permission to cancel tax invoices.');
+        }
+
+        $validated = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $this->invoiceCancellationService->cancel($invoice, $request->user(), $validated['reason'] ?? null);
+            $this->auditLogService->record($invoice, 'cancelled', $request->user()->name);
+        } catch (\Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return $this->flashSuccess('Tax invoice cancelled. Stock and outstanding reversed; Books twin cancelled when linked.', 'invoices.show', ['invoice' => $invoice]);
+    }
+
     public function cancelEInvoice(Request $request, Invoice $invoice): RedirectResponse
     {
         $validated = $request->validate([
@@ -2393,5 +2460,33 @@ class InvoiceController extends Controller
         ]);
 
         return redirect()->route('invoices.show', $invoice)->with('success', 'Vehicle number updated successfully.');
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    protected function assertSalesInvoiceItemRules(array $items): void
+    {
+        foreach ($items as $index => $item) {
+            $line = $index + 1;
+            $isGeneral = filter_var($item['is_general'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $description = trim((string) ($item['description'] ?? ''));
+            $productId = $item['product_id'] ?? null;
+
+            if ($isGeneral) {
+                if ($description === '') {
+                    throw ValidationException::withMessages([
+                        "items.{$index}.description" => "Please enter a description for general entry line #{$line}.",
+                    ]);
+                }
+                continue;
+            }
+
+            if (empty($productId)) {
+                throw ValidationException::withMessages([
+                    "items.{$index}.product_id" => "Please select a product for line #{$line}.",
+                ]);
+            }
+        }
     }
 }

@@ -58,7 +58,7 @@
                         @change="onDateRangeChange($event.target.value)"
                         class="rounded-lg border-gray-300 text-sm font-medium text-slate-700 shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 min-h-[38px]">
                     @foreach($dateRangeOptions as $val => $label)
-                        <option value="{{ $val }}" @selected(($dateRange ?? 'this_month') === $val)>{{ $label }}</option>
+                        <option value="{{ $val }}" @selected(($dateRange ?? 'this_financial_year') === $val)>{{ $label }}</option>
                     @endforeach
                 </select>
             </div>
@@ -210,8 +210,8 @@
             </div>
             <div class="mt-3 min-w-0 flex-1">
                 <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl"
-                   x-text="formatCurrency(stats.month_sales)">
-                    ₹{{ number_format($stats['month_sales'] ?? 0, 0) }}
+                   x-text="formatCurrency(stats.range_sales)">
+                    ₹{{ number_format($stats['range_sales'] ?? 0, 0) }}
                 </p>
             </div>
             <div class="mt-3 min-h-[24px]">
@@ -533,7 +533,7 @@ function dashboardAnalytics(initial) {
     return {
         stats: initial.stats || {},
         cardLabels: initial.cardLabels || {},
-        dateRange: initial.dateRange || 'this_month',
+        dateRange: initial.dateRange || 'this_financial_year',
         dateFrom: initial.from || '',
         dateTo: initial.to || '',
         showingText: initial.showingText || '',

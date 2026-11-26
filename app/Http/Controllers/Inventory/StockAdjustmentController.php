@@ -9,6 +9,7 @@ use App\Domains\Master\Models\Product;
 use App\Domains\Master\Models\Uom;
 use App\Domains\Inventory\Models\StockMovement;
 use App\Domains\Organization\Models\Warehouse;
+use App\Domains\Organization\Services\FinancialYearService;
 use App\Http\Controllers\Controller;
 use App\Support\DocumentNumberService;
 use App\Support\DocumentExporter;
@@ -29,6 +30,7 @@ class StockAdjustmentController extends Controller
     public function __construct(
         protected StockMovementService $stockMovementService,
         protected DocumentNumberService $documentNumberService,
+        protected FinancialYearService $financialYearService,
     ) {}
 
     public function index(Request $request): View|Response|StreamedResponse
@@ -110,6 +112,9 @@ class StockAdjustmentController extends Controller
         $status = $request->input('action') === 'draft' ? 'draft' : 'posted';
 
         try {
+            if ($status === 'posted') {
+                $this->financialYearService->assertOpen($validated['adjustment_date']);
+            }
             $adjustment = DB::transaction(function () use ($validated, $request, $status) {
                 $adjustment = StockAdjustment::create([
                     'adjustment_no' => $this->documentNumberService->nextDocument('ADJ'),

@@ -935,6 +935,7 @@ class OrderController extends Controller
             'items.product',
             'items.uom',
             'invoice',
+            'deliveryChallans',
             'approver',
         ]);
 

@@ -4,6 +4,10 @@ namespace App\Domains\Sync\Handlers;
 
 use App\Domains\Inventory\Models\StockMovement;
 use App\Domains\Payment\Models\CreditNote;
+use App\Domains\Purchasing\Models\DebitNote;
+use App\Domains\Purchasing\Models\PurchaseInvoice;
+use App\Domains\Purchasing\Models\PurchaseInward;
+use App\Domains\Purchasing\Models\ReceiptNote;
 use App\Domains\Sales\Models\Invoice;
 use App\Domains\Sync\Support\BooksCompany;
 use App\Domains\Sync\Support\SyncFailureLogger;
@@ -16,8 +20,10 @@ use Tally\Models\Branch;
 use Tally\Models\StockTransaction;
 
 /**
- * Auto-pushes DMS stock movements into Books as posted In/Out (skips invoice/CN
- * movements — those are handled when Books invoices post).
+ * Auto-pushes DMS stock movements into Books as posted In/Out.
+ *
+ * Skips document-driven stock that Books posts itself:
+ * sales/purchase invoices, credit notes, receipt notes, and legacy inwards.
  */
 class StockMovementSync
 {
@@ -43,7 +49,14 @@ class StockMovementSync
         }
 
         $refType = (string) $movement->reference_type;
-        if (in_array($refType, [Invoice::class, CreditNote::class], true)) {
+        if (in_array($refType, [
+            Invoice::class,
+            CreditNote::class,
+            DebitNote::class,
+            PurchaseInvoice::class,
+            ReceiptNote::class,
+            PurchaseInward::class,
+        ], true)) {
             return;
         }
 

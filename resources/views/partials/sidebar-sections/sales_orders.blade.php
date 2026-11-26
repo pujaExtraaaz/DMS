@@ -78,6 +78,7 @@
             @endif
             @if($can('sales.view', 'invoices.view', 'sales.create', 'invoices.create'))
                 <a href="{{ route('invoices.index') }}" class="{{ $itemClass }} {{ $linkClass(['invoices.index', 'invoices.show', 'invoices.create']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Tax Invoices</span></a>
+                <a href="{{ route('delivery-challans.index') }}" class="{{ $itemClass }} {{ $linkClass(['delivery-challans.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Delivery Challans</span></a>
             @endif
             @if($can('sales.manage', 'quotations.manage', 'masters.manage'))
                 <a href="{{ route('region-policies.index') }}" class="{{ $itemClass }} {{ $linkClass(['region-policies.*']) }}"><span x-show="!$root.sidebarCollapsed" x-cloak>Region Policies</span></a>

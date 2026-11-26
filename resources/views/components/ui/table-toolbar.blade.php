@@ -10,17 +10,20 @@
 @php
     $searchTerm = (string) $search;
     // Check if any filter/search is active
-    $queryParams = request()->except(['page']);
+    $queryParams = request()->except(['page', 'export', 'reset_filters', '_token']);
     $isActive = $hasActiveFilters || !empty($searchTerm) || count(array_filter($queryParams, fn($v) => $v !== null && $v !== '')) > 0;
+    $resetHref = \Illuminate\Support\Str::contains($resetUrl, '?')
+        ? $resetUrl.'&reset_filters=1'
+        : rtrim($resetUrl, '?').'?reset_filters=1';
 @endphp
 
 <div {{ $attributes->merge(['class' => 'dms-table-toolbar mb-2']) }}>
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        {{-- Left: Search & Filter controls — single compact row --}}
-        <div class="flex flex-nowrap items-center gap-2 flex-1 min-w-0 overflow-x-auto">
+    <div class="flex flex-nowrap items-center gap-2 min-w-0">
+        {{-- Left: Search & Filter controls — always one horizontal row (scroll if needed) --}}
+        <div class="flex flex-nowrap items-center gap-2 flex-1 min-w-0 overflow-x-auto pb-0.5">
             {{-- Responsive Dynamic Search Bar (with Optional Server-Side Autocomplete) --}}
             <div
-                class="relative flex-1 min-w-[200px] max-w-md"
+                class="relative w-[160px] sm:w-[200px] shrink-0"
                 x-data="dmsTableToolbarSearch({
                     initialQuery: '{{ addslashes($searchTerm) }}',
                     autocompleteUrl: {{ $autocompleteUrl ? "'" . addslashes($autocompleteUrl) . "'" : 'null' }}
@@ -223,25 +226,27 @@
 
             {{-- Custom Contextual Filters Slot --}}
             @isset($filters)
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="flex flex-nowrap items-center gap-2 shrink-0">
                     {{ $filters }}
                 </div>
             @endisset
 
-            {{-- Reset All Filters / Search Button --}}
-            @if($isActive)
-                <a
-                    href="{{ $resetUrl }}"
-                    data-reset-filters
-                    class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-sm transition"
-                    title="Reset All Filters And Search"
-                >
-                    <svg class="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                    </svg>
-                    <span>Reset</span>
-                </a>
-            @endif
+            {{-- Reset All Filters / Search Button (same row) --}}
+            <a
+                href="{{ $resetHref }}"
+                data-reset-filters
+                @class([
+                    'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium shadow-sm transition shrink-0',
+                    'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900' => $isActive,
+                    'border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600' => ! $isActive,
+                ])
+                title="Reset All Filters And Search"
+            >
+                <svg class="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span>Reset Filters</span>
+            </a>
         </div>
 
         {{-- Right: Actions Slot (Add, Export, etc.) --}}
