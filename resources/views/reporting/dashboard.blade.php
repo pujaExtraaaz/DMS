@@ -131,7 +131,7 @@
             <a href="{{ route('reports.margin') }}"
                title="View Margin Report"
                class="inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 px-3 py-1 text-xs font-medium border border-emerald-200/60 hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-xs transition-all cursor-pointer">
-                Margin stub: <strong class="ml-1" x-text="formatCurrency(stats.margin_stub)">₹{{ number_format($stats['margin_stub'] ?? 0, 0) }}</strong>
+                Margin stub: <strong class="ml-1 cursor-help" x-text="formatCurrency(stats.margin_stub)" :title="formatCurrencyWhole(stats.margin_stub)" title="{{ dms_money_whole($stats['margin_stub'] ?? 0) }}">{{ dms_money_short($stats['margin_stub'] ?? 0) }}</strong>
             </a>
             <a href="{{ route('sales-targets.dashboard') }}"
                title="View Sales Target Dashboard"
@@ -157,9 +157,11 @@
                 </div>
             </div>
             <div class="mt-3 min-w-0 flex-1">
-                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl"
-                   x-text="formatCurrency(stats.range_sales)">
-                    ₹{{ number_format($stats['range_sales'] ?? 0, 0) }}
+                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl cursor-help"
+                   x-text="formatCurrency(stats.range_sales)"
+                   :title="formatCurrencyWhole(stats.range_sales)"
+                   title="{{ dms_money_whole($stats['range_sales'] ?? 0) }}">
+                    {{ dms_money_short($stats['range_sales'] ?? 0) }}
                 </p>
             </div>
             <div class="mt-3 min-h-[24px]">
@@ -183,9 +185,11 @@
                 </div>
             </div>
             <div class="mt-3 min-w-0 flex-1">
-                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl"
-                   x-text="formatCurrency(stats.purchase_amount)">
-                    ₹{{ number_format($stats['purchase_amount'] ?? 0, 0) }}
+                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl cursor-help"
+                   x-text="formatCurrency(stats.purchase_amount)"
+                   :title="formatCurrencyWhole(stats.purchase_amount)"
+                   title="{{ dms_money_whole($stats['purchase_amount'] ?? 0) }}">
+                    {{ dms_money_short($stats['purchase_amount'] ?? 0) }}
                 </p>
             </div>
             <div class="mt-3 min-h-[24px]">
@@ -209,9 +213,11 @@
                 </div>
             </div>
             <div class="mt-3 min-w-0 flex-1">
-                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl"
-                   x-text="formatCurrency(stats.range_sales)">
-                    ₹{{ number_format($stats['range_sales'] ?? 0, 0) }}
+                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl cursor-help"
+                   x-text="formatCurrency(stats.range_sales)"
+                   :title="formatCurrencyWhole(stats.range_sales)"
+                   title="{{ dms_money_whole($stats['range_sales'] ?? 0) }}">
+                    {{ dms_money_short($stats['range_sales'] ?? 0) }}
                 </p>
             </div>
             <div class="mt-3 min-h-[24px]">
@@ -262,9 +268,11 @@
                 </div>
             </div>
             <div class="mt-3 min-w-0 flex-1">
-                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl"
-                   x-text="formatCurrency(stats.today_collections)">
-                    ₹{{ number_format($stats['today_collections'] ?? 0, 0) }}
+                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl cursor-help"
+                   x-text="formatCurrency(stats.today_collections)"
+                   :title="formatCurrencyWhole(stats.today_collections)"
+                   title="{{ dms_money_whole($stats['today_collections'] ?? 0) }}">
+                    {{ dms_money_short($stats['today_collections'] ?? 0) }}
                 </p>
             </div>
             <div class="mt-3 min-h-[24px]">
@@ -288,9 +296,11 @@
                 </div>
             </div>
             <div class="mt-3 min-w-0 flex-1">
-                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl"
-                   x-text="formatCurrency(stats.outstanding)">
-                    ₹{{ number_format($stats['outstanding'] ?? 0, 0) }}
+                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl cursor-help"
+                   x-text="formatCurrency(stats.outstanding)"
+                   :title="formatCurrencyWhole(stats.outstanding)"
+                   title="{{ dms_money_whole($stats['outstanding'] ?? 0) }}">
+                    {{ dms_money_short($stats['outstanding'] ?? 0) }}
                 </p>
             </div>
             <div class="mt-3 min-h-[24px]">
@@ -313,9 +323,11 @@
                 </div>
             </div>
             <div class="mt-3 min-w-0 flex-1">
-                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl"
-                   x-text="formatCurrency(stats.payables)">
-                    ₹{{ number_format($stats['payables'] ?? 0, 0) }}
+                <p class="min-w-0 break-words text-xl font-bold leading-snug tracking-tight text-slate-900 tabular-nums sm:text-2xl cursor-help"
+                   x-text="formatCurrency(stats.payables)"
+                   :title="formatCurrencyWhole(stats.payables)"
+                   title="{{ dms_money_whole($stats['payables'] ?? 0) }}">
+                    {{ dms_money_short($stats['payables'] ?? 0) }}
                 </p>
             </div>
             <div class="mt-3 min-h-[24px]">
@@ -548,9 +560,33 @@ function dashboardAnalytics(initial) {
         isLoading: false,
         validationError: '',
 
+        formatShortUnit(abs, divisor, suffix) {
+            const scaled = Math.round((abs / divisor) * 10) / 10;
+            const label = Number.isInteger(scaled) ? String(scaled) : scaled.toFixed(1);
+            return label + ' ' + suffix + '+';
+        },
+
         formatCurrency(val) {
             const num = Number(val) || 0;
-            return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+            const abs = Math.abs(num);
+            const sign = num < 0 ? '-' : '';
+
+            if (abs >= 10000000) {
+                return sign + '₹' + this.formatShortUnit(abs, 10000000, 'Cr');
+            }
+            if (abs >= 100000) {
+                return sign + '₹' + this.formatShortUnit(abs, 100000, 'Lakh');
+            }
+            if (abs >= 1000) {
+                return sign + '₹' + this.formatShortUnit(abs, 1000, 'K');
+            }
+
+            return sign + '₹' + Math.round(abs);
+        },
+
+        formatCurrencyWhole(val) {
+            const num = Math.round(Number(val) || 0);
+            return '₹' + num.toLocaleString('en-IN');
         },
 
         onDateRangeChange(newVal) {

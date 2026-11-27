@@ -72,3 +72,66 @@ HTML;
         return $html;
     }
 }
+
+if (! function_exists('dms_money_whole')) {
+    /**
+     * Full amount rounded to the nearest rupee, Indian grouping (hover tooltip).
+     */
+    function dms_money_whole(mixed $amount, string $symbol = '₹'): string
+    {
+        $num = (float) $amount;
+        $rounded = (int) round($num);
+        $negative = $rounded < 0;
+        $whole = (string) abs($rounded);
+
+        if (strlen($whole) > 3) {
+            $last = substr($whole, -3);
+            $rest = substr($whole, 0, -3);
+            $rest = preg_replace('/\B(?=(\d{2})+(?!\d))/', ',', $rest) ?? $rest;
+            $whole = $rest.','.$last;
+        }
+
+        return ($negative ? '-' : '').$symbol.$whole;
+    }
+}
+
+if (! function_exists('dms_money_short_unit')) {
+    /**
+     * Format a scaled unit with one decimal (drop trailing .0), e.g. 5.9 Cr+.
+     */
+    function dms_money_short_unit(float $abs, float $divisor, string $suffix): string
+    {
+        $tenths = (int) round(($abs / $divisor) * 10);
+        $label = ($tenths % 10) === 0
+            ? (string) intdiv($tenths, 10)
+            : number_format($tenths / 10, 1, '.', '');
+
+        return $label.' '.$suffix.'+';
+    }
+}
+
+if (! function_exists('dms_money_short')) {
+    /**
+     * Compact Indian amount for KPI cards: nearest K+ / Lakh+ / Cr+ (1 decimal).
+     */
+    function dms_money_short(mixed $amount, string $symbol = '₹'): string
+    {
+        $num = (float) $amount;
+        $abs = abs($num);
+        $sign = $num < 0 ? '-' : '';
+
+        if ($abs >= 10000000) {
+            return $sign.$symbol.dms_money_short_unit($abs, 10000000, 'Cr');
+        }
+
+        if ($abs >= 100000) {
+            return $sign.$symbol.dms_money_short_unit($abs, 100000, 'Lakh');
+        }
+
+        if ($abs >= 1000) {
+            return $sign.$symbol.dms_money_short_unit($abs, 1000, 'K');
+        }
+
+        return $sign.$symbol.(int) round($abs);
+    }
+}

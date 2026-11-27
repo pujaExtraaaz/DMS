@@ -105,10 +105,18 @@
                 <div class="pt-1">
                     <button
                         type="button"
-                        class="{{ $itemClass }} w-full justify-between"
+                        class="{{ $itemClass }} group w-full justify-between"
                         @click="serviceOpen = !serviceOpen"
+                        title="Service & Support"
                     >
-                        <span x-show="!$root.sidebarCollapsed" x-cloak class="font-semibold tracking-wide">Service &amp; Support</span>
+                        <span x-show="!$root.sidebarCollapsed" x-cloak class="inline-flex items-center gap-2.5 min-w-0">
+                            {{-- Crossed wrenches — outline stroke, slate theme, no fill --}}
+                            <svg class="h-4 w-4 shrink-0 text-slate-400 group-hover:text-slate-200 transition" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" transform="rotate(45 12 12)" />
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" transform="rotate(-45 12 12)" />
+                            </svg>
+                            <span class="font-semibold tracking-wide truncate">Service &amp; Support</span>
+                        </span>
                         <svg class="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform" :class="serviceOpen && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                     </button>
                     <div x-show="serviceOpen" x-cloak class="mt-0.5 space-y-0.5 border-l border-slate-700/80 ml-3 pl-2">

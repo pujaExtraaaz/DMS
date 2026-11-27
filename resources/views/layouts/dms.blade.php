@@ -148,14 +148,24 @@
                             type="button"
                             @click="toggleCollapsed()"
                             class="hidden lg:inline-flex items-center justify-center rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition"
+                            :title="sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
                         >
                             <span class="sr-only">Toggle sidebar</span>
-                            <svg
-                                class="h-5 w-5 transition-transform duration-300"
-                                :class="sidebarCollapsed ? 'rotate-180' : ''"
-                                fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
-                            >
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                            {{-- Expanded: sidebar panel with menu dots --}}
+                            <svg x-show="!sidebarCollapsed" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                                <rect x="3.75" y="4.5" width="16.5" height="15" rx="3" />
+                                <rect x="5.75" y="6.5" width="4.5" height="11" rx="1.5" />
+                                <circle cx="8" cy="9.25" r="0.85" fill="currentColor" stroke="none" />
+                                <circle cx="8" cy="12" r="0.85" fill="currentColor" stroke="none" />
+                                <circle cx="8" cy="14.75" r="0.85" fill="currentColor" stroke="none" />
+                            </svg>
+                            {{-- Collapsed: content panel, dots in left rail --}}
+                            <svg x-show="sidebarCollapsed" x-cloak class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                                <rect x="3.75" y="4.5" width="16.5" height="15" rx="3" />
+                                <rect x="9.5" y="6.5" width="9" height="11" rx="1.5" />
+                                <circle cx="6.75" cy="9.25" r="0.85" fill="currentColor" stroke="none" />
+                                <circle cx="6.75" cy="12" r="0.85" fill="currentColor" stroke="none" />
+                                <circle cx="6.75" cy="14.75" r="0.85" fill="currentColor" stroke="none" />
                             </svg>
                         </button>
 

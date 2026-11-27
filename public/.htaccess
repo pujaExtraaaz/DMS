@@ -4,6 +4,8 @@
     </IfModule>
 
     RewriteEngine On
+    # Alias /dms -> .../public requires RewriteBase or relative rewrites loop (AH00124).
+    RewriteBase /dms/
 
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
