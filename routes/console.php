@@ -10,6 +10,7 @@ Artisan::command('inspire', function () {
 
 Schedule::command('dms:refresh-aging')->dailyAt('01:00');
 Schedule::command('dms:identify-overdue')->dailyAt('01:10');
+Schedule::command('service:escalate-overdue')->hourly();
 Schedule::command('dms:preview-interest')->dailyAt('01:20');
 Schedule::command('dms:credit-risk-alerts')->dailyAt('01:30');
 Schedule::command('dms:refresh-pending-orders')->dailyAt('01:40');

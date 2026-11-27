@@ -17,7 +17,8 @@ class DocumentNumberSeriesController extends Controller
 
     public function index(Request $request): View
     {
-        $query = DocumentNumberSeries::query()->with('company');
+        $query = DocumentNumberSeries::query()->with('company')
+            ->when($request->filled('document_type'), fn ($q) => $q->where('document_type', $request->string('document_type')));
 
         $this->applySearch($query, $request->input('search'), [
             'name',
@@ -55,14 +56,25 @@ class DocumentNumberSeriesController extends Controller
             'sort' => $sort,
             'direction' => $direction,
             'documentTypes' => DocumentNumberSeries::documentTypes(),
+            'filterType' => $request->string('document_type')->toString(),
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
+        $docType = $request->string('document_type')->toString();
+        if ($docType === '' || ! array_key_exists($docType, DocumentNumberSeries::documentTypes())) {
+            $docType = 'PO';
+        }
+        $defaultPrefix = match ($docType) {
+            'SRV' => 'AVITSRV',
+            'INV' => 'AVITINV',
+            default => 'AVIT'.$docType,
+        };
+
         return view('organization.document-number-series.form', [
             'item' => new DocumentNumberSeries([
-                'prefix' => 'AVITPO',
+                'prefix' => $defaultPrefix,
                 'include_financial_year' => true,
                 'financial_year_style' => 'yy_yy',
                 'separator' => '-',
@@ -72,7 +84,7 @@ class DocumentNumberSeriesController extends Controller
                 'numbering_method' => DocumentNumberSeries::METHOD_AUTOMATIC,
                 'restart_each_fy' => true,
                 'is_active' => true,
-                'document_type' => 'PO',
+                'document_type' => $docType,
                 'restart_rules' => [],
                 'prefix_rules' => [],
                 'suffix_rules' => [],

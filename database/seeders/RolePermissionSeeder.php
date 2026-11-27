@@ -70,6 +70,15 @@ class RolePermissionSeeder extends Seeder
                 'crm.edit',
                 'crm.manage',
 
+                'service-support.view',
+                'service-support.create',
+                'service-support.edit',
+                'service-support.manage',
+                'service-support.assign',
+                'service-support.close',
+                'service-support.approve-charges',
+                'service-support.oem',
+
                 'deals.view',
                 'schemes.view',
 
@@ -108,6 +117,11 @@ class RolePermissionSeeder extends Seeder
                 'crm.view',
                 'crm.create',
                 'crm.edit',
+
+                'service-support.view',
+                'service-support.create',
+                'service-support.edit',
+                'service-support.assign',
             ],
 
             'purchase' => [

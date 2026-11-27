@@ -209,62 +209,6 @@ class Company extends Model
             return 'Cannot delete the default company. Please set another company as default first.';
         }
 
-        if ($this->branches()->exists()) {
-            return 'Cannot delete company because branches are linked to it.';
-        }
-
-        if ($this->warehouses()->exists()) {
-            return 'Cannot delete company because warehouses are linked to it.';
-        }
-
-        if ($this->financialYears()->exists()) {
-            return 'Cannot delete company because financial years are linked to it.';
-        }
-
-        if ($this->users()->exists()) {
-            return 'Cannot delete company because active users are associated with it.';
-        }
-
-        if ($this->customers()->exists()) {
-            return 'Cannot delete company because customers or vendors are linked to it.';
-        }
-
-        if ($this->purchaseOrders()->exists()) {
-            return 'Cannot delete company because purchase orders exist for it.';
-        }
-
-        if ($this->hasLinkedRecordsInTable('acct_sales_orders') || $this->hasLinkedRecordsInTable('sales_orders') || $this->hasLinkedRecordsInTable('orders')) {
-            return 'Cannot delete company because sales orders exist for it.';
-        }
-
-        if ($this->hasLinkedRecordsInTable('acct_invoices') || $this->hasLinkedRecordsInTable('invoices')) {
-            return 'Cannot delete company because sales invoices exist for it.';
-        }
-
-        if ($this->hasLinkedRecordsInTable('payments')) {
-            return 'Cannot delete company because payment transactions exist for it.';
-        }
-
-        if ($this->hasLinkedRecordsInTable('leads')) {
-            return 'Cannot delete company because CRM leads are linked to it.';
-        }
-
-        if ($this->hasLinkedRecordsInTable('acct_vouchers')) {
-            return 'Cannot delete company because accounting vouchers exist for it.';
-        }
-
-        if ($this->hasLinkedRecordsInTable('acct_ledgers')) {
-            return 'Cannot delete company because accounting ledgers exist for it.';
-        }
-
-        if ($this->hasLinkedRecordsInTable('employees')) {
-            return 'Cannot delete company because employees are associated with it.';
-        }
-
-        if ($this->hasLinkedRecordsInTable('departments')) {
-            return 'Cannot delete company because departments are linked to it.';
-        }
-
         return null;
     }
 

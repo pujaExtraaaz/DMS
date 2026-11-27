@@ -300,8 +300,22 @@
                 }
             }
         }"
+        x-ref="sidebarNav"
         :class="$root.sidebarCollapsed ? 'px-2 py-3 space-y-2' : 'px-2.5 py-2.5 space-y-0.5'"
         class="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin transition-all"
+        x-init="
+            const key = 'dmsSidebarScrollTop';
+            const restore = () => {
+                const y = Number(sessionStorage.getItem(key) || 0);
+                if (y > 0) $el.scrollTop = y;
+            };
+            restore();
+            requestAnimationFrame(restore);
+            setTimeout(restore, 50);
+            $el.addEventListener('scroll', () => {
+                sessionStorage.setItem(key, String($el.scrollTop));
+            }, { passive: true });
+        "
         @mouseover="
             const target = $event.target.closest('[title]');
             if (target && $root.sidebarCollapsed && $el.contains(target)) {
@@ -313,7 +327,12 @@
                 hideTooltip();
             }
         "
-        @click.capture="if (!customizing && $event.target.closest('a')) sidebarOpen = false"
+        @click.capture="
+            if (!customizing && $event.target.closest('a')) {
+                try { sessionStorage.setItem('dmsSidebarScrollTop', String(($refs.sidebarNav || $el).scrollTop)); } catch (e) {}
+                sidebarOpen = false;
+            }
+        "
     >
         <div :class="$root.sidebarCollapsed ? 'flex justify-center py-0.5' : ''">
             <a

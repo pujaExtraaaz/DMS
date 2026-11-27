@@ -8,6 +8,7 @@ use App\Domains\Sync\Support\BooksCompany;
 use App\Domains\Sync\Support\SyncLinks;
 use App\Domains\Sync\Support\SyncNames;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Tally\Models\Company;
 use Tally\Models\Party;
@@ -45,6 +46,40 @@ class CustomerSync
         }
 
         $party = Party::query()->find(SyncLinks::acctId(self::KEY, $customer));
+
+        // GSTIN already on another Books ledger: avoid unique crashes.
+        if (filled($customer->gstin)) {
+            $ownerLedger = \Tally\Models\Ledger::query()
+                ->where('company_id', $company->id)
+                ->where('gstin', $customer->gstin)
+                ->first();
+            if ($ownerLedger) {
+                $ownerParty = Party::query()
+                    ->where('company_id', $company->id)
+                    ->where('ledger_id', $ownerLedger->id)
+                    ->first();
+                $ownerTakenByOther = $ownerParty && DB::table('sync_entity_links')
+                    ->where('entity_key', self::KEY)
+                    ->where('acct_type', Party::class)
+                    ->where('acct_id', $ownerParty->id)
+                    ->where(function ($q) use ($customer) {
+                        $q->where('dms_type', '!=', $customer::class)
+                            ->orWhere('dms_id', '!=', $customer->getKey());
+                    })
+                    ->exists();
+
+                if ($party && (int) $party->ledger_id !== (int) $ownerLedger->id) {
+                    // Keep existing Books party; do not overwrite its GSTIN.
+                    return;
+                }
+                if (! $party && $ownerParty && ! $ownerTakenByOther) {
+                    SyncLinks::store(self::KEY, $customer, $ownerParty);
+
+                    return;
+                }
+            }
+        }
+
         $type = $this->booksTypeForCustomer($customer, $party);
         $saved = $this->parties->save($company, $this->payload($company, $customer, $type, $party), $party);
         SyncLinks::store(self::KEY, $customer, $saved);
@@ -186,7 +221,14 @@ class CustomerSync
         return [
             'type' => $type,
             'name' => $name,
-            'code' => $customer->code ? SyncNames::code($customer->code) : null,
+            'code' => $customer->code
+                ? SyncNames::uniqueCode(
+                    \Tally\Models\Ledger::query()->where('company_id', $company->id),
+                    $customer->code,
+                    $party?->ledger_id,
+                    32
+                )
+                : null,
             'mailing_name' => trim((string) ($customer->trade_name ?: $customer->name)) ?: null,
             'billing_address' => $address !== '' ? $address : null,
             'state' => $state,
