@@ -1477,31 +1477,8 @@ class OrderController extends Controller
             );
     }
 
-    public function getSalespersons()
+    public function getSalespersons(): \Illuminate\Database\Eloquent\Collection
     {
-        // Ensure roles exist
-        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'salesperson', 'guard_name' => 'web']);
-        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'sales-manager', 'guard_name' => 'web']);
-
-        // Ensure default salespersons exist if missing
-        foreach (['Kapil Dhir' => 'kapil.dhir@dms.test', 'Abdul Majid' => 'abdul.majid@dms.test'] as $name => $email) {
-            $user = User::query()->firstOrCreate(
-                ['email' => $email],
-                [
-                    'name' => $name,
-                    'password' => bcrypt('password'),
-                    'company_id' => 1,
-                    'branch_id' => 1,
-                ]
-            );
-            if (! $user->hasRole('salesperson')) {
-                $user->assignRole('salesperson');
-            }
-        }
-
-        return User::role(['salesperson', 'sales-manager'])
-            ->orWhereIn('name', ['Kapil Dhir', 'Abdul Majid'])
-            ->orderBy('name')
-            ->get();
+        return \App\Http\Controllers\Sales\InvoiceController::getSalespersons();
     }
 }
