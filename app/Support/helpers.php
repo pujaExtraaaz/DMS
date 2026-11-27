@@ -95,24 +95,10 @@ if (! function_exists('dms_money_whole')) {
     }
 }
 
-if (! function_exists('dms_money_short_unit')) {
-    /**
-     * Format a scaled unit with one decimal (drop trailing .0), e.g. 5.9 Cr+.
-     */
-    function dms_money_short_unit(float $abs, float $divisor, string $suffix): string
-    {
-        $tenths = (int) round(($abs / $divisor) * 10);
-        $label = ($tenths % 10) === 0
-            ? (string) intdiv($tenths, 10)
-            : number_format($tenths / 10, 1, '.', '');
-
-        return $label.' '.$suffix.'+';
-    }
-}
-
 if (! function_exists('dms_money_short')) {
     /**
-     * Compact Indian amount for KPI cards: nearest K+ / Lakh+ / Cr+ (1 decimal).
+     * Compact Indian amount for KPI cards: floored whole K+ / Lakh+ / Cr+.
+     * e.g. 6.1 Cr and 6.9 Cr both display as "₹6 Cr+".
      */
     function dms_money_short(mixed $amount, string $symbol = '₹'): string
     {
@@ -121,15 +107,15 @@ if (! function_exists('dms_money_short')) {
         $sign = $num < 0 ? '-' : '';
 
         if ($abs >= 10000000) {
-            return $sign.$symbol.dms_money_short_unit($abs, 10000000, 'Cr');
+            return $sign.$symbol.((int) floor($abs / 10000000)).' Cr+';
         }
 
         if ($abs >= 100000) {
-            return $sign.$symbol.dms_money_short_unit($abs, 100000, 'Lakh');
+            return $sign.$symbol.((int) floor($abs / 100000)).' Lakh+';
         }
 
         if ($abs >= 1000) {
-            return $sign.$symbol.dms_money_short_unit($abs, 1000, 'K');
+            return $sign.$symbol.((int) floor($abs / 1000)).' K+';
         }
 
         return $sign.$symbol.(int) round($abs);

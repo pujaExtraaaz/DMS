@@ -560,25 +560,20 @@ function dashboardAnalytics(initial) {
         isLoading: false,
         validationError: '',
 
-        formatShortUnit(abs, divisor, suffix) {
-            const scaled = Math.round((abs / divisor) * 10) / 10;
-            const label = Number.isInteger(scaled) ? String(scaled) : scaled.toFixed(1);
-            return label + ' ' + suffix + '+';
-        },
-
         formatCurrency(val) {
             const num = Number(val) || 0;
             const abs = Math.abs(num);
             const sign = num < 0 ? '-' : '';
 
+            // Floor to whole unit — 6.1 Cr and 6.9 Cr both show as "₹6 Cr+"
             if (abs >= 10000000) {
-                return sign + '₹' + this.formatShortUnit(abs, 10000000, 'Cr');
+                return sign + '₹' + Math.floor(abs / 10000000) + ' Cr+';
             }
             if (abs >= 100000) {
-                return sign + '₹' + this.formatShortUnit(abs, 100000, 'Lakh');
+                return sign + '₹' + Math.floor(abs / 100000) + ' Lakh+';
             }
             if (abs >= 1000) {
-                return sign + '₹' + this.formatShortUnit(abs, 1000, 'K');
+                return sign + '₹' + Math.floor(abs / 1000) + ' K+';
             }
 
             return sign + '₹' + Math.round(abs);
