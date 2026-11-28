@@ -1,9 +1,30 @@
 const Chart = window.Chart;
 
+function formatAxisInr(value) {
+    const n = Number(value) || 0;
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+
+    if (abs >= 10000000) {
+        const cr = abs / 10000000;
+        return `${sign}₹${cr >= 10 ? cr.toFixed(0) : cr.toFixed(1)} Cr`;
+    }
+    if (abs >= 100000) {
+        const lakh = abs / 100000;
+        return `${sign}₹${lakh >= 10 ? lakh.toFixed(0) : lakh.toFixed(1)} L`;
+    }
+    if (abs >= 1000) {
+        return `${sign}₹${Math.round(abs / 1000)} K`;
+    }
+
+    return `${sign}₹${Math.round(abs)}`;
+}
+
 const chartDefaults = {
     responsive: true,
     maintainAspectRatio: false,
     animation: { duration: 600, easing: 'easeOutQuart' },
+    layout: { padding: { top: 16, right: 8, bottom: 4, left: 8 } },
     plugins: {
         legend: { display: false },
         tooltip: {
@@ -30,6 +51,13 @@ function initSalesChart(canvas, data) {
     }
 
     const safeData = Array.isArray(data) ? data : [];
+    const salesValues = safeData.map(d => Number(d.sales) || 0);
+    const purchaseValues = safeData.map(d => Number(d.purchases) || 0);
+    const orderValues = safeData.map(d => Number(d.orders) || 0);
+    const moneyMax = Math.max(0, ...salesValues, ...purchaseValues);
+    const orderMax = Math.max(0, ...orderValues);
+    const moneySuggestedMax = moneyMax > 0 ? moneyMax * 1.35 : undefined;
+    const orderSuggestedMax = orderMax > 0 ? Math.max(orderMax * 1.5, orderMax + 2) : undefined;
 
     salesChartInstance = new Chart(canvas, {
         type: 'line',
@@ -38,41 +66,44 @@ function initSalesChart(canvas, data) {
             datasets: [
                 {
                     label: 'Sales (₹)',
-                    data: safeData.map(d => d.sales),
+                    data: salesValues,
                     borderColor: '#4f46e5',
                     backgroundColor: 'rgba(79, 70, 229, 0.10)',
                     borderWidth: 3,
                     fill: true,
-                    tension: 0.38,
-                    pointRadius: 4,
-                    pointHoverRadius: 6,
+                    tension: 0.15,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
                     pointBackgroundColor: '#4f46e5',
                     pointBorderColor: '#fff',
                     pointBorderWidth: 2,
+                    clip: false,
                 },
                 {
                     label: 'Purchases (₹)',
-                    data: safeData.map(d => d.purchases || 0),
+                    data: purchaseValues,
                     borderColor: '#f59e0b',
                     backgroundColor: 'rgba(245, 158, 11, 0.08)',
                     borderWidth: 2.5,
                     fill: false,
-                    tension: 0.38,
+                    tension: 0.15,
                     pointRadius: 3,
                     pointHoverRadius: 5,
                     pointBackgroundColor: '#f59e0b',
                     pointBorderColor: '#fff',
                     pointBorderWidth: 2,
+                    clip: false,
                 },
                 {
                     label: 'Orders',
-                    data: safeData.map(d => d.orders),
+                    data: orderValues,
                     borderColor: '#14b8a6',
                     backgroundColor: 'transparent',
                     borderWidth: 2,
-                    tension: 0.38,
+                    tension: 0.15,
                     pointRadius: 3,
                     yAxisID: 'y1',
+                    clip: false,
                 },
             ],
         },
@@ -84,50 +115,74 @@ function initSalesChart(canvas, data) {
                 tooltip: {
                     ...chartDefaults.plugins.tooltip,
                     callbacks: {
-                        label: function(context) {
+                        label(context) {
                             let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
+                            if (label) label += ': ';
                             if (context.dataset.yAxisID === 'y1' || context.dataset.label === 'Orders') {
-                                label += context.parsed.y + ' orders';
+                                label += `${context.parsed.y} orders`;
                             } else {
-                                label += '₹' + Number(context.parsed.y).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                label += `₹${Number(context.parsed.y).toLocaleString('en-IN', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                })}`;
                             }
                             return label;
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             },
             scales: {
                 x: {
                     grid: { display: false },
-                    ticks: { font: { family: 'Inter', size: 11 }, color: '#94a3b8' },
+                    ticks: { font: { family: 'Inter', size: 11 }, color: '#94a3b8', maxRotation: 0 },
                     border: { display: false },
                 },
                 y: {
                     position: 'left',
+                    beginAtZero: true,
+                    suggestedMax: moneySuggestedMax,
                     grid: { color: '#f1f5f9' },
                     ticks: {
                         font: { family: 'Inter', size: 11 },
                         color: '#94a3b8',
-                        callback: v => '₹' + Number(v).toLocaleString('en-IN'),
+                        maxTicksLimit: 6,
+                        padding: 6,
+                        callback: (v) => formatAxisInr(v),
                     },
                     border: { display: false },
                 },
                 y1: {
                     position: 'right',
+                    beginAtZero: true,
+                    suggestedMax: orderSuggestedMax,
                     grid: { display: false },
                     ticks: {
                         font: { family: 'Inter', size: 11 },
                         color: '#94a3b8',
-                        stepSize: 1,
+                        precision: 0,
+                        maxTicksLimit: 6,
+                        padding: 6,
                     },
                     border: { display: false },
                 },
             },
         },
     });
+}
+
+function normalizeStatusData(data) {
+    const safeData = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+    const labels = [];
+    const values = [];
+
+    Object.entries(safeData).forEach(([key, value]) => {
+        const n = Number(value) || 0;
+        if (n <= 0) return;
+        labels.push(key.charAt(0).toUpperCase() + key.slice(1));
+        values.push(n);
+    });
+
+    return { labels, values };
 }
 
 function initOrderStatusChart(canvas, data) {
@@ -137,9 +192,7 @@ function initOrderStatusChart(canvas, data) {
         orderStatusChartInstance = null;
     }
 
-    const safeData = data && typeof data === 'object' ? data : {};
-    const labels = Object.keys(safeData).map(s => s.charAt(0).toUpperCase() + s.slice(1));
-    const values = Object.values(safeData);
+    const { labels, values } = normalizeStatusData(data);
     const colors = ['#4f46e5', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#64748b'];
 
     orderStatusChartInstance = new Chart(canvas, {
@@ -149,13 +202,14 @@ function initOrderStatusChart(canvas, data) {
             datasets: [{
                 data: values.length ? values : [1],
                 backgroundColor: values.length ? colors.slice(0, values.length) : ['#e2e8f0'],
-                borderWidth: 0,
-                hoverOffset: 8,
+                borderWidth: 2,
+                borderColor: '#ffffff',
+                hoverOffset: 6,
             }],
         },
         options: {
             ...chartDefaults,
-            cutout: '68%',
+            cutout: '62%',
             plugins: {
                 ...chartDefaults.plugins,
                 legend: {
@@ -164,9 +218,21 @@ function initOrderStatusChart(canvas, data) {
                     labels: {
                         font: { family: 'Inter', size: 11 },
                         color: '#64748b',
-                        padding: 18,
+                        padding: 14,
                         usePointStyle: true,
                         pointStyle: 'circle',
+                        boxWidth: 8,
+                    },
+                },
+                tooltip: {
+                    ...chartDefaults.plugins.tooltip,
+                    callbacks: {
+                        label(context) {
+                            const total = context.dataset.data.reduce((a, b) => a + Number(b), 0) || 1;
+                            const value = Number(context.parsed) || 0;
+                            const pct = Math.round((value / total) * 100);
+                            return `${context.label}: ${value} (${pct}%)`;
+                        },
                     },
                 },
             },
@@ -181,9 +247,12 @@ function initPaymentChart(canvas, data) {
         paymentChartInstance = null;
     }
 
-    const safeData = data && typeof data === 'object' ? data : {};
-    const labels = Object.keys(safeData).map(m => m.toUpperCase());
-    const values = Object.values(safeData);
+    const safeData = data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+    const entries = Object.entries(safeData)
+        .map(([method, total]) => [method, Number(total) || 0])
+        .filter(([, total]) => total > 0);
+    const labels = entries.map(([method]) => String(method).replace(/_/g, ' ').toUpperCase());
+    const values = entries.map(([, total]) => total);
 
     paymentChartInstance = new Chart(canvas, {
         type: 'bar',
@@ -194,11 +263,14 @@ function initPaymentChart(canvas, data) {
                 backgroundColor: ['#4f46e5', '#10b981', '#f59e0b', '#64748b', '#8b5cf6'],
                 borderRadius: 10,
                 borderSkipped: false,
-                maxBarThickness: 46,
+                maxBarThickness: 48,
+                categoryPercentage: 0.6,
+                barPercentage: 0.8,
             }],
         },
         options: {
             ...chartDefaults,
+            layout: { padding: { top: 12, right: 8, bottom: 4, left: 12 } },
             scales: {
                 x: {
                     grid: { display: false },
@@ -206,58 +278,42 @@ function initPaymentChart(canvas, data) {
                     border: { display: false },
                 },
                 y: {
+                    beginAtZero: true,
+                    suggestedMax: values.length ? Math.max(...values) * 1.2 : undefined,
                     grid: { color: '#f1f5f9' },
                     ticks: {
                         font: { family: 'Inter', size: 11 },
                         color: '#94a3b8',
-                        callback: v => '₹' + Number(v).toLocaleString('en-IN'),
+                        maxTicksLimit: 5,
+                        autoSkip: true,
+                        padding: 6,
+                        callback: (v) => formatAxisInr(v),
                     },
                     border: { display: false },
+                },
+            },
+            plugins: {
+                ...chartDefaults.plugins,
+                tooltip: {
+                    ...chartDefaults.plugins.tooltip,
+                    callbacks: {
+                        label(context) {
+                            return `₹${Number(context.parsed.y).toLocaleString('en-IN', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                            })}`;
+                        },
+                    },
                 },
             },
         },
     });
 }
 
-window.updateDashboardCharts = function(salesTrend, orderStatus, paymentMethods) {
-    const salesCanvas = document.getElementById('salesTrendChart');
-    if (salesChartInstance && Array.isArray(salesTrend)) {
-        salesChartInstance.data.labels = salesTrend.map(d => d.label);
-        salesChartInstance.data.datasets[0].data = salesTrend.map(d => d.sales);
-        if (salesChartInstance.data.datasets[1]) {
-            salesChartInstance.data.datasets[1].data = salesTrend.map(d => d.purchases || 0);
-        }
-        if (salesChartInstance.data.datasets[2]) {
-            salesChartInstance.data.datasets[2].data = salesTrend.map(d => d.orders);
-        }
-        salesChartInstance.update();
-    } else if (salesCanvas) {
-        initSalesChart(salesCanvas, salesTrend);
-    }
-
-    const orderCanvas = document.getElementById('orderStatusChart');
-    if (orderStatusChartInstance && orderStatus && typeof orderStatus === 'object') {
-        const labels = Object.keys(orderStatus).map(s => s.charAt(0).toUpperCase() + s.slice(1));
-        const values = Object.values(orderStatus);
-        const colors = ['#4f46e5', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#64748b'];
-        orderStatusChartInstance.data.labels = labels.length ? labels : ['No Orders'];
-        orderStatusChartInstance.data.datasets[0].data = values.length ? values : [1];
-        orderStatusChartInstance.data.datasets[0].backgroundColor = values.length ? colors.slice(0, values.length) : ['#e2e8f0'];
-        orderStatusChartInstance.update();
-    } else if (orderCanvas) {
-        initOrderStatusChart(orderCanvas, orderStatus);
-    }
-
-    const paymentCanvas = document.getElementById('paymentMethodsChart');
-    if (paymentChartInstance && paymentMethods && typeof paymentMethods === 'object') {
-        const labels = Object.keys(paymentMethods).map(m => m.toUpperCase());
-        const values = Object.values(paymentMethods);
-        paymentChartInstance.data.labels = labels.length ? labels : ['NO DATA'];
-        paymentChartInstance.data.datasets[0].data = values.length ? values : [0];
-        paymentChartInstance.update();
-    } else if (paymentCanvas) {
-        initPaymentChart(paymentCanvas, paymentMethods);
-    }
+window.updateDashboardCharts = function (salesTrend, orderStatus, paymentMethods) {
+    initSalesChart(document.getElementById('salesTrendChart'), salesTrend);
+    initOrderStatusChart(document.getElementById('orderStatusChart'), orderStatus);
+    initPaymentChart(document.getElementById('paymentMethodsChart'), paymentMethods);
 };
 
 window.addEventListener('dashboard:charts-update', (event) => {

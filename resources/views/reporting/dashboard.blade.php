@@ -365,8 +365,6 @@
 
     </div>
 
-    </div>
-
     {{-- Charts row --}}
     <div class="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div class="dashboard-panel xl:col-span-2 rounded-[24px] p-6 bg-white border border-slate-200/80 shadow-sm">
@@ -381,7 +379,7 @@
                     <span class="inline-flex items-center gap-1.5 text-teal-700"><span class="h-2 w-2 rounded-full bg-teal-500"></span> Orders</span>
                 </div>
             </div>
-            <div class="h-72">
+            <div class="relative h-72 w-full overflow-visible">
                 <canvas id="salesTrendChart"></canvas>
             </div>
         </div>
@@ -391,7 +389,7 @@
                 <h3 class="text-lg font-semibold text-slate-900">Order Pipeline</h3>
                 <p class="mt-1 text-sm text-slate-500">Status breakdown for period</p>
             </div>
-            <div class="h-64 flex items-center justify-center">
+            <div class="relative mx-auto h-64 w-full max-w-sm">
                 <canvas id="orderStatusChart"></canvas>
             </div>
         </div>
@@ -404,7 +402,7 @@
                 <h3 class="text-lg font-semibold text-slate-900">Payment Methods</h3>
                 <p class="mt-1 text-sm text-slate-500">Collections by method for period</p>
             </div>
-            <div class="h-56">
+            <div class="relative h-64 w-full">
                 <canvas id="paymentMethodsChart"></canvas>
             </div>
         </div>
@@ -414,7 +412,7 @@
                 <h3 class="text-lg font-semibold text-slate-900">Top Customers</h3>
                 <p class="mt-1 text-sm text-slate-500">By revenue in selected period</p>
             </div>
-            <div class="space-y-4">
+            <div class="space-y-4 min-h-[14rem]">
                 <template x-for="row in topCustomers" :key="row.customer_id">
                     <div>
                         <div class="flex items-center justify-between text-sm mb-1.5">
@@ -425,12 +423,13 @@
                             <span class="font-semibold text-slate-900 shrink-0" x-text="row.total_formatted"></span>
                         </div>
                         <div class="h-2 rounded-full bg-slate-100 overflow-hidden">
-                            <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500" :style="`width: ${row.percentage}%`"></div>
+                            <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-500" :style="'width: ' + (row.percentage || 0) + '%'"></div>
                         </div>
                     </div>
                 </template>
-                <div x-show="topCustomers.length === 0">
-                    <x-ui.empty-state title="No sales data yet" description="Invoice customers to see rankings here." />
+                <div x-show="!topCustomers || topCustomers.length === 0" style="display: none;" class="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+                    <h3 class="text-sm font-semibold text-slate-800">No sales data yet</h3>
+                    <p class="mt-1 text-xs text-slate-500">Invoice customers to see rankings here.</p>
                 </div>
             </div>
         </div>
@@ -666,6 +665,6 @@ function dashboardAnalytics(initial) {
         @vite('resources/js/dashboard.js')
     @else
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
-        <script src="{{ asset('js/dashboard-fallback.js') }}?v=20261116"></script>
+        <script src="{{ asset('js/dashboard-fallback.js') }}?v=20261128"></script>
     @endif
 @endpush
