@@ -19,7 +19,7 @@
 
                 <select name="method" class="rounded-lg border-gray-300 text-sm focus:ring-indigo-500 focus:border-indigo-500" data-dynamic-filter>
                     <option value="">All Methods</option>
-                    @foreach(['cash', 'cheque', 'bank_transfer', 'upi', 'card', 'credit_note'] as $m)
+                    @foreach(['cash', 'cheque', 'bank', 'upi', 'other'] as $m)
                         <option value="{{ $m }}" @selected(request('method') === $m)>{{ strtoupper(str_replace('_', ' ', $m)) }}</option>
                     @endforeach
                 </select>
@@ -36,24 +36,42 @@
                         <x-ui.sortable-th column="method" label="Method" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="amount" label="Amount" align="right" :currentSort="$sort" :currentDirection="$direction" />
                         <x-ui.sortable-th column="paid_at" label="Date" :currentSort="$sort" :currentDirection="$direction" />
+                        <th class="px-6 py-3 text-right text-xs font-semibold tracking-wider text-slate-500">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     @forelse($payments as $payment)
                         <tr class="hover:bg-slate-50">
-                            <td class="px-6 py-4 font-mono font-medium text-slate-900">{{ $payment->payment_no }}</td>
+                            <td class="px-6 py-4 font-mono font-medium">
+                                <a href="{{ route('payments.show', $payment) }}" class="text-indigo-600 hover:text-indigo-800 hover:underline">
+                                    {{ $payment->payment_no }}
+                                </a>
+                            </td>
                             <td class="px-6 py-4 text-slate-800">{{ $payment->customer->name }}</td>
                             <td class="px-6 py-4 text-slate-600">{{ $payment->invoice?->invoice_no ?? '—' }}</td>
                             <td class="px-6 py-4">
                                 <x-ui.badge>{{ strtoupper(str_replace('_', ' ', $payment->method)) }}</x-ui.badge>
-@if($payment->bankLedger)<div class="mt-1 text-xs text-slate-500">{{ $payment->bankLedger->name }}</div>@endif
+                                @if($payment->bankLedger)
+                                    <div class="mt-1 text-xs text-slate-500">{{ $payment->bankLedger->name }}</div>
+                                @elseif($payment->method === 'upi' && $payment->reference_no)
+                                    <div class="mt-1 text-xs text-slate-500">{{ $payment->reference_no }}</div>
+                                @endif
                             </td>
                             <td class="px-6 py-4 text-right font-semibold text-slate-900">₹{{ number_format($payment->amount, 2) }}</td>
                             <td class="px-6 py-4 text-slate-600 text-sm">{{ $payment->paid_at?->format('d M Y') ?? '—' }}</td>
+                            <td class="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                                <x-ui.button variant="secondary" size="sm" :href="route('payments.show', $payment)">View</x-ui.button>
+                                <x-ui.button variant="secondary" size="sm" :href="route('payments.edit', $payment)">Edit</x-ui.button>
+                                <form method="POST" action="{{ route('payments.destroy', $payment) }}" class="inline" onsubmit="return confirm('Delete payment {{ $payment->payment_no }}? This will reverse the invoice paid amount.');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <x-ui.button type="submit" variant="danger" size="sm">Delete</x-ui.button>
+                                </form>
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-6 py-8 text-center text-slate-500">
+                            <td colspan="7" class="px-6 py-8 text-center text-slate-500">
                                 <x-ui.empty-state title="No payments found" />
                             </td>
                         </tr>

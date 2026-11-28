@@ -14,6 +14,9 @@ Route::middleware('role_or_permission:super-admin|payments.view|payments.create|
         Route::get('/create', [PaymentController::class, 'create'])->name('create');
         Route::post('/', [PaymentController::class, 'store'])->name('store');
         Route::get('/outstanding', [OutstandingController::class, 'index'])->name('outstanding');
+        Route::get('/{payment}/edit', [PaymentController::class, 'edit'])->name('edit');
+        Route::put('/{payment}', [PaymentController::class, 'update'])->name('update');
+        Route::delete('/{payment}', [PaymentController::class, 'destroy'])->name('destroy');
         Route::get('/{payment}', [PaymentController::class, 'show'])->name('show');
     });
 

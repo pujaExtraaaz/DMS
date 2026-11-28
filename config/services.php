@@ -76,18 +76,32 @@ return [
     ],
 
     // Masters India GSP — powers real IRN + E-way generation.
-    // Sandbox: https://sandb-api.mastersindia.co, Production: https://commonapi.mastersindia.co
+    // Sandbox: https://sandb-api.mastersindia.co, Production: https://prod-api.mastersindia.co
+    // Auth (auto): api_key → token_auth JWT → oauth password grant (legacy).
+    // API style (auto): v1 (/api/v1/…) when api_key/token_auth; else legacy /ei + /ewb.
     'mastersindia' => [
-        'base_url' => env('MASTERSINDIA_BASE_URL', 'https://sandb-api.mastersindia.co'),
+        'base_url' => env('MASTERSINDIA_BASE_URL', env('MASTERSINDIA_SANDBOX_URL', 'https://sandb-api.mastersindia.co')),
+        'sandbox_url' => env('MASTERSINDIA_SANDBOX_URL', 'https://sandb-api.mastersindia.co'),
+        'prod_url' => env('MASTERSINDIA_API_URL', 'https://prod-api.mastersindia.co'),
+        'sandbox_mode' => filter_var(env('MASTERSINDIA_SANDBOX_MODE', true), FILTER_VALIDATE_BOOLEAN),
         'client_id' => env('MASTERSINDIA_CLIENT_ID'),
         'client_secret' => env('MASTERSINDIA_CLIENT_SECRET'),
         'username' => env('MASTERSINDIA_USERNAME'),
         'password' => env('MASTERSINDIA_PASSWORD'),
         'gstin' => env('MASTERSINDIA_GSTIN'),
-        'timeout' => (int) env('MASTERSINDIA_TIMEOUT', 30),
+        // Preferred GSP auth for BharatBill-compatible /api/v1 endpoints
+        'api_key' => env('MASTERSINDIA_API_KEY'),
+        'token_auth_username' => env('MASTERSINDIA_TOKEN_AUTH_USERNAME'),
+        'token_auth_password' => env('MASTERSINDIA_TOKEN_AUTH_PASSWORD'),
+        // auto | api_key | token_auth | oauth
+        'auth_mode' => env('MASTERSINDIA_AUTH_MODE', 'auto'),
+        // auto | v1 | legacy
+        'api_style' => env('MASTERSINDIA_API_STYLE', 'auto'),
+        'timeout' => (int) env('MASTERSINDIA_TIMEOUT', 45),
         // When true and credentials are missing, service falls back to deterministic dummy IRN/EWB
         // so the flow keeps working in developer environments.
         'fallback_to_stub' => filter_var(env('MASTERSINDIA_FALLBACK_TO_STUB', false), FILTER_VALIDATE_BOOLEAN),
+        'log_http' => filter_var(env('EWAYBILL_LOG_MASTERS_INDIA_HTTP', false), FILTER_VALIDATE_BOOLEAN),
     ],
 
     // GSTIN verification & taxpayer lookup service (sandbox, cleartax, mastersindia, or custom)

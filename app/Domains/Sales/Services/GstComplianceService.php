@@ -329,7 +329,7 @@ class GstComplianceService
         }
 
         $distance = (int) ($overrides['distance_km'] ?? $invoice->distance_km ?? 0);
-        if ($distance <= 0) {
+        if ($distance <= 0 && ! config('ewaybill.auto_distance', true)) {
             $missing[] = 'Distance (in KM)';
         }
 
@@ -472,7 +472,13 @@ class GstComplianceService
         };
 
         $distance = (int) ($overrides['distance_km'] ?? $invoice->distance_km ?? 0);
-        if ($distance <= 0 || $distance > 9999) {
+        $autoDistance = (bool) config('ewaybill.auto_distance', true);
+        if ($autoDistance) {
+            // 0 = portal pin-pair auto distance (Masters India / NIC)
+            if ($distance < 0 || $distance > 9999) {
+                $errors['distance_km'] = 'Transport Distance (in KM) must be between 0 (auto) and 9999 KM.';
+            }
+        } elseif ($distance <= 0 || $distance > 9999) {
             $errors['distance_km'] = 'Transport Distance (in KM) is required and must be between 1 and 9999 KM.';
         }
 
