@@ -32,18 +32,89 @@ class MastersIndiaGspService
         ?GstComplianceService $complianceService = null,
         ?AuditLogService $auditLogService = null
     ) {
-        $this->baseUrl = rtrim((string) config('services.mastersindia.base_url', 'https://sandb-api.mastersindia.co'), '/');
         $this->complianceService = $complianceService ?? app(GstComplianceService::class);
         $this->auditLogService = $auditLogService ?? app(AuditLogService::class);
+        $this->baseUrl = $this->resolvedBaseUrl();
     }
 
     public function isConfigured(): bool
     {
-        return filled(config('services.mastersindia.client_id'))
+        return match ($this->resolveAuthMode()) {
+            'api_key' => filled(config('services.mastersindia.api_key')),
+            'token_auth' => filled(config('services.mastersindia.token_auth_username'))
+                && filled(config('services.mastersindia.token_auth_password')),
+            'oauth' => filled(config('services.mastersindia.client_id'))
+                && filled(config('services.mastersindia.client_secret'))
+                && filled(config('services.mastersindia.username'))
+                && filled(config('services.mastersindia.password'))
+                && filled(config('services.mastersindia.gstin')),
+            default => false,
+        };
+    }
+
+    /**
+     * auto → api_key → token_auth → oauth
+     */
+    public function resolveAuthMode(): string
+    {
+        $mode = strtolower((string) config('services.mastersindia.auth_mode', 'auto'));
+
+        if ($mode !== 'auto') {
+            return $mode;
+        }
+
+        if (filled(config('services.mastersindia.api_key'))) {
+            return 'api_key';
+        }
+
+        if (filled(config('services.mastersindia.token_auth_username'))
+            && filled(config('services.mastersindia.token_auth_password'))) {
+            return 'token_auth';
+        }
+
+        if (filled(config('services.mastersindia.client_id'))
             && filled(config('services.mastersindia.client_secret'))
             && filled(config('services.mastersindia.username'))
-            && filled(config('services.mastersindia.password'))
-            && filled(config('services.mastersindia.gstin'));
+            && filled(config('services.mastersindia.password'))) {
+            return 'oauth';
+        }
+
+        return 'none';
+    }
+
+    /**
+     * auto → v1 when api_key/token_auth; else legacy /ei + /ewb OAuth API.
+     */
+    public function usesApiV1(): bool
+    {
+        $style = strtolower((string) config('services.mastersindia.api_style', 'auto'));
+
+        if ($style === 'v1') {
+            return true;
+        }
+
+        if ($style === 'legacy') {
+            return false;
+        }
+
+        return in_array($this->resolveAuthMode(), ['api_key', 'token_auth'], true);
+    }
+
+    public function resolvedBaseUrl(): string
+    {
+        if ((bool) config('services.mastersindia.sandbox_mode', true)) {
+            return rtrim((string) (
+                config('services.mastersindia.base_url')
+                ?: config('services.mastersindia.sandbox_url')
+                ?: 'https://sandb-api.mastersindia.co'
+            ), '/');
+        }
+
+        return rtrim((string) (
+            config('services.mastersindia.prod_url')
+            ?: config('services.mastersindia.base_url')
+            ?: 'https://prod-api.mastersindia.co'
+        ), '/');
     }
 
     /**
@@ -86,13 +157,16 @@ class MastersIndiaGspService
         }
 
         try {
-            $payload = $this->buildIrnPayload($invoice);
-            $response = $this->client()->post('/ei/api/invoice', $payload);
+            $payload = $this->usesApiV1() ? $this->buildIrnPayloadV1($invoice) : $this->buildIrnPayload($invoice);
+            $endpoint = $this->usesApiV1() ? '/api/v1/einvoice/' : '/ei/api/invoice';
+            $response = $this->client()->post($endpoint, $payload);
 
             if (! $response->ok()) {
                 $errBody = $response->json();
-                $errMsg = $errBody['message'] ?? $errBody['Message'] ?? $errBody['error'] ?? $response->body();
-                Log::warning('MastersIndia IRN call failed', ['status' => $response->status(), 'body' => $errMsg]);
+                $errMsg = is_array($errBody)
+                    ? $this->extractMastersIndiaMessage($errBody, $errBody['results'] ?? $errBody['Results'] ?? null, 'IRN')
+                    : (string) $response->body();
+                Log::warning('MastersIndia IRN call failed', ['status' => $response->status(), 'body' => $errMsg, 'endpoint' => $endpoint]);
 
                 if ((bool) config('services.mastersindia.fallback_to_stub')) {
                     $stub = $this->stubIrn($invoice, 'Upstream response ' . $response->status() . ': ' . $errMsg);
@@ -101,21 +175,50 @@ class MastersIndiaGspService
                 }
 
                 $this->auditLogService->record($invoice, 'einvoice_failed', null, ['error' => $errMsg]);
-                throw new RuntimeException('Masters India IRN generation failed: ' . $errMsg);
+                throw new RuntimeException($errMsg);
             }
 
             $body = $response->json();
-            $data = $body['Data'] ?? $body['data'] ?? $body;
+            $this->assertMastersIndiaSuccess($body, 'IRN');
+
+            $results = is_array($body['results'] ?? null) ? $body['results'] : (is_array($body['Results'] ?? null) ? $body['Results'] : null);
+            $data = $body['Data'] ?? $body['data'] ?? $results ?? $body['message'] ?? $body;
+            if (is_string($data)) {
+                $data = ['Irn' => $data];
+            }
+
+            // Masters India v1 nests IRN under results.message (array).
+            $message = null;
+            foreach ([
+                $body['message'] ?? null,
+                $body['Message'] ?? null,
+                is_array($results) ? ($results['message'] ?? $results['Message'] ?? null) : null,
+                is_array($data) ? ($data['message'] ?? $data['Message'] ?? null) : null,
+            ] as $candidate) {
+                if (is_array($candidate) && (isset($candidate['Irn']) || isset($candidate['irn']))) {
+                    $message = $candidate;
+                    break;
+                }
+            }
+            if (! is_array($message)) {
+                $message = is_array($data) ? $data : [];
+            }
 
             $result = [
-                'irn' => (string) ($data['Irn'] ?? $data['irn'] ?? ''),
-                'ack_no' => (string) ($data['AckNo'] ?? $data['ack_no'] ?? ''),
-                'ack_date' => $data['AckDt'] ?? $data['ack_date'] ?? null,
-                'signed_invoice' => $data['SignedInvoice'] ?? $data['signed_invoice'] ?? null,
-                'signed_qr_base64' => $data['SignedQRCode'] ?? $data['signed_qr_base64'] ?? null,
+                'irn' => (string) ($message['Irn'] ?? $message['irn'] ?? $data['Irn'] ?? $data['irn'] ?? ''),
+                'ack_no' => (string) ($message['AckNo'] ?? $message['ack_no'] ?? $data['AckNo'] ?? $data['ack_no'] ?? ''),
+                'ack_date' => $message['AckDt'] ?? $message['ack_date'] ?? $data['AckDt'] ?? $data['ack_date'] ?? null,
+                'signed_invoice' => $message['SignedInvoice'] ?? $message['signed_invoice'] ?? $data['SignedInvoice'] ?? $data['signed_invoice'] ?? null,
+                'signed_qr_base64' => $message['SignedQRCode'] ?? $message['signed_qr_base64'] ?? $data['SignedQRCode'] ?? $data['signed_qr_base64'] ?? null,
+                'eway_bill_no' => $message['EwbNo'] ?? $message['ewbNo'] ?? $data['EwbNo'] ?? $data['ewbNo'] ?? null,
                 'status' => 'generated',
+                'provider' => 'masters_india',
                 'raw' => $body,
             ];
+
+            if ($result['irn'] === '') {
+                throw new RuntimeException('Portal accepted the request but did not return an IRN.');
+            }
 
             $this->auditLogService->record($invoice, 'einvoice_generated', null, [
                 'irn' => $result['irn'],
@@ -174,13 +277,25 @@ class MastersIndiaGspService
         }
 
         try {
-            $payload = [
-                'Irn' => $eInvoice->irn,
-                'CnlRsn' => $cancelReason,
-                'CnlRem' => substr($remarks, 0, 100),
-            ];
+            if ($this->usesApiV1()) {
+                $payload = [
+                    'user_gstin' => (string) config('services.mastersindia.gstin'),
+                    'irn' => $eInvoice->irn,
+                    'cancel_reason' => (string) $cancelReason,
+                    'cancel_remarks' => substr($remarks, 0, 100),
+                    'ewaybill_cancel' => '',
+                ];
+                $endpoint = '/api/v1/cancel-einvoice/';
+            } else {
+                $payload = [
+                    'Irn' => $eInvoice->irn,
+                    'CnlRsn' => $cancelReason,
+                    'CnlRem' => substr($remarks, 0, 100),
+                ];
+                $endpoint = '/ei/api/invoice/cancel';
+            }
 
-            $response = $this->client()->post('/ei/api/invoice/cancel', $payload);
+            $response = $this->client()->post($endpoint, $payload);
 
             if (! $response->ok()) {
                 $err = $response->json('message') ?? $response->body();
@@ -272,12 +387,13 @@ class MastersIndiaGspService
         $hasActiveIrn = $eInvoice && filled($eInvoice->irn) && $eInvoice->status !== 'cancelled';
 
         try {
-            if ($hasActiveIrn) {
-                // Generate E-Way Bill by IRN
+            if ($this->usesApiV1()) {
+                $payload = array_merge($this->buildEwbPayloadV1($invoice), $this->mapExtraToV1($extra));
+                $endpoint = '/api/v1/ewayBillsGenerate/';
+            } elseif ($hasActiveIrn) {
                 $payload = array_merge($this->buildEwbByIrnPayload($invoice), $extra);
                 $endpoint = '/ei/api/ewayapi';
             } else {
-                // Direct E-Way Bill generation (for non-IRN invoices)
                 $payload = array_merge($this->buildDirectEwbPayload($invoice), $extra);
                 $endpoint = '/ewb/api/ewaybill';
             }
@@ -310,39 +426,43 @@ class MastersIndiaGspService
             }
 
             $body = $response->json();
+            $this->assertMastersIndiaSuccess($body, 'E-Way Bill');
 
-            // Handle HTTP 200 with portal-level rejection
-            if (is_array($body)) {
-                $isRejected = false;
-                $rejectMsg = '';
-
-                if (isset($body['status_cd']) && (string) $body['status_cd'] === '0') {
-                    $isRejected = true;
-                    $rejectMsg = $body['status_desc'] ?? $body['error']['message'] ?? $body['message'] ?? 'Government portal rejected E-Way Bill generation.';
-                } elseif (isset($body['status']) && in_array(strtolower((string) $body['status']), ['error', 'failed', 'false'], true)) {
-                    $isRejected = true;
-                    $rejectMsg = $body['message'] ?? $body['error'] ?? 'Government portal reported generation failure.';
-                }
-
-                if ($isRejected) {
-                    $errMsg = 'Government Portal Rejection: ' . $rejectMsg;
-                    $this->auditLogService->record($invoice, 'eway_bill_failed', null, ['error' => $errMsg]);
-                    throw new RuntimeException($errMsg);
+            $results = is_array($body['results'] ?? null) ? $body['results'] : (is_array($body['Results'] ?? null) ? $body['Results'] : null);
+            $message = null;
+            foreach ([
+                $body['message'] ?? null,
+                $body['Message'] ?? null,
+                is_array($results) ? ($results['message'] ?? $results['Message'] ?? null) : null,
+            ] as $candidate) {
+                if (is_array($candidate) && (
+                    isset($candidate['ewayBillNo']) || isset($candidate['EwbNo']) || isset($candidate['ewbNo']) || isset($candidate['eway_bill_no'])
+                )) {
+                    $message = $candidate;
+                    break;
                 }
             }
 
-            $data = is_array($body) ? ($body['Data'] ?? $body['data'] ?? $body) : [];
-            $ewbNo = (string) ($data['EwbNo'] ?? $data['ewbNo'] ?? $data['eway_bill_no'] ?? $data['EwayBillNo'] ?? $data['ewayBillNo'] ?? $body['EwbNo'] ?? $body['eway_bill_no'] ?? '');
+            $data = $message
+                ?? $body['Data']
+                ?? $body['data']
+                ?? (is_array($results) ? $results : null)
+                ?? (is_array($body) ? $body : []);
 
-            if (empty($ewbNo)) {
-                $rawMsg = is_array($body) ? json_encode($body) : (string) $body;
-                $errMsg = 'Government Portal Rejection: E-Way Bill Number was not returned in the API response: ' . $rawMsg;
+            $ewbNo = (string) ($data['ewayBillNo'] ?? $data['EwbNo'] ?? $data['ewbNo'] ?? $data['eway_bill_no'] ?? $data['EwayBillNo'] ?? $body['EwbNo'] ?? $body['eway_bill_no'] ?? '');
+
+            if ($ewbNo === '') {
+                $errMsg = $this->extractMastersIndiaMessage(
+                    is_array($body) ? $body : [],
+                    is_array($results) ? $results : null,
+                    'E-Way Bill'
+                );
                 $this->auditLogService->record($invoice, 'eway_bill_failed', null, ['error' => $errMsg]);
-                throw new RuntimeException($errMsg);
+                throw new RuntimeException($errMsg !== '' ? $errMsg : 'Portal did not return an E-Way Bill number.');
             }
 
-            $ewbDate = $data['EwbDt'] ?? $data['ewbDt'] ?? $data['ewb_date'] ?? $data['eway_bill_date'] ?? Carbon::now()->toIso8601String();
-            $validUpto = $data['EwbValidTill'] ?? $data['ewbValidTill'] ?? $data['valid_upto'] ?? $data['valid_until'] ?? null;
+            $ewbDate = $data['ewayBillDate'] ?? $data['EwbDt'] ?? $data['ewbDt'] ?? $data['ewb_date'] ?? $data['eway_bill_date'] ?? Carbon::now()->toIso8601String();
+            $validUpto = $data['validUpto'] ?? $data['EwbValidTill'] ?? $data['ewbValidTill'] ?? $data['valid_upto'] ?? $data['valid_until'] ?? null;
 
             $result = [
                 'eway_bill_no' => $ewbNo,
@@ -405,13 +525,25 @@ class MastersIndiaGspService
         }
 
         try {
-            $payload = [
-                'ewbNo' => $eWayBill->eway_bill_no,
-                'cancelRsnCode' => (int) $cancelReason,
-                'cancelRmrk' => substr($remarks, 0, 100),
-            ];
+            if ($this->usesApiV1()) {
+                $payload = [
+                    'userGstin' => (string) config('services.mastersindia.gstin'),
+                    'eway_bill_number' => $eWayBill->eway_bill_no,
+                    'cancel_reason' => (string) $cancelReason,
+                    'cancel_remarks' => substr($remarks, 0, 100),
+                    'data_source' => 'erp',
+                ];
+                $endpoint = '/api/v1/ewayBillCancel/';
+            } else {
+                $payload = [
+                    'ewbNo' => $eWayBill->eway_bill_no,
+                    'cancelRsnCode' => (int) $cancelReason,
+                    'cancelRmrk' => substr($remarks, 0, 100),
+                ];
+                $endpoint = '/ewb/api/ewaybill/cancel';
+            }
 
-            $response = $this->client()->post('/ewb/api/ewaybill/cancel', $payload);
+            $response = $this->client()->post($endpoint, $payload);
 
             if (! $response->ok()) {
                 $err = $response->json('message') ?? $response->body();
@@ -460,29 +592,79 @@ class MastersIndiaGspService
 
     protected function client(): PendingRequest
     {
-        $token = $this->accessToken();
+        $this->baseUrl = $this->resolvedBaseUrl();
+        $headers = [
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ];
+
+        $mode = $this->resolveAuthMode();
+
+        if ($mode === 'api_key') {
+            $headers['api_key'] = (string) config('services.mastersindia.api_key');
+        } elseif ($mode === 'token_auth') {
+            $headers['Authorization'] = 'JWT '.$this->jwtAccessToken();
+        } else {
+            $token = $this->oauthAccessToken();
+            $headers['Authorization'] = 'Bearer '.$token;
+            $headers['client_id'] = (string) config('services.mastersindia.client_id');
+            $headers['client_secret'] = (string) config('services.mastersindia.client_secret');
+            $headers['gstin'] = (string) config('services.mastersindia.gstin');
+        }
+
+        if (filled(config('services.mastersindia.gstin'))) {
+            $headers['gstin'] = $headers['gstin'] ?? (string) config('services.mastersindia.gstin');
+        }
 
         return Http::baseUrl($this->baseUrl)
-            ->timeout((int) config('services.mastersindia.timeout', 30))
-            ->withHeaders([
-                'Accept' => 'application/json',
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $token,
-                'client_id' => (string) config('services.mastersindia.client_id'),
-                'client_secret' => (string) config('services.mastersindia.client_secret'),
-                'gstin' => (string) config('services.mastersindia.gstin'),
-            ]);
+            ->timeout((int) config('services.mastersindia.timeout', 45))
+            ->withHeaders($headers);
     }
 
-    protected function accessToken(): string
+    protected function jwtAccessToken(): string
     {
-        $clientId = (string) config('services.mastersindia.client_id');
-        $key = 'mastersindia:token:' . md5($clientId);
+        $user = (string) config('services.mastersindia.token_auth_username');
+        $key = 'mastersindia:jwt:'.md5($user);
 
         return Cache::remember($key, now()->addMinutes(50), function () {
             try {
-                $resp = Http::baseUrl($this->baseUrl)
-                    ->timeout((int) config('services.mastersindia.timeout', 30))
+                $resp = Http::baseUrl($this->resolvedBaseUrl())
+                    ->timeout((int) config('services.mastersindia.timeout', 45))
+                    ->asJson()
+                    ->post('/api/v1/token-auth/', [
+                        'username' => config('services.mastersindia.token_auth_username'),
+                        'password' => config('services.mastersindia.token_auth_password'),
+                    ]);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                throw new RuntimeException('API Connectivity Error: Unable to connect to Masters India token-auth: '.$e->getMessage());
+            }
+
+            if (! $resp->ok()) {
+                $body = $resp->json();
+                $err = is_array($body)
+                    ? ($body['error_description'] ?? $body['message'] ?? $body['error'] ?? $resp->body())
+                    : $resp->body();
+                throw new RuntimeException('Authentication Error: '.$err);
+            }
+
+            $token = (string) ($resp->json('token') ?? $resp->json('access_token') ?? $resp->json('data.token') ?? $resp->json('data.access_token') ?? '');
+            if ($token === '') {
+                throw new RuntimeException('Authentication Error: JWT token was not returned in response.');
+            }
+
+            return $token;
+        });
+    }
+
+    protected function oauthAccessToken(): string
+    {
+        $clientId = (string) config('services.mastersindia.client_id');
+        $key = 'mastersindia:token:'.md5($clientId);
+
+        return Cache::remember($key, now()->addMinutes(50), function () {
+            try {
+                $resp = Http::baseUrl($this->resolvedBaseUrl())
+                    ->timeout((int) config('services.mastersindia.timeout', 45))
                     ->asJson()
                     ->post('/oauth/token', [
                         'username' => config('services.mastersindia.username'),
@@ -492,7 +674,7 @@ class MastersIndiaGspService
                         'grant_type' => 'password',
                     ]);
             } catch (\Illuminate\Http\Client\ConnectionException $e) {
-                throw new RuntimeException('API Connectivity Error: Unable to connect to Masters India authentication service: ' . $e->getMessage());
+                throw new RuntimeException('API Connectivity Error: Unable to connect to Masters India authentication service: '.$e->getMessage());
             }
 
             if (! $resp->ok()) {
@@ -500,16 +682,86 @@ class MastersIndiaGspService
                 $err = is_array($body)
                     ? ($body['error_description'] ?? $body['message'] ?? $body['error'] ?? $resp->body())
                     : $resp->body();
-                throw new RuntimeException('Authentication Error: ' . $err);
+                throw new RuntimeException('Authentication Error: '.$err);
             }
 
             $token = (string) ($resp->json('access_token') ?? $resp->json('data.access_token') ?? '');
-            if (empty($token)) {
+            if ($token === '') {
                 throw new RuntimeException('Authentication Error: Access token was not returned in response.');
             }
 
             return $token;
         });
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $body
+     */
+    protected function assertMastersIndiaSuccess(?array $body, string $context): void
+    {
+        if (! is_array($body)) {
+            return;
+        }
+
+        // Masters India returns Results/Message (PascalCase) or results/message (snake)
+        $results = $body['results'] ?? $body['Results'] ?? null;
+        if (is_array($results)) {
+            $status = strtolower((string) ($results['status'] ?? $results['Status'] ?? ''));
+            $code = (int) ($results['code'] ?? $results['Code'] ?? 0);
+            $ok = $status === 'success' || $code === 200;
+
+            if (! $ok && ($status !== '' || $code > 0)) {
+                $msg = $this->extractMastersIndiaMessage($body, $results, $context);
+                throw new RuntimeException($msg);
+            }
+        }
+
+        if (isset($body['status_cd']) && (string) $body['status_cd'] === '0') {
+            $msg = $body['status_desc'] ?? $body['StatusDesc'] ?? $this->extractMastersIndiaMessage($body, null, $context);
+            throw new RuntimeException($this->humanizePortalError((string) $msg, $context));
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @param  array<string, mixed>|null  $results
+     */
+    protected function extractMastersIndiaMessage(array $body, ?array $results, string $context): string
+    {
+        $candidates = [
+            $results['Errormessage'] ?? null,
+            $results['errorMessage'] ?? null,
+            $results['error_message'] ?? null,
+            $results['Message'] ?? null,
+            $results['message'] ?? null,
+            is_string($body['Errormessage'] ?? null) ? $body['Errormessage'] : null,
+            is_string($body['message'] ?? null) ? $body['message'] : null,
+            is_string($body['Message'] ?? null) ? $body['Message'] : null,
+            is_array($body['message'] ?? null) ? ($body['message']['Errormessage'] ?? $body['message']['errorMessage'] ?? json_encode($body['message'])) : null,
+            is_array($body['Message'] ?? null) ? ($body['Message']['Errormessage'] ?? $body['Message']['errorMessage'] ?? json_encode($body['Message'])) : null,
+            $body['error'] ?? null,
+            $body['Error'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_array($candidate)) {
+                $candidate = $candidate['Errormessage']
+                    ?? $candidate['errorMessage']
+                    ?? $candidate['message']
+                    ?? $candidate['Message']
+                    ?? json_encode($candidate);
+            }
+            $text = trim((string) $candidate);
+            if ($text !== '' && strtolower($text) !== 'null' && strtolower($text) !== 'success') {
+                return $this->humanizePortalError($text, $context);
+            }
+        }
+
+        if (is_array($results) && $results !== []) {
+            return $this->humanizePortalError(json_encode($results) ?: '', $context);
+        }
+
+        return 'Portal rejected '.$context.'.';
     }
 
     /**
@@ -519,24 +771,137 @@ class MastersIndiaGspService
     {
         $body = $response->json();
         if (is_array($body)) {
+            $results = $body['results'] ?? $body['Results'] ?? null;
+            if (is_array($results)) {
+                return $this->extractMastersIndiaMessage($body, $results, 'request');
+            }
             if (! empty($body['errors']) && is_array($body['errors'])) {
                 $flattened = collect($body['errors'])->flatten()->join(' ');
-                return "{$defaultPrefix}: {$flattened}";
+                return $this->humanizePortalError($flattened, 'request');
             }
             if (! empty($body['error'])) {
                 $err = is_array($body['error']) ? ($body['error']['message'] ?? json_encode($body['error'])) : (string) $body['error'];
-                return "{$defaultPrefix}: {$err}";
+                return $this->humanizePortalError((string) $err, 'request');
             }
             if (! empty($body['message'])) {
-                return "{$defaultPrefix}: " . $body['message'];
+                $msg = is_array($body['message'])
+                    ? ($body['message']['Errormessage'] ?? $body['message']['errorMessage'] ?? json_encode($body['message']))
+                    : (string) $body['message'];
+                return $this->humanizePortalError((string) $msg, 'request');
             }
             if (! empty($body['status_desc'])) {
-                return "{$defaultPrefix}: " . $body['status_desc'];
+                return $this->humanizePortalError((string) $body['status_desc'], 'request');
             }
         }
 
         $raw = trim($response->body());
-        return "{$defaultPrefix}: " . ($raw ?: 'HTTP ' . $response->status());
+        return $this->humanizePortalError($raw !== '' ? $raw : ('HTTP '.$response->status()), 'request');
+    }
+
+    /**
+     * Turn NIC / Masters India rejection text into short plain-English bullets.
+     */
+    protected function humanizePortalError(string $raw, string $context = 'request'): string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return 'Portal rejected '.$context.'.';
+        }
+
+        // If whole payload was JSON-encoded, unwrap Errormessage / message.
+        if (str_starts_with($raw, '{') || str_starts_with($raw, '[')) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $nested = $decoded['Errormessage']
+                    ?? $decoded['errorMessage']
+                    ?? $decoded['error_message']
+                    ?? $decoded['Message']
+                    ?? $decoded['message']
+                    ?? null;
+                if (is_string($nested) && trim($nested) !== '') {
+                    $raw = $nested;
+                } elseif (is_array($nested)) {
+                    $raw = (string) ($nested['Errormessage'] ?? $nested['errorMessage'] ?? json_encode($nested));
+                }
+            }
+        }
+
+        $parts = preg_split('/\s*\|\|\s*/', $raw) ?: [$raw];
+        $bullets = [];
+
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if ($part === '') {
+                continue;
+            }
+
+            // Strip leading NIC code like "3028: "
+            $text = preg_replace('/^\d{3,5}\s*:\s*/', '', $part) ?? $part;
+            $text = trim($text);
+            $lower = strtolower($text);
+
+            if (str_contains($lower, 'gstin') && str_contains($lower, 'invalid')) {
+                if (preg_match('/GSTIN\s*-?\s*([0-9A-Z]{15})/i', $text, $m)) {
+                    $bullets[] = 'GSTIN '.$m[1].' is invalid for sandbox.';
+                } else {
+                    $bullets[] = 'One of the GSTINs is invalid for sandbox.';
+                }
+                continue;
+            }
+
+            if (str_contains($lower, 'pincode') && (str_contains($lower, 'does not belong') || str_contains($lower, 'not belong'))) {
+                if (preg_match('/Pincode\s*-?\s*(\d+).*State\s*-?\s*(\d+)/i', $text, $m)) {
+                    $bullets[] = 'Pincode '.$m[1].' does not match state '.$m[2].'.';
+                } else {
+                    $bullets[] = 'Pincode does not match the GSTIN state.';
+                }
+                continue;
+            }
+
+            if (str_contains($lower, 'e-commerce') || str_contains($lower, 'ecommerce')) {
+                $bullets[] = 'E-commerce GSTIN is missing or not required — check invoice type.';
+                continue;
+            }
+
+            if (str_contains($lower, 'supplier gstin') && (str_contains($lower, 'regular') || str_contains($lower, 'casual') || str_contains($lower, 'sed'))) {
+                $bullets[] = 'Seller GSTIN must be a regular taxable person (use sandbox seller GSTIN).';
+                continue;
+            }
+
+            if (str_contains($lower, 'distance') && str_contains($lower, 'too high')) {
+                $bullets[] = 'Transport distance is too high for these pincodes — leave distance blank for auto.';
+                continue;
+            }
+
+            if (str_contains($lower, 'duplicate') || str_contains($lower, 'already generated')) {
+                $bullets[] = 'Document already exists on the portal.';
+                continue;
+            }
+
+            if (str_contains($lower, 'document_number') || str_contains($lower, 'document number')) {
+                if (str_contains($lower, '16') || str_contains($lower, 'at most')) {
+                    $bullets[] = 'Invoice number is too long (max 16 characters).';
+                    continue;
+                }
+            }
+
+            // Fallback: shorten noisy text
+            $short = preg_replace('/\s+/', ' ', $text) ?? $text;
+            if (strlen($short) > 120) {
+                $short = substr($short, 0, 117).'...';
+            }
+            $bullets[] = rtrim($short, '.').'.';
+        }
+
+        $bullets = array_values(array_unique($bullets));
+        if ($bullets === []) {
+            return 'Portal rejected '.$context.'.';
+        }
+
+        // Keep flash messages short: max 3 bullets
+        $bullets = array_slice($bullets, 0, 3);
+
+        return implode(' ', $bullets);
     }
 
     /**
@@ -553,7 +918,27 @@ class MastersIndiaGspService
         $sellerGstin = (string) ($company?->gstin ?? config('services.mastersindia.gstin'));
         $buyerGstin = (string) ($invoice->billingAddress?->gstin ?: ($customer?->gstin ?: 'URP'));
 
-        $sellerStateCode = $this->complianceService->resolveStateCode($company?->state, $sellerGstin);
+        $sellerState = (string) ($company?->state ?: '');
+        $sellerPin = (int) ($company?->pincode ?: 400001);
+        $sellerCity = (string) ($company?->city ?: ($company?->state ?: 'City'));
+        $sellerAddr = (string) ($company?->address ?: 'Head Office Address');
+
+        // Sandbox IRP only accepts Masters India test GSTINs + matching state/pincode.
+        if ((bool) config('services.mastersindia.sandbox_mode', true)) {
+            $sandboxSeller = strtoupper(trim((string) config('services.mastersindia.gstin', '')));
+            if ($sandboxSeller !== '' && strtoupper($sellerGstin) !== $sandboxSeller) {
+                $sellerGstin = $sandboxSeller;
+            }
+            $sellerStateCodeHint = substr($sellerGstin, 0, 2);
+            if ($sellerStateCodeHint === '05') {
+                $sellerState = 'Uttarakhand';
+                $sellerPin = 248001;
+                $sellerCity = 'Dehradun';
+                $sellerAddr = 'Sandbox Seller Address';
+            }
+        }
+
+        $sellerStateCode = $this->complianceService->resolveStateCode($sellerState, $sellerGstin);
         $buyerStateCode = $this->complianceService->resolveStateCode(
             $invoice->place_of_supply_state ?: ($invoice->delivery_state ?: ($customer?->state ?: '')),
             $buyerGstin
@@ -590,7 +975,7 @@ class MastersIndiaGspService
             ];
         })->values()->all();
 
-        return [
+        $payload = [
             'Version' => '1.1',
             'TranDtls' => [
                 'TaxSch' => 'GST',
@@ -605,9 +990,9 @@ class MastersIndiaGspService
             'SellerDtls' => [
                 'Gstin' => $sellerGstin,
                 'LglNm' => substr((string) ($company?->legal_name ?: ($company?->name ?: 'Seller')), 0, 100),
-                'Addr1' => substr((string) ($company?->address ?: 'Head Office Address'), 0, 100),
-                'Loc' => substr((string) ($company?->city ?: ($company?->state ?: 'City')), 0, 50),
-                'Pin' => (int) ($company?->pincode ?: 400001),
+                'Addr1' => substr($sellerAddr, 0, 100),
+                'Loc' => substr($sellerCity, 0, 50),
+                'Pin' => $sellerPin,
                 'Stcd' => $sellerStateCode,
             ],
             'BuyerDtls' => [
@@ -632,7 +1017,12 @@ class MastersIndiaGspService
         ];
 
         if (filled($invoice->shipping_address) || filled($invoice->ship_to_place)) {
-            $shipGstin = (string) ($invoice->shippingAddress?->gstin ?: ($invoice->consignee_gstin ?: $buyerGstin));
+            // Prefer ship-to / buyer GSTIN for IRN ShipDtls. Consignor/consignee E-Way GSTINs
+            // can be different sandbox entities and must not poison e-invoice ship state/pin.
+            $shipGstin = (string) ($invoice->shippingAddress?->gstin ?: $buyerGstin);
+            if ($shipGstin === '' || strtoupper($shipGstin) === 'URP') {
+                $shipGstin = $buyerGstin;
+            }
             $shipStateCode = $this->complianceService->resolveStateCode(
                 $invoice->delivery_state ?: ($invoice->shippingAddress?->state ?: ($customer?->state ?: '')),
                 $shipGstin
@@ -645,6 +1035,118 @@ class MastersIndiaGspService
                 'Loc' => substr((string) ($invoice->ship_to_place ?: ($invoice->destination ?: ($customer?->city ?: ($customer?->state ?: 'City')))), 0, 50),
                 'Pin' => (int) ($invoice->shippingAddress?->pincode ?: ($customer?->pincode ?: 400001)),
                 'Stcd' => $shipStateCode,
+            ];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Masters India /api/v1/einvoice/ snake_case payload (BharatBill-compatible).
+     *
+     * @return array<string, mixed>
+     */
+    protected function buildIrnPayloadV1(Invoice $invoice): array
+    {
+        $legacy = $this->buildIrnPayload($invoice);
+        $seller = $legacy['SellerDtls'];
+        $buyer = $legacy['BuyerDtls'];
+        $val = $legacy['ValDtls'];
+        $doc = $legacy['DocDtls'];
+        $tran = $legacy['TranDtls'];
+
+        $items = collect($legacy['ItemList'])->map(function (array $item) {
+            return [
+                'item_serial_number' => (string) $item['SlNo'],
+                'product_description' => $item['PrdDesc'],
+                'is_service' => $item['IsServc'],
+                'hsn_code' => (string) $item['HsnCd'],
+                'quantity' => $item['Qty'],
+                'unit' => $item['Unit'],
+                'unit_price' => $item['UnitPrice'],
+                'total_amount' => $item['TotAmt'],
+                'discount' => $item['Discount'],
+                'assessable_value' => $item['AssAmt'],
+                'gst_rate' => $item['GstRt'],
+                'igst_amount' => $item['IgstAmt'],
+                'cgst_amount' => $item['CgstAmt'],
+                'sgst_amount' => $item['SgstAmt'],
+                'total_item_value' => $item['TotItemVal'],
+            ];
+        })->values()->all();
+
+        // E-invoice portal user/pass — fall back to token-auth when same credentials are used.
+        $einvUser = trim((string) (
+            config('services.mastersindia.username')
+            ?: config('services.mastersindia.token_auth_username')
+            ?: ''
+        ));
+        $einvPass = (string) (
+            config('services.mastersindia.password')
+            ?: config('services.mastersindia.token_auth_password')
+            ?: ''
+        );
+
+        $payload = [
+            'user_gstin' => $seller['Gstin'],
+            'data_source' => 'erp',
+            'username' => $einvUser,
+            'password' => $einvPass,
+            'transaction_details' => [
+                'supply_type' => $tran['SupTyp'],
+                'charge_type' => 'N',
+                'igst_on_intra' => 'N',
+            ],
+            'document_details' => [
+                'document_type' => $doc['Typ'],
+                'document_number' => $doc['No'],
+                'document_date' => $doc['Dt'],
+            ],
+            'seller_details' => [
+                'gstin' => $seller['Gstin'],
+                'legal_name' => $seller['LglNm'],
+                'address1' => $seller['Addr1'],
+                'location' => $seller['Loc'],
+                'pincode' => $seller['Pin'],
+                'state_code' => $seller['Stcd'],
+            ],
+            'buyer_details' => [
+                'gstin' => $buyer['Gstin'],
+                'legal_name' => $buyer['LglNm'],
+                'place_of_supply' => $buyer['Pos'],
+                'address1' => $buyer['Addr1'],
+                'location' => $buyer['Loc'],
+                'pincode' => $buyer['Pin'],
+                'state_code' => $buyer['Stcd'],
+            ],
+            'value_details' => [
+                'total_assessable_value' => $val['AssVal'],
+                'total_igst_value' => $val['IgstVal'],
+                'total_cgst_value' => $val['CgstVal'],
+                'total_sgst_value' => $val['SgstVal'],
+                'total_invoice_value' => $val['TotInvVal'],
+            ],
+            'item_list' => $items,
+        ];
+
+        // dispatch = FROM (seller), ship = TO (consignee). Never map ship-to into dispatch.
+        $payload['dispatch_details'] = [
+            'company_name' => $seller['LglNm'],
+            'address1' => $seller['Addr1'],
+            'location' => $seller['Loc'],
+            'pincode' => $seller['Pin'],
+            'state_code' => $seller['Stcd'],
+        ];
+
+        if (isset($legacy['ShipDtls'])) {
+            $ship = $legacy['ShipDtls'];
+            $payload['ship_details'] = [
+                'gstin' => $ship['Gstin'],
+                'legal_name' => $ship['LglNm'],
+                'address1' => $ship['Addr1'],
+                'location' => $ship['Loc'],
+                'pincode' => $ship['Pin'],
+                'state_code' => $ship['Stcd'],
             ];
         }
 
@@ -673,7 +1175,7 @@ class MastersIndiaGspService
 
         return [
             'Irn' => $eInv?->irn,
-            'Distance' => (int) ($invoice->distance_km ?: 50),
+            'Distance' => $this->resolveDistanceKm($invoice),
             'TransMode' => $portalTransMode,
             'TransId' => $invoice->transporter_id ?: null,
             'TransName' => $invoice->transporter_name ?: null,
@@ -780,7 +1282,7 @@ class MastersIndiaGspService
             'cessValue' => 0.0,
             'totInvValue' => (float) $invoice->grand_total,
             'transMode' => $portalTransMode,
-            'transDistance' => (int) ($invoice->distance_km ?: 50),
+            'transDistance' => $this->resolveDistanceKm($invoice),
             'transporterId' => $invoice->transporter_id ?: null,
             'transporterName' => $invoice->transporter_name ?: null,
             'transDocNo' => $docNo,
@@ -788,6 +1290,269 @@ class MastersIndiaGspService
             'vehicleNo' => $cleanVehNo,
             'vehicleType' => $invoice->vehicle_type ?: 'R',
             'itemList' => $itemList,
+        ];
+    }
+
+    /**
+     * Masters India /api/v1/ewayBillsGenerate/ payload (guide §10.2).
+     *
+     * @return array<string, mixed>
+     */
+    protected function buildEwbPayloadV1(Invoice $invoice): array
+    {
+        $company = $invoice->selling_company
+            ?? Company::query()->find($invoice->company_id)
+            ?? Company::resolveCurrent()
+            ?? Company::first();
+
+        $customer = $invoice->customer;
+        $sellerGstin = strtoupper(trim((string) (
+            $invoice->consignor_gstin
+            ?: ($company?->gstin ?: config('services.mastersindia.gstin'))
+        )));
+        $buyerGstin = strtoupper(trim((string) ($invoice->consignee_gstin ?: ($invoice->billingAddress?->gstin ?: ($customer?->gstin ?: ''))))) ?: 'URP';
+
+        $fromState = strtoupper(trim((string) ($invoice->consignor_state ?: ($company?->state ?: ''))));
+        $toState = strtoupper(trim((string) ($invoice->consignee_state ?: ($invoice->delivery_state ?: ($invoice->place_of_supply_state ?: ($customer?->state ?: ''))))));
+        $fromPin = (int) preg_replace('/\D/', '', (string) ($invoice->consignor_pincode ?: ($company?->pincode ?: 400001)));
+        $toPin = (int) preg_replace('/\D/', '', (string) ($invoice->consignee_pincode ?: ($invoice->shippingAddress?->pincode ?: ($customer?->pincode ?: 400001))));
+
+        if ((bool) config('services.mastersindia.sandbox_mode', true)) {
+            $sandboxSeller = strtoupper(trim((string) config('services.mastersindia.gstin', '')));
+            // Prefer explicit consignor; otherwise sandbox seller GSTIN.
+            if ($sandboxSeller !== '' && ! filled($invoice->consignor_gstin) && $sellerGstin !== $sandboxSeller) {
+                $sellerGstin = $sandboxSeller;
+            }
+            if (str_starts_with($sellerGstin, '05') && ($fromPin < 248000 || $fromPin > 249999)) {
+                $fromPin = 248001;
+                $fromState = 'UTTARAKHAND';
+            }
+            if (str_starts_with($buyerGstin, '05') && ($toPin < 248000 || $toPin > 249999)) {
+                $toPin = 248001;
+                $toState = 'UTTARAKHAND';
+            }
+        }
+
+        $rawMode = strtolower(trim((string) ($invoice->transport_mode ?? '1')));
+        $modeLabel = match (true) {
+            str_contains($rawMode, '2') || str_contains($rawMode, 'rail') => 'rail',
+            str_contains($rawMode, '3') || str_contains($rawMode, 'air') => 'air',
+            str_contains($rawMode, '4') || str_contains($rawMode, 'ship') => 'ship',
+            default => 'road',
+        };
+
+        $isIntra = $invoice->tax_type === 'intra' || ($invoice->tax_type === null && ($invoice->cgst_amount > 0 || $invoice->sgst_amount > 0));
+        $cleanVehNo = $invoice->vehicle_no ? strtoupper(str_replace([' ', '-'], '', trim($invoice->vehicle_no))) : '';
+
+        $itemList = $invoice->items->map(function ($item) use ($isIntra) {
+            $taxable = (float) ($item->taxable_amount ?? round((float) $item->line_total - (float) $item->tax_amount, 2));
+            $taxRate = (float) ($item->tax_rate ?? ($item->product?->tax_rate ?? 0));
+            $uomCode = strtoupper((string) ($item->uom?->code ?: 'NOS'));
+            if ($uomCode === 'PIECES' || $uomCode === 'PIECE') {
+                $uomCode = 'PCS';
+            }
+            $hsn = preg_replace('/\D/', '', (string) ($item->hsn_code ?: ($item->product?->hsn_code ?: '85176200')));
+
+            return [
+                'product_name' => substr((string) ($item->product?->name ?: $item->description ?: 'Product'), 0, 100),
+                'hsn_code' => (string) ($hsn ?: '85176200'),
+                'quantity' => (float) $item->quantity,
+                'unit_of_product' => $uomCode,
+                'cgst_rate' => $isIntra ? ($taxRate / 2) : 0.0,
+                'sgst_rate' => $isIntra ? ($taxRate / 2) : 0.0,
+                'igst_rate' => ! $isIntra ? $taxRate : 0.0,
+                'taxable_amount' => $taxable,
+            ];
+        })->values()->all();
+
+        return [
+            'userGstin' => $sellerGstin,
+            'supply_type' => 'outward',
+            'sub_supply_type' => 'Supply',
+            'document_type' => 'Tax Invoice',
+            'document_number' => $invoice->invoice_no,
+            'document_date' => $invoice->invoice_date->format('d/m/Y'),
+            'gstin_of_consignor' => $sellerGstin,
+            'legal_name_of_consignor' => substr((string) ($company?->name ?: 'Seller'), 0, 100),
+            'address1_of_consignor' => substr((string) ($invoice->consignor_address_line_1 ?: ($company?->address ?: 'Dispatch Office')), 0, 100),
+            'place_of_consignor' => substr((string) ($invoice->consignor_city ?: ($company?->city ?: 'City')), 0, 50),
+            'pincode_of_consignor' => $fromPin,
+            'state_of_consignor' => $fromState,
+            'actual_from_state_name' => $fromState,
+            'gstin_of_consignee' => $buyerGstin,
+            'legal_name_of_consignee' => substr((string) ($invoice->consignee_name ?: ($customer?->name ?: 'Customer')), 0, 100),
+            'address1_of_consignee' => substr((string) ($invoice->shipping_address ?: ($customer?->address ?: 'Delivery Address')), 0, 100),
+            'place_of_consignee' => substr((string) ($invoice->ship_to_place ?: ($invoice->consignee_city ?: ($customer?->city ?: 'City'))), 0, 50),
+            'pincode_of_consignee' => $toPin,
+            'state_of_consignee' => $toState,
+            'actual_to_state_name' => $toState,
+            'state_of_supply' => $toState,
+            'transportation_mode' => $modeLabel,
+            'transportation_distance' => (string) $this->resolveDistanceKm($invoice),
+            'vehicle_number' => $cleanVehNo,
+            'vehicle_type' => ($invoice->vehicle_type ?: 'R') === 'O' ? 'Over Dimensional Cargo' : 'Regular',
+            'transporter_id' => $invoice->transporter_id ?: '',
+            'transporter_name' => $invoice->transporter_name ?: '',
+            'transaction_type' => 1,
+            'generate_status' => 1,
+            'data_source' => 'erp',
+            'user_ref' => 'invoice-'.$invoice->id.'-'.$invoice->invoice_no,
+            'itemList' => $itemList,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $extra
+     * @return array<string, mixed>
+     */
+    protected function mapExtraToV1(array $extra): array
+    {
+        $mapped = [];
+        if (isset($extra['VehNo'])) {
+            $mapped['vehicle_number'] = strtoupper(str_replace([' ', '-'], '', (string) $extra['VehNo']));
+        }
+        if (isset($extra['VehType'])) {
+            $mapped['vehicle_type'] = ((string) $extra['VehType'] === 'O') ? 'Over Dimensional Cargo' : 'Regular';
+        }
+        if (isset($extra['TransId'])) {
+            $mapped['transporter_id'] = $extra['TransId'];
+        }
+        if (isset($extra['TransName'])) {
+            $mapped['transporter_name'] = $extra['TransName'];
+        }
+        if (array_key_exists('Distance', $extra)) {
+            $mapped['transportation_distance'] = (string) (int) $extra['Distance'];
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * Portal auto distance when config allows and invoice distance is blank/zero.
+     */
+    protected function resolveDistanceKm(Invoice $invoice): int
+    {
+        $distance = (int) ($invoice->distance_km ?? 0);
+
+        if ($distance > 0) {
+            return $distance;
+        }
+
+        if (config('ewaybill.auto_distance', true)) {
+            return 0;
+        }
+
+        return 50;
+    }
+
+    /**
+     * Part-B vehicle update against Masters India (or local-only stub).
+     *
+     * @param  array<string, mixed>  $vehicleData
+     * @return array<string, mixed>
+     */
+    public function updateEWayVehicle(Invoice $invoice, array $vehicleData): array
+    {
+        $eWayBill = $invoice->eWayBill;
+        if (! $eWayBill || blank($eWayBill->eway_bill_no)) {
+            throw new RuntimeException('Cannot update vehicle: No active E-Way Bill found for this invoice.');
+        }
+
+        $cleanVehNo = strtoupper(str_replace([' ', '-'], '', trim((string) ($vehicleData['vehicle_no'] ?? ''))));
+        if ($cleanVehNo === '') {
+            throw new RuntimeException('Vehicle number is required for Part-B update.');
+        }
+
+        if (! $this->isConfigured()) {
+            if ((bool) config('services.mastersindia.fallback_to_stub')) {
+                $this->auditLogService->record($invoice, 'eway_vehicle_updated_stub', null, [
+                    'eway_bill_no' => $eWayBill->eway_bill_no,
+                    'vehicle_no' => $cleanVehNo,
+                ]);
+
+                return [
+                    'eway_bill_no' => $eWayBill->eway_bill_no,
+                    'vehicle_no' => $cleanVehNo,
+                    'status' => 'updated',
+                    'raw' => ['note' => 'Stub vehicle update (no live credentials)'],
+                ];
+            }
+
+            throw new RuntimeException('Masters India GSP credentials are not configured for vehicle update.');
+        }
+
+        $company = $invoice->selling_company
+            ?? Company::query()->find($invoice->company_id)
+            ?? Company::resolveCurrent()
+            ?? Company::first();
+
+        $fromState = (int) $this->complianceService->resolveStateCode(
+            $vehicleData['from_state'] ?? $invoice->consignor_state ?? $company?->state,
+            (string) ($company?->gstin ?? config('services.mastersindia.gstin'))
+        );
+
+        if ($this->usesApiV1()) {
+            $payload = [
+                'userGstin' => (string) ($company?->gstin ?: config('services.mastersindia.gstin')),
+                'eway_bill_number' => $eWayBill->eway_bill_no,
+                'vehicle_number' => $cleanVehNo,
+                'vehicle_type' => (($vehicleData['vehicle_type'] ?? 'R') === 'O') ? 'Over Dimensional Cargo' : 'Regular',
+                'place_of_consignor' => (string) ($vehicleData['from_place'] ?? $invoice->consignor_city ?? $company?->city ?? ''),
+                'state_of_consignor' => (string) ($vehicleData['from_state'] ?? $invoice->consignor_state ?? $company?->state ?? ''),
+                'reason_code_for_vehicle_updation' => (string) ($vehicleData['reason_code'] ?? '1'),
+                'reason_for_vehicle_updation' => (string) ($vehicleData['reason'] ?? $vehicleData['remarks'] ?? 'Transshipment'),
+                'transporter_document_number' => (string) ($invoice->lr_rr_no ?? ''),
+                'transporter_document_date' => $invoice->lr_rr_date?->format('d/m/Y') ?? '',
+                'mode_of_transport' => 'road',
+                'data_source' => 'erp',
+            ];
+            $endpoint = '/api/v1/updateVehicleNumber/';
+        } else {
+            $payload = [
+                'ewbNo' => $eWayBill->eway_bill_no,
+                'vehicleNo' => $cleanVehNo,
+                'fromPlace' => (string) ($vehicleData['from_place'] ?? $invoice->consignor_city ?? $company?->city ?? ''),
+                'fromState' => $fromState,
+                'reasonCode' => (string) ($vehicleData['reason_code'] ?? '1'),
+                'reasonRem' => (string) ($vehicleData['reason'] ?? $vehicleData['remarks'] ?? 'Transshipment'),
+                'transDocNo' => (string) ($invoice->lr_rr_no ?? ''),
+                'transDocDate' => $invoice->lr_rr_date?->format('d/m/Y') ?? '',
+                'transMode' => '1',
+                'vehicleType' => $vehicleData['vehicle_type'] ?? 'R',
+            ];
+            $endpoint = '/ewb/api/ewaybill/updatevehicle';
+        }
+
+        $response = $this->client()->post($endpoint, $payload);
+        if (! $response->ok()) {
+            $err = $this->extractErrorMessage($response, 'Vehicle update failed');
+            if ((bool) config('services.mastersindia.fallback_to_stub')) {
+                return [
+                    'eway_bill_no' => $eWayBill->eway_bill_no,
+                    'vehicle_no' => $cleanVehNo,
+                    'status' => 'updated',
+                    'raw' => ['note' => 'Fallback stub vehicle update: '.$err],
+                ];
+            }
+            throw new RuntimeException($err);
+        }
+
+        $body = $response->json();
+        $eWayBill->update([
+            'vehicle_no' => $cleanVehNo,
+            'payload' => array_merge((array) $eWayBill->payload, ['vehicle_update' => $body]),
+        ]);
+
+        $this->auditLogService->record($invoice, 'eway_vehicle_updated', null, [
+            'eway_bill_no' => $eWayBill->eway_bill_no,
+            'vehicle_no' => $cleanVehNo,
+        ]);
+
+        return [
+            'eway_bill_no' => $eWayBill->eway_bill_no,
+            'vehicle_no' => $cleanVehNo,
+            'status' => 'updated',
+            'raw' => $body,
         ];
     }
 

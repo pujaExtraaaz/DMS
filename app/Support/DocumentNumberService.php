@@ -111,13 +111,33 @@ class DocumentNumberService
                     'updated_at' => now(),
                 ]);
 
-            return sprintf(
-                '%s-%s-%0*d',
+            // Compact legacy format to stay within GST 16-char voucher limit.
+            $prefix = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string) $prefix) ?: 'DOC');
+            $fy = $date->format('y').$date->copy()->addYear()->format('y'); // e.g. 2627
+            $maxLen = \App\Domains\Organization\Models\DocumentNumberSeries::MAX_VOUCHER_NUMBER_LENGTH;
+            $pad = max(1, min(8, $padding));
+
+            for ($tryPad = $pad; $tryPad >= 1; $tryPad--) {
+                $candidate = sprintf('%s-%s-%0*d', $prefix, $fy, $tryPad, $nextNumber);
+                if (strlen($candidate) <= $maxLen) {
+                    return $candidate;
+                }
+            }
+
+            $shortPrefix = \App\Domains\Organization\Models\DocumentNumberSeries::shortenPrefixForLimit(
                 $prefix,
-                $date->format('Ymd'),
-                $padding,
-                $nextNumber
+                $prefix,
+                max(1, $maxLen - (1 + strlen($fy) + 1 + strlen((string) $nextNumber)))
             );
+
+            $candidate = sprintf('%s-%s-%d', $shortPrefix, $fy, $nextNumber);
+            if (strlen($candidate) > $maxLen) {
+                throw new RuntimeException(
+                    "Generated voucher number \"{$candidate}\" exceeds {$maxLen} characters. Shorten the document prefix."
+                );
+            }
+
+            return $candidate;
         });
     }
 

@@ -72,6 +72,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(CommunicationService::class);
         $this->app->singleton(ProductDiscountService::class);
         $this->app->singleton(\App\Domains\Target\Services\SalesTargetCalculationService::class);
+        $this->app->singleton(\App\Domains\Sales\Services\MastersIndiaGspService::class);
+        $this->app->singleton(\App\Domains\Sales\Services\EInvoiceGenerationService::class);
+        $this->app->singleton(\App\Domains\Sales\Services\EwayBillGenerationService::class);
     }
 
     public function boot(): void

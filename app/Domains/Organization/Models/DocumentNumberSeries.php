@@ -8,6 +8,9 @@ use Illuminate\Support\Carbon;
 
 class DocumentNumberSeries extends Model
 {
+    /** GST e-invoice / e-way DocDtls.No hard limit (NIC / Masters India). */
+    public const MAX_VOUCHER_NUMBER_LENGTH = 16;
+
     public const METHOD_AUTOMATIC = 'automatic';
 
     public const METHOD_AUTOMATIC_MANUAL_OVERRIDE = 'automatic_manual_override';
@@ -257,6 +260,7 @@ class DocumentNumberSeries extends Model
             $parts[] = strtoupper($activePrefix);
         }
 
+        $fyCode = null;
         if ($this->include_financial_year) {
             $fyCode = $this->financialYearCode($fy, $date);
             $cleanPrefix = strtoupper(str_replace(['-', '/'], '', $activePrefix));
@@ -268,17 +272,90 @@ class DocumentNumberSeries extends Model
 
         $width = max(1, min(8, (int) ($this->padding ?? 4)));
         $prefixZero = $this->prefix_zero ?? true;
+        $num = max(0, $number);
 
-        if ($prefixZero) {
-            $parts[] = sprintf('%0'.$width.'d', max(0, $number));
-        } else {
-            $parts[] = (string) max(0, $number);
+        // Shrink zero-padding if needed so final voucher stays within GST 16-char limit.
+        while ($width >= 1) {
+            $numPart = $prefixZero ? sprintf('%0'.$width.'d', $num) : (string) $num;
+            $body = implode($sep, array_merge($parts, [$numPart]));
+            $activeSuffix = $this->resolveSuffix($date);
+            $formatted = $activeSuffix === '' ? $body : $body.$activeSuffix;
+
+            if (strlen($formatted) <= self::MAX_VOUCHER_NUMBER_LENGTH) {
+                return $formatted;
+            }
+
+            if (! $prefixZero || $width <= strlen((string) $num)) {
+                break;
+            }
+            $width--;
         }
 
-        $body = implode($sep, $parts);
+        $numPart = $prefixZero ? sprintf('%0'.max(1, $width).'d', $num) : (string) $num;
+        $body = implode($sep, array_merge($parts, [$numPart]));
         $activeSuffix = $this->resolveSuffix($date);
+        $formatted = $activeSuffix === '' ? $body : $body.$activeSuffix;
 
-        return $activeSuffix === '' ? $body : $body.$activeSuffix;
+        if (strlen($formatted) > self::MAX_VOUCHER_NUMBER_LENGTH) {
+            throw new \RuntimeException(
+                'Voucher number "'.$formatted.'" exceeds '.self::MAX_VOUCHER_NUMBER_LENGTH
+                .' characters (GST e-invoice limit). Shorten the series prefix/suffix in Setup → Document Number Series.'
+            );
+        }
+
+        return $formatted;
+    }
+
+    /**
+     * Max prefix length that still fits MAX_VOUCHER_NUMBER_LENGTH for this series shape.
+     */
+    public function maxAllowedPrefixLength(?Carbon $date = null): int
+    {
+        $date ??= now();
+        $sep = $this->separator !== null && $this->separator !== '' ? $this->separator : '-';
+        $pad = max(1, min(8, (int) ($this->padding ?? 4)));
+        $suffixLen = strlen($this->resolveSuffix($date));
+        $used = $pad + $suffixLen;
+
+        if ($this->include_financial_year) {
+            $fyLen = strlen($this->financialYearCode(null, $date));
+            $used += $fyLen + strlen($sep); // FY + separator before number
+            $used += strlen($sep); // separator after prefix
+        } else {
+            $used += strlen($sep);
+        }
+
+        return max(1, self::MAX_VOUCHER_NUMBER_LENGTH - $used);
+    }
+
+    public static function shortenPrefixForLimit(string $prefix, string $documentType, int $maxLen): string
+    {
+        $clean = strtoupper(preg_replace('/[^A-Z0-9]/', '', $prefix) ?? '');
+        $doc = strtoupper(preg_replace('/[^A-Z0-9]/', '', $documentType) ?? 'DOC');
+
+        if ($clean === '') {
+            $clean = $doc;
+        }
+
+        if (strlen($clean) <= $maxLen) {
+            return $clean;
+        }
+
+        if (str_starts_with($clean, 'AVIT') && strlen($clean) > 4) {
+            $clean = substr($clean, 4) ?: $doc;
+        }
+
+        if (strlen($clean) <= $maxLen) {
+            return $clean;
+        }
+
+        // Prefer A + doc type (e.g. AINV) when still too long
+        $branded = 'A'.$doc;
+        if (strlen($branded) <= $maxLen) {
+            return $branded;
+        }
+
+        return substr($doc, 0, $maxLen);
     }
 
     public function preview(?Carbon $date = null): string

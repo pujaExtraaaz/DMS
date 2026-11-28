@@ -60,7 +60,8 @@
 
             <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Prefix</label>
-                <input type="text" name="prefix" x-model="prefix" maxlength="40" class="block w-full rounded-lg border-gray-300 text-sm uppercase" placeholder="AVITPO">
+                <input type="text" name="prefix" x-model="prefix" maxlength="16" class="block w-full rounded-lg border-gray-300 text-sm uppercase" placeholder="AINV">
+                <p class="mt-1 text-[11px] text-slate-500">Full voucher number (prefix + FY + sequence) must be ≤ 16 characters for GST e-invoice.</p>
             </div>
 
             <div>

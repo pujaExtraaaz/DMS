@@ -25,6 +25,8 @@ use App\Domains\Sales\Models\InvoiceItem;
 use App\Domains\Sales\Services\GstComplianceService;
 use App\Domains\Sales\Services\InvoiceCancellationService;
 use App\Domains\Sales\Services\InvoiceNumberGenerator;
+use App\Domains\Sales\Services\EInvoiceGenerationService;
+use App\Domains\Sales\Services\EwayBillGenerationService;
 use App\Domains\Sales\Services\MastersIndiaGspService;
 use App\Domains\Scheme\Models\Scheme;
 use App\Domains\Scheme\Services\SchemeService;
@@ -62,6 +64,8 @@ class InvoiceController extends Controller
         protected DueDateService $dueDateService,
         protected ProductDiscountService $productDiscountService,
         protected MastersIndiaGspService $mastersIndiaService,
+        protected EInvoiceGenerationService $eInvoiceGenerationService,
+        protected EwayBillGenerationService $ewayBillGenerationService,
         protected GstComplianceService $complianceService,
         protected FinancialYearService $financialYearService,
         protected SchemeService $schemeService,
@@ -2175,37 +2179,10 @@ class InvoiceController extends Controller
         }
 
         try {
-            $result = $this->mastersIndiaService->generateIrn($invoice);
+            $this->eInvoiceGenerationService->generateIrn($invoice);
         } catch (\Throwable $e) {
-            $invoice->update(['einvoice_status' => 'failed']);
-            EInvoice::updateOrCreate(
-                ['invoice_id' => $invoice->id],
-                [
-                    'status' => 'failed',
-                    'last_error' => $e->getMessage(),
-                    'requested_at' => now(),
-                ]
-            );
-            return $this->flashError('E-Invoice generation failed: ' . $e->getMessage(), 'invoices.show', ['invoice' => $invoice]);
+            return $this->flashError('E-Invoice failed: ' . $e->getMessage(), 'invoices.show', ['invoice' => $invoice]);
         }
-
-        EInvoice::updateOrCreate(
-            ['invoice_id' => $invoice->id],
-            [
-                'status' => $result['status'],
-                'provider' => 'mastersindia',
-                'irn' => $result['irn'],
-                'ack_no' => $result['ack_no'] ?? null,
-                'ack_date' => isset($result['ack_date']) ? \Carbon\Carbon::parse($result['ack_date']) : null,
-                'signed_invoice' => $result['signed_invoice'] ?? null,
-                'signed_qr_base64' => $result['signed_qr_base64'] ?? null,
-                'requested_at' => now(),
-                'last_error' => null,
-                'payload' => $result['raw'],
-            ]
-        );
-
-        $invoice->update(['einvoice_status' => 'generated']);
 
         $note = ! $this->mastersIndiaService->isConfigured()
             ? 'E-Invoice generated with deterministic IRN (Masters India sandbox/demo mode).'
@@ -2242,30 +2219,10 @@ class InvoiceController extends Controller
         ]);
 
         try {
-            $this->mastersIndiaService->cancelIrn($invoice, $validated['cancel_reason'], $validated['cancel_remarks']);
+            $this->eInvoiceGenerationService->cancelIrn($invoice, $validated['cancel_reason'], $validated['cancel_remarks']);
         } catch (\Throwable $e) {
             return $this->flashError('E-Invoice cancellation failed: ' . $e->getMessage(), 'invoices.show', ['invoice' => $invoice]);
         }
-
-        $reasonText = match ($validated['cancel_reason']) {
-            '1' => 'Duplicate',
-            '2' => 'Data entry mistake',
-            '3' => 'Order cancelled',
-            default => 'Others',
-        };
-
-        EInvoice::updateOrCreate(
-            ['invoice_id' => $invoice->id],
-            [
-                'status' => 'cancelled',
-                'cancel_reason' => $reasonText,
-                'cancel_remarks' => $validated['cancel_remarks'],
-                'cancelled_at' => now(),
-                'cancelled_by' => auth()->id(),
-            ]
-        );
-
-        $invoice->update(['einvoice_status' => 'cancelled']);
 
         return redirect()->route('invoices.show', $invoice)->with('success', 'E-Invoice IRN cancelled successfully.');
     }
@@ -2285,7 +2242,7 @@ class InvoiceController extends Controller
             'vehicle_type' => 'nullable|in:R,O',
             'transporter_id' => 'nullable|string|max:25',
             'transporter_name' => 'nullable|string|max:255',
-            'distance_km' => 'nullable|numeric',
+            'distance_km' => 'nullable|numeric|min:0|max:9999',
             'lr_rr_no' => 'nullable|string|max:100',
             'lr_rr_date' => 'nullable|date',
             'consignor_pincode' => 'nullable|string|max:10',
@@ -2294,13 +2251,16 @@ class InvoiceController extends Controller
             'consignee_city' => 'nullable|string|max:100',
         ]);
 
+        $defaultDistance = config('ewaybill.auto_distance', true) ? 0 : 50;
         $transportUpdates = array_filter([
             'transport_mode' => $validated['transport_mode'] ?? $invoice->transport_mode ?? '1',
             'vehicle_no' => $validated['vehicle_no'] ?? $invoice->vehicle_no,
             'vehicle_type' => $validated['vehicle_type'] ?? $invoice->vehicle_type ?? 'R',
             'transporter_id' => $validated['transporter_id'] ?? $invoice->transporter_id,
             'transporter_name' => $validated['transporter_name'] ?? $invoice->transporter_name,
-            'distance_km' => array_key_exists('distance_km', $validated) ? (int) $validated['distance_km'] : ($invoice->distance_km ?: 50),
+            'distance_km' => array_key_exists('distance_km', $validated)
+                ? (int) $validated['distance_km']
+                : ($invoice->distance_km !== null ? (int) $invoice->distance_km : $defaultDistance),
             'lr_rr_no' => $validated['lr_rr_no'] ?? $invoice->lr_rr_no,
             'lr_rr_date' => $validated['lr_rr_date'] ?? $invoice->lr_rr_date,
             'consignor_pincode' => $validated['consignor_pincode'] ?? $invoice->consignor_pincode,
@@ -2309,85 +2269,11 @@ class InvoiceController extends Controller
             'consignee_city' => $validated['consignee_city'] ?? $invoice->consignee_city,
         ], fn ($val) => $val !== null && $val !== '');
 
-        if (! empty($transportUpdates)) {
-            $invoice->update($transportUpdates);
-        }
-
-        // Validate all required information before sending generation request
-        $validation = $this->complianceService->validateForEWayBillGeneration($invoice);
-        if (! $validation['valid']) {
-            return $this->flashError('Cannot generate E-Way Bill: ' . implode(' ', $validation['errors']), 'invoices.show', ['invoice' => $invoice]);
-        }
-
         try {
-            $result = $this->mastersIndiaService->generateEWayBill($invoice, [
-                'VehNo' => $invoice->vehicle_no,
-                'VehType' => $invoice->vehicle_type ?? 'R',
-                'TransMode' => $invoice->transport_mode ?? '1',
-                'TransId' => $invoice->transporter_id,
-                'TransName' => $invoice->transporter_name,
-                'Distance' => $invoice->distance_km ?: 50,
-            ]);
+            $result = $this->ewayBillGenerationService->generate($invoice, $transportUpdates);
         } catch (\Throwable $e) {
-            $invoice->update(['eway_bill_status' => 'failed']);
-            EWayBill::updateOrCreate(
-                ['invoice_id' => $invoice->id],
-                [
-                    'status' => 'failed',
-                    'last_error' => $e->getMessage(),
-                ]
-            );
-            return $this->flashError('E-Way Bill generation failed: ' . $e->getMessage(), 'invoices.show', ['invoice' => $invoice]);
+            return $this->flashError('E-Way Bill failed: ' . $e->getMessage(), 'invoices.show', ['invoice' => $invoice]);
         }
-
-        $company = Company::resolveCurrent() ?? Company::query()->first();
-
-        $parseEwbDate = function (?string $dateStr): ?\Carbon\Carbon {
-            if (empty($dateStr)) return null;
-            try {
-                if (preg_match('#^\d{2}/\d{2}/\d{4}#', $dateStr)) {
-                    return \Carbon\Carbon::createFromFormat('d/m/Y H:i:s', strlen($dateStr) === 10 ? $dateStr . ' 00:00:00' : $dateStr);
-                }
-                return \Carbon\Carbon::parse($dateStr);
-            } catch (\Throwable) {
-                try {
-                    return \Carbon\Carbon::parse(str_replace('/', '-', $dateStr));
-                } catch (\Throwable) {
-                    return now();
-                }
-            }
-        };
-
-        EWayBill::updateOrCreate(
-            ['invoice_id' => $invoice->id],
-            [
-                'status' => $result['status'],
-                'provider' => 'mastersindia',
-                'eway_bill_no' => $result['eway_bill_no'],
-                'valid_upto' => $parseEwbDate($result['valid_upto'] ?? null),
-                'ewb_date' => $parseEwbDate($result['ewb_date'] ?? null) ?? now(),
-                'distance_km' => $invoice->distance_km ?: 50,
-                'transporter_id' => $invoice->transporter_id,
-                'transporter_name' => $invoice->transporter_name,
-                'vehicle_no' => $invoice->vehicle_no,
-                'vehicle_type' => $invoice->vehicle_type ?? 'R',
-                'transport_mode' => $invoice->transport_mode ?? '1',
-                'doc_no' => $invoice->lr_rr_no,
-                'doc_date' => $invoice->lr_rr_date,
-                'from_pincode' => $invoice->consignor_pincode ?: ($company?->pincode ?: null),
-                'to_pincode' => $invoice->shippingAddress?->pincode ?: ($invoice->consignee_pincode ?: ($invoice->customer?->pincode ?: null)),
-                'from_state' => $invoice->consignor_state ?: ($company?->state ?: null),
-                'to_state' => $invoice->delivery_state ?: ($invoice->customer?->state ?: null),
-                'last_error' => null,
-                'payload' => $result['raw'],
-            ]
-        );
-
-        $invoice->update([
-            'eway_bill_no' => $result['eway_bill_no'],
-            'eway_bill_date' => $parseEwbDate($result['ewb_date'] ?? null) ?? now(),
-            'eway_bill_status' => 'generated',
-        ]);
 
         return redirect()->route('invoices.show', $invoice)->with('success', 'E-Way Bill generated successfully with number ' . $result['eway_bill_no'] . '.');
     }
@@ -2400,30 +2286,10 @@ class InvoiceController extends Controller
         ]);
 
         try {
-            $this->mastersIndiaService->cancelEWayBill($invoice, $validated['cancel_reason'], $validated['cancel_remarks']);
+            $this->ewayBillGenerationService->cancel($invoice, $validated['cancel_reason'], $validated['cancel_remarks']);
         } catch (\Throwable $e) {
             return $this->flashError('E-Way Bill cancellation failed: ' . $e->getMessage(), 'invoices.show', ['invoice' => $invoice]);
         }
-
-        $reasonText = match ($validated['cancel_reason']) {
-            '1' => 'Duplicate',
-            '2' => 'Order Cancelled',
-            '3' => 'Data Entry Mistake',
-            default => 'Others',
-        };
-
-        EWayBill::updateOrCreate(
-            ['invoice_id' => $invoice->id],
-            [
-                'status' => 'cancelled',
-                'cancel_reason' => $reasonText,
-                'cancel_remarks' => $validated['cancel_remarks'],
-                'cancelled_at' => now(),
-                'cancelled_by' => auth()->id(),
-            ]
-        );
-
-        $invoice->update(['eway_bill_status' => 'cancelled']);
 
         return redirect()->route('invoices.show', $invoice)->with('success', 'E-Way Bill cancelled successfully.');
     }
@@ -2440,24 +2306,11 @@ class InvoiceController extends Controller
             'from_state' => 'nullable|string|max:100',
         ]);
 
-        $reason = $validated['reason'] ?? $validated['remarks'] ?? $validated['reason_code'] ?? 'Transshipment';
-
-        $invoice->update([
-            'vehicle_no' => $validated['vehicle_no'],
-            'vehicle_type' => $validated['vehicle_type'] ?? 'R',
-        ]);
-
-        if ($invoice->eWayBill) {
-            $invoice->eWayBill->update([
-                'vehicle_no' => $validated['vehicle_no'],
-                'vehicle_type' => $validated['vehicle_type'] ?? 'R',
-            ]);
+        try {
+            $this->ewayBillGenerationService->updateVehicle($invoice, $validated);
+        } catch (\Throwable $e) {
+            return $this->flashError('Vehicle update failed: '.$e->getMessage(), 'invoices.show', ['invoice' => $invoice]);
         }
-
-        app(\App\Support\AuditLogService::class)->record($invoice, 'eway_vehicle_updated', null, [
-            'vehicle_no' => $validated['vehicle_no'],
-            'reason' => $reason,
-        ]);
 
         return redirect()->route('invoices.show', $invoice)->with('success', 'Vehicle number updated successfully.');
     }

@@ -66,10 +66,23 @@ class DocumentNumberSeriesController extends Controller
         if ($docType === '' || ! array_key_exists($docType, DocumentNumberSeries::documentTypes())) {
             $docType = 'PO';
         }
+        // Keep defaults short enough for GST 16-char voucher numbers (PREFIX-FY-SEQ).
         $defaultPrefix = match ($docType) {
-            'SRV' => 'AVITSRV',
-            'INV' => 'AVITINV',
-            default => 'AVIT'.$docType,
+            'SRV' => 'ASRV',
+            'INV' => 'AINV',
+            'PO' => 'APO',
+            'PI' => 'API',
+            'SO' => 'ASO',
+            'ORD' => 'AORD',
+            'QTN' => 'AQTN',
+            'PAY' => 'APAY',
+            'REC' => 'AREC',
+            'CN' => 'ACN',
+            'DN' => 'ADN',
+            'DC' => 'ADC',
+            'GRN' => 'AGRN',
+            'SPAY' => 'ASP',
+            default => DocumentNumberSeries::shortenPrefixForLimit('A'.$docType, $docType, 6),
         };
 
         return view('organization.document-number-series.form', [
@@ -136,8 +149,8 @@ class DocumentNumberSeriesController extends Controller
             'company_id' => 'nullable|exists:companies,id',
             'document_type' => ['required', 'string', 'max:40', Rule::in(array_keys(DocumentNumberSeries::documentTypes()))],
             'name' => 'nullable|string|max:120',
-            'prefix' => 'nullable|string|max:40',
-            'suffix' => 'nullable|string|max:40',
+            'prefix' => 'nullable|string|max:16',
+            'suffix' => 'nullable|string|max:8',
             'include_financial_year' => 'nullable|boolean',
             'financial_year_style' => ['required', 'string', Rule::in(['yy_yy', 'YYYY-YY', 'name'])],
             'separator' => 'nullable|string|max:5',
@@ -187,6 +200,31 @@ class DocumentNumberSeriesController extends Controller
         if ($duplicate) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'document_type' => 'A numbering series already exists for this document type and company.',
+            ]);
+        }
+
+        $probe = new DocumentNumberSeries(array_merge($data, [
+            'prefix' => $data['prefix'] ?: ($existing?->prefix ?? ''),
+        ]));
+        $maxPrefix = $probe->maxAllowedPrefixLength();
+        if (strlen($data['prefix']) > $maxPrefix) {
+            $gstMaxLen = DocumentNumberSeries::MAX_VOUCHER_NUMBER_LENGTH;
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'prefix' => "Prefix is too long for the GST {$gstMaxLen}-character voucher limit with current FY/padding. Max {$maxPrefix} characters.",
+            ]);
+        }
+
+        try {
+            $preview = $probe->preview();
+        } catch (\Throwable $e) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'prefix' => $e->getMessage(),
+            ]);
+        }
+
+        if (strlen($preview) > DocumentNumberSeries::MAX_VOUCHER_NUMBER_LENGTH) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'prefix' => "Preview voucher \"{$preview}\" exceeds ".DocumentNumberSeries::MAX_VOUCHER_NUMBER_LENGTH.' characters. Shorten prefix/suffix or padding.',
             ]);
         }
 

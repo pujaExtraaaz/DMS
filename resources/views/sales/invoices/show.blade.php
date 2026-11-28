@@ -90,7 +90,6 @@
                 <x-ui.button type="button" variant="secondary" @click="generateEwayModal = true">Generate E-Way Bill</x-ui.button>
             @endif
             <x-ui.button variant="secondary" :href="route('delivery-challans.create', ['customer_id' => $invoice->customer_id, 'invoice_id' => $invoice->id, 'order_id' => $invoice->order_id])">Delivery Challan</x-ui.button>
-            <form method="POST" action="{{ route('payment-links.create', $invoice) }}" class="inline">@csrf<x-ui.button type="submit" variant="secondary">Payment Link</x-ui.button></form>
             <x-ui.button variant="primary" :href="route('payments.create', ['invoice_id' => $invoice->id])">Record Payment</x-ui.button>
         @endif
     </x-slot>
