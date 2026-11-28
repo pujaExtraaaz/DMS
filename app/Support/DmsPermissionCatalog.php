@@ -50,6 +50,7 @@ class DmsPermissionCatalog
             'od',
             'hrms',
             'crm',
+            'service-support',
             'phone_directory',
             'tally',
             'reports',
@@ -95,6 +96,7 @@ class DmsPermissionCatalog
             'od',
             'hrms',
             'crm',
+            'service-support',
             'phone_directory',
         ];
     }
@@ -145,6 +147,10 @@ class DmsPermissionCatalog
             'group_dashboard.profit_loss.view',
             'group_dashboard.inter_company.view',
             'group_dashboard.export',
+            'service-support.assign',
+            'service-support.close',
+            'service-support.approve-charges',
+            'service-support.oem',
         ];
     }
 
@@ -191,6 +197,7 @@ class DmsPermissionCatalog
             'OD Banking' => 'od',
             'HRMS' => 'hrms',
             'CRM' => 'crm',
+            'Service & Support' => 'service-support',
             'Phone Directory' => 'phone_directory',
             'Accounting / Tally' => 'tally',
             'Reports' => 'reports',

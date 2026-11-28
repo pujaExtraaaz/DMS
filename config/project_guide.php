@@ -47,7 +47,7 @@ return [
                     'route' => 'organization.document-number-series.index',
                     'summary' => 'Number series keep invoice and voucher numbers unique. Sister concerns share group reporting without mixing books.',
                     'steps' => [
-                        'Open Setup → Voucher Numbering and define series for invoices, orders, receipts, and other documents you use.',
+                        'Open Setup → Voucher Numbering and define series for invoices, orders, receipts, service tickets (SRV / AVITSRV), and other documents you use.',
                         'Use Sister Concerns when related companies need a combined Group Dashboard without sharing one ledger.',
                         'Confirm numbering and company structure before the first live posting — changing series mid-year creates gaps that auditors notice.',
                     ],
@@ -343,7 +343,7 @@ return [
         [
             'number' => 10,
             'title' => 'HR · CRM',
-            'purpose' => 'Run the people chain: holidays → leave policies → attendance (shifts / eSSL) → payroll runs → ESS and HR reports; CRM leads stay alongside.',
+            'purpose' => 'Run the people chain: holidays → leave policies → attendance (shifts / eSSL) → payroll runs → ESS and HR reports; CRM leads stay alongside. Service & Support is nested under the same sidebar group.',
             'sections' => [
                 [
                     'title' => 'Organisation & employees',
@@ -398,6 +398,72 @@ return [
         ],
         [
             'number' => 11,
+            'title' => 'Service & Support',
+            'purpose' => 'Register complaints, installations, and service jobs; assign Avit technicians / OEM centres; schedule visits; log work, warranty, charges, and feedback — with ticket numbers from Voucher Numbering (SRV / AVITSRV).',
+            'sections' => [
+                [
+                    'title' => 'What lives where (sidebar)',
+                    'route' => 'service.tickets.index',
+                    'summary' => 'Under HR · CRM → Service & Support. Ticket Register is the home screen; other items are boards and registers around the same tickets.',
+                    'steps' => [
+                        'Ticket Register — create tickets, filters, open/overdue stats, escalate overdue SLA. Use + New Ticket (pick Complaint / Installation / Service on the form).',
+                        'Daily Visit Schedule — day planner of open tickets whose expected visit (or visit / next-visit date) falls on the chosen date, optionally filtered by technician.',
+                        'OEM Warranty Register, Quotation & Approval, Customer Feedback, Serial History, Reports & Analytics — read/follow-up views. Service Master Settings holds OEM centres, SLA hours by priority, and a shortcut to edit the SRV number series.',
+                    ],
+                ],
+                [
+                    'title' => 'Ticket numbering (AVITSRV)',
+                    'route' => 'organization.document-number-series.index',
+                    'summary' => 'Service tickets use document type SRV (e.g. AVITSRV-2627-0001). Customize like any other voucher series.',
+                    'steps' => [
+                        'Open Setup → Voucher Numbering, filter Service Ticket (SRV), and edit prefix / FY / padding — or use Service Master Settings → Edit SRV series.',
+                        'New tickets pull the next number for the working company. Keep one active SRV series per company you service under.',
+                    ],
+                ],
+                [
+                    'title' => 'Create & triage a ticket',
+                    'route' => 'service.tickets.create',
+                    'summary' => 'One New Ticket form covers complaint, installation, and service. Installation fields appear when Request type = Installation.',
+                    'steps' => [
+                        'From Ticket Register click + New Ticket. Set Request type, Priority (drives SLA due), Handler (Avit / OEM / Both), party, product/serial, and problem text.',
+                        'Optional: quick-create OEM centre, brand, or category from the form. Save — ticket opens as New with SLA due from Service Master Settings.',
+                        'On the ticket screen assign an Avit technician and/or OEM centre, set Expected visit, then Assign (status becomes Assigned when it was New). Use + Create / Delete on those dropdowns when needed.',
+                    ],
+                ],
+                [
+                    'title' => 'Daily Visit Schedule',
+                    'route' => 'service.schedule',
+                    'summary' => 'Operational day board — not a separate calendar master. It lists tickets you already scheduled via Expected visit (or logged visit / next visit).',
+                    'steps' => [
+                        'After Assign, set Expected visit date/time on the ticket. That row appears under Daily Visit Schedule for that date.',
+                        'Filter by date and technician to plan the day. Click the ticket number to open the job and log the visit report.',
+                        'Empty day = no open tickets with expected_visit_at (or visit/next-visit) on that date. Closed tickets drop off the board.',
+                    ],
+                ],
+                [
+                    'title' => 'Field work → close',
+                    'route' => 'service.tickets.index',
+                    'summary' => 'Status path: New → Assigned → Visit → Pending (optional) → Completed → Confirmed → Closed (or Cancelled).',
+                    'steps' => [
+                        'Log Visit reports (action taken, parts, photos). Status moves to Visit when still New/Assigned.',
+                        'Update Charges (paid/warranty), OEM Warranty claim fields, and Installation details when relevant. Raise a service invoice from the ticket when chargeable.',
+                        'Move status to Completed (remarks), Confirmed, then Closed. Capture Customer Feedback (rating/comments). Use Escalate overdue on Ticket Register to flag SLA breaches.',
+                    ],
+                ],
+                [
+                    'title' => 'Registers & settings',
+                    'route' => 'service.oem-centres.index',
+                    'summary' => 'Follow-up screens and masters that support the ticket lifecycle.',
+                    'steps' => [
+                        'OEM Warranty Register — tickets/claims with OEM tracking. Quotation & Approval — chargeable quotes awaiting customer approval.',
+                        'Customer Feedback and Serial History — ratings and prior jobs for a serial. Reports & Analytics — volume, priority, technician load.',
+                        'Service Master Settings — OEM centre list, SLA resolution hours by priority (Critical/High/Normal/Low), and SRV numbering links.',
+                    ],
+                ],
+            ],
+        ],
+        [
+            'number' => 12,
             'title' => 'Accounting (Books)',
             'purpose' => 'Read and post the same business in ledgers: vouchers, bank, GST, stock value, and financial statements — opened from the main sidebar as a second panel.',
             'sections' => [
@@ -442,7 +508,7 @@ return [
             ],
         ],
         [
-            'number' => 12,
+            'number' => 13,
             'title' => 'Reports',
             'purpose' => 'Review and export what already happened — registers, ledgers, stock, aging, and financial statements — with shared date filters and CSV/PDF where available.',
             'sections' => [
@@ -489,7 +555,7 @@ return [
             ],
         ],
         [
-            'number' => 13,
+            'number' => 14,
             'title' => 'Tally Connector',
             'purpose' => 'Bridge hosted DMS to office TallyPrime so commercial vouchers and masters stay aligned — without exposing Tally to the internet.',
             'sections' => [

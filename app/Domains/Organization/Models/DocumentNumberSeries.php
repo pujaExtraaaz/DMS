@@ -321,6 +321,7 @@ class DocumentNumberSeries extends Model
             'PRF' => 'Proforma Invoice',
             'CN' => 'Credit Note',
             'DC' => 'Delivery Challan',
+            'SRV' => 'Service Ticket',
             // Money
             'PAY' => 'Payment',
             'SPAY' => 'Supplier Payment',

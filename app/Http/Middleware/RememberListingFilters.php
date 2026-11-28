@@ -21,6 +21,15 @@ class RememberListingFilters
         '_method',
     ];
 
+    /**
+     * Routes that must not remember filters (sidebar shortcuts share the same index).
+     *
+     * @var list<string>
+     */
+    protected array $excludedRoutes = [
+        'service.tickets.index',
+    ];
+
     public function handle(Request $request, Closure $next): Response
     {
         if (! $request->isMethod('GET')) {
@@ -29,6 +38,12 @@ class RememberListingFilters
 
         $routeName = $request->route()?->getName();
         if (! is_string($routeName) || $routeName === '' || ! str_ends_with($routeName, '.index')) {
+            return $next($request);
+        }
+
+        if (in_array($routeName, $this->excludedRoutes, true)) {
+            $request->session()->forget($this->sessionKey($routeName));
+
             return $next($request);
         }
 

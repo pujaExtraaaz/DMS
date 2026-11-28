@@ -72,3 +72,52 @@ HTML;
         return $html;
     }
 }
+
+if (! function_exists('dms_money_whole')) {
+    /**
+     * Full amount rounded to the nearest rupee, Indian grouping (hover tooltip).
+     */
+    function dms_money_whole(mixed $amount, string $symbol = '₹'): string
+    {
+        $num = (float) $amount;
+        $rounded = (int) round($num);
+        $negative = $rounded < 0;
+        $whole = (string) abs($rounded);
+
+        if (strlen($whole) > 3) {
+            $last = substr($whole, -3);
+            $rest = substr($whole, 0, -3);
+            $rest = preg_replace('/\B(?=(\d{2})+(?!\d))/', ',', $rest) ?? $rest;
+            $whole = $rest.','.$last;
+        }
+
+        return ($negative ? '-' : '').$symbol.$whole;
+    }
+}
+
+if (! function_exists('dms_money_short')) {
+    /**
+     * Compact Indian amount for KPI cards: floored whole K+ / Lakh+ / Cr+.
+     * e.g. 6.1 Cr and 6.9 Cr both display as "₹6 Cr+".
+     */
+    function dms_money_short(mixed $amount, string $symbol = '₹'): string
+    {
+        $num = (float) $amount;
+        $abs = abs($num);
+        $sign = $num < 0 ? '-' : '';
+
+        if ($abs >= 10000000) {
+            return $sign.$symbol.((int) floor($abs / 10000000)).' Cr+';
+        }
+
+        if ($abs >= 100000) {
+            return $sign.$symbol.((int) floor($abs / 100000)).' Lakh+';
+        }
+
+        if ($abs >= 1000) {
+            return $sign.$symbol.((int) floor($abs / 1000)).' K+';
+        }
+
+        return $sign.$symbol.(int) round($abs);
+    }
+}

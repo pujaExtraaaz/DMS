@@ -4,7 +4,7 @@
 <div id="listing-container" data-dynamic-container>
     <x-ui.page-header title="Voucher Numbering">
         <x-slot name="actions">
-            <x-ui.button variant="primary" :href="route('organization.document-number-series.create')">+ Add Series</x-ui.button>
+            <x-ui.button variant="primary" :href="route('organization.document-number-series.create', array_filter(['document_type' => $filterType ?? request('document_type')]))">+ Add Series</x-ui.button>
         </x-slot>
     </x-ui.page-header>
 
@@ -13,7 +13,16 @@
             :search="$search ?? request('search')"
             search-placeholder="Search document type, prefix..."
             :reset-url="route('organization.document-number-series.index')"
-        />
+        >
+            <x-slot name="filters">
+                <select name="document_type" data-dynamic-filter class="rounded-lg border-slate-300 py-1.5 pl-3 pr-8 text-xs text-slate-700 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm">
+                    <option value="">All document types</option>
+                    @foreach($documentTypes as $code => $label)
+                        <option value="{{ $code }}" @selected(($filterType ?? request('document_type')) === $code)>{{ $label }} ({{ $code }})</option>
+                    @endforeach
+                </select>
+            </x-slot>
+        </x-ui.table-toolbar>
 
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-slate-200 text-sm">

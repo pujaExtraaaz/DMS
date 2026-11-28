@@ -261,7 +261,20 @@ class CompanyController extends Controller
         }
 
         $companyName = $company->name;
-        $company->delete();
+
+        try {
+            $company->delete();
+        } catch (\Throwable $e) {
+            $message = 'Cannot delete this company because related records still reference it. Remove or reassign linked data first.';
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 422);
+            }
+
+            return back()->with('error', $message);
+        }
 
         if ($request->wantsJson()) {
             return response()->json([

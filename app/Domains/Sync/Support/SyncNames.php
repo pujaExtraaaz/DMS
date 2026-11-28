@@ -31,4 +31,25 @@ final class SyncNames
 
         return mb_substr($code !== '' ? $code : 'NA', 0, $limit);
     }
+
+    /**
+     * Unique alphanumeric code (suffix -2, -3…) suitable for ledger/party codes.
+     */
+    public static function uniqueCode(Builder $query, string $value, ?int $ignoreId = null, int $limit = 32): string
+    {
+        $base = self::code($value, $limit);
+        $candidate = $base;
+        $suffix = 2;
+
+        while ($query->clone()
+            ->where('code', $candidate)
+            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+            ->exists()) {
+            $tail = (string) $suffix;
+            $candidate = mb_substr($base, 0, max(1, $limit - mb_strlen($tail))).$tail;
+            $suffix++;
+        }
+
+        return $candidate;
+    }
 }

@@ -200,6 +200,12 @@ class CommunicationService
         };
     }
 
+    /** Public wrapper for non-invoice WhatsApp notices (service tickets, etc.). */
+    public function sendWhatsappRaw(string $to, string $message): void
+    {
+        $this->sendWhatsapp($to, $message);
+    }
+
     protected function sendWhatsapp(string $to, string $message): void
     {
         $token = config('services.whatsapp.token');
